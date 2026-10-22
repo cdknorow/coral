@@ -2,6 +2,7 @@ package background
 
 import (
 	"context"
+	"github.com/subgentic/coral/internal/logsafe"
 	"log/slog"
 	"os"
 	"time"
@@ -91,7 +92,7 @@ func (idx *SessionIndexer) RunOnce(ctx context.Context) error {
 
 		sessions, err := scanner.ExtractSessions(basePath, knownMtimes)
 		if err != nil {
-			idx.logger.Warn("scanner error", "base", basePath, "error", err)
+			idx.logger.Warn("scanner error", "base", logsafe.Dir(basePath), "error", err)
 			continue
 		}
 		allSessions = append(allSessions, sessions...)

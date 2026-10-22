@@ -3,6 +3,7 @@ package tmux
 import (
 	"bytes"
 	"errors"
+	"github.com/subgentic/coral/internal/logsafe"
 	"log"
 	"os"
 	"os/exec"
@@ -227,7 +228,7 @@ func noteTmuxResult(err error, bin, socketPath string) {
 	incompat[socketPath] = msg
 	incompatMu.Unlock()
 	if prev != msg {
-		log.Printf("[tmux] client/server version problem (socket=%q): %s", socketPath, msg)
+		log.Printf("[tmux] client/server version problem (socket=%q): %s", logsafe.Path(socketPath), msg)
 	}
 }
 

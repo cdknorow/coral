@@ -3,6 +3,7 @@ package agent
 
 import (
 	"fmt"
+	"github.com/subgentic/coral/internal/logsafe"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -682,7 +683,7 @@ func CleanupTempFiles(sessionID string) {
 			continue
 		}
 		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-			slog.Debug("failed to remove temp file", "path", path, "error", err)
+			slog.Debug("failed to remove temp file", "path", logsafe.Dir(path), "error", err)
 		}
 	}
 }

@@ -2,6 +2,7 @@ package startup
 
 import (
 	"context"
+	"github.com/subgentic/coral/internal/logsafe"
 	"log"
 	"log/slog"
 	"path/filepath"
@@ -141,12 +142,12 @@ func reconcileOrphanedTeams(ctx context.Context, db *store.DB) {
 				repoPath := filepath.Dir(strings.TrimSpace(string(repoOut)))
 				cmd := gitutil.Command(cleanCtx, repoPath, "worktree", "remove", team.WorkingDir)
 				if out, err := cmd.CombinedOutput(); err != nil {
-					log.Printf("[startup] left the orphaned worktree %s in place (git won't remove it, e.g. it has uncommitted work): %s", team.WorkingDir, strings.TrimSpace(string(out)))
+					log.Printf("[startup] left the orphaned worktree %s in place (git won't remove it, e.g. it has uncommitted work): %s", logsafe.Dir(team.WorkingDir), strings.TrimSpace(string(out)))
 				} else {
-					log.Printf("[startup] cleaned up orphaned worktree: %s", team.WorkingDir)
+					log.Printf("[startup] cleaned up orphaned worktree: %s", logsafe.Dir(team.WorkingDir))
 				}
 			} else {
-				log.Printf("[startup] left the orphaned worktree %s in place: git can't find its repository (%v)", team.WorkingDir, repoErr)
+				log.Printf("[startup] left the orphaned worktree %s in place: git can't find its repository (%v)", logsafe.Dir(team.WorkingDir), repoErr)
 			}
 			cancel()
 		}

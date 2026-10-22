@@ -2,6 +2,7 @@ package startup
 
 import (
 	"context"
+	"github.com/subgentic/coral/internal/logsafe"
 	"log"
 	"os"
 	"path/filepath"
@@ -33,7 +34,7 @@ func setupSessionTokens(db *store.DB, coralDir string) {
 	// Windows: a mode means nothing there; this user and SYSTEM only, whatever the data folder allows. A failure is not silent: the folder
 	// stays on the list it inherited (its files are protected one by one below).
 	if err := secfile.ProtectDir(dir); err != nil {
-		log.Printf("[security] could not make the session token folder %s private: %v", dir, err)
+		log.Printf("[security] could not make the session token folder %s private: %v", logsafe.Path(dir), err)
 	}
 	sweepSessionTokenFiles(db, dir)
 	agent.SessionTokenMinter = func(sessionID, sessionName string) string {

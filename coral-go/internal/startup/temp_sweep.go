@@ -3,6 +3,7 @@ package startup
 import (
 	"context"
 	"errors"
+	"github.com/subgentic/coral/internal/logsafe"
 	"log"
 	"os"
 	"os/exec"
@@ -78,9 +79,9 @@ func setupLaunchTempDir(db *store.DB, dataDir string) <-chan struct{} {
 			}
 			if removed := agent.SweepStaleTempFiles(dir, opt); len(removed) > 0 {
 				if dir == os.TempDir() {
-					log.Printf("[startup] removed %d launch temp file(s) over a day old, of agents that ended, from the system temp folder %s (left before a restart; an agent's stop doesn't read this folder)", len(removed), dir)
+					log.Printf("[startup] removed %d launch temp file(s) over a day old, of agents that ended, from the system temp folder %s (left before a restart; an agent's stop doesn't read this folder)", len(removed), logsafe.Path(dir))
 				} else {
-					log.Printf("[startup] removed %d launch temp file(s) over a day old, of agents no longer running, from %s", len(removed), dir)
+					log.Printf("[startup] removed %d launch temp file(s) over a day old, of agents no longer running, from %s", len(removed), logsafe.Path(dir))
 				}
 			}
 		}

@@ -2,6 +2,7 @@ package background
 
 import (
 	"context"
+	"github.com/subgentic/coral/internal/logsafe"
 	"io"
 	"log/slog"
 	"os"
@@ -105,7 +106,7 @@ func (p *TokenPoller) pollCodexSession(ctx context.Context, ls *store.LiveSessio
 			p.logger.Warn("no rollout file found for Codex session",
 				"session_id", ls.SessionID[:8],
 				"agent_name", ls.AgentName,
-				"working_dir", ls.WorkingDir,
+				"working_dir", logsafe.Dir(ls.WorkingDir),
 				"created_at", ls.CreatedAt)
 			return
 		}

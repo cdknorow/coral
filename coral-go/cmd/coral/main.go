@@ -58,7 +58,7 @@ func setupCrashLogging(coralDir string) {
 		return
 	}
 	out, terminal := logOutput(f, os.Stderr)
-	log.SetOutput(out)
+	log.SetOutput(logsafe.Writer(out)) // the home folder, user and computer name never reach coral.log or the terminal copy (#6053)
 	logexit.SetFlush(terminal.Flush)
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds)
 }
@@ -128,7 +128,7 @@ func main() {
 	// and the self-test print nothing of a server's (#3506).
 	// The PATH is logged here once, with the home folder as "~" (logsafe); no other line carries it.
 	log.Printf("[STARTUP] coral server starting%s pid=%d go=%s os=%s arch=%s exe=%q %s",
-		config.FlavorNote(), os.Getpid(), runtime.Version(), runtime.GOOS, runtime.GOARCH, mustExecutable(), logsafe.PathSummary())
+		config.FlavorNote(), os.Getpid(), runtime.Version(), runtime.GOOS, runtime.GOARCH, logsafe.Path(mustExecutable()), logsafe.PathSummary())
 
 	cfg := config.Load(*homeDir)
 	// --hub or CORAL_HUB=1 (read by config.Load) force hub mode on; otherwise the saved
@@ -176,8 +176,8 @@ func main() {
 	// Silently running the wrong product looks exactly like running this one.
 	if w := startup.CheckPATHShadowing(); w != nil {
 		log.Printf("[WARNING] 'coral' on your PATH is NOT this program.")
-		log.Printf("[WARNING]   typing 'coral' runs: %s", w.OnPath)
-		log.Printf("[WARNING]   you are running:     %s", w.Running)
+		log.Printf("[WARNING]   typing 'coral' runs: %s", logsafe.Path(w.OnPath))
+		log.Printf("[WARNING]   you are running:     %s", logsafe.Path(w.Running))
 		log.Printf("[WARNING] Another program of the same name comes earlier on your PATH.")
 		log.Printf("[WARNING] Check with: command -v coral")
 	}

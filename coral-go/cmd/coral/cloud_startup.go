@@ -149,7 +149,7 @@ func runCloudStartupStep(ctx context.Context, cfg *config.Config, mode string, i
 	case !st.Configured:
 		return // a bad URL: already logged by the connector
 	case st.State == cloud.StateConnected || st.State == cloud.StateConnecting || st.State == cloud.StateRetrying:
-		log.Printf("[CLOUD] Coral Hub: this server is connected as %s", firstNonEmpty(st.Label, "this server"))
+		log.Printf("[CLOUD] Coral Hub: this server is connected") // the Hub label names the person's machine: not in the log (#6053)
 		return
 	case st.State == cloud.StateRevoked:
 		log.Printf("[CLOUD] Coral Hub revoked this server. To connect it again, run: coral cloud connect --force")

@@ -2,6 +2,7 @@
 package tmux
 
 import (
+	"github.com/subgentic/coral/internal/logsafe"
 	"log"
 	"os"
 	"path/filepath"
@@ -79,6 +80,6 @@ func NewClient(coralDir ...string) *Client {
 	}
 	testguard.CheckDataPath(c.SocketPath)
 	c.FallbackToDefault = defaultSocketFallback(c.SocketPath)
-	log.Printf("[tmux] NewClient: tmux_bin=%q socket=%q fallback=%v shell=%q coral_tmux_bin_set=%t", c.TmuxBin, c.SocketPath, c.FallbackToDefault, shellName(), os.Getenv("CORAL_TMUX_BIN") != "") // no PATH value: it names profile folders (#6004 W9)
+	log.Printf("[tmux] NewClient: tmux_bin=%q socket=%q fallback=%v shell=%q coral_tmux_bin_set=%t", logsafe.Path(c.TmuxBin), logsafe.Path(c.SocketPath), c.FallbackToDefault, shellName(), os.Getenv("CORAL_TMUX_BIN") != "") // no PATH value: it names profile folders (#6004 W9)
 	return c
 }

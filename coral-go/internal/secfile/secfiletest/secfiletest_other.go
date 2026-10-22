@@ -3,6 +3,7 @@
 package secfiletest
 
 import (
+	"github.com/subgentic/coral/internal/logsafe"
 	"os"
 	"testing"
 )
@@ -35,7 +36,7 @@ func assertMode(t *testing.T, path string) {
 		t.Fatal(err)
 	}
 	if got := fi.Mode().Perm(); got != 0o600 {
-		t.Fatalf("%s: mode %o, want 600", path, got)
+		t.Fatalf("%s: mode %o, want 600", logsafe.Path(path), got)
 	}
 }
 

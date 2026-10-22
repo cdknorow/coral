@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/subgentic/coral/internal/logsafe"
 	"io"
 	"log"
 	"os"
@@ -62,7 +63,7 @@ func telemetryHook(w io.Writer) func(on bool) {
 //     childExitRestart when Settings > Restart asked for a new server and childExitQuitForUpdate
 //     when the local "Install update" started the updater (#166).
 func runServerChild(host string, port int, backendType string) {
-	log.SetOutput(os.Stderr)
+	log.SetOutput(logsafe.Writer(os.Stderr)) // tray.log carries what this writes: no home folder, user or computer name (#6053)
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds)
 	log.Printf("[STARTUP] coral server (tray child) starting pid=%d go=%s os=%s arch=%s", os.Getpid(), runtime.Version(), runtime.GOOS, runtime.GOARCH)
 	signal.Ignore(syscall.SIGHUP)

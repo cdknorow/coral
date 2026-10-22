@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/subgentic/coral/internal/executil"
+	"github.com/subgentic/coral/internal/logsafe"
 	"log"
 	"log/slog"
 	"net/http"
@@ -1206,9 +1207,9 @@ func (h *SessionsHandler) KillTeam(w http.ResponseWriter, r *http.Request) {
 			parentDir := filepath.Dir(teamWorktree)
 			cmd := gitutil.Command(wtCtx, parentDir, "worktree", "remove", "--force", teamWorktree)
 			if out, err := cmd.CombinedOutput(); err != nil {
-				log.Printf("[kill-team] failed to remove worktree %s: %s", teamWorktree, string(out))
+				log.Printf("[kill-team] failed to remove worktree %s: %s", logsafe.Dir(teamWorktree), string(out))
 			} else {
-				log.Printf("[kill-team] cleaned up worktree: %s", teamWorktree)
+				log.Printf("[kill-team] cleaned up worktree: %s", logsafe.Dir(teamWorktree))
 			}
 		}()
 	}
@@ -1287,7 +1288,7 @@ func (h *SessionsHandler) ResurrectTeam(w http.ResponseWriter, r *http.Request) 
 			errBadRequest(w, fmt.Sprintf("failed to recreate worktree: %s", string(out)))
 			return
 		}
-		log.Printf("[resurrect] recreated worktree at %s (branch %s)", team.WorkingDir, branch)
+		log.Printf("[resurrect] recreated worktree at %s (branch %s)", logsafe.Dir(team.WorkingDir), branch)
 	}
 
 	// Relaunch each member

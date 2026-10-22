@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/subgentic/coral/internal/logsafe"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -885,10 +886,10 @@ func (s *JobScheduler) cleanupWorktree(repoPath, worktreePath, runBranch, baseBr
 	defer cancel()
 	err := runGitCmd(ctx, repoPath, "worktree", "remove", "--force", worktreePath)
 	if err != nil {
-		s.logger.Warn("failed to remove worktree", "path", worktreePath, "error", err)
+		s.logger.Warn("failed to remove worktree", "path", logsafe.Dir(worktreePath), "error", err)
 		return
 	}
-	s.logger.Info("cleaned up worktree", "path", worktreePath)
+	s.logger.Info("cleaned up worktree", "path", logsafe.Dir(worktreePath))
 
 	if runBranch == "" || baseBranch == "" {
 		return

@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"github.com/subgentic/coral/internal/logsafe"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -72,7 +73,7 @@ func SweepStaleTempFiles(dir string, opt TempSweep) []string {
 	}
 	procs, err := opt.Running()
 	if err != nil || strings.TrimSpace(procs) == "" {
-		slog.Warn("launch temp file sweep skipped: the process list could not be read", "dir", dir, "error", err)
+		slog.Warn("launch temp file sweep skipped: the process list could not be read", "dir", logsafe.Dir(dir), "error", err)
 		return nil
 	}
 	var removed []string
@@ -87,7 +88,7 @@ func SweepStaleTempFiles(dir string, opt TempSweep) []string {
 			continue
 		}
 		if err := os.Remove(c.path); err != nil {
-			slog.Debug("launch temp file sweep: could not remove", "path", c.path, "error", err)
+			slog.Debug("launch temp file sweep: could not remove", "path", logsafe.Dir(c.path), "error", err)
 			continue
 		}
 		removed = append(removed, c.path)

@@ -270,6 +270,7 @@ func DebugRequestLogger(next http.Handler) http.Handler {
 		path := r.URL.Path
 		if debugEnabled() {
 			if strings.HasPrefix(path, "/api/sessions/") || strings.HasPrefix(path, "/ws/") {
+				// logsafe-ok: a request's URL path, not a place on this computer
 				slog.Info("[debug] request", "method", r.Method, "path", path, "query", RedactQuery(r.URL.RawQuery), "remote", r.RemoteAddr)
 			}
 		}
@@ -278,6 +279,7 @@ func DebugRequestLogger(next http.Handler) http.Handler {
 		start := time.Now()
 		next.ServeHTTP(w, r)
 		if d := time.Since(start); d >= slowRequestThreshold && strings.HasPrefix(path, "/api/") {
+			// logsafe-ok: a request's URL path, not a place on this computer
 			slog.Warn("slow request", "method", r.Method, "path", path, "query", RedactQuery(r.URL.RawQuery), "duration_ms", d.Milliseconds())
 		}
 	})

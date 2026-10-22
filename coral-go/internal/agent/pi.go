@@ -3,6 +3,7 @@ package agent
 import (
 	"bufio"
 	"encoding/json"
+	"github.com/subgentic/coral/internal/logsafe"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -49,7 +50,7 @@ func (a *PiAgent) ExtractSessions(basePath string, knownMtimes map[string]float6
 		}
 		sess, parseErr := parsePiSession(path, mtime)
 		if parseErr != nil {
-			slog.Debug("pi: failed to parse session file", "path", path, "error", parseErr)
+			slog.Debug("pi: failed to parse session file", "path", logsafe.Dir(path), "error", parseErr)
 			return nil
 		}
 		if sess != nil {

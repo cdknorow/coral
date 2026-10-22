@@ -33,6 +33,7 @@ func hubOperatorUser(r *http.Request) string {
 // Coral Hub, attributed to the validated Hub user. (It takes the request's method and
 // path, not the request: tools/gen_route_queries.py follows calls that pass r.)
 func recordHubOperatorAction(ctx context.Context, bs *board.Store, hubUser, method, path, project string, status int) {
+	// logsafe-ok: a request's URL path, not a place on this computer
 	slog.Info("[cloud] Coral Hub acted as the Operator", "hub_user", hubUser, "method", method, "path", path, "status", status)
 	if bs == nil {
 		return

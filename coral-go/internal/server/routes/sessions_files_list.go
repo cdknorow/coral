@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"github.com/subgentic/coral/internal/logsafe"
 	"log/slog"
 	"net/http"
 	"os/exec"
@@ -112,7 +113,7 @@ func trackedPaths(ctx context.Context, workdir string, paths []string) map[strin
 	if err != nil {
 		// Unknown tracked status: treat every candidate as untracked, which at
 		// worst shows a clean file in the list rather than hiding a dirty one.
-		slog.Warn("git ls-files (tracked) failed", "workdir", workdir, "error", err)
+		slog.Warn("git ls-files (tracked) failed", "workdir", logsafe.Dir(workdir), "error", err)
 		return tracked
 	}
 	for _, f := range bytes.Split(out, []byte{0}) {
@@ -161,7 +162,7 @@ func (h *SessionsHandler) refreshFilesInner(w http.ResponseWriter, r *http.Reque
 	out, err := gitCmd(ctx, workdir, "diff", base, "--numstat").Output()
 	fileMap := make(map[string]store.ChangedFile)
 	if err != nil {
-		slog.Warn("git diff --numstat failed", "agent_name", name, "workdir", workdir, "error", err)
+		slog.Warn("git diff --numstat failed", "agent_name", name, "workdir", logsafe.Dir(workdir), "error", err)
 	} else {
 		for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
 			if line == "" {
@@ -181,7 +182,7 @@ func (h *SessionsHandler) refreshFilesInner(w http.ResponseWriter, r *http.Reque
 	untrackedSet := make(map[string]bool)
 	untrackedOut, err := gitCmd(ctx, workdir, "ls-files", "--others", "--exclude-standard").Output()
 	if err != nil {
-		slog.Warn("git ls-files (untracked) failed", "agent_name", name, "workdir", workdir, "error", err)
+		slog.Warn("git ls-files (untracked) failed", "agent_name", name, "workdir", logsafe.Dir(workdir), "error", err)
 	} else {
 		counted := 0
 		for _, f := range strings.Split(strings.TrimSpace(string(untrackedOut)), "\n") {
