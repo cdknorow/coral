@@ -9,7 +9,7 @@
     "test:cdp": "node run_cdp_suites.mjs",
     "test:cdp:stress": "node run_cdp_suites.mjs --stress",
     "test:cdp:cloud": "node run_cdp_suites.mjs --only cloud_csp_browser,fetch_metadata_browser",
-    "lint:undef": "cd ../../coral-go/pkg/frontend && ../../../tests/frontend/node_modules/.bin/eslint -c ../../../tests/frontend/eslint.config.mjs --no-warn-ignored static",
+    "lint:undef": "cd ../../coral-go/pkg/frontend && node ../../../tests/frontend/node_modules/eslint/bin/eslint.js -c ../../../tests/frontend/eslint.config.mjs --no-warn-ignored static",
     "test:runner-folder-loss": "node run_runner_folder_loss.mjs"
   },
   "dependencies": {

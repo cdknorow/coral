@@ -2,6 +2,7 @@
 import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { installDom, importUi, STATIC, FRONTEND } from './helpers/jsdom_env.mjs';
 
 const dom = installDom({ mode: 'cloud' });
@@ -40,7 +41,7 @@ const indexHtml = fs.readFileSync(path.join(FRONTEND, 'templates/index.html'), '
 assert.ok(indexHtml.includes('{{ $base }}vendor/purify.min.js') && indexHtml.includes('{{ $base }}vendor/marked.min.js'), 'index.html loads marked and DOMPurify');
 
 // ── 5. ?next= (safeNext) ──────────────────────────────────────────────
-const { safeNext } = await import(STATIC + 'cloud/common.js');
+const { safeNext } = await import(pathToFileURL(STATIC + 'cloud/common.js').href);
 for (const bad of ['//evil.example', '/\\evil.example', '/%2f/evil.example', '\\\\evil.example', 'javascript:alert(1)', 'https://evil.example/', 'http://hub.example/x', '/ok\nSet-Cookie:x', '/ok\tx', '/ok\rx', '/a\u0000b', '', null, undefined, 'evil', '//', '/\\', '///evil']) {
     assert.strictEqual(safeNext(bad, '/home'), '/home', `safeNext accepted ${JSON.stringify(bad)}`);
 }

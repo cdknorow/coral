@@ -24,7 +24,7 @@ const walk = (d, ext) => fs.readdirSync(d, { withFileTypes: true }).flatMap(e =>
     ? (['vendor', '_src', 'agent_docs', 'node_modules'].includes(e.name) ? [] : walk(path.join(d, e.name), ext))
     : e.name.endsWith(ext) ? [path.join(d, e.name)] : []);
 const JS = walk(STATIC, '.js'), HTML = [...walk(TEMPLATES, '.html'), ...walk(STATIC, '.html')];
-const rel = f => path.relative(FRONTEND, f);
+const rel = f => path.relative(FRONTEND, f).split(path.sep).join('/');
 const src = new Map([...JS, ...HTML].map(f => [f, fs.readFileSync(f, 'utf8')]));
 
 // ── 1. named vs registered ─────────────────────────────────────────────

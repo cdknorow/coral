@@ -5,11 +5,11 @@ const path = require('path');
 const assert = require('assert');
 
 const frontendDir = path.resolve(__dirname, '../../coral-go/pkg/frontend');
-const eslint = path.resolve(__dirname, 'node_modules/.bin/eslint');
+const eslint = path.resolve(__dirname, 'node_modules/eslint/bin/eslint.js'); // run by node: the .bin entry is a shell script (a .cmd on Windows)
 const config = path.resolve(__dirname, 'eslint.config.mjs');
 
 function lint(code) {
-    return spawnSync(eslint, ['-c', config, '--stdin', '--stdin-filename', 'static/_selfcheck.js'], {
+    return spawnSync(process.execPath, [eslint, '-c', config, '--stdin', '--stdin-filename', 'static/_selfcheck.js'], {
         cwd: frontendDir, input: code, encoding: 'utf8',
     });
 }

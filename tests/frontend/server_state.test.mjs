@@ -5,8 +5,14 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { snapshot, diff, rowLeaks, restoreSettings, leftovers, cleanup } from './helpers/server_state.mjs';
+
+// The throwaway database is made with the sqlite3 command-line tool, which a Windows machine has not by default: without it there is nothing to run against.
+if (spawnSync('sqlite3', ['-version']).error) {
+  console.log('server_state: SKIPPED, the sqlite3 command-line tool is not on PATH');
+  process.exit(0);
+}
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'srvstate-'));
 try {
