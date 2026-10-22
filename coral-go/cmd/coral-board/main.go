@@ -99,7 +99,7 @@ func main() {
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", cmd)
 		printUsage()
-		os.Exit(1)
+		os.Exit(2) // usage
 	}
 }
 
