@@ -21,13 +21,13 @@ const ANSWERS = {
         await Page.enable(); await Network.setBypassServiceWorker({ bypass: true });
         await Emulation.setDeviceMetricsOverride({ width: 390, height: 844, deviceScaleFactor: 2, mobile: true }); await Emulation.setTouchEmulationEnabled({ enabled: true });
         await Page.addScriptToEvaluateOnNewDocument({ source: PRELOAD });
-        let answer = ANSWERS['404 for every theme'];
+        let answer = ANSWERS['404 for every theme']; let storedTheme = '';
         await Fetch.enable({ patterns: [{ urlPattern: `${BASE}/`, resourceType: 'Document', requestStage: 'Response' }, { urlPattern: `${BASE}/auth/session`, requestStage: 'Request' }, { urlPattern: `${BASE}/api/settings`, requestStage: 'Request' }, { urlPattern: `${BASE}/api/themes/*`, requestStage: 'Request' }] });
         const json = (e, status, obj) => Fetch.fulfillRequest({ requestId: e.requestId, responseCode: status, responseHeaders: [{ name: 'Content-Type', value: 'application/json' }], body: Buffer.from(JSON.stringify(obj)).toString('base64') });
         safePaused(client, async e => {
             const u = e.request.url;
             if (u.endsWith('/auth/session')) return json(e, 200, { authenticated: true, email: 'tester@example.com', csrf: 'test-csrf' });
-            if (u.endsWith('/api/settings') && e.request.method === 'GET') return json(e, 200, { settings: {} }); // the hub stores no theme for this user
+            if (u.endsWith('/api/settings') && e.request.method === 'GET') return json(e, 200, { settings: storedTheme ? { custom_theme: storedTheme } : {} }); // the hub stores no theme for this user, or a custom one
             if (/\/api\/themes\//.test(u)) return answer === null ? Fetch.failRequest({ requestId: e.requestId, errorReason: 'Failed' }) : json(e, answer.status, answer.body);
             if (e.responseStatusCode !== 200) return Fetch.continueRequest({ requestId: e.requestId });
             const { body, base64Encoded } = await Fetch.getResponseBody({ requestId: e.requestId });
@@ -65,5 +65,15 @@ const ANSWERS = {
             }
             console.log('PASS ' + name);
         }
+        // A stored custom theme the hub answers well: the page shows it, and the browser's saved choice (a person's own, light) is not rewritten by the page load (#6087).
+        storedTheme = 'Obsidian'; answer = { status: 200, body: { name: 'Obsidian', theme: { base: 'dark', variables: { '--accent': '#58a6ff' } } } };
+        await Emulation.setEmulatedMedia({ features: [{ name: 'prefers-color-scheme', value: 'light' }] });
+        await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired();
+        await ev(`localStorage.setItem('coral-theme', 'light'); true`);
+        await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired(); await install();
+        await new Promise(r => setTimeout(r, 2500)); // sleep-ok: the settings and theme requests finish after the first paint
+        assert.equal(await ev(`document.documentElement.getAttribute('data-theme')`), 'dark', 'the stored custom theme (base dark) is what the page shows');
+        assert.equal(await ev(`localStorage.getItem('coral-theme')`), 'light', "the person's saved choice is not overwritten by what the hub says");
+        console.log('PASS a stored custom theme does not rewrite the saved choice');
     } finally { await client.close(); }
 })().catch(e => { console.error(e); process.exitCode = 1; });

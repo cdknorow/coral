@@ -195,7 +195,7 @@ export async function loadSettings() {
         // No custom theme (or the retired default) is the built-in one the page already has (theme_init.js): nothing is fetched or overlaid, so a hub that stores no theme leaves the stylesheet's own tokens (#6087).
         const noCustom = !s.custom_theme || s.custom_theme === "GhostV3";
         if (noCustom) state.settings.custom_theme = "Dark";
-        else await applyCustomThemeByName(s.custom_theme);
+        else await applyCustomThemeByName(s.custom_theme, { remember: false }); // the page load applies the person's stored theme; it does not rewrite the browser's saved choice
         // A partner build names itself in the settings menu
         _loadTierBadge();
     } catch (e) {
@@ -231,12 +231,12 @@ onBuilt('top-bar-settings-menu', () => { _loadTierBadge(); });
 }
 
 /** Apply a theme to the document */
-export function applyTheme(theme) {
+export function applyTheme(theme, { remember = true } = {}) {
     const resolved = resolveTheme(theme);
     document.documentElement.setAttribute("data-theme", resolved);
 
-    // Store the *preference* (dark/light/system) so other pages can read it
-    try { browserLocal.set("coral-theme", theme); } catch (_) {}
+    // Store the *preference* (dark/light/system) so other pages can read it: only when the person chose it (the settings dialog), never when a page load applies what a hub says (#6087)
+    if (remember) { try { browserLocal.set("coral-theme", theme); } catch (_) {} }
 
     // Update xterm.js terminal colors to match
     updateTerminalTheme();
@@ -255,7 +255,7 @@ export function clearCustomThemeVars() {
 }
 
 /** Load a custom theme by name: apply its base theme + overlay its CSS variables */
-export async function applyCustomThemeByName(name) {
+export async function applyCustomThemeByName(name, { remember = true } = {}) {
     try {
         const resp = await fetch(`/api/themes/${encodeURIComponent(name)}`);
         if (!resp.ok) return; // a theme the server does not have: the stylesheet's tokens stay
@@ -264,7 +264,7 @@ export async function applyCustomThemeByName(name) {
 
         // Apply the base theme (dark/light); anything else is not a base, and the page keeps its own
         const base = data.theme.base;
-        if (base === "dark" || base === "light") applyTheme(base);
+        if (base === "dark" || base === "light") applyTheme(base, { remember });
 
         // Overlay custom variables: custom properties with a real value only (an empty or blank one would empty the token the stylesheet defines, #6087)
         for (const [cssVar, value] of Object.entries(data.theme.variables)) {
