@@ -161,6 +161,7 @@ GET /api/system/hub-operator view
 GET /api/system/identity-report never
 GET /api/system/network-info never
 GET /api/system/privacy never
+GET /api/system/proof never
 GET /api/system/qr never
 GET /api/system/status never
 GET /api/system/telemetry never

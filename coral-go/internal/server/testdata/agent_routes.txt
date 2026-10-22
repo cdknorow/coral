@@ -292,6 +292,7 @@ b POST /api/board/{project}/working-mode/presets
 b POST /api/board/{project}/working-mode/presets/{presetID}/reset
 c POST /api/call-metrics
 b POST /api/cloud/cli-hello
+b GET /api/system/proof
 b POST /api/cloud/connect
 b POST /api/cloud/connect/cancel
 b POST /api/cloud/cross-team-links

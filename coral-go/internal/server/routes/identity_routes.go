@@ -2,6 +2,7 @@ package routes
 
 import (
 	"fmt"
+	"github.com/subgentic/coral/internal/serverproof"
 	"net/http"
 	"sort"
 	"strconv"
@@ -283,6 +284,7 @@ var operatorOnlyRoutes = map[string]string{
 	"POST /api/system/telemetry/acknowledge":                    "acknowledge the telemetry notice",
 	"POST /api/system/auto-wake/dismiss":                        "dismiss the auto-wake notice",
 	"POST /api/cloud/cli-hello":                                 "start a command-line signature",
+	"GET /api/system/proof":                                     "prove to a tool that this is Coral",
 	"POST /api/scheduled/validate-cron":                         "check a schedule",
 	// #3929 (the Orchestrator's call on Backend's question): on a hub, an agent's token never acts
 	// on another server through the hub proxy, as it never acts on another team's board.
@@ -440,7 +442,7 @@ func (o *IdentityObserver) countOperatorCall(session, route string) {
 
 // strictOpenPaths need no credential in strict mode: the liveness check and the command
 // line's hello (step 1 of its signature, which proves the server, not the caller).
-var strictOpenPaths = map[string]bool{"GET /api/health": true, "HEAD /api/health": true, "POST " + cliauth.CLIHelloPath: true}
+var strictOpenPaths = map[string]bool{"GET /api/health": true, "HEAD /api/health": true, "POST " + cliauth.CLIHelloPath: true, "GET " + serverproof.Path: true}
 
 // ValidateAgentSessionRoutes checks every entry of agentSessionRoutes against the router: one the router doesn't serve under exactly that
 // method and pattern would be silently unenforced (the server refuses to start on one, as for the guard tables, #5013).

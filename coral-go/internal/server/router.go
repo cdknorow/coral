@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/subgentic/coral/internal/cloud"
+	"github.com/subgentic/coral/internal/serverproof"
 	"io/fs"
 	"log"
 	"net/http"
@@ -443,6 +444,7 @@ func (s *Server) registerCloud(r *chi.Mux) {
 	s.goBackground(upd.RunBackgroundChecks)                            // returns at once while the feature is off
 	r.Post("/api/cloud/redeem", s.cloudHandler.Redeem)
 	r.Post("/api/cloud/cli-hello", s.cloudHandler.CLIHello)
+	r.Method(http.MethodGet, serverproof.Path, s.cloudHandler.Proof()) // #6103: a tool asks before it sends a credential; public, never through Coral Hub
 }
 
 // registerSystem: settings, teams, token usage, tags, history, schedules, workflows, themes, templates, uploads, views and (in hub mode) the remote servers.

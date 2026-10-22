@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/subgentic/coral/internal/serverproof"
 	"io"
 	"net/http"
 	"strings"
@@ -130,6 +131,15 @@ type cliHello struct {
 // NewCLIAuth returns the server side for token.
 func NewCLIAuth(token string) *CLIAuth {
 	return &CLIAuth{token: token, now: time.Now, pending: map[string]cliHello{}, callers: map[string]*helloBucket{}}
+}
+
+// ProofKey is the key Coral proves itself with to a command-line tool on this computer (#6103): derived from the token, which the tool holds too. ok is false for a zero token (it could not be
+// written), which admits nobody.
+func (a *CLIAuth) ProofKey() (key []byte, ok bool) {
+	if a == nil || a.token == "" {
+		return nil, false
+	}
+	return serverproof.DeriveKey(serverproof.KindOperator, a.token), true
 }
 
 // Hello answers step 1 for a caller with no limit of its own (tests, and callers that

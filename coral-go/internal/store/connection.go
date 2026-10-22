@@ -313,6 +313,8 @@ var columnMigrations = []struct {
 	{"live_sessions", "hooks_rev", "INTEGER"},
 	// The folder the agent was launched with its Coral tools (coral-board and the coral-hook-* programs) on its PATH, e.g. the app bundle (#6089); NULL or "" = none recorded.
 	{"live_sessions", "hook_dir", "TEXT"},
+	// The proof key derived from a session token (#6103): Coral proves it is Coral to a tool holding the token before the tool sends it; NULL on a token minted before this (those tools do not ask).
+	{"session_tokens", "proof_key", "TEXT"},
 	{"live_sessions", "permission_mode", "TEXT"}, // the launch's effective permission mode (#5188)
 	{"cloud_connection", "route_key", "TEXT"},    // the hub's routing hint for this enrollment (#3683)
 	{"cloud_connection", "hub_owner", "TEXT"},    // the Coral Hub account that owns this enrollment (#3966)

@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"github.com/subgentic/coral/internal/serverproof"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -44,7 +45,8 @@ func (db *DB) MintSessionToken(ctx context.Context, sessionID, sessionName strin
 	if _, err := rand.Read(b); err != nil {
 		return "", err
 	}
-	token := base64.RawURLEncoding.EncodeToString(b)
+	// "v2." marks a token whose proof key Coral kept (#6103): a tool holding one makes Coral prove itself before sending it; a token without the mark is an older agent's, and its tools do not ask.
+	token := serverproof.SessionTokenPrefix + base64.RawURLEncoding.EncodeToString(b)
 	now := nowUTC()
 	tx, err := db.BeginTxx(ctx, nil)
 	if err != nil {
@@ -54,8 +56,8 @@ func (db *DB) MintSessionToken(ctx context.Context, sessionID, sessionName strin
 	if _, err := tx.ExecContext(ctx, `UPDATE session_tokens SET revoked_at = ? WHERE session_id = ? AND revoked_at IS NULL`, now, sessionID); err != nil {
 		return "", err
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO session_tokens (token_hash, session_id, session_name, created_at) VALUES (?, ?, ?, ?)`,
-		hashSessionToken(token), sessionID, sessionName, now); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO session_tokens (token_hash, session_id, session_name, created_at, proof_key) VALUES (?, ?, ?, ?, ?)`,
+		hashSessionToken(token), sessionID, sessionName, now, hex.EncodeToString(serverproof.DeriveKey(serverproof.KindSession, token))); err != nil {
 		return "", err
 	}
 	if err := tx.Commit(); err != nil {
@@ -139,6 +141,21 @@ func (db *DB) InvalidateSessionTokens() { db.tokenOwners.invalidate() }
 // SessionTokenCacheStats is how many owner lookups were asked for and how many the cache answered.
 func (db *DB) SessionTokenCacheStats() (lookups, hits int64) {
 	return db.tokenOwners.lookups.Load(), db.tokenOwners.hits.Load()
+}
+
+// SessionProofKey is the proof key of the live token whose SHA-256 is tokenHash (#6103), for the route that proves Coral to a tool before it sends the token. ok is false for a token Coral does not
+// know, one that was revoked, and one minted before proof keys were kept.
+func (db *DB) SessionProofKey(ctx context.Context, tokenHash string) (key []byte, ok bool) {
+	var k sql.NullString
+	err := db.Reader().GetContext(ctx, &k, `SELECT proof_key FROM session_tokens WHERE token_hash = ? AND revoked_at IS NULL`, tokenHash)
+	if err != nil || !k.Valid || k.String == "" {
+		return nil, false
+	}
+	b, err := hex.DecodeString(k.String)
+	if err != nil || len(b) == 0 {
+		return nil, false
+	}
+	return b, true
 }
 
 // SessionTokenOwnerOf returns the session a live (unrevoked) token belongs to. The answer is
