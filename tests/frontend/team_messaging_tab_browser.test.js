@@ -73,7 +73,7 @@ const SID = '0b7c2e4a-5d1f-4c8e-9a36-2f4d8e1b7c90';
             await setState(null);
             await open();
             let p = await panel();
-            check(`${tag}: the tab is there and the switches are on it, not on Workflow (${JSON.stringify(p.labels)})`, JSON.stringify(p.labels) === JSON.stringify(['Cross-team messaging', 'Share files with other teams']) && !p.workflowHasSwitch);
+            check(`${tag}: the tab is there and the switches are on it, not on Workflow (${JSON.stringify(p.labels)})`, JSON.stringify(p.labels) === JSON.stringify(['Message teams on other computers (through Coral Hub links)', 'Share files with teams on other computers (through Coral Hub links)']) && !p.workflowHasSwitch);
             check(`${tag}: off: one status line (${p.line}) with a neutral dot and one primary button "${p.prim && p.prim.text}"`, p.line === 'Cross-team messaging is off for this team.' && p.dot === '' && p.prim.text === 'Turn on cross-team messaging' && p.prim.act === 'turn-on' && p.msg === false && p.files === false);
             check(`${tag}: How this works is closed; Save is off`, p.how === false && p.save === true);
             await click(`${P} .xt-primary`); await settle(150);

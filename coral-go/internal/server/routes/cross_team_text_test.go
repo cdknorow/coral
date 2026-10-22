@@ -21,7 +21,7 @@ import (
 func TestTheTextsNameTheScreenAndTheSwitchInTheSameWords(t *testing.T) {
 	assert.Equal(t, `Cross-team messaging is off on "alpha". Turn it on in Team settings > Messaging.`, textCrossTeamOff([]string{`"alpha"`}))
 	assert.Equal(t, `Cross-team messaging is off on "alpha" and "beta". Turn it on in Team settings > Messaging.`, textCrossTeamOff([]string{`"alpha"`, `"beta"`}))
-	assert.Equal(t, `Sharing files with other teams is off on "alpha". Turn on Share files with other teams in Team settings > Messaging.`, textFilesOff([]string{`"alpha"`}))
+	assert.Equal(t, `Sharing files with other teams is off on "alpha". Turn on Share files with teams on other computers in Team settings > Messaging.`, textFilesOff([]string{`"alpha"`}))
 	assert.Contains(t, textFilesTurnedOffMidSend(`"alpha"`, "attachment 1 of 2"), "Team settings > Messaging")
 	assert.Equal(t, "This Coral is not connected to Coral Hub. Connect it in Settings > Coral Hub.", textNotLinked)
 	for name, text := range map[string]string{

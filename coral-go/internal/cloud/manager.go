@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"math/rand"
 	"net/http"
 	"os"
@@ -95,6 +96,8 @@ type Status struct {
 	// code_expired, access_denied or rate_limited (#3285, coral-hub's contract).
 	LastErrorCode string `json:"last_error_code,omitempty"`
 	MaxMode       string `json:"max_mode"` // view | interact | launch: set locally, never by the hub
+	// RetryIn is how many seconds until Connect may ask Coral Hub again (a hub that could not be reached, or that is busy), 0 when it may now (#5962). The dashboard counts it down.
+	RetryIn int `json:"retry_in_s,omitempty"`
 	// Loading is true from startup until the connector has read the stored
 	// enrollment (and a startup credential, if any): State is not final yet.
 	Loading bool `json:"loading,omitempty"`
@@ -123,6 +126,8 @@ const (
 	ErrCodeExpired      = "code_expired"
 	ErrCodeAccessDenied = "access_denied"
 	ErrCodeRateLimited  = "rate_limited"
+	// ErrCodeHubUnreachable: the first call to Coral Hub, to start an enrollment, could not reach it (#5962): the dashboard says it in a sentence and counts down to the next try.
+	ErrCodeHubUnreachable = "hub_unreachable"
 	// ErrCodeHubMoved: this server is enrolled with another hub than the configured one (Coral
 	// Hub moved to app.coralhub.dev, #3546). Nothing dials either hub until the operator
 	// enrolls again; the dashboard shows it as disconnected, and the startup step leaves it.
@@ -144,8 +149,9 @@ type Manager struct {
 	root     context.Context
 	cancel   context.CancelFunc // current enrollment or tunnel goroutine
 	st       Status
-	hubMoved bool // Status.HubMoved: enrolled with another hub than the configured one (#3546)
-	gen      int  // bumped on every start/stop so stale goroutines cannot write state
+	hubMoved bool      // Status.HubMoved: enrolled with another hub than the configured one (#3546)
+	retryAt  time.Time // when Connect may ask Coral Hub again after a failed start (#5962); only read with the idle failure codes
+	gen      int       // bumped on every start/stop so stale goroutines cannot write state
 	// loaded is closed once Run has read the stored enrollment (at once with no
 	// hub): until then an enrolled server still looks idle.
 	loaded     chan struct{}
@@ -291,6 +297,11 @@ func (m *Manager) Status() Status {
 	s.HubMoved = m.hubMoved
 	s.MaxMode = m.currentMode().String()
 	s.Loading = !m.isLoaded()
+	if s.State == StateIdle && (s.LastErrorCode == ErrCodeRateLimited || s.LastErrorCode == ErrCodeHubUnreachable) {
+		if d := m.retryAt.Sub(m.o.Now()); d > 0 {
+			s.RetryIn = int(math.Ceil(d.Seconds()))
+		}
+	}
 	return s
 }
 
@@ -356,6 +367,7 @@ func (m *Manager) Connect(ctx context.Context) error {
 		rl := &RateLimitedError{RetryAfter: pend.NextStartAt.Sub(now), Local: true}
 		m.mu.Lock()
 		m.st.State, m.st.LastError, m.st.LastErrorCode = StateIdle, rl.Error(), ErrCodeRateLimited
+		m.retryAt = pend.NextStartAt
 		m.mu.Unlock()
 		return rl
 	}
@@ -376,9 +388,13 @@ func (m *Manager) Connect(ctx context.Context) error {
 		if errors.As(err, &rl) {
 			m.mu.Lock()
 			m.st.State, m.st.LastError, m.st.LastErrorCode = StateIdle, rl.Error(), ErrCodeRateLimited
+			m.retryAt = now.Add(wait)
 			m.mu.Unlock()
 		} else {
-			m.setError(StateIdle, "could not reach the hub to start enrollment")
+			m.mu.Lock()
+			m.st.State, m.st.LastError, m.st.LastErrorCode = StateIdle, "could not reach the hub to start enrollment", ErrCodeHubUnreachable
+			m.retryAt = now.Add(wait)
+			m.mu.Unlock()
 		}
 		return err
 	}

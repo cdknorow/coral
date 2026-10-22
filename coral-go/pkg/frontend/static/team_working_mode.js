@@ -97,7 +97,7 @@ function _teamSettingsShell(workspaceMode) {
     dialog.innerHTML = `<header><div><h2 id="working-mode-title">Team settings</h2><p class="working-mode-team"></p></div>${workspaceActions}</header>
       <div class="working-mode-status" role="status" aria-live="polite"></div>
       <nav class="team-settings-tabs" aria-label="Team settings sections" role="tablist">
-        <button type="button" role="tab" id="team-settings-tab-workflow" aria-selected="true" aria-controls="team-settings-workflow" tabindex="0" data-settings-tab="workflow">Workflow</button>
+        <button type="button" role="tab" id="team-settings-tab-workflow" aria-selected="true" aria-controls="team-settings-workflow" tabindex="0" data-settings-tab="workflow" data-initial-focus autofocus>Workflow</button>
         <button type="button" role="tab" id="team-settings-tab-prompts" aria-selected="false" aria-controls="team-settings-prompts" tabindex="-1" data-settings-tab="prompts">Prompt inspection</button>
         ${'<button type="button" role="tab" id="team-settings-tab-messaging" aria-selected="false" aria-controls="team-settings-messaging" tabindex="-1" data-settings-tab="messaging">Messaging</button>'}
       </nav>

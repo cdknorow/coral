@@ -569,6 +569,25 @@ func TestEnrollmentStartRateLimited(t *testing.T) {
 	require.Equal(t, StateIdle, st.State)
 	require.Equal(t, "Coral Hub is busy: try again in 1m30s", st.LastError)
 	require.Equal(t, ErrCodeRateLimited, st.LastErrorCode)
+	require.Positive(t, st.RetryIn, "the status says how long until Connect may ask again, for a countdown")
+	require.LessOrEqual(t, st.RetryIn, 90)
+}
+
+// A hub that cannot be reached when a connection is started says so with a code the dashboard keys on (a sentence for a person, not the bare fragment), and how long until Connect may
+// ask again; once that time has passed the status carries no countdown (#5962).
+func TestEnrollmentStartUnreachableHasACodeAndACountdown(t *testing.T) {
+	e := newEnv(t)
+	m := e.manager("http://127.0.0.1:1") // nothing listens here
+	start(t, m)
+	require.Error(t, m.Connect(context.Background()))
+	st := m.Status()
+	require.Equal(t, StateIdle, st.State)
+	require.Equal(t, ErrCodeHubUnreachable, st.LastErrorCode)
+	require.Positive(t, st.RetryIn)
+	m.mu.Lock()
+	m.retryAt = m.o.Now().Add(-time.Second)
+	m.mu.Unlock()
+	require.Zero(t, m.Status().RetryIn, "no countdown once the wait is over")
 }
 
 // coral-hub's contract: a user outside the closed beta can't sign in, so the code just

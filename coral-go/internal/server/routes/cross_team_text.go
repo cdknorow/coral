@@ -40,7 +40,7 @@ func textCrossTeamOff(teams []string) string {
 
 // textFilesOff is the refusal of a send with files from or to a team that does not share files.
 func textFilesOff(teams []string) string {
-	return fmt.Sprintf("Sharing files with other teams is off on %s. Turn on Share files with other teams in %s.", teamList(teams), teamSettingsMessaging)
+	return fmt.Sprintf("Sharing files with other teams is off on %s. Turn on Share files with teams on other computers in %s.", teamList(teams), teamSettingsMessaging)
 }
 
 // textFilesTurnedOffMidSend is the refusal when the switch went off while files were on their way.

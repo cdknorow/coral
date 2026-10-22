@@ -81,6 +81,9 @@ export function describe(st) {
             return OFF_TEXT;
         case 'idle':
             if (codeExpired(st)) return EXPIRED_TEXT + HUB_ACCESS_URL;
+            // The two failures of starting a connection are sentences for a person (#5962); the seconds until the next try are counted down beside them (syncRetry), not baked into the words.
+            if (st.last_error_code === 'hub_unreachable') return 'Coral could not reach Coral Hub. Check your connection and try again.';
+            if (st.last_error_code === 'rate_limited') return 'Coral Hub is busy. Try again in a moment.';
             return st.last_error || ('Ready to connect to ' + st.hub_url + '. Nothing is sent until you connect.');
         case 'enrolling':
             return 'Waiting for you to approve…';
@@ -138,6 +141,26 @@ class CloudPanel {
         if (s) s.textContent = text;
     }
 
+    /** After a failed start the server says how many seconds until Connect may ask again (retry_in_s): "Try again in 27 s" counts down beside the sentence (a plain element that is not a live region, so a
+     *  screen reader hears the sentence once, not every second), and Connect is off until it reaches 0. */
+    syncRetry(st) {
+        clearInterval(this.retryTick);
+        const status = this.part('status'), btn = this.part('connect');
+        let el = this.root.querySelector('[data-cloud="retry"]');
+        const secs = st.state === 'idle' ? Math.max(0, Math.floor(Number(st.retry_in_s) || 0)) : 0;
+        if (!secs) { if (el) el.remove(); if (btn) btn.disabled = false; return; }
+        if (!el && status) { el = document.createElement('div'); el.dataset.cloud = 'retry'; el.className = (status.className || '') + ' cloud-retry'; el.setAttribute('aria-live', 'off'); status.insertAdjacentElement('afterend', el); }
+        const until = Date.now() + secs * 1000;
+        const paint = () => {
+            const left = Math.max(0, Math.ceil((until - Date.now()) / 1000));
+            if (el) el.textContent = left ? `Try again in ${left} s` : '';
+            if (btn) btn.disabled = left > 0;
+            if (!left) { clearInterval(this.retryTick); if (el) el.remove(); }
+        };
+        paint();
+        this.retryTick = setInterval(paint, 1000);
+    }
+
     // The expired text with the access page as a link (Connect, shown when idle, is the retry).
     sayExpired() {
         const s = this.part('status');
@@ -179,6 +202,7 @@ class CloudPanel {
         }
         else { show('command-row', false); if (this.command && this.command.startsWith(START_COMMAND)) this.command = null; }
         show('connect', st.state === 'idle' || st.state === 'revoked');
+        this.syncRetry(st);
         // While the code is shown: Cancel stops the enrollment (never undoes a connection).
         // A container without a Cancel keeps offering Disconnect, which also stops it.
         const hasCancel = !!this.part('cancel');
@@ -203,9 +227,17 @@ class CloudPanel {
             for (const r of ask.querySelectorAll('input[data-cloud-mode]')) r.checked = r.value === mode;
         }
         const sel = this.part('max-mode');
-        if (sel) sel.value = mode;
+        const unchosen = st.max_mode_saved === false;
+        if (sel) {
+            // A computer that never chose (max_mode_saved false) is at View until it connects, but the Connect screen offers Launch: Settings says "Not chosen yet" instead of a plain View that contradicts it.
+            // Once a choice is saved both show it. The placeholder is an option of its own, taken away as soon as a choice is saved.
+            let ph = sel.querySelector('option[data-unchosen]');
+            if (unchosen && !ph) { ph = document.createElement('option'); ph.value = ''; ph.dataset.unchosen = '1'; ph.textContent = 'Not chosen yet (View until you connect)'; sel.insertBefore(ph, sel.firstChild); }
+            else if (!unchosen && ph) ph.remove();
+            sel.value = unchosen ? '' : mode;
+        }
         const desc = this.part('mode-desc');
-        if (desc) desc.textContent = MODE_HELP[mode];
+        if (desc) desc.textContent = unchosen ? 'You choose this when you connect to Coral Hub (the Connect screen offers View, Interact or Launch). Until then Coral Hub can only view.' : MODE_HELP[mode];
         // Auto-accept from the hub (#3182): a local kill switch, shown only with Launch (the owner's opt-in),
         // on unless the owner turned it off here. Only changeable on this computer.
         show('auto-accept-row', mode === 'launch');
@@ -381,7 +413,7 @@ class CloudPanel {
             btn.textContent = ok ? 'Copied' : 'Copy failed';
             setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
         });
-        this.part('max-mode')?.addEventListener('change', (e) => this.act('PUT', '/api/cloud/max-mode', { mode: e.target.value }));
+        this.part('max-mode')?.addEventListener('change', (e) => { if (e.target.value) this.act('PUT', '/api/cloud/max-mode', { mode: e.target.value }); }); // the "Not chosen yet" placeholder saves nothing
         this.part('allow-auto-accept')?.addEventListener('change', (e) => {
             if (this.asking) { this.pickAuto = e.target.checked; return; } // held until Connect, which sends it
             this.act('PUT', '/api/cloud/allow-auto-accept', { allow: e.target.checked });
@@ -402,7 +434,7 @@ class CloudPanel {
         this.say(msg);
     }
 
-    stop() { clearTimeout(this.timer); }
+    stop() { clearTimeout(this.timer); clearInterval(this.retryTick); }
 }
 
 /** Mount the connect flow in `root` and load its status. Returns the panel (load(), stop()). */
