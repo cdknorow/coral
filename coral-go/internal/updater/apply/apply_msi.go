@@ -99,6 +99,9 @@ type MSIConfig struct {
 	Asset     func(version string) string
 	MSI       MSI
 	Rollback  Rollback
+	// RequireSigned makes a package with no Authenticode signature a refusal, as RequireSignedWindowsPackage does for every build (a test sets it). Never for the
+	// rollback package: the version already installed may be an unsigned one, and putting it back is what a failed first signed update needs.
+	RequireSigned bool
 	// ClickedVersion is the staged version the person saw when they clicked Install update (the one-time install marker's, #82). Required:
 	// without it there was no click to honour, and an apply never asks Windows anything; when the staged version isn't it (a newer one staged
 	// since, a stale marker), the apply refuses before any prompt.
@@ -260,6 +263,9 @@ func RunMSI(ctx context.Context, mc MSIConfig) Result {
 
 	// 5: Authenticode, when signed: invalid or foreign is a refusal.
 	signed, err := m.Authenticode(held)
+	if err == nil && !signed && (RequireSignedWindowsPackage || mc.RequireSigned) {
+		err = errPackageUnsigned // N4: once Windows releases are signed, sums plus the Sigstore bundle are no longer enough
+	}
 	if err != nil {
 		closeHeld()
 		return refuse("authenticode", &verify.Failure{Stage: "authenticode", Reason: err.Error()})
