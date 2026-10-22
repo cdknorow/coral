@@ -1,7 +1,7 @@
 // UI audit #5589, findings 9, 10 and 12: Team settings uses the room it has and has one scroll.
 //   - the side panel is clamp(420px, 30vw, 640px) wide until the person drags it (a saved width is kept);
 //   - Workflow: Team working mode first; the preset editor is behind "Edit presets", closed to begin with, and opens;
-//   - Prompt inspection: one read-only page: the effective texts shown, the others folded (closed), no scroll boxes inside it, one role at a time (a select),
+//   - Prompt inspection: one read-only page: effective texts, defaults and overrides folded (closed), no scroll boxes inside it, one role at a time (a select),
 //     and Copy copies the text of the role shown.
 // Drives Chrome over CDP against the isolated dev server.
 const assert = require('node:assert/strict');

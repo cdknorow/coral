@@ -82,7 +82,7 @@ const watchdog=setTimeout(()=>{console.error('Review timeout');process.exit(1)},
   fs.writeFileSync('/tmp/coral-1273-geometry.json',JSON.stringify(results,null,2));
   console.log(JSON.stringify(results,null,2));
   for(const row of results.filter(x=>x.header)) {
-   for(const control of ['header','tabs','save','close']) assert.equal(row[control].visible,true,`${row.name}/${row.stage}/${control}`);
+   for(const control of ['header','tabs','save','close']) assert.equal(row[control].visible, control !== 'save' || !row.stage.startsWith('prompts-'),`${row.name}/${row.stage}/${control}`);
    assert.equal(row.horizontalOverflow,false);
   }
   console.log('PASS: controls reachable, prompt disclosure, keyboard tabs, no Global tab (#5128), failed-save feedback and edit preservation. Escape status recorded separately.');
