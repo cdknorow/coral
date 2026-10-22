@@ -105,6 +105,8 @@ const STUB = `(() => {
             if (kind === 'tasks') {
                 check(`${dev}, ${theme}: 8 px from the header row to the meta line`, i && i.headGap !== null && Math.abs(i.headGap - 8) <= 1, JSON.stringify(i.headGap));
                 check(`${dev}, ${theme}: the panel, the card's content and the reply box share one left and right edge`, i && i.edges.panelVsReply && i.edges.panelVsReply.every(d => Math.abs(d) <= 1) && Math.abs(i.edges.panelVsTitle) <= 1, JSON.stringify(i.edges));
+                const ot = await ev(`(() => { const o = document.querySelector(${JSON.stringify(sel)}).closest('.ibx-task-body, .ibx-task').querySelector('.ibx-open'); return o ? Math.round(o.getBoundingClientRect().height) : 0; })()`);
+                check(`${dev}, ${theme}: "Open the task" is a big enough target (${ot} px: 24 with a mouse, 44 on a touch phone)`, ot >= (/phone/.test(dev) ? 44 : 24), String(ot));
                 check(`${dev}, ${theme}: "Open the task" is a small link on the meta line, not a heading inside the panel`, i && i.openIsLink === true, JSON.stringify(i));
             }
         }

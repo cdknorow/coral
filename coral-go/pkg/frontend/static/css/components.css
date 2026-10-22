@@ -4214,8 +4214,9 @@ a.ibx-open, a.ibx-open:visited { color: var(--link-text); }
     .ibx-task-head, .ibx-saved-toggle, .ibx-send, .ibx-open { min-height: var(--control-touch-height, 44px); }
 }
 /* On a touch screen the small "Open the task" link on the meta line keeps its 44 px target without making the line 44 px tall: the target is padding taken back with a negative margin (#5882). */
+.ibx-task-metarow .ibx-open { display: inline-block; padding-block: 6px; margin-block: -6px; } /* 24 px or more for a mouse too (WCAG 2.5.8: a link on its own, not inside a sentence), without a taller line */
 @media (pointer: coarse) {
-    .ibx-task-metarow .ibx-open { min-height: 0; padding-block: 14px; margin-block: -14px; display: inline-block; }
+    .ibx-task-metarow .ibx-open { min-height: 0; padding-block: 16px; margin-block: -16px; }
 }
 .saved-item { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-ml); padding: 10px 12px; }
 .saved-item .top { display: flex; align-items: center; gap: 8px; min-width: 0; }
