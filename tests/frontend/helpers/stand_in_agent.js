@@ -47,6 +47,8 @@ async function launchStandIn(api, { workingDir = '/tmp', displayName = 'Stand-in
         `: > '${ranFile}'`,
         `[ -n "$CORAL_SESSION_TOKEN" ] || { echo "stand-in: no CORAL_SESSION_TOKEN" >&2; : > '${tokenFile}.none'; exec sleep 600; }`,
         `printf '%s' "$CORAL_SESSION_TOKEN" > '${tokenFile}.tmp' && mv '${tokenFile}.tmp' '${tokenFile}'`,
+        // A real agent draws its screen. The launch line used to be the pane's first text; it is erased now (#5911), so the stand-in says something, for the suites that wait for text in the terminal.
+        'echo "stand-in agent ready"',
         'exec sleep 600', '',
     ].join('\n'), { mode: 0o755 });
     if (!LIVE.size) ORIGINAL = ((await api('GET', '/api/settings')).data?.settings || {}).cli_path_claude || '';
