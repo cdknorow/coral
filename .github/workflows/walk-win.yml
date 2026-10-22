@@ -1,0 +1,49 @@
+name: walk-win
+on:
+  push:
+    branches: [ci/walk-6018]
+permissions:
+  contents: read
+jobs:
+  walk:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    env:
+      CORAL_TELEMETRY_DISABLED: "1"
+      WALK_VERSION: "1.4.155"
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: coral-go/go.mod
+          cache: false
+      - name: A stand-in agent CLI (mock-agent as claude.exe) and the CDP library
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force C:\walk\bin | Out-Null
+          Push-Location coral-go; $env:CGO_ENABLED = '0'; go build -tags fts5 -o C:\walk\bin\claude.exe ./cmd/mock-agent; Pop-Location
+          Push-Location walk; npm install --no-audit --no-fund chrome-remote-interface@0.33.0 | Out-Null; Pop-Location
+      - name: Stage 1, the installer wizard
+        shell: pwsh
+        run: ./walk/stage1.ps1
+      - name: Overlay this branch's coral-tray and coral-app on the installed package
+        shell: pwsh
+        run: ./walk/overlay.ps1
+      - name: Stage 2, first start from the Start Menu
+        shell: pwsh
+        run: ./walk/stage2.ps1
+      - name: Stage 3, the first dashboard page
+        shell: pwsh
+        env:
+          WALK_OUT: ${{ github.workspace }}\walk-out
+        run: node walk/recon.mjs
+      - name: Keep the screenshots
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: walk-out
+          path: walk-out
+          if-no-files-found: ignore
