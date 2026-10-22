@@ -94,7 +94,7 @@ func main() {
 	if agyModel != "" {
 		// agy names its model in every payload; Coral shows it on the session (#4588).
 		report := map[string]any{"session_id": sessionID, "model": agyModel}
-		if _, err := hooks.CoralAPI(base, "POST", hooks.LivePath(agentName, "/context-window"), report); err != nil {
+		if err := hooks.CoralPost(base, hooks.LivePath(agentName, "/context-window"), report); err != nil {
 			hooks.DebugLog(fmt.Sprintf("AGY_MODEL_POST_FAILED: agent=%s err=%v", hooks.LogID(agentName), err))
 		}
 	}
@@ -148,7 +148,16 @@ func main() {
 	if mode := claudePermissionMode(d); mode != "" && agyEvent == "" && strings.HasPrefix(os.Getenv("CORAL_SESSION_NAME"), "claude-") {
 		event["permission_mode"] = mode // the CLI's mode now (it follows Shift+Tab): the dashboard's Mode button reads it
 	}
-	if _, err := hooks.CoralAPI(base, "POST", hooks.LivePath(agentName, "/events"), event); err != nil {
+	// A tool call that ended (PostToolUse) is recorded without the agent waiting for Coral's answer; the Stop event keeps the full wait (its turn end is what the
+	// dashboard turns on, and the token count follows it).
+	post := func() error {
+		_, err := hooks.CoralAPI(base, "POST", hooks.LivePath(agentName, "/events"), event)
+		return err
+	}
+	if hookType == "PostToolUse" {
+		post = func() error { return hooks.CoralPost(base, hooks.LivePath(agentName, "/events"), event) }
+	}
+	if err := post(); err != nil {
 		hooks.DebugLog(fmt.Sprintf("POST_FAILED: base=%s agent=%s event_type=%s err=%v", hooks.RedactedURL(base), agentName, event["event_type"], err))
 		return
 	}
@@ -162,7 +171,7 @@ func main() {
 			"cost_usd":      d["total_cost_usd"],
 			"num_turns":     d["num_turns"],
 		}
-		hooks.CoralAPI(base, "POST", hooks.LivePath(agentName, "/token-usage"), tokenData)
+		_ = hooks.CoralPost(base, hooks.LivePath(agentName, "/token-usage"), tokenData)
 	}
 
 	hooks.DebugLog(fmt.Sprintf("DONE: agent=%s event_type=%s", agentName, event["event_type"]))
