@@ -48,7 +48,7 @@ func (h *TasksHandler) SetProxyStore(ps *proxy.Store) {
 }
 
 // taskRunFlags is the CLI flags of a task run: the ones the caller gave, and for an auto-accepting run the permission flag of its agent type (#5836): Claude's Auto mode, not a
-// bypass of every prompt; Codex's --full-auto and Antigravity's skip-permissions as before. A permission flag the run names itself (a mode, or a bypass) is the person's choice and
+// bypass of every prompt; Codex's --full-auto (Coral's own alias: the Codex CLI removed it, and the launch translates it to --sandbox workspace-write -a never) and Antigravity's skip-permissions as before. A permission flag the run names itself (a mode, or a bypass) is the person's choice and
 // stays: the default is added only when there is none.
 func taskRunFlags(agentType, rawFlags string, autoAccept bool) string {
 	flags := strings.TrimSpace(rawFlags)
