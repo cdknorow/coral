@@ -699,6 +699,13 @@
     line-height: 1;
 }
 
+/* On touch or a phone-width window a workflow's editor and run detail controls are 44 px targets: the run step's output toggle (81 x 16), the editor's close and Remove step (12 x 19, 13 x 20) and the step's text box (#6130) */
+@media (pointer: coarse), (max-width: 767px) {
+    .wf-run-step-output-toggle { min-height: var(--control-touch-height, 44px); }
+    #wf-create-modal .modal-close, .wf-step-remove-btn { min-width: var(--control-touch-height, 44px); min-height: var(--control-touch-height, 44px); }
+    .wf-step-editor-body textarea.wf-step-content { min-height: var(--control-touch-height, 44px); }
+}
+
 .wf-step-remove-btn:hover {
     color: var(--error);
 }
