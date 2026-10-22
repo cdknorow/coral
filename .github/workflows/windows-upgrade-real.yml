@@ -1,0 +1,126 @@
+name: Windows real upgrade
+
+# MANUAL ONLY. Never on a push, a tag or a schedule: it installs and removes Coral on a throwaway windows-latest runner.
+#
+# Runs tests/release/upgrade_windows.ps1 (#167): the previous release's MSI is installed per machine, the new release's MSI goes through coral-update's
+# Windows apply (apply.RunMSI) with the real Windows Installer, and the rollback is exercised for real. It downloads the two releases' MSIs and
+# SHA256SUMS.txt with their Sigstore bundles, verifies the checksums against the signed file (the identity of this repository's release.yml at that tag),
+# checks both MSIs against it, then runs the script and keeps the msiexec and apply logs as an artifact. Nothing is built, signed or published, and there
+# are no secrets. The Windows apply stays off in releases (windowsApplyEnabled=false); the test drives apply.RunMSI directly.
+#
+# Pick the two versions, or leave them empty for the two newest published plain-tag releases (by version, drafts excluded).
+on:
+  workflow_dispatch:
+    inputs:
+      old_version:
+        description: "The previous release (no leading v), e.g. 1.4.150. Empty: the second newest."
+        required: false
+        default: ""
+      new_version:
+        description: "The new release (no leading v), e.g. 1.4.151. Empty: the newest."
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+env:
+  CORAL_TELEMETRY_DISABLED: "1"
+
+concurrency:
+  group: windows-upgrade-real
+  cancel-in-progress: false
+
+jobs:
+  upgrade:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: coral-go/go.mod
+          cache-dependency-path: coral-go/go.sum
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: "v3.0.6"
+
+      - name: Pick the two releases
+        id: pick
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_OLD: ${{ github.event.inputs.old_version }}
+          INPUT_NEW: ${{ github.event.inputs.new_version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $shape = '^\d{1,3}\.\d{1,3}\.\d{1,4}$'
+          $old = $env:INPUT_OLD.Trim().TrimStart('v')
+          $new = $env:INPUT_NEW.Trim().TrimStart('v')
+          if ($old -eq '' -or $new -eq '') {
+            $tags = gh api "repos/$env:GITHUB_REPOSITORY/releases?per_page=30" --jq '.[] | select(.draft==false) | .tag_name'
+            $versions = @($tags | Where-Object { $_ -match '^v\d+\.\d+\.\d+$' } | ForEach-Object { $_.TrimStart('v') } | Sort-Object { [version]$_ })
+            if ($versions.Count -lt 2) { throw "need two published plain-tag releases, found $($versions.Count)" }
+            if ($new -eq '') { $new = $versions[-1] }
+            if ($old -eq '') { $old = ($versions | Where-Object { [version]$_ -lt [version]$new } | Select-Object -Last 1) }
+          }
+          foreach ($v in @($old, $new)) { if ($v -notmatch $shape) { throw "'$v' is not a version like 1.4.151" } }
+          if ([version]$new -le [version]$old) { throw "$new is not newer than $old" }
+          "OLD_VERSION=$old" >> $env:GITHUB_ENV
+          "NEW_VERSION=$new" >> $env:GITHUB_ENV
+          Write-Host "previous: v$old, new: v$new"
+
+      - name: Download the MSIs, the checksums and their bundles
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($v in @($env:OLD_VERSION, $env:NEW_VERSION)) {
+            $dir = "upgrade-dl\$v"
+            New-Item -ItemType Directory -Force -Path $dir | Out-Null
+            gh release download "v$v" --repo $env:GITHUB_REPOSITORY --dir $dir --pattern "Coral-$v-x64.msi" --pattern "SHA256SUMS.txt" --pattern "SHA256SUMS.txt.sigstore.json"
+            foreach ($f in @("Coral-$v-x64.msi", "SHA256SUMS.txt", "SHA256SUMS.txt.sigstore.json")) {
+              if (-not (Test-Path "$dir\$f")) { throw "v$v has no $f" }
+            }
+          }
+
+      - name: Verify the checksums against the signed file
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($v in @($env:OLD_VERSION, $env:NEW_VERSION)) {
+            $dir = "upgrade-dl\$v"
+            # The identity of this repository's release.yml at the tag, the one the release signs with (release.yml's own self-check).
+            $id = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/.github/workflows/release.yml@refs/tags/v$v"
+            cosign verify-blob --bundle "$dir\SHA256SUMS.txt.sigstore.json" --certificate-identity $id --certificate-oidc-issuer https://token.actions.githubusercontent.com "$dir\SHA256SUMS.txt"
+            if ($LASTEXITCODE -ne 0) { throw "the checksums of v$v do not verify" }
+          }
+
+      - name: Run the upgrade
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $old = "upgrade-dl\$env:OLD_VERSION"
+          $new = "upgrade-dl\$env:NEW_VERSION"
+          # Both releases' checksums in one file: the script finds each MSI by its name (they carry their version).
+          Get-Content "$old\SHA256SUMS.txt", "$new\SHA256SUMS.txt" | Set-Content "upgrade-dl\sums-both.txt"
+          ./tests/release/upgrade_windows.ps1 `
+            -OldMsi "$old\Coral-$env:OLD_VERSION-x64.msi" -NewMsi "$new\Coral-$env:NEW_VERSION-x64.msi" `
+            -OldVersion $env:OLD_VERSION -NewVersion $env:NEW_VERSION `
+            -SumsFile "upgrade-dl\sums-both.txt" -LogDir upgrade-logs
+          if ($LASTEXITCODE -ne 0) { throw "upgrade_windows.ps1 failed" }
+
+      - name: Keep the logs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-upgrade-logs
+          path: upgrade-logs
+          if-no-files-found: ignore
+          retention-days: 14
