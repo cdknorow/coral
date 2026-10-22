@@ -390,7 +390,7 @@ function _renderToolbar(tab) {
     }
 
     if (tab.kind === 'chat-image') { // an image the chat showed (#5028): its name, nothing to edit or star
-        const unshare = tab.unshare ? `<div class="inline-preview-actions"><button type="button" class="inline-preview-mode-btn preview-unshare-btn" data-action="unshare" aria-label="Remove shared copy" title="Remove shared copy"><span class="material-icons" aria-hidden="true">delete</span></button></div>` : '';
+        const unshare = tab.unshare ? `<div class="inline-preview-actions"><button type="button" class="inline-preview-mode-btn preview-unshare-btn" data-action="unshare" aria-label="Remove shared copy of ${escapeAttr(tab.filepath)}" title="Remove shared copy"><span class="material-icons" aria-hidden="true">delete</span></button></div>` : '';
         bar.innerHTML = `<span class="preview-toolbar-path" title="${escapeAttr(tab.filepath)}">${escapeHtml(tab.filepath)}</span>${unshare}`;
         return;
     }

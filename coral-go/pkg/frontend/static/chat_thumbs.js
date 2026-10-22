@@ -29,7 +29,7 @@ export function thumbHtml(att) {
     const label = /^Pasted image\b/.test(label0) ? label0.charAt(0).toLowerCase() + label0.slice(1) : label0;
     // An artifact (an image pasted in the dashboard, #5284) is served by the artifact route, locally and through Coral Hub; its owner can remove the shared copy (on this computer only).
     // Named for what it does (it does not remove the attachment): the message keeps its image; the copy shared on Coral Hub and in this chat goes (#6137). Shown on hover or focus on a desktop; on a phone it is in the opened image's toolbar.
-    const unshare = artifact && !isCloud() ? `<button type="button" class="chat-attachment-unshare" data-on-click="chat-thumb-unshare" data-artifact="${escapeAttr(artifact)}" aria-label="Remove shared copy" title="Remove shared copy" hidden><span class="material-icons" aria-hidden="true">delete</span></button>` : '';
+    const unshare = artifact && !isCloud() ? `<button type="button" class="chat-attachment-unshare" data-on-click="chat-thumb-unshare" data-artifact="${escapeAttr(artifact)}" aria-label="Remove shared copy of ${escapeAttr(label)}" title="Remove shared copy" hidden><span class="material-icons" aria-hidden="true">delete</span></button>` : '';
     return `<button type="button" class="chat-attachment-thumb" data-on-click="chat-thumb-open" data-artifact="${escapeAttr(artifact)}" data-ref="${escapeAttr(ref)}" data-upload="${escapeAttr(artifact || ref ? '' : file)}" ` +
         `aria-label="Open ${escapeAttr(label)}" hidden><img alt="${escapeAttr(file || label)}" width="${SIZE}" height="${SIZE}" decoding="async"></button>${unshare}`;
 }
