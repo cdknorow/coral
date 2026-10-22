@@ -732,6 +732,14 @@ func loopbackHost(hostport string) bool {
 	return ip != nil && ip.IsLoopback()
 }
 
+// SetUpdateQuitter lets the local "Install update" make this process quit with the exit code the tray reads as "the updater has Coral" (#166); nil (the
+// default) offers no install.
+func (s *Server) SetUpdateQuitter(fn func() error) {
+	if s.cloudHandler != nil {
+		s.cloudHandler.QuitForUpdate = fn
+	}
+}
+
 // SetRestarter lets Settings restart this process (#3460); nil (the default) offers no
 // Restart button.
 func (s *Server) SetRestarter(fn func() error) {

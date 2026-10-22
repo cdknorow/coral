@@ -55,6 +55,9 @@ const (
 	reasonAlready     = "already_relaunched"
 	reasonUnsupported = "unsupported_install"
 	reasonApplying    = "applying"
+	// reasonLocalApproval: on Windows the install needs a person at this computer to allow Windows Installer (UAC), so Coral Hub can neither start it nor leave
+	// Coral stopped behind a prompt nobody sees: only the local "Install update" (system_update_install.go) starts it (#166).
+	reasonLocalApproval = "local_approval_needed"
 	// reasonNoRunRecord: Coral could not be started again after the update ended it (no record of how it was started, and no service manager), so no relaunch is
 	// offered or started: it would end Coral and not bring it back (#5419).
 	reasonNoRunRecord = "no_run_record"
@@ -85,6 +88,9 @@ const (
 	ackKeyFile        = "ack.key"
 	ackUsedFile       = "ack_used.json"
 )
+
+// relaunchNeedsLocalApproval is true where installing an update needs a person at the computer (Windows). A variable so a test can stand for Windows.
+var relaunchNeedsLocalApproval = runtime.GOOS == "windows"
 
 var (
 	updateVersionRe = regexp.MustCompile(`^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,4}$`)
@@ -521,6 +527,8 @@ func (h *UpdateRelaunchHandler) view(ctx context.Context, id callerIdentity) (re
 	switch reason, code := h.gate(ctx, id); {
 	case reason != "":
 		v.reason, v.code = reason, code
+	case relaunchNeedsLocalApproval:
+		v.reason, v.code = reasonLocalApproval, reasonLocalApproval
 	case rec.State == updApplying:
 		v.reason, v.code = reasonApplying, reasonBusy
 	case !rec.Supported:
@@ -731,6 +739,11 @@ func (h *UpdateRelaunchHandler) Relaunch(w http.ResponseWriter, r *http.Request)
 	// 3 and 4, read now: the cap, the Operator opt-out and the switch.
 	if reason, code := h.gate(r.Context(), id); reason != "" {
 		h.refuse(w, r, id, nil, http.StatusForbidden, code, "this computer does not allow Coral Hub to relaunch it for an update", nil)
+		return
+	}
+	// Windows: the install asks the person at this computer (UAC); a relaunch from Coral Hub is refused before anything is read or started (#166).
+	if relaunchNeedsLocalApproval {
+		h.refuse(w, r, id, nil, http.StatusConflict, reasonLocalApproval, "installing an update on Windows needs someone at this computer to approve it: use Install update in Settings there", nil)
 		return
 	}
 	// 5: the strict body.

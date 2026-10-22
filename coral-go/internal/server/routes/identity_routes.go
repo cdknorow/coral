@@ -83,6 +83,7 @@ var operatorOnlyRoutes = map[string]string{
 	// #5280: relaunching into a staged update (Coral Hub's owner), and what is staged.
 	"GET /api/system/update":           "see the staged update",
 	"POST /api/system/update/relaunch": "relaunch Coral into the staged update",
+	"POST /api/system/update/install":  "install the staged update (Windows)",
 	// #4065: the models each agent CLI offers. Reading runs no CLI, but agents have no use for
 	// it; a refresh runs the user's CLIs (rate limited) and is the Operator's.
 	"GET /api/agents/models":          "list the models each agent CLI offers",

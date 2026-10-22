@@ -34,6 +34,11 @@ type Options struct {
 	// restart is under way; the server shuts down shortly after.
 	Restart func() error
 
+	// QuitForUpdate, when set, makes this process quit for an update (#166): the local "Install update" has just started the updater, and the tray (which
+	// supervises this server) must not start it again. It returns once the quit is under way; the server shuts down shortly after and the caller exits with
+	// routes.UpdateQuitExitCode. Only the entry points a tray supervises set it.
+	QuitForUpdate func() error
+
 	// BackendType is "pty" or "tmux" from --backend, which wins over the saved Settings >
 	// Terminal backend (#3634); "" means not given: the setting, else tmux (pty on Windows).
 	BackendType string
@@ -274,6 +279,7 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 		return closeDB(err)
 	}
 	srv.SetRestarter(opts.Restart)
+	srv.SetUpdateQuitter(opts.QuitForUpdate)
 	loginToken, lerr := srv.WriteLoginToken()
 	if lerr != nil {
 		log.Printf("[identity] could not write the dashboard sign-in token: %v", lerr)

@@ -435,6 +435,7 @@ func (s *Server) registerCloud(r *chi.Mux) {
 	upd := routes.NewUpdateRelaunchHandler(store.NewSessionStore(s.db), s.cfg.CoralDir(), func() string { return routes.TerminalKind(s.terminal) }, routes.BuildRelaunchUpdater())
 	r.Get("/api/system/update", upd.Status)
 	r.Post("/api/system/update/relaunch", upd.Relaunch)
+	r.Post("/api/system/update/install", s.cloudHandler.InstallUpdate) // #166: the local "Install update" (Windows), never through Coral Hub
 	r.Post("/api/cloud/redeem", s.cloudHandler.Redeem)
 	r.Post("/api/cloud/cli-hello", s.cloudHandler.CLIHello)
 }

@@ -28,6 +28,9 @@ import (
 const (
 	childExitStartFailed = 3 // startup.Start failed: retrying would fail the same way
 	childExitRestart     = 4 // Settings > Restart: start again now
+	// childExitQuitForUpdate: the local "Install update" started the updater (#166): the tray quits too and never starts the server again, so the updater has the
+	// install folder to itself (it restarts Coral when it is done). The same number as routes.UpdateQuitExitCode (a test keeps them equal).
+	childExitQuitForUpdate = 5
 )
 
 // Lines the child writes on its standard output for the tray.
@@ -43,10 +46,11 @@ const (
 type exitKind int
 
 const (
-	exitClean       exitKind = iota // stopped as asked, or from outside: not restarted
-	exitStartFailed                 // never restarted on its own
-	exitRestart                     // restarted at once, not a crash
-	exitCrashed                     // restarted with backoff
+	exitClean         exitKind = iota // stopped as asked, or from outside: not restarted
+	exitStartFailed                   // never restarted on its own
+	exitRestart                       // restarted at once, not a crash
+	exitQuitForUpdate                 // the updater has Coral: not restarted, and the tray quits
+	exitCrashed                       // restarted with backoff
 )
 
 // classifyExit sorts the child's exit (cmd.Wait's error).
@@ -61,6 +65,8 @@ func classifyExit(err error) exitKind {
 			return exitStartFailed
 		case childExitRestart:
 			return exitRestart
+		case childExitQuitForUpdate:
+			return exitQuitForUpdate
 		}
 	}
 	return exitCrashed // a non-zero exit, a signal (ExitCode -1), or a wait error
@@ -127,6 +133,8 @@ type supervisor struct {
 	// when the server ran inside the tray.
 	password func() (string, error)
 	onState  func(serverState, string) // called on every change, with the reason
+	// onQuitForUpdate is called, once, when the server exited for an update (#166): the tray ends itself so nothing of Coral runs from the install folder.
+	onQuitForUpdate func()
 	// onTelemetry hears whether the server's Usage analytics are on, once per start, before ready (#5184). Never called when the child says nothing.
 	onTelemetry func(on bool)
 
@@ -294,6 +302,16 @@ func (s *supervisor) run() {
 		kind := classifyExit(err)
 		reason := exitReason(err, tail)
 		switch kind {
+		case exitQuitForUpdate:
+			log.Printf("[supervise] server quit for an update; not restarting, and the tray quits")
+			s.mu.Lock()
+			s.stopping = true
+			s.mu.Unlock()
+			s.onState(stateStopped, "Coral is being updated")
+			if s.onQuitForUpdate != nil {
+				s.onQuitForUpdate()
+			}
+			return
 		case exitRestart:
 			log.Printf("[supervise] server asked to restart")
 		case exitClean:
