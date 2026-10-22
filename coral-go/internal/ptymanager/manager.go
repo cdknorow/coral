@@ -356,7 +356,6 @@ func (m *PTYBackend) Resize(name string, cols, rows uint16) error {
 	return s.resize(cols, rows)
 }
 
-// PaneSize reports the size the session's PTY was last given (#3422).
 // Repaint makes the agent in session name draw its whole screen again (#247): one column narrower and back, which a TUI answers
 // with a full redraw. The rendered screen is a replay of the session's last ReplayBytes of output; after a long reply that replay
 // no longer holds the terminal state the agent set up when it started (Codex's scroll region), so its input box and footer are
@@ -375,6 +374,7 @@ func (m *PTYBackend) Repaint(name string) error {
 	return m.Resize(name, uint16(cols), uint16(rows))
 }
 
+// PaneSize reports the size the session's PTY was last given (#3422).
 func (m *PTYBackend) PaneSize(name string) (int, int, error) {
 	m.mu.RLock()
 	s, ok := m.sessions[name]
