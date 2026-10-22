@@ -175,9 +175,10 @@ func resolveViaPID() *pidResolution {
 
 	resp, err := http.Get(serverURL + "/api/sessions/resolve?pids=" + strings.Join(pidStrs, ","))
 	var plainHTTP *hooks.PlainHTTPTokenError
-	if errors.As(err, &plainHTTP) {
-		// Say why, or the agent only sees "Not subscribed to any board" (#224).
-		fmt.Fprintln(os.Stderr, "[coral-board] "+plainHTTP.Error())
+	var foreign *hooks.ForeignListenerError
+	if errors.As(err, &plainHTTP) || errors.As(err, &foreign) {
+		// Say why the token wasn't sent, or the agent only sees "Not subscribed to any board" (#224).
+		fmt.Fprintln(os.Stderr, "[coral-board] "+errors.Unwrap(err).Error())
 	}
 	if err != nil || resp.StatusCode != http.StatusOK {
 		return nil
