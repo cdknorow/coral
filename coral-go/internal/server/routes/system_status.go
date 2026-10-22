@@ -4,8 +4,6 @@ package routes
 
 import (
 	"net/http"
-	"os/exec"
-	"runtime"
 	"strings"
 	"time"
 
@@ -153,28 +151,8 @@ func securityWarning(warnings ...string) string {
 // folder with a broad access list).
 var dataDirWarning = config.DataDirWarning
 
-// tmuxInstallCommand returns the one install command for tmux on this OS: brew on macOS, and on Linux the
-// package manager that is here (apt, then dnf). Coral only shows it; it never runs it.
-func tmuxInstallCommand() string {
-	return tmuxInstallCommandFor(runtime.GOOS, func(name string) bool { _, err := exec.LookPath(name); return err == nil })
-}
-
-func tmuxInstallCommandFor(goos string, has func(string) bool) string {
-	switch goos {
-	case "darwin":
-		return "brew install tmux"
-	case "linux":
-		switch {
-		case has("apt"):
-			return "sudo apt install tmux"
-		case has("dnf"):
-			return "sudo dnf install tmux"
-		}
-		return "sudo apt install tmux  (or your distro's package manager)"
-	default:
-		return "install tmux for your platform"
-	}
-}
+// tmuxInstallCommand is tmux.InstallCommand: the banner, the launch dialogs and a failed launch name the same one command.
+func tmuxInstallCommand() string { return tmux.InstallCommand() }
 
 // tmuxServerIssue is non-empty when the running tmux server cannot be talked
 // to by this Coral's tmux (a client/server version mismatch). Coral never

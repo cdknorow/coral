@@ -681,7 +681,7 @@ func (h *SessionsHandler) restartTerminal(ctx context.Context, p *restartPlan) (
 	if p.fresh != nil || p.usePTY {
 		if p.usePTY {
 			if err := h.backend.Spawn(p.newSessionName, p.agentType, p.workdir, p.newSessionID, "", 200, 50); err != nil {
-				return "", fail(fmt.Sprintf("pty spawn failed: %v", err))
+				return "", fail(spawnError(err).Error())
 			}
 			if p.pane != nil {
 				// A live pty terminal: ended once its replacement runs under the new name (pty has no rename), so a

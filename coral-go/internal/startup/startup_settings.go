@@ -42,7 +42,7 @@ func applyStartupSettings(ctx context.Context, db *store.DB, cfg *config.Config,
 	log.Printf("[STARTUP] terminal backend=%s (%s)", opts.BackendType, map[bool]string{true: "--backend", false: "Settings > Terminal backend, or the default"}[backendForced])
 	if opts.BackendType == "tmux" {
 		if _, ok := tmux.IsAvailable(); !ok {
-			log.Printf("[startup] tmux not found — agents cannot be launched until tmux is installed (brew install tmux)")
+			log.Printf("[startup] tmux not found — agents cannot be launched until tmux is installed (%s)", tmux.InstallCommand())
 		}
 	}
 	forcedPriority := opts.AgentPriority

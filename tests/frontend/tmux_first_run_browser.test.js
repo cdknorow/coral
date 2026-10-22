@@ -86,6 +86,15 @@ const { setTheme, installAudit, auditRegion } = require('./helpers/contrast');
         assert.equal(await ev(`window.__launches.length`), before, 'no member launch is sent while tmux is missing');
         await ev(`window.hideLaunchModal(); true`);
         assert.notEqual(await ev(`getComputedStyle(document.getElementById('tmux-missing-banner')).display`), 'none', 'the banner is back once the dialog is closed');
+        console.log('7. a launch on another server (a local multi-server hub) skips this computer\'s tmux check: no line, no block, no status request; coming back to this computer shows it again');
+        await ev(`window.__tmux = { tmux_available: false, tmux_required: true, effective_backend: 'tmux', tmux_install_command: 'brew install tmux' }; window._selectLaunchType('back'); window._selectLaunchType('agent'); true`);
+        await waitFor(`/tmux is not installed/.test(${slot}.textContent) && document.getElementById('launch-agent-go').disabled`, 'the line on this computer', 8000);
+        await ev(`window.__status.length = 0; window.__remote = true; import((window.__coralStatic || '/static/') + 'prerequisites.js').then(m => m.checkTmuxForLaunch(${slot}, { isLocal: () => !window.__remote })); true`);
+        await waitFor(`!document.getElementById('launch-agent-go').disabled`, 'Launch on for a remote server', 8000);
+        assert.deepEqual(await ev(`({ shown: ${slot}.offsetParent !== null, blocks: ${slot}.dataset.blocksLaunch || '', status: window.__status.length })`), { shown: false, blocks: '', status: 0 });
+        await ev(`window.__remote = false; import((window.__coralStatic || '/static/') + 'prerequisites.js').then(m => m.checkTmuxForLaunch(${slot}, { isLocal: () => !window.__remote })); true`);
+        await waitFor(`/tmux is not installed/.test(${slot}.textContent) && document.getElementById('launch-agent-go').disabled`, 'the line again on this computer', 8000);
+        await ev(`document.getElementById('launch-modal').style.display = 'none'; true`);
         console.log('PASS tmux missing is said once in the launch form and holds Launch until it is there');
     } finally { await client.close(); }
 })().catch(e => { console.error(e); process.exit(1); });
