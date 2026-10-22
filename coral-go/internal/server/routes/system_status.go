@@ -121,6 +121,8 @@ func (h *SystemHandler) Status(w http.ResponseWriter, r *http.Request) {
 		// A data folder other people on this computer can read (Windows; #3637): shown on the
 		// dashboard's first page, not only in the log. "" when there is nothing to say.
 		"security_warning": securityWarning(dataDirWarning(h.cfg.CoralDir()), auth.PeerCheckWarning()),
+		// What Coral did at startup to make an open data folder private: told once, as a fix, never again as a warning (#295). "" when nothing was done.
+		"security_notice": dataDirFixed(),
 		// A Windows Firewall rule for Coral's programs that allows more than it needs (Public profile, every port), found by the
 		// read-only startup check (#97): shown as its own warning with the commands that narrow or remove it. "" when none.
 		"firewall_warning": firewall.Warning(),
@@ -150,6 +152,9 @@ func securityWarning(warnings ...string) string {
 // dataDirWarning is config.DataDirWarning (a variable so a test can stand in for a Windows
 // folder with a broad access list).
 var dataDirWarning = config.DataDirWarning
+
+// dataDirFixed is config.TakeDataDirFixed (a variable so a test can stand in for a folder Coral made private).
+var dataDirFixed = config.TakeDataDirFixed
 
 // tmuxInstallCommand is tmux.InstallCommand: the banner, the launch dialogs and a failed launch name the same one command.
 func tmuxInstallCommand() string { return tmux.InstallCommand() }

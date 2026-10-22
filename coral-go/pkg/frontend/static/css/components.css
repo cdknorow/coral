@@ -1475,6 +1475,25 @@ button.subscriber-history-link {
     #toast-host > .toast.expanded .toast-message { display: block; -webkit-line-clamp: unset; line-clamp: unset; overflow: visible; }
 }
 
+/* The firewall warning (#295): a sentence, the commands behind a disclosure (closed), a Copy button for each command. */
+.firewall-details { margin-top: 8px; font-size: 0.75rem; }
+.firewall-details summary { cursor: pointer; }
+.firewall-how { margin: 6px 0; line-height: 1.4; overflow-wrap: anywhere; }
+.firewall-rule { margin-top: 8px; }
+.firewall-rule-label { overflow-wrap: anywhere; color: var(--text-secondary); }
+.firewall-cmd { display: flex; align-items: flex-start; gap: 6px; margin-top: 4px; }
+.firewall-cmd code { flex: 1; min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.75rem; }
+.firewall-actions { margin-top: 8px; display: flex; gap: 6px; }
+#warning-toasts .firewall-details[open] { max-height: 30vh; overflow-y: auto; }
+
+/* A small window (a phone, a short laptop, or 200% zoom, which halves the window in CSS pixels): the warnings are a compact strip that scrolls on its own,
+   never most of the page. */
+@media (max-height: 560px), (max-width: 640px) {
+    #warning-toasts { right: 8px; bottom: 8px; gap: 6px; width: min(440px, calc(100vw - 16px)); max-height: 40vh; }
+    #warning-toasts .security-warning-text { max-height: 4.5em; }
+    #warning-toasts .update-toast-body { gap: 4px; padding: 8px 12px; }
+}
+
 .update-toast-body {
     display: flex;
     flex-direction: column;

@@ -48,7 +48,7 @@ func EnsureDataDir(dir string) error {
 	}
 	if notice != "" {
 		log.Printf("[security] %s", notice)
-		setDataDirNotice(notice)
+		setDataDirFixed(notice)
 	}
 	return nil
 }
@@ -59,7 +59,8 @@ var ErrSharedDataDir = errors.New("the data folder can be read by other accounts
 var (
 	allowSharedDataDir atomic.Bool
 	dataDirNoticeMu    sync.Mutex
-	dataDirNotice      string
+	dataDirNotice      string // a folder that stays open to others (--allow-shared-data-dir): reported with every status, as long as it is
+	dataDirFixed       string // what Coral did to make an open folder private: told once
 )
 
 // SetAllowSharedDataDir is --allow-shared-data-dir: run on a data folder other accounts can read even when it can't be made private.
@@ -74,6 +75,22 @@ func setDataDirNotice(s string) {
 	dataDirNoticeMu.Lock()
 	dataDirNotice = s
 	dataDirNoticeMu.Unlock()
+}
+
+func setDataDirFixed(s string) {
+	dataDirNoticeMu.Lock()
+	dataDirFixed = s
+	dataDirNoticeMu.Unlock()
+}
+
+// TakeDataDirFixed is what Coral did at startup to make its data folder private, or "" when it did nothing or has already been asked. A
+// fixed folder is told once, as a fix; DataDirWarning is for a folder that is still open (#295).
+func TakeDataDirFixed() string {
+	dataDirNoticeMu.Lock()
+	defer dataDirNoticeMu.Unlock()
+	s := dataDirFixed
+	dataDirFixed = ""
+	return s
 }
 
 func getDataDirNotice() string {
@@ -91,7 +108,7 @@ func DataDirWarning(dir string) string {
 		return fmt.Sprintf("couldn't read the data folder's access list (%s): %v", dir, err)
 	}
 	if len(groups) == 0 {
-		// Nothing to warn about now; say what Coral did about it at startup, if it did something.
+		// Nothing is open to others now. What Coral did about it at startup is told once, by TakeDataDirFixed, not as a warning.
 		return getDataDirNotice()
 	}
 	return fmt.Sprintf("Coral's data folder %s can be read by %s. It holds the API key, the command-line token and the databases. Move the folder (CORAL_DATA_DIR) to one only you can read, or remove those groups from its permissions (Properties > Security).",

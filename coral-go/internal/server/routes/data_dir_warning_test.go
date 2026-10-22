@@ -33,3 +33,28 @@ func TestSystemStatusCarriesTheDataFolderWarning(t *testing.T) {
 	dataDirWarning = func(string) string { return "" }
 	assert.Equal(t, "", status()["security_warning"], "a private folder: nothing to show")
 }
+
+// A folder Coral made private is told once, as a notice, and is never a warning (#295: the "Security warning" came back on every page load).
+func TestSystemStatusTellsAFixedDataFolderOnce(t *testing.T) {
+	h := newSystemHandlerForTest(t)
+	prevWarn, prevFixed := dataDirWarning, dataDirFixed
+	t.Cleanup(func() { dataDirWarning, dataDirFixed = prevWarn, prevFixed })
+	dataDirWarning = func(string) string { return "" }
+	pending := "Coral made its data folder D: coral private to this user: Users could use it."
+	dataDirFixed = func() string { s := pending; pending = ""; return s }
+	status := func() map[string]any {
+		t.Helper()
+		rec := httptest.NewRecorder()
+		h.Status(rec, httptest.NewRequest(http.MethodGet, "/api/system/status", nil))
+		require.Equal(t, http.StatusOK, rec.Code)
+		var out map[string]any
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &out))
+		return out
+	}
+	first := status()
+	assert.Contains(t, first["security_notice"], "made its data folder")
+	assert.Equal(t, "", first["security_warning"], "a fixed folder is not a warning")
+	second := status()
+	assert.Equal(t, "", second["security_notice"], "told once")
+	assert.Equal(t, "", second["security_warning"])
+}

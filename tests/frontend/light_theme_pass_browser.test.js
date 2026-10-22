@@ -21,7 +21,7 @@ const DATABASE = 'The sessions database is damaged (page 12 is corrupt). Stop Co
         await Emulation.setDeviceMetricsOverride({ width: 1280, height: 800, deviceScaleFactor: 1, mobile: false });
         await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired(); await install();
         await ev(`window.__coralReady.then(() => true)`); await installAudit(ev);
-        await ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'update_check.js'); m.showSecurityWarning(${JSON.stringify(SECURITY)}); m.showFirewallWarning(${JSON.stringify(FIREWALL)}); m.showDatabaseWarning(${JSON.stringify(DATABASE)}); return true; })()`);
+        await ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'update_check.js'); m.showSecurityWarning(${JSON.stringify(SECURITY)}); await m.showFirewallWarning(${JSON.stringify(FIREWALL)}); m.showDatabaseWarning(${JSON.stringify(DATABASE)}); return true; })()`);
         await ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'session_state.js'); const tip = document.createElement('div'); tip.className = 'session-tooltip'; tip.id = 'lt-tip'; tip.style.cssText = 'display:block;left:40px;top:60px';
             tip.innerHTML = m.buildSessionTooltip({ name: 'lt', session_id: 'lt', agent_type: 'claude', model: 'claude-opus-4-1', thinking_actual: 'high', thinking: 'medium', summary: 'Work the queue', status: 'Reading', branch: 'main', staleness_seconds: 30, working_directory: '/work/x', token_usage: {} });
             document.body.append(tip); return true; })()`);
