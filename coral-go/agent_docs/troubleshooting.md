@@ -382,6 +382,8 @@ ones agent tools read (`CORAL_URL`/`HOST`/`PORT`, `CORAL_DATA_DIR`/`DIR`, the ag
 from their environment, so `CORAL_SECRET_KEY`, `CORAL_CLOUD_URL`, the TLS paths and the like
 never reach an agent or a server it starts. The list is `internal/agentenv`.
 
+**What an agent's terminal shows at start (#5911).** Coral types ONE short line into the agent's shell, `. '<temp folder>/coral-command-<digits>.sh'`, and that script erases the screen and scrollback, removes itself and then holds what the line used to hold (the environment, the token file's path, the agent command), so a terminal opens with the agent and not with a screenful of exports. The session token's value is never in the script or on the screen: the shell reads it from its file and removes the file. The full command is still in the server's log (the `[launch] ... cmd=` line). To keep the script on disk after it has run, start Coral with `CORAL_KEEP_LAUNCH_SCRIPTS=1`; Coral's startup sweep removes a leftover `coral-command-*.sh` later.
+
 The frontend CDP suites read their server from `CORAL_TEST_URL` (`tests/frontend/test_base.js`),
 never `CORAL_URL`: shells a running Coral spawns export `CORAL_URL` pointing at the live server.
 A URL on port 8420, or with no explicit port, is refused. Prefer the runners, which build a dev

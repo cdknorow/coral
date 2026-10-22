@@ -200,7 +200,11 @@ func (h *SessionsHandler) putSubscriptionBack(ctx context.Context, sub *board.Su
 }
 
 func sendLaunchCommand(ctx context.Context, terminal ptymanager.SessionTerminal, target, command string) error {
-	if err := terminal.SendToTarget(ctx, terminalinput.Internal, target, command); err != nil {
+	send := terminal.SendToTarget
+	if q, ok := terminal.(ptymanager.QuietLauncher); ok {
+		send = q.SendQuietLaunchToTarget // one short line that sources a private script, which erases the screen first (#5911); the full line is in the server's log
+	}
+	if err := send(ctx, terminalinput.Internal, target, command); err != nil {
 		return fmt.Errorf("launch command delivery to %s failed: %w", target, err)
 	}
 	return nil

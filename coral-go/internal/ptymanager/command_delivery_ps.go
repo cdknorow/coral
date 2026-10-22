@@ -22,9 +22,26 @@ const utf8BOM = "\ufeff"
 // refuses every script, and the script (this user's and SYSTEM's only, removing itself) is all the child runs.
 // The agent's interactive terminal keeps the machine's policy (#25 G3A, Security's review).
 func psHandoff(shell, path, command string) (script, invocation string) {
+	return psHandoffWith(shell, path, command, false, false)
+}
+
+// psClearScreen is what a quiet launch script runs first: clear the screen, and the scrollback with ESC[3J (the PTY backend's replay buffer restarts from it), so the short
+// line that ran the script does not stay above the agent (#5911).
+const psClearScreen = "Clear-Host; [Console]::Out.Write([string][char]27 + '[3J')\n"
+
+// psHandoffWith is psHandoff; quiet (an agent's launch line, #5911) starts the script with psClearScreen, and keep (CORAL_KEEP_LAUNCH_SCRIPTS) leaves the script on disk after it has run.
+func psHandoffWith(shell, path, command string, quiet, keep bool) (script, invocation string) {
+	remove := "Remove-Item -Force -LiteralPath " + psLiteral(path) + "\n"
+	if keep {
+		remove = ""
+	}
+	clear := ""
+	if quiet {
+		clear = psClearScreen
+	}
 	// -ExecutionPolicy puts PSExecutionPolicyPreference in this process's environment, which every PowerShell the
 	// agent's tools start would inherit: drop it first, so Bypass covers this script and nothing it runs.
-	return utf8BOM + "Remove-Item -Force -LiteralPath " + psLiteral(path) + "\n" +
-			"Remove-Item Env:PSExecutionPolicyPreference -ErrorAction SilentlyContinue\n" + command + "\n",
+	return utf8BOM + remove +
+			"Remove-Item Env:PSExecutionPolicyPreference -ErrorAction SilentlyContinue\n" + clear + command + "\n",
 		"& " + psLiteral(shell) + " -NoProfile -ExecutionPolicy Bypass -File " + psLiteral(path)
 }

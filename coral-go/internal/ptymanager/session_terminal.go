@@ -94,3 +94,10 @@ type SessionTerminal interface {
 	// AttachCommand returns the shell command to attach to a session (includes -S socket if needed).
 	AttachCommand(sessionName string) string
 }
+
+// QuietLauncher is a terminal that can start an agent without typing its whole launch line (#5911): SendQuietLaunchToTarget types ONE short line that sources a private script
+// holding the line, and the script erases the screen and scrollback before it runs it. The PTY and tmux terminals have it; sendLaunchCommand uses it where there is one, and a
+// terminal without it (a test's) is typed to as before.
+type QuietLauncher interface {
+	SendQuietLaunchToTarget(ctx context.Context, o terminalinput.Origin, target, command string) error
+}

@@ -95,10 +95,22 @@ func (c *Client) SendKeysToTarget(ctx context.Context, o terminalinput.Origin, t
 	return c.typeToTarget(ctx, o, target, command, true)
 }
 
+// SendQuietLaunchToTarget types an agent's launch line (a command Coral composed) as ONE short line that sources a private script holding it, whatever its length; the script
+// erases the screen and the scrollback first (cmdhandoff.QuietShellScript), so the terminal opens with the agent and not with its exports and temp-file paths (#5911).
+// Everything else about the typing is SendKeysToTarget's.
+func (c *Client) SendQuietLaunchToTarget(ctx context.Context, o terminalinput.Origin, target, command string) error {
+	return c.typeCommand(ctx, o, target, command, true, true)
+}
+
 // typeToTarget is the typing both paths share. launch: the text is a command Coral composed, and a
 // long one goes through a script (commandInvocation); otherwise it is delivered as text at any
 // length.
 func (c *Client) typeToTarget(ctx context.Context, o terminalinput.Origin, target, command string, launch bool) error {
+	return c.typeCommand(ctx, o, target, command, launch, false)
+}
+
+// typeCommand is typeToTarget; quiet (a launch only) hands the command over as a script whatever its length, which erases the screen first (#5911).
+func (c *Client) typeCommand(ctx context.Context, o terminalinput.Origin, target, command string, launch, quiet bool) error {
 	if !launch && o.SafeText() {
 		// Automated text: no keystroke from the text itself. A text with line breaks is flattened to one line only when the
 		// pane is KNOWN not to take bracketed paste (a hint, the gate's reading of the pane's log): otherwise it is pasted
@@ -126,9 +138,9 @@ func (c *Client) typeToTarget(ctx context.Context, o terminalinput.Origin, targe
 	}
 	originalCommandLen := len(command)
 	cleanup := func() {}
-	if launch && len(command) > inlineCommandLimit {
+	if launch && (quiet || len(command) > inlineCommandLimit) {
 		var err error
-		command, cleanup, err = commandInvocation(command)
+		command, cleanup, err = commandInvocation(command, quiet)
 		if err != nil {
 			return err
 		}

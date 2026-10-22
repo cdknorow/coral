@@ -16,6 +16,28 @@ const InlineLimit = 900
 // ". '<path>'". The script removes itself before running the command; the caller runs cleanup when
 // the delivery fails, so a script that was never sourced does not stay behind.
 func ShellScript(command string) (invocation string, cleanup func(), err error) {
+	return shellScript(command, false)
+}
+
+// ClearScreen is what a quiet launch script prints first: erase the screen and the scrollback (ESC[3J: tmux and a terminal emulator drop their history, and the PTY backend's replay buffer
+// restarts from it), and home the cursor, so the short line that sourced the script does not stay above the agent (#5911).
+const ClearScreen = `printf '\033[2J\033[3J\033[H'`
+
+// KeepEnv, when set, keeps a quiet launch script after it has run (it does not remove itself), for debugging what a launch did (#5911).
+const KeepEnv = "CORAL_KEEP_LAUNCH_SCRIPTS"
+
+// KeepScripts says whether KeepEnv is set.
+func KeepScripts() bool { return os.Getenv(KeepEnv) != "" }
+
+// QuietShellScript is ShellScript for an agent's launch line, always handed over as a script, whatever its length: the shell is typed ONE short line that sources it, which
+// is erased from the screen and scrollback first thing (ClearScreen), so a new person's terminal opens with the agent and not with a screenful of exports and temp-file paths
+// (#5911). The script holds exactly what the typed line used to hold, the session token's value included nowhere (the line reads it from its file at run time, as before).
+// With KeepEnv set it stays on disk after it has run.
+func QuietShellScript(command string) (invocation string, cleanup func(), err error) {
+	return shellScript(ClearScreen+"\n"+command, KeepScripts())
+}
+
+func shellScript(command string, keep bool) (invocation string, cleanup func(), err error) {
 	file, err := os.CreateTemp("", "coral-command-*.sh")
 	if err != nil {
 		return "", func() {}, fmt.Errorf("create command handoff: %w", err)
@@ -26,7 +48,11 @@ func ShellScript(command string) (invocation string, cleanup func(), err error) 
 		os.Remove(path)
 		return "", func() {}, fmt.Errorf("protect command handoff: %w", err)
 	}
-	content := "#!/bin/sh\nrm -f -- " + Quote(path) + "\n" + command + "\n"
+	content := "#!/bin/sh\n"
+	if !keep {
+		content += "rm -f -- " + Quote(path) + "\n"
+	}
+	content += command + "\n"
 	if _, err := file.WriteString(content); err != nil {
 		file.Close()
 		os.Remove(path)

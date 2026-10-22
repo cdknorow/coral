@@ -12,6 +12,7 @@ import (
 	"strconv"
 
 	"github.com/subgentic/coral/internal/agent"
+	"github.com/subgentic/coral/internal/cmdhandoff"
 	"github.com/subgentic/coral/internal/secfile"
 )
 
@@ -23,7 +24,7 @@ const inlineCommandLimit = 900
 // commandInvocation returns a short PowerShell command that executes the
 // complete command from a temporary script. The script removes itself before
 // running the command; callers should remove it on delivery failure.
-func commandInvocation(command string) (invocation string, cleanup func(), err error) {
+func commandInvocation(command string, quiet bool) (invocation string, cleanup func(), err error) {
 	// In the launch temp folder (private to this user and SYSTEM, #4381), not the shared %TEMP%, and created
 	// private: OpenNoFollow gives the new file this user and SYSTEM only, on the handle, before anything is
 	// written, and refuses a planted link at the path (#25 G2B). The script holds the launch line (paths,
@@ -43,7 +44,7 @@ func commandInvocation(command string) (invocation string, cleanup func(), err e
 			}
 			return "", func() {}, fmt.Errorf("create command handoff: %w", err)
 		}
-		content, invocation := psHandoff(handoffShell(), path, command)
+		content, invocation := psHandoffWith(handoffShell(), path, command, quiet, quiet && cmdhandoff.KeepScripts())
 		if _, err := file.WriteString(content); err != nil {
 			file.Close()
 			os.Remove(path)

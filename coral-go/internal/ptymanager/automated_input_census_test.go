@@ -80,7 +80,6 @@ var allowedSenders = map[string]sender{
 	"internal/server/routes/human_send.go\tSessionsHandler.deliverHumanSend\tSendEnter":    {guardHuman, "human: the same message's Enter again, while exactly its text is still in the box (#4587)", ""},
 	"internal/server/routes/sessions_input.go\tSessionsHandler.Keys\tSendRawInput":         {guardHuman, "human, else gated", ""},
 	// Launch commands typed into a fresh shell, before any agent CLI runs.
-	"internal/server/routes/sessions_lifecycle.go\tsendLaunchCommand\tSendToTarget": {guardLaunch, "launch command", ""},
 	"internal/background/runtime_tmux.go\tTmuxRuntime.SpawnAgent\tSendKeysToTarget": {guardLaunch, "launch command", ""},
 	"cmd/launch-coral/main.go\tlaunchAgentSessions\tSendKeysToTarget":               {guardLaunch, "launch command", ""},
 	"internal/ptymanager/tmux_backend.go\tTmuxBackend.Spawn\tSendKeysToTarget":      {guardLaunch, "launch command", ""},
@@ -93,7 +92,7 @@ var allowedSenders = map[string]sender{
 	"internal/tmux/prompt.go\tClient.SendPrompt\tsendKeys":                   {guardPrimitive, "primitive: the Enter of SendPrompt, withheld by enterAllowed (the gate's re-check)", ""},
 	"internal/tmux/send_keys.go\tClient.SendRawKeys\tsendKeys":               {guardPrimitive, "primitive: named keys, one at a time", ""},
 	"internal/tmux/send_keys.go\tClient.SendTerminalInputToTarget\tsendKeys": {guardPrimitive, "primitive: a person's terminal input", ""},
-	"internal/tmux/send_keys.go\tClient.typeToTarget\tsendKeys":              {guardPrimitive, "primitive: text then Enter, no Enter after a failed send or when enterAllowed says no", ""},
+	"internal/tmux/send_keys.go\tClient.typeCommand\tsendKeys":               {guardPrimitive, "primitive: text then Enter, no Enter after a failed send or when enterAllowed says no", ""},
 	"internal/tmux/send_keys.go\tclearInputLine\tsendKeys":                   {guardLaunch, "launch: the Ctrl-U that clears a launch command typed into a fresh shell whose Enter did not go (#5171); never reached for text typed to an agent", "TestLaunchLineIsClearedWhenItsEnterIsWithheld"},
 	"internal/ptymanager/session.go\tsession.writeInput\tpty Write":          {guardPrimitive, "primitive: the ONE write to a PTY's process, reached by the senders above and by PTYBackend.SendHumanInput (a person's keystrokes, the gate's PTY rule #3482, logged by length only #60)", ""},
 	"internal/ptymanager/manager.go\tPTYBackend.SendHumanInput\tSendInput":   {guardPrimitive, "primitive: a person's keystrokes, as Person", ""},
@@ -112,7 +111,7 @@ var allowedSenders = map[string]sender{
 	"internal/ptymanager/session_terminal_pty.go\tPTYSessionTerminal.SendPrompt\tSendPrompt":                         {guardPrimitive, "primitive", ""},
 	"internal/ptymanager/session_terminal_pty.go\tPTYSessionTerminal.SendRawInput\tSendInput":                        {guardPrimitive, "primitive", ""},
 	"internal/ptymanager/session_terminal_pty.go\tPTYSessionTerminal.SendTerminalInput\tSendInput":                   {guardPrimitive, "primitive", ""},
-	"internal/ptymanager/session_terminal_pty.go\tPTYSessionTerminal.SendToTarget\tSendLine":                         {guardPrimitive, "primitive", ""},
+	"internal/ptymanager/session_terminal_pty.go\tPTYSessionTerminal.sendLaunch\tSendLine":                           {guardPrimitive, "primitive", ""},
 	"internal/ptymanager/session_terminal_tmux.go\tTmuxSessionTerminal.SendInput\tSendKeys":                          {guardPrimitive, "primitive", ""},
 	"internal/ptymanager/session_terminal_tmux.go\tTmuxSessionTerminal.SendPrompt\tSendPrompt":                       {guardPrimitive, "primitive", ""},
 	"internal/ptymanager/session_terminal_tmux.go\tTmuxSessionTerminal.SendRawInput\tSendRawKeys":                    {guardPrimitive, "primitive", ""},
@@ -133,7 +132,7 @@ var allowedSenders = map[string]sender{
 	"internal/ptymanager/session_terminal_pty.go\tPTYSessionTerminal.SendEnter\tSendInput":    {guardPrimitive, "primitive", ""},
 	"internal/ptymanager/session_terminal_pty.go\tPTYSessionTerminal.SendArrow\tSendInput":    {guardPrimitive, "primitive", ""},
 	"internal/ptymanager/prompt_screen.go\tTmuxSessionTerminal.SendArrow\tSendRawKeys":        {guardPrimitive, "primitive", ""},
-	"internal/tmux/send_keys.go\tClient.typeToTarget\tpasteToTarget":                          {guardPrimitive, "primitive", ""}, // SendKeys (text) and SendKeysToTarget (a launch command) type through it (#4361)
+	"internal/tmux/send_keys.go\tClient.typeCommand\tpasteToTarget":                           {guardPrimitive, "primitive", ""}, // SendKeys (text) and SendKeysToTarget (a launch command) type through it (#4361)
 	"internal/tmux/send_keys.go\tClient.SendTerminalInputToTarget\tpasteToTarget":             {guardPrimitive, "primitive", ""},
 	"internal/tmux/send_keys.go\tClient.SendTerminalInputToTarget\tSendTerminalInputToTarget": {guardPrimitive, "primitive", ""},
 }
