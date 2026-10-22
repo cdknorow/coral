@@ -146,6 +146,8 @@ type Session struct {
 	identity  any
 	version   int
 	coralVer  string
+	bootID    string    // the connector's Hello.BootID when well formed (#5855), else ""
+	startedAt time.Time // the connector process's Hello.StartedAt when it parses, else the zero time
 	localMode Mode
 	peerCaps  []string // the connector's Hello.Capabilities when the whole list is well formed, else nil
 	active    atomic.Int32
@@ -252,6 +254,7 @@ func Accept(ctx context.Context, c *websocket.Conn, auth AuthFunc, cfg SessionCo
 	}
 	s := &Session{ys: ys, cfg: cfg, cancel: cancel, identity: identity, version: v, coralVer: hello.CoralVersion, localMode: parseLocalMode(hello.LocalMode), peerCaps: wellFormedCapabilities(hello.Capabilities),
 		hooks: hooks, artifactHook: artifactHook, relaySlot: make(chan struct{}, cfg.MaxRelayStreams)}
+	s.bootID, s.startedAt = parsePeerBoot(hello.BootID, hello.StartedAt) // informational (#5855)
 	go func() { defer safego.Recover("tunnel/server:s.rejectInbound"); s.rejectInbound() }()
 	go func() { defer safego.Recover("tunnel/server:191"); <-ys.CloseChan(); s.Close() }()
 	return s, nil
@@ -329,6 +332,13 @@ func (s *Session) HasPeerCapability(want string) bool { return HasCapability(s.p
 
 // CoralVersion is what the connector reported in its Hello.
 func (s *Session) CoralVersion() string { return s.coralVer }
+
+// PeerBootID is the connector's boot id from its Hello (#5855): random per Coral process, so a different one on a later connection means the process restarted and what it kept in memory
+// is gone. "" when the Hello had none or a malformed one.
+func (s *Session) PeerBootID() string { return s.bootID }
+
+// PeerStartedAt is when the connector's process started, from its Hello (#5855); the zero time when absent or malformed.
+func (s *Session) PeerStartedAt() time.Time { return s.startedAt }
 
 // NumStreams is the number of streams currently open.
 func (s *Session) NumStreams() int { return int(s.active.Load()) }
