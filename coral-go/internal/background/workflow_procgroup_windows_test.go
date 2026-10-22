@@ -52,8 +52,12 @@ func activeInJob(t *testing.T, job windows.Handle) uint32 {
 
 // #3997: a killed shell step's job ends with everything in it: sh and the sleep it started.
 // Before, only sh was killed.
+// The shell is the steps' own (workflowShell: Git's sh, found from the Git install), not a bare "sh" looked up on PATH: from a
+// shell without Git's usr\bin on PATH (PowerShell, cmd.exe) "sh" was not found and the test failed (#218).
 func TestKillChildProcessEndsTheStepsJob(t *testing.T) {
-	cmd := exec.CommandContext(context.Background(), "sh", "-c", "sleep 600 & wait") // as the steps make it
+	shell, err := workflowShell()
+	require.NoError(t, err)
+	cmd := exec.CommandContext(context.Background(), shell, "-c", "/usr/bin/sleep 600 & wait") // as the steps make it
 	configureChildProcess(cmd)
 	require.NoError(t, cmd.Start())
 	trackChildProcess(cmd)
