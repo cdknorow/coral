@@ -157,6 +157,7 @@ var (
 	errSendNotReady     = &errHumanSend{"agent_not_ready", "The agent isn't ready for messages yet: your message was not sent. Try again in a moment."}
 	errSendNotSubmit    = &errHumanSend{"not_submitted", "Your message is in the agent's input box but wasn't submitted. Send it again to submit it, or press Enter in its terminal."}
 	errSendNotConfirmed = &errHumanSend{"not_confirmed", "The agent didn't confirm your message: it may not have been sent. Check its terminal before sending it again."}
+	errSendHooksReview  = &errHumanSend{"codex_hooks_review_pending", "Codex is asking you to review Coral's hooks before it starts. Trusting them lets those hooks run outside Codex's sandbox, so only you can answer: pick Review hooks, Trust all and continue, or Continue without trusting (Coral then gets no hook events from this agent) in its terminal or the prompt above. Your message was not sent."}
 	errSendBusy         = &errHumanSend{"agent_busy", "Other messages to this agent are still being sent: yours was not sent. Try again in a moment."}
 	errSendLeftover     = &errHumanSend{"box_not_empty", "An earlier message is still in the agent's input box, not submitted: yours was not sent. Send that one again, or clear it in its terminal."}
 )
@@ -225,6 +226,9 @@ func (h *SessionsHandler) deliverHumanSend(ctx context.Context, name, agentType,
 			return err
 		}
 		screen, _ = h.humanScreen(ctx, name, agentType, sessionID)
+	}
+	if ptymanager.CodexHooksReviewOnScreen(screen) && !hooksReviewAnswerRe.MatchString(strings.TrimSpace(text)) {
+		return errSendHooksReview // not an answer to the question: its Enter would pick "Review hooks" and the message would be lost
 	}
 	if open, _ := ptymanager.PromptOnScreen(screen); open {
 		return send() // an answer to the prompt, typed as before: no input box to confirm it in
@@ -367,6 +371,10 @@ func echoedSince(before, now, text string) bool {
 	}
 	return strings.Count(noSpace(now), key) > strings.Count(noSpace(before), key)
 }
+
+// hooksReviewAnswerRe is a person picking one of the hooks-review dialog's three options by its digit, which is the dialog's own way
+// to answer (the digit alone selects it): the only thing typed into that dialog, because it is the person's choice.
+var hooksReviewAnswerRe = regexp.MustCompile(`^[1-3]$`)
 
 // slashCommandRe is a CLI command: a slash, a name, then nothing or arguments on the same line ("/tmp/x is
 // missing" is a message: its first word has a second slash).
