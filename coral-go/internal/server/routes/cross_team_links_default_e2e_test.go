@@ -152,12 +152,6 @@ func TestALinkedTeamIsAdmittedOnTheDefaultThroughARealTunnelAndEveryOtherCauseIs
 		assert.GreaterOrEqual(t, c, 400, name)
 		return result{c, b}
 	}
-	// A board that does not exist is refused too. A message gets the same bytes as every other refusal; a file's refusal is its own 404 today (the door looks the board up first), which is
-	// not what this test pins.
-	code, _ = e.message("lab2", srcTeam1, "b-zzzzzzzzzz")
-	assert.Equal(t, 404, code, "no such team: a message is refused")
-	code, _ = e.file("lab2", srcTeam1, "b-zzzzzzzzzz")
-	assert.Equal(t, 404, code, "no such team: a file is refused")
 	for kind, send := range map[string]func(string, string, string) (int, string){"message": e.message, "file": e.file} {
 		var first result
 		for name, r := range map[string]result{
@@ -165,6 +159,7 @@ func TestALinkedTeamIsAdmittedOnTheDefaultThroughARealTunnelAndEveryOtherCauseIs
 			"no sending team from the hub": refused(kind+": no sending team", send, "lab2", "", e.target),
 			"another server":               refused(kind+": another server", send, "lab3", srcTeam1, e.target),
 			"a team it is not linked to":   refused(kind+": not linked", send, "lab2", srcTeam1, e.target2),
+			"a board that does not exist":  refused(kind+": no such board", send, "lab2", srcTeam1, "b-zzzzzzzzzz"),
 		} {
 			if first == (result{}) {
 				first = r
