@@ -78,7 +78,7 @@ func (s *SessionStore) ListSaved(ctx context.Context, state, kind, ref string, s
 		q += " AND ref = ?"
 		args = append(args, ref)
 	}
-	q += " ORDER BY created_at DESC, id DESC"
+	q += " ORDER BY id DESC" // newest first, by write order: created_at is RFC3339Nano text, which does not sort as time within a second (timestamp_order_lint_test.go)
 	out := []SavedMessage{}
 	err := s.reader().SelectContext(ctx, &out, q, args...)
 	return out, err
