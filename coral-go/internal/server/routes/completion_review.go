@@ -46,7 +46,7 @@ func (h *BoardHandler) SubmitCompletionReview(w http.ResponseWriter, r *http.Req
 		if strings.Contains(err.Error(), "revision") {
 			errConflict(w, err.Error())
 		} else {
-			errBadRequest(w, err.Error())
+			errTaskStore(w, err)
 		}
 		return
 	}
@@ -70,7 +70,7 @@ func (h *BoardHandler) SubmitCompletionReview(w http.ResponseWriter, r *http.Req
 		return
 	}
 	if err != nil {
-		errBadRequest(w, err.Error())
+		errTaskStore(w, err)
 		return
 	}
 	h.stopReminder(project, id)
@@ -134,7 +134,7 @@ func (h *BoardHandler) DelegateReview(w http.ResponseWriter, r *http.Request) {
 	}
 	task, reviews, err := h.bs.DelegateReview(ctx, project, id, body.SubscriberID, body.Reviewers)
 	if err != nil {
-		errBadRequest(w, err.Error())
+		errTaskGone(w, err)
 		return
 	}
 	names := make([]string, 0, len(reviews))
@@ -205,7 +205,7 @@ func (h *BoardHandler) reviewVerdict(w http.ResponseWriter, r *http.Request, app
 		} else if strings.Contains(err.Error(), "was resubmitted") || strings.Contains(err.Error(), "changed since you read it") {
 			errConflict(w, err.Error())
 		} else {
-			errBadRequest(w, err.Error())
+			errTaskGone(w, err)
 		}
 		return
 	}
@@ -275,7 +275,7 @@ func (h *BoardHandler) ReleaseCompletionReview(w http.ResponseWriter, r *http.Re
 	}
 	task, err := h.bs.ReleaseCompletionReview(r.Context(), project, id, body.SubscriberID, body.Reason)
 	if err != nil {
-		errBadRequest(w, err.Error())
+		errTaskGone(w, err)
 		return
 	}
 	h.stopReminder(project, id)

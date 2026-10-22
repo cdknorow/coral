@@ -324,7 +324,7 @@ func cmdTask() {
 		os.Exit(0)
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown task subcommand: %s\n", sub)
-		clierr.Exit1()
+		os.Exit(2) // usage
 	}
 }
 
