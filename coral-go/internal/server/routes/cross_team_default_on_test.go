@@ -1,8 +1,10 @@
 package routes
 
 import (
+	"context"
 	"encoding/json"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -158,4 +160,26 @@ func TestAFileFromALinkedTeamIsTakenByDefaultAndAnExplicitOffRefusesIt(t *testin
 	code, body = f2.file("lab2", srcTeam1, f2.target, false)
 	assert.Equal(t, 200, code, body)
 	assert.Positive(t, f2.storedCount())
+}
+
+// The allowlist door for a file reads the files switch as the owner's own gate too (#5916, Security's review): a board that never stored it admits no frame, one that names no claim included
+// (before the claim is read only the switch can be asked); a stored on is as before (the claim is checked against the list); a stored off refuses.
+func TestTheAllowlistDoorForFilesNeedsTheStoredFilesSwitch(t *testing.T) {
+	e := &fileDoorEnv{doorEnv: newDefaultsDoorEnv(t), dir: t.TempDir()}
+	e.h.SetAllowlistFlag(func(context.Context) bool { return true })
+	req := httptest.NewRequest("POST", "/api/board/"+e.target+"/external-artifacts", nil)
+	ask := func(claimKnown bool) bool {
+		t.Helper()
+		on, err := e.h.receivingOn(t.Context(), req, e.target, "lab2", "x-"+strings.Repeat("a", 16), claimKnown)
+		require.NoError(t, err)
+		return on
+	}
+	assert.False(t, ask(false), "never stored: a frame with no claim is not admitted by the default")
+	assert.False(t, ask(true))
+	e.filesOn(e.target, true)
+	assert.True(t, ask(false), "a stored on: before the claim is read, as before")
+	assert.False(t, ask(true), "a claim that is not on the list is refused, as before")
+	e.filesOn(e.target, false)
+	assert.False(t, ask(false), "a stored off")
+	assert.False(t, ask(true))
 }
