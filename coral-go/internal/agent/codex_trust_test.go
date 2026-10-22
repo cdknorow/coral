@@ -80,7 +80,11 @@ func TestCodexHookTrustNeedsTheSwitchAndAProtectedFolder(t *testing.T) {
 		args := strings.Join(codexHookArgs("sid-"+tc.name), " ")
 		if runtime.GOOS != "windows" {
 			assert.False(t, trusted, tc.name)
-			assert.Contains(t, why, "only on Windows")
+			if tc.on {
+				assert.Contains(t, why, "only on Windows", tc.name)
+			} else {
+				assert.Contains(t, why, "turned off in Settings", tc.name)
+			}
 			assert.NotContains(t, args, "hooks.state", tc.name)
 			continue
 		}
