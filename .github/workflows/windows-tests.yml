@@ -16,12 +16,20 @@ on:
     paths:
       - "coral-go/**"
       - "tests/windows/**"
+      - "tests/release/**"
+      - "tools/coral.wxs"
+      - "installers/**"
       - ".github/workflows/windows-tests.yml"
+      - ".github/workflows/release.yml"
   pull_request:
     paths:
       - "coral-go/**"
       - "tests/windows/**"
+      - "tests/release/**"
+      - "tools/coral.wxs"
+      - "installers/**"
       - ".github/workflows/windows-tests.yml"
+      - ".github/workflows/release.yml"
   workflow_dispatch:
 
 permissions:
@@ -31,7 +39,7 @@ concurrency:
   group: windows-tests-${{ github.ref }}
   cancel-in-progress: true
 
-# Five shards run at once (#4605, #4956): "packages" is every package but the timing packages, pkg/tunnel and the slow
+# Five test shards and the "package" job (six jobs in a run, #5886) run at once (#4605, #4956): "packages" is every package but the timing packages, pkg/tunnel and the slow
 # tests below, "timing" is the packages in TIMING_PKGS and "tunnel" is TUNNEL_PKG (every package runs in exactly one), "slow-1" is vet and the
 # slowest test, "slow-2" the next two and the routes step. internal/background's old-vs-new oracles (#4599) take
 # 341 s of its 7 minutes on Windows (probe run 39129482198), and with every package in one job that package
@@ -164,14 +172,43 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
+          fetch-depth: 0   # the installer step compares with the base (below)
+      # The package build here is a copy of release.yml's, kept in step by a census (tests/release/windows_build_census_test.py):
+      # the same tags, the same program lists (gui_commands.txt and commands.txt), the same cgo split.
+      - name: Census - this build and release.yml's build the same programs with the same tags
+        shell: bash
+        run: python3 tests/release/windows_build_census_test.py
+      # The MSI is built and installed only when the installer changed (#5886): tools/coral.wxs, its art and licence text, installers/,
+      # or the smoke script that checks it. The base is the pull request's base, the push's previous head, or main (a ci/ branch run
+      # by hand); a base that cannot be found counts as changed, so a check that can't tell runs.
+      - name: Did the installer change?
+        id: msi
+        shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          case "$EVENT" in
+            pull_request) base="$PR_BASE" ;;
+            push) base="$PUSH_BEFORE" ;;
+            *) git fetch --no-tags -q origin main; base=$(git merge-base HEAD FETCH_HEAD) ;;
+          esac
+          changed=true
+          if [ -n "$base" ] && git cat-file -e "$base^{commit}" 2>/dev/null; then
+            if git diff --name-only "$base" HEAD | grep -Eq '^(tools/coral\.wxs|tools/license\.rtf|tools/make_installer_art\.py|tools/requirements-installer-art\.txt|assets/installer/|installers/|tests/release/smoke_windows\.ps1)'; then changed=true; else changed=false; fi
+          fi
+          echo "base=${base:-none} installer changed: $changed"
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
         with:
           go-version-file: coral-go/go.mod
           cache-dependency-path: coral-go/go.sum
-      - name: Native GUI compiler (gcc; the image has one, else MinGW is installed as release.yml does)
+      - name: Native GUI compiler (gcc; the image has one, else MinGW 16.1.0 is installed, the version release.yml and encryption-verify.yml pin)
         shell: pwsh
         run: |
-          if (-not (Get-Command gcc -ErrorAction SilentlyContinue)) { choco install mingw -y; if ($LASTEXITCODE -ne 0) { throw "choco install mingw failed" } }
+          if (-not (Get-Command gcc -ErrorAction SilentlyContinue)) { choco install mingw --version=16.1.0 -y --no-progress; if ($LASTEXITCODE -ne 0) { throw "choco install mingw failed" } }
           gcc --version
       - name: Sync agent docs
         shell: bash
@@ -199,7 +236,7 @@ jobs:
           bash ../tools/gen_windows_resources.sh $version Coral
           if ($LASTEXITCODE -ne 0) { throw "gen_windows_resources.sh failed" }
           New-Item -ItemType Directory -Force -Path ..\dist\windows\bin | Out-Null
-          $gui = @("coral-tray", "coral-app")
+          $gui = Get-Content ..\tests\release\gui_commands.txt | Where-Object { $_ -notmatch '^\s*(#|$)' } | ForEach-Object { $_.Trim() }
           $commands = Get-Content ..\tests\release\commands.txt | Where-Object { $_ -notmatch '^\s*(#|$)' } | ForEach-Object { $_.Trim() }
           $env:CGO_ENABLED = "0"
           foreach ($cmd in $commands) {
@@ -216,7 +253,31 @@ jobs:
           powershell -ExecutionPolicy Bypass -File ..\tests\release\verify_standard_bundle.ps1 -PackageDir ..\dist\windows\bin
           if ($LASTEXITCODE -ne 0) { throw "verify_standard_bundle.ps1 failed" }
           Compress-Archive -Path "..\dist\windows\bin\*" -DestinationPath "..\dist\windows\Coral-$version-x64-portable.zip"
-      - name: Smoke test the portable package (the release's own script, with a stand-in agent)
+      - name: Third-party notices (the MSI holds them, as in release.yml)
+        if: steps.msi.outputs.changed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd coral-go && go mod download)
+          bash installers/third-party-notices.sh dist/windows/bin/licenses dist/windows/bin/*.exe
+          bash tests/release/verify_notices.sh dist/windows/bin/licenses dist/windows/bin/*.exe
+      - name: Build the MSI (as release.yml does; only when the installer changed)
+        if: steps.msi.outputs.changed == 'true'
+        shell: pwsh
+        run: |
+          dotnet tool install --global wix --version 5.0.2
+          if ($LASTEXITCODE -ne 0) { throw "dotnet tool install wix failed" }
+          wix extension add WixToolset.UI.wixext/5.0.2
+          if ($LASTEXITCODE -ne 0) { throw "wix extension add failed" }
+          $version = "0.0.0-ci"
+          $binDir = (Resolve-Path "dist\windows\bin").Path
+          $buildDir = (Resolve-Path "dist\windows").Path
+          Copy-Item "tools\license.rtf" $buildDir
+          $msiPath = Join-Path $buildDir "Coral-$version-x64.msi"
+          wix build tools\coral.wxs -ext WixToolset.UI.wixext -d "Version=$version" -d "BinDir=$binDir" -d "BuildDir=$buildDir" -o $msiPath
+          if ($LASTEXITCODE -ne 0) { throw "wix build failed" }
+          echo "MSI_PATH=$msiPath" >> $env:GITHUB_ENV
+      - name: Smoke test the portable package (the release's own script, with a stand-in agent; and the MSI when it was built)
         shell: pwsh
         run: |
           Push-Location coral-go
@@ -225,5 +286,7 @@ jobs:
           go build -tags fts5 -o $standin ./cmd/mock-agent
           if ($LASTEXITCODE -ne 0) { throw "go build ./cmd/mock-agent failed" }
           Pop-Location
-          ./tests/release/smoke_windows.ps1 -Zip (Resolve-Path "dist\windows\Coral-0.0.0-ci-x64-portable.zip").Path -Version 0.0.0-ci -StandIn $standin
+          $smoke = @{ Zip = (Resolve-Path "dist\windows\Coral-0.0.0-ci-x64-portable.zip").Path; Version = "0.0.0-ci"; StandIn = $standin }
+          if ($env:MSI_PATH) { $smoke.Msi = $env:MSI_PATH } else { Write-Host "the installer did not change: the MSI is not built or checked" }
+          ./tests/release/smoke_windows.ps1 @smoke
           if ($LASTEXITCODE -ne 0) { throw "smoke_windows.ps1 failed" }
