@@ -27,3 +27,16 @@ func StartupPromptOnScreen(screen string) string {
 	}
 	return StartupPrompt
 }
+
+// CodexHooksReviewOnScreen reports whether Codex's hooks-review dialog is open ("Hooks need review: N hooks are new or changed ... 1. Review
+// hooks / 2. Trust all and continue / 3. Continue without trusting"). Codex draws it when Coral gives it its hooks on the command line, and until
+// the person answers it the hooks do not run. It is a question about running code outside Codex's sandbox: a message is never typed into it as
+// if it were an answer, and only the person answers it. The stable words are matched, not the version or the count of hooks.
+func CodexHooksReviewOnScreen(screen string) bool {
+	if open, _ := PromptOnScreen(screen); !open {
+		return false
+	}
+	text := strings.ToLower(strings.Join(strings.Fields(strings.Join(tailLines(screenText(screen), 25), " ")), " "))
+	return strings.Contains(text, "new or changed") && strings.Contains(text, "hook") &&
+		(strings.Contains(text, "trust all and continue") || strings.Contains(text, "review hooks") || strings.Contains(text, "hooks need review"))
+}
