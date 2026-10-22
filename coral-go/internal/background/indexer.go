@@ -99,9 +99,11 @@ func (idx *SessionIndexer) RunOnce(ctx context.Context) error {
 	}
 
 	// Batch-lookup agent names from live_sessions
-	sessionIDs := make([]string, len(allSessions))
-	for i, s := range allSessions {
-		sessionIDs[i] = s.SessionID
+	sessionIDs := make([]string, 0, len(allSessions))
+	for _, s := range allSessions {
+		if !s.Excluded {
+			sessionIDs = append(sessionIDs, s.SessionID)
+		}
 	}
 	agentNames, _ := idx.store.GetAgentNames(ctx, sessionIDs)
 
@@ -123,6 +125,12 @@ func (idx *SessionIndexer) RunOnce(ctx context.Context) error {
 		pending = pending[:0]
 	}
 	for _, s := range allSessions {
+		if s.Excluded {
+			if err := idx.store.RemoveExcludedSessionSource(ctx, s.SourceType, s.SourceFile); err != nil {
+				return err
+			}
+			continue
+		}
 		si := &store.SessionIndex{
 			SessionID:      s.SessionID,
 			SourceType:     s.SourceType,
