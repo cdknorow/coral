@@ -99,8 +99,12 @@ type MSIConfig struct {
 	Asset     func(version string) string
 	MSI       MSI
 	Rollback  Rollback
-	Now       func() time.Time
-	MaxPkg    int64
+	// ClickedVersion is the staged version the person saw when they clicked Install update (the one-time install marker's, #82). Required:
+	// without it there was no click to honour, and an apply never asks Windows anything; when the staged version isn't it (a newer one staged
+	// since, a stale marker), the apply refuses before any prompt.
+	ClickedVersion string
+	Now            func() time.Time
+	MaxPkg         int64
 	// BeforeInstall is a test seam: a crash, or a racing process, just before msiexec.
 	BeforeInstall func()
 }
@@ -181,6 +185,18 @@ func RunMSI(ctx context.Context, mc MSIConfig) Result {
 		return res
 	}
 	// From here Coral is down: every outcome but success starts the old one again (the install is unchanged until msiexec succeeds).
+	// The click this apply honours must be for what is staged now (#82's marker): nothing is verified or asked for otherwise.
+	if mc.ClickedVersion == "" || mc.ClickedVersion != staged.Version {
+		why := "stale_request"
+		if mc.ClickedVersion == "" {
+			why = "no_request"
+		}
+		cfg.history(&st, cfg.Installed, staged.Version, "refused", why)
+		_ = verify.SaveState(dir, st)
+		res.Result, res.FailedStage = ResultRefused, why
+		startOld(ctx, m, install, &res)
+		return res
+	}
 	refuse := func(stageName string, f *verify.Failure) Result {
 		st.Refuse(staged.Version, f, now)
 		cfg.history(&st, cfg.Installed, staged.Version, "refused", stageName)
