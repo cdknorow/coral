@@ -7,12 +7,15 @@ const path = require('path');
 const BASE = require('./test_base').BASE;
 const { launchStandIn } = require('./helpers/stand_in_agent');
 const PORT = new URL(BASE).port;
-// Built on the fly unless CORAL_AGENT_BIN points at a coral-agent binary.
-let BIN = process.env.CORAL_AGENT_BIN;
+// The runner's coral-agent, built next to its coral (CORAL_TEST_BIN): coral-agent sends the session token only to a Coral it recognises by the folder it
+// runs from (#99), so a copy built elsewhere would be refused. Built on the fly only when neither CORAL_AGENT_BIN nor that sibling is there.
+const nextToCoral = process.env.CORAL_TEST_BIN ? path.join(path.dirname(process.env.CORAL_TEST_BIN), 'coral-agent' + (process.platform === 'win32' ? '.exe' : '')) : '';
+let BIN = process.env.CORAL_AGENT_BIN || (nextToCoral && fs.existsSync(nextToCoral) ? nextToCoral : '');
+const ownBuild = !BIN;
 let work = '';
 // The binary built here and the agent's working folder are removed on exit, pass or fail.
 process.on('exit', () => {
-  if (!process.env.CORAL_AGENT_BIN) fs.rmSync(BIN, { force: true });
+  if (ownBuild) fs.rmSync(BIN, { force: true });
   if (work) fs.rmSync(work, { recursive: true, force: true });
 });
 if (!BIN) {
