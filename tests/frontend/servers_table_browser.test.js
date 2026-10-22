@@ -50,6 +50,7 @@ const CLOUD_PRELOAD = `(() => {
             if (row && body.access_mode) row.access_mode = body.access_mode;
             return Promise.resolve(new Response(JSON.stringify(row || {}), { status: 200, headers: { 'content-type': 'application/json' } }));
         }
+        if (pm && m === 'DELETE') { (window.__deletes = window.__deletes || []).push(decodeURIComponent(pm[1])); return Promise.resolve(new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })); }
         return inner(url, opts);
     };
 })();`;
@@ -213,10 +214,22 @@ const contrast = (a, b) => {
         await ev(`document.querySelector('#server-row-m3 .cs-revoke').click(); true`);
         await waitFor(`!!document.querySelector('#server-row-m3 .cs-col-actions .btn-danger')`, 'the revoke confirmation', 3000);
         assert.deepEqual(await ev(`[...document.querySelectorAll('#server-row-m3 .cs-col-actions button')].map(b => b.textContent)`), ['Confirm revoke', 'Cancel']);
-        assert.match(await ev(`document.getElementById('server-row-m3-detail').textContent`), /Revoking disconnects this server now/);
+        assert.match(await ev(`document.getElementById('server-row-m3-detail').textContent`), /Revoke Box Three\? It disconnects this computer from Coral Hub\./);
         assert.ok(await ev(`document.getElementById('server-row-m3').querySelector('.cs-toggle').getAttribute('aria-expanded') === 'true'`), 'the row opens to show the warning');
+        // Revoke is never one click and never loses the keyboard: the ask puts focus on Cancel (the safe answer), the question is the buttons' description, Cancel and Escape leave the machine
+        // connected (no DELETE) and put focus back on that row's Revoke.
+        assert.equal(await ev(`document.activeElement.classList.contains('cs-revoke-cancel')`), true, 'the ask moves focus to Cancel');
+        assert.equal(await ev(`(() => { const d = document.getElementById(document.activeElement.getAttribute('aria-describedby')); return !!d && /Revoke Box Three\\? It disconnects this computer from Coral Hub\\./.test(d.textContent); })()`), true, 'the buttons are described by the question');
+        await ev(`document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); true`);
+        await waitFor(`!!document.querySelector('#server-row-m3 .cs-revoke')`, 'Escape put the row actions back', 3000);
+        assert.equal(await ev(`document.activeElement === document.querySelector('#server-row-m3 .cs-revoke')`), true, 'Escape returns focus to Revoke');
+        assert.equal(await ev(`(window.__deletes || []).length`), 0, 'nothing was revoked');
+        await ev(`document.querySelector('#server-row-m3 .cs-revoke').click(); true`);
+        await waitFor(`!!document.querySelector('#server-row-m3 .cs-col-actions .btn-danger')`, 'the revoke confirmation again', 3000);
         await ev(`[...document.querySelectorAll('#server-row-m3 .cs-col-actions button')].find(b => b.textContent === 'Cancel').click(); true`);
         await waitFor(`!!document.querySelector('#server-row-m3 .cs-revoke')`, 'the row actions back', 3000);
+        assert.equal(await ev(`document.activeElement === document.querySelector('#server-row-m3 .cs-revoke')`), true, 'Cancel returns focus to Revoke');
+        assert.equal(await ev(`(window.__deletes || []).length`), 0, 'still nothing revoked');
         // Rename in the row: the name cell becomes a form.
         await ev(`document.querySelector('#server-row-m4 .cs-rename-btn').click(); true`);
         await waitFor(`!!document.querySelector('#server-row-m4 .cs-rename input[name=label]')`, 'the rename form', 3000);

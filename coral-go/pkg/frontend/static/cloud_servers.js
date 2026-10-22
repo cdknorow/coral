@@ -330,13 +330,21 @@ function accessPicker(s, isBusy, helpId) {
             ['view', 'interact', 'launch'].map(v => h('option', { value: v, selected: v === choice, disabled: rank(v) > rank(local) && v !== choice, text: MODE_INFO[v].label }))));
 }
 
+/** Put the keyboard back on a control of a machine's row after the redraw. */
+function focusRow(id, selector) { const el = document.getElementById(rowId(id))?.querySelector(selector); if (el) el.focus(); }
+
+/** Revoke asks first, in the row: the keyboard goes to Cancel (the safe answer), and Cancel or Escape leave the machine connected and put the keyboard back on that row's Revoke. */
+function askRevoke(s) { confirming = s.id; render(); focusRow(s.id, '.cs-col-actions .cs-revoke-cancel'); }
+function cancelRevoke(s) { confirming = null; render(); focusRow(s.id, '.cs-revoke'); }
+const revokeNoteId = s => `${rowId(s.id)}-revoke-note`;
+
 /** Rename and Revoke, in the row's last column; Revoke asks in place (Confirm revoke / Cancel). */
 function rowActions(s, isBusy) {
     return confirming === s.id
-        ? [h('button', { type: 'button', className: 'btn btn-small btn-danger', text: 'Confirm revoke', onclick: () => { confirming = null; call(s.id, 'DELETE'); } }),
-           h('button', { type: 'button', className: 'btn btn-small', text: 'Cancel', onclick: () => { confirming = null; render(); } })]
+        ? [h('button', { type: 'button', className: 'btn btn-small btn-danger', text: 'Confirm revoke', 'aria-describedby': revokeNoteId(s), onclick: () => { confirming = null; call(s.id, 'DELETE'); } }),
+           h('button', { type: 'button', className: 'btn btn-small cs-revoke-cancel', text: 'Cancel', 'aria-describedby': revokeNoteId(s), onclick: () => cancelRevoke(s) })]
         : [h('button', { type: 'button', className: 'btn btn-small cs-rename-btn', text: 'Rename', 'aria-label': `Rename ${s.label || 'this server'}`, disabled: isBusy, onclick: () => { renaming = s.id; render(); } }),
-           h('button', { type: 'button', className: 'btn btn-small btn-danger-text cs-revoke', text: 'Revoke', 'aria-label': `Revoke ${s.label || 'this server'}`, disabled: isBusy, onclick: () => { confirming = s.id; render(); } })];
+           h('button', { type: 'button', className: 'btn btn-small btn-danger-text cs-revoke', text: 'Revoke', 'aria-label': `Revoke ${s.label || 'this server'}`, disabled: isBusy, onclick: () => askRevoke(s) })];
 }
 
 function detailCell(s, live, online, isBusy, helpId) {
@@ -358,7 +366,7 @@ function detailCell(s, live, online, isBusy, helpId) {
     return h('td', { colSpan: COLUMNS.length, role: 'cell', className: 'cs-detail-cell' },
         h('div', { className: 'cs-main' }, meta, belowMinimumText(live) ? h('div', { className: 'cs-meta server-below-minimum', text: belowMinimumText(live) }) : null,
             online ? healthCard(live.machine_health, { title: 'Health', online: true }) : null, effEl, helpEl),
-        confirming === s.id ? h('div', { className: 'cs-note', text: 'Revoking disconnects this server now and its token stops working. To connect it again you must enroll it again.' }) : null,
+        confirming === s.id ? h('div', { className: 'cs-note', id: revokeNoteId(s), text: `Revoke ${s.label || 'this server'}? It disconnects this computer from Coral Hub. Its token stops working; to connect it again you must enroll it again.` }) : null,
         updateNote);
 }
 
@@ -380,6 +388,8 @@ function rows(s) {
         h('td', { role: 'cell', className: 'cs-col-access' }, accessPicker(s, isBusy, helpId)),
         h('td', { role: 'cell', className: 'cs-col-actions' }, h('div', { className: 'cs-actions' }, rowActions(s, isBusy))));
     const detail = h('tr', { className: 'cs-detail', id: detailId, role: 'row', hidden: !isOpen }, detailCell(s, live, online, isBusy, helpId));
+    const escape = e => { if (e.key === 'Escape' && confirming === s.id) { e.preventDefault(); e.stopPropagation(); cancelRevoke(s); } };
+    main.addEventListener('keydown', escape); detail.addEventListener('keydown', escape);
     return [main, detail];
 }
 
