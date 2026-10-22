@@ -27,7 +27,7 @@ const BASE = require('./test_base').BASE;
       const tr=rect(team), sr=rect(settings), ar=rect(add);
       return {team:{iconWidth:tr.width,left:tr.left,textLeft:textLeft(team),gap:textLeft(team)-tr.right},settings:{iconWidth:sr.width,left:sr.left,textLeft:textLeft(settings),gap:textLeft(settings)-sr.right},add:{iconWidth:ar.width,left:ar.left,textLeft:textLeft(add),gap:textLeft(add)-ar.right}};
     })()`);
-    fs.writeFileSync('/tmp/coral-1320-team-menu.png', Buffer.from((await Page.captureScreenshot()).data, 'base64'));
+    fs.writeFileSync(require('node:os').tmpdir() + '/coral-1320-team-menu.png', Buffer.from((await Page.captureScreenshot()).data, 'base64'));
     for (const row of [metrics.team, metrics.add]) assert.ok(Math.abs(row.iconWidth - 14) <= 1, JSON.stringify(metrics));
     assert.ok(Math.max(metrics.team.left, metrics.settings.left, metrics.add.left) - Math.min(metrics.team.left, metrics.settings.left, metrics.add.left) <= 1, JSON.stringify(metrics));
     assert.ok([metrics.team, metrics.settings, metrics.add].every(row => Math.abs(row.gap - 8) <= 1), JSON.stringify(metrics));

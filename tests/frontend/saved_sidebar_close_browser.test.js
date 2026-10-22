@@ -66,7 +66,7 @@ async function run() {
         check('closed', await until(`document.getElementById('saved-view').getClientRects().length === 0`, 'left'));
 
         console.log('From an agent\'s page');
-        const r = await httpJson('POST', '/api/sessions/launch', { working_dir: '/tmp', agent_type: 'terminal', display_name: 'qa-saved-dock' });
+        const r = await httpJson('POST', '/api/sessions/launch', { working_dir: require('node:os').tmpdir(), agent_type: 'terminal', display_name: 'qa-saved-dock' });
         if (!r.data || !r.data.session_id) throw new Error(`launch: ${r.status} ${JSON.stringify(r.data)}`);
         launched.push(r.data);
         goAgent = async () => { await ev(`window.selectLiveSession(${JSON.stringify(r.data.session_name)}, 'terminal', ${JSON.stringify(r.data.session_id)}, ''); true`); await until(`document.getElementById('live-session-view') && getComputedStyle(document.getElementById('live-session-view')).display !== 'none'`, 'the agent view'); };

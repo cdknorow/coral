@@ -50,7 +50,7 @@ async function httpJson(method, path, body) {
     let sid = null, sname = null;
     try {
         await Promise.all([Page.enable(), Runtime.enable(), Network.enable()]);
-        const launch = await httpJson('POST', '/api/sessions/launch', { working_dir: '/tmp', agent_type: 'terminal', display_name: 'Poll 304' });
+        const launch = await httpJson('POST', '/api/sessions/launch', { working_dir: require('node:os').tmpdir(), agent_type: 'terminal', display_name: 'Poll 304' });
         assert.equal(launch.status, 200, JSON.stringify(launch.data));
         sid = launch.data.session_id; sname = launch.data.session_name;
         await Page.navigate({ url: BASE + '/' });

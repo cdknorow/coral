@@ -52,7 +52,7 @@ const { removeBoards } = require('./helpers/board_cleanup');
 
         await ev(`(async () => {
             const {state} = await import((window.__coralStatic||'/static/')+'state.js');
-            const r = await fetch('/api/sessions/launch', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({working_dir:'/tmp',agent_type:'terminal',display_name:'Personal workflow browser'})});
+            const r = await fetch('/api/sessions/launch', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({working_dir:${JSON.stringify(require('node:os').tmpdir())},agent_type:'terminal',display_name:'Personal workflow browser'})});
             if (!r.ok) throw new Error('launch failed');
             const session = await r.json();
             const resolved = await fetch('/api/sessions/'+session.session_id+'/resolve').then(r=>r.json());

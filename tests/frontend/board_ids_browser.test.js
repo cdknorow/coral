@@ -32,7 +32,7 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
     const launch = () => ev(`(async () => {
         const m = await import((window.__coralStatic || '/static/') + 'modals.js');
         window.__launchDone = false;
-        window.__launch = m._launchOn('local', '/api/sessions/launch', { working_dir: '/tmp', agent_type: 'terminal', display_name: 'Ids QA', board_name: ${JSON.stringify(NAME)} })
+        window.__launch = m._launchOn('local', '/api/sessions/launch', { working_dir: ${JSON.stringify(require('node:os').tmpdir())}, agent_type: 'terminal', display_name: 'Ids QA', board_name: ${JSON.stringify(NAME)} })
             .then(r => { window.__launchResult = r; window.__launchDone = true; return r; });
         return true;
     })()`);
@@ -111,7 +111,7 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
         const legacyLaunch = await ev(`(async () => {
             const m = await import((window.__coralStatic || '/static/') + 'modals.js');
             window.__launchDone = false;
-            window.__launch = m._launchOn('local', '/api/sessions/launch', { working_dir: '/tmp', agent_type: 'terminal', display_name: 'Ids QA', board_name: ${JSON.stringify(LEGACY)} })
+            window.__launch = m._launchOn('local', '/api/sessions/launch', { working_dir: ${JSON.stringify(require('node:os').tmpdir())}, agent_type: 'terminal', display_name: 'Ids QA', board_name: ${JSON.stringify(LEGACY)} })
                 .then(r => { window.__launchResult = r; window.__launchDone = true; return r; });
             return true; })()`);
         await until(`!!document.getElementById('board-choice-modal')`, 'the choice for the older board');

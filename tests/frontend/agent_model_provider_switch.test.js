@@ -23,7 +23,7 @@ const BASE = require('./test_base').BASE;
     assert.deepEqual(unchanged,{type:'codex',model:'gpt-6-sol'});
     const custom = await change('my-custom-codex-model','claude');
     assert.deepEqual(custom,{type:'codex',model:'my-custom-codex-model',dirty:'true'});
-    fs.writeFileSync('/tmp/coral-1492-provider-switch.png', Buffer.from((await Page.captureScreenshot()).data,'base64'));
+    fs.writeFileSync(require('node:os').tmpdir() + '/coral-1492-provider-switch.png', Buffer.from((await Page.captureScreenshot()).data,'base64'));
     console.log(JSON.stringify({claudeToCodex,codexToClaude,unchanged,custom}));
   } finally { await client.close(); }
 })().catch(error => { console.error(error); process.exit(1); });

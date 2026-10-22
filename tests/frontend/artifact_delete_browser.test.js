@@ -33,7 +33,7 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
 
         // A terminal agent uploads a file (default mode: its session id, no token).
         const launch = await ev(`fetch('/api/sessions/launch', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ working_dir: '/tmp', agent_type: 'terminal', display_name: 'Delete QA' }) }).then(r => r.json())`);
+            body: JSON.stringify({ working_dir: ${JSON.stringify(require('node:os').tmpdir())}, agent_type: 'terminal', display_name: 'Delete QA' }) }).then(r => r.json())`);
         sid = launch.session_id; name = launch.session_name || launch.name;
         const up = await ev(`fetch('/api/agent/artifacts?session_id=${sid}', { method: 'POST', headers: { 'X-Artifact-Name': 'delete-me.txt', 'X-Artifact-Media-Type': 'text/plain' },
             body: 'an artifact for the delete test ' + Date.now() }).then(async r => ({ status: r.status, body: await r.json() }))`);

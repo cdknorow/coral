@@ -47,7 +47,7 @@ const { removeBoards, removeTeams } = require('./helpers/board_cleanup');
         await coralReady();
 
         agent = await ev(`fetch('/api/sessions/launch-team', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ board_name: 'sidebar-3645', working_dir: '/tmp', agent_type: 'terminal', agents: [{ name: 'Sidebar QA', prompt: 'x' }] }) })
+            body: JSON.stringify({ board_name: 'sidebar-3645', working_dir: ${JSON.stringify(require('node:os').tmpdir())}, agent_type: 'terminal', agents: [{ name: 'Sidebar QA', prompt: 'x' }] }) })
             .then(r => r.json()).then(j => ({ ...j.agents[0], board: j.board }))`);
         const row = `document.querySelector('#live-sessions-list [data-on-click="session-open"][data-session-id="${agent.session_id}"]')`;
         await until(`!!${row}`, 'the agent row');

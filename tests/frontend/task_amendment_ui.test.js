@@ -45,7 +45,7 @@ const BASE = require('./test_base').BASE;
         assert.match(detail.text, /Current revision 2/);
         assert.match(detail.text, /Clarify handoff/);
         assert.equal(detail.history, true);
-        fs.writeFileSync('/tmp/coral-1669-task-amendment.png', Buffer.from((await Page.captureScreenshot()).data, 'base64'));
+        fs.writeFileSync(require('node:os').tmpdir() + '/coral-1669-task-amendment.png', Buffer.from((await Page.captureScreenshot()).data, 'base64'));
 
         await ev(`testTasks.enableTaskEditMode(1669); new Promise(r=>setTimeout(r,20))`);
         await ev(`document.getElementById('task-edit-body').value='Amended body'; document.getElementById('task-edit-reason').value='Add acceptance detail'; testTasks.saveTaskEdit(1669)`);

@@ -59,7 +59,7 @@ async function run() {
     try {
         await Page.navigate({ url: BASE + '/' });
         await coralReady();
-        const r = await httpJson('POST', '/api/sessions/launch', { working_dir: '/tmp', agent_type: 'terminal', display_name: 'qa-escape' });
+        const r = await httpJson('POST', '/api/sessions/launch', { working_dir: require('node:os').tmpdir(), agent_type: 'terminal', display_name: 'qa-escape' });
         if (!r.data || !r.data.session_id) throw new Error(`launch: ${r.status} ${JSON.stringify(r.data)}`);
         const s = r.data; launched.push(s);
         await until(`(window._coralGetLiveSessions ? window._coralGetLiveSessions() : []).some(x => x.session_id === ${JSON.stringify(s.session_id)})`, 'the agent listed');

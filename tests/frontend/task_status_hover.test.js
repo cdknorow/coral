@@ -102,7 +102,7 @@ const BASE = require('./test_base').BASE;
         assert.equal(focus.focused, false, 'the status image takes no focus');
         assert.match(focus.open, /^Open task #\d+: .+, Open · Working$/, 'the Open button carries the status: ' + focus.open);
         await ev(`document.getElementById('board-tasks-section').scrollIntoView({block:'start'})`);
-        require('node:fs').writeFileSync('/tmp/coral-1497-task-status-hover.png', Buffer.from((await Page.captureScreenshot()).data, 'base64'));
+        require('node:fs').writeFileSync(require('node:os').tmpdir() + '/coral-1497-task-status-hover.png', Buffer.from((await Page.captureScreenshot()).data, 'base64'));
         console.log(JSON.stringify({working, blocked, focus}));
     } finally {
         await client.close();
