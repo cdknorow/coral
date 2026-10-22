@@ -1400,3 +1400,25 @@
     .modal-close-btn, .artifact-viewer-close { min-width: 44px; min-height: 44px; }
     .artifact-readers > summary { min-height: 44px; }
 }
+
+/* Chats on phones: the existing History controls live in the page (#6013). */
+#mobile-history-list,
+.mobile-history-back { display: none; }
+@media (max-width: 767px) {
+    #chats-empty-view { padding: 0; align-items: stretch; text-align: left; }
+    #chats-empty-view > .welcome-shell { display: none; }
+    #mobile-history-list { display: block; width: 100%; margin: 0; min-height: 0; }
+    #mobile-history-list .sidebar-section { padding: 16px 12px; }
+    #mobile-history-list .sidebar-section-header { padding: 0 0 12px; }
+    #mobile-history-list .history-filters { padding: 0 0 12px; }
+    #mobile-history-list input,
+    #mobile-history-list select,
+    #mobile-history-list button { min-height: 44px; }
+    #mobile-history-list button { min-width: 44px; }
+    #mobile-history-list .hf-label { color: var(--text-secondary); }
+    #mobile-history-list .hf-row { align-items: flex-start; }
+    #mobile-history-list .hf-label { padding-top: 12px; }
+    #mobile-history-list .hf-toggle-group { flex: 1; min-width: 0; }
+    #mobile-history-list .session-list > li { min-height: 44px; }
+    .mobile-history-back { display: inline-flex; align-items: center; min-height: 44px; min-width: 44px; }
+}
