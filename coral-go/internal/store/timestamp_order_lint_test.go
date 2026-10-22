@@ -5,6 +5,7 @@ import (
 	"go/parser"
 	"go/token"
 	"io/fs"
+	pathpkg "path"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -61,6 +62,13 @@ var nanoOrderAllowed = map[string]string{
 	"store/call_metrics.go: ORDER BY created_at LIMIT": "the oldest rows are pruned first, in batches, below a cutoff: two rows in one second swapping places changes which of them goes in this batch, never what is pruned",
 }
 
+// internalKey is the key a file is listed by in this file's tables: its path under internal/, with forward slashes, whatever the system's separator. The walk starts at ".." (this package's parent),
+// so a path is "../store/x.go" on Linux and macOS and `..\store\x.go` on Windows; both are "store/x.go". (The Windows run once compared the raw path and found no file in any table.)
+func internalKey(walked string) string {
+	p := pathpkg.Clean(strings.ReplaceAll(walked, `\`, "/"))
+	return strings.TrimPrefix(p, "../")
+}
+
 func goFilesUnderInternal(t *testing.T) map[string]*ast.File {
 	t.Helper()
 	fset := token.NewFileSet()
@@ -76,7 +84,7 @@ func goFilesUnderInternal(t *testing.T) map[string]*ast.File {
 		if perr != nil {
 			return perr
 		}
-		out[filepath.ToSlash(strings.TrimPrefix(path, "../"))] = f
+		out[internalKey(path)] = f
 		return nil
 	})
 	require.NoError(t, err)
@@ -307,4 +315,18 @@ func TestEveryOrderByATimeHasAUniqueTieBreak(t *testing.T) {
 	}
 	sort.Strings(bad)
 	assert.Empty(t, bad, "these order by a time with no id or rowid after it: rows with the same time come back in an arbitrary order. Add ', id' (or rowid)")
+}
+
+func TestInternalKeyIsTheSameOnEverySystem(t *testing.T) {
+	for in, want := range map[string]string{
+		"../store/artifact_comments.go":        "store/artifact_comments.go",
+		`..\store\artifact_comments.go`:        "store/artifact_comments.go",
+		`..\server\routes\token_usage.go`:      "server/routes/token_usage.go",
+		"../background/health_held.go":         "background/health_held.go",
+		`..\background/health_held.go`:         "background/health_held.go",
+		"./../tracking/milestones.go":          "tracking/milestones.go",
+		filepath.Join("..", "store", "git.go"): "store/git.go",
+	} {
+		assert.Equal(t, want, internalKey(in), in)
+	}
 }
