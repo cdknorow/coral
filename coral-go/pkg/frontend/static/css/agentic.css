@@ -2542,6 +2542,10 @@ button.team-artifact-name { cursor: pointer; }
 
 /* Rename board in Team settings (#3536) */
 .board-rename { margin-top: 6px; }
+/* Rename board is done once: a text button, not an outlined one as loud as Save (#6042). */
+.board-rename-toggle, .team-availability-dialog .board-rename-toggle { background: none; border-color: transparent; padding-left: 0; padding-right: 0; color: var(--link-text, var(--accent)); text-decoration: underline; text-underline-offset: 2px; }
+.board-rename-toggle:hover, .team-availability-dialog .board-rename-toggle:hover { background: none; color: var(--text-primary); }
+@media (max-width: 767px), (pointer: coarse) { .board-rename-toggle, .team-availability-dialog .board-rename-toggle, .team-availability-dialog .health-actions .health-reset { min-height: var(--control-touch-height, 44px); min-width: var(--control-touch-height, 44px); } }
 .board-rename-form { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
 .board-rename-form[hidden] { display: none; }
 .board-rename-form label { font-size: 0.75rem; color: var(--text-secondary); }

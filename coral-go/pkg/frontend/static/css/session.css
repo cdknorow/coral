@@ -1753,6 +1753,9 @@
 .health-line { display: flex; align-items: flex-start; gap: 6px; }
 .health-line > label { flex: 0 1 auto; min-width: 0; }
 .health-line > .settings-info-btn { margin-top: 1px; }
+/* Reset to defaults is the quiet action next to Save health check, not the brightest button on the tab while Save is dimmed (#6042). */
+.health-actions .health-reset, .team-availability-dialog .health-actions .health-reset { background: none; border-color: transparent; color: var(--link-text, var(--accent)); text-decoration: underline; text-underline-offset: 2px; }
+.health-actions .health-reset:hover, .team-availability-dialog .health-actions .health-reset:hover { background: none; color: var(--text-primary); }
 /* The (i) is a circle in Team settings as in Settings (#6042): the dialog's generic button rule (padding, radius, min-height) must not reshape it. */
 .team-availability-dialog .settings-info-btn { min-height: 0; padding: 0; border-radius: 50%; width: 1.5rem; height: 1.5rem; }
 .team-availability-dialog .settings-info-btn:not([aria-expanded="true"]) { background: none; color: var(--text-secondary); }
