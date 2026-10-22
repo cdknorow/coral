@@ -11,19 +11,21 @@
 
 import { serverBase, isLocalServer } from './server_base.js';
 import { importOnce } from './import_once.js';
+import { setUpdatesEnabled } from './update_flag.js';
 const { noteRelaunchSent } = await importOnce('./relaunch_badge.js'); // lazy modules load the others they need through importOnce
 
 const ROUTES = {
     status: '/api/system/update',
-    relaunch: '/api/system/update/relaunch',
+    relaunch: '/api/system/update/relaunch', // a machine behind Coral Hub: the hub's owner relaunches it
+    relaunchLocal: '/api/system/update/relaunch-local', // this computer, from its own dashboard (#5280 step 3): same acknowledgement, a route of its own
     cloudStatus: '/api/cloud/status', // GET: hub_relaunch_updates is where the saved switch is read
     hubRelaunch: '/api/cloud/hub-relaunch', // PUT {allow}: the switch Coral Hub may relaunch this Coral (#5280)
-    check: '/api/system/update/check', // no server route yet: used only when serverHas.check is on
-    prefs: '/api/system/update/settings', // no server route yet: used only when serverHas.autoPref is on
+    check: '/api/system/update/check', // POST: one background check, local only
+    prefs: '/api/system/update/settings', // PUT {auto}: check for updates automatically, local only
 };
 
 /** What the server serves beyond the status, the relaunch and the hub switch. Both are off until a route is registered (QA, #5302): Check now and the auto switch are not drawn, and nothing is sent to a path that answers 404. */
-export const serverHas = { check: false, autoPref: false };
+export const serverHas = { check: true, autoPref: true }; // the server has both routes now (#5280 step 3 B); they answer 404 only where the update feature is off, and then the whole UI is off too
 
 const str = (v) => (typeof v === 'string' ? v : '');
 const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
@@ -114,11 +116,11 @@ export const rollbackText = (reason) => (Object.hasOwn(ROLLBACK_TEXT, reason) ? 
 export function notReadyText(s) {
     switch (s.notReady) {
         case 'up_to_date': return { title: 'Coral is up to date', sub: `You are on ${s.installed}.` };
-        case 'not_promoted': return { title: s.latest ? `Coral ${s.latest} is out` : 'A newer Coral is out', sub: 'It will install automatically once it is ready.' };
+        case 'not_promoted': return { title: s.latest ? `Coral ${s.latest} is out` : 'A newer Coral is out', sub: 'Coral will download and check it once it is ready. Installing it is up to you.' };
         case 'backoff': return { title: 'Nothing to install right now', sub: 'Coral will check again later.' };
         case 'check_failed': return { title: 'Coral could not check for updates', sub: 'It will try again later. Nothing was changed.' };
         case 'not_checked': return { title: 'Coral has not checked for updates yet', sub: `You are on ${s.installed}.` };
-        case 'switch_off': return { title: 'Automatic installs are off', sub: 'Turn on "Install updates automatically" in Settings > Updates to have updates downloaded and kept ready.' };
+        case 'switch_off': return { title: 'Automatic update checks are off', sub: 'Turn on "Check for updates automatically" in Settings > Updates to have updates downloaded and kept ready.' };
         default: return { title: 'Nothing is ready to install', sub: `You are on ${s.installed}.` };
     }
 }
@@ -130,15 +132,17 @@ const safePath = (v) => (typeof v === 'string' && /^\/(?!\/)[^\s\\]*$/.test(v) ?
 export async function fetchUpdateStatus() {
     try {
         const resp = await fetch(ROUTES.status, { headers: { Accept: 'application/json' } });
-        if (!resp.ok) return null;
-        return normalizeStatus(await resp.json());
+        if (!resp.ok) { setUpdatesEnabled(false); return null; }
+        const s = normalizeStatus(await resp.json());
+        setUpdatesEnabled(!!s && s.enabled); // the server says whether the UI is on
+        return s;
     } catch { return null; }
 }
 
 /** Relaunch to install the staged update, acknowledging the agents the user saw. Resolves { ok, status, code, error, relaunch }: relaunch is the server's current list when it answered 409 stale_ack. */
 export async function requestRelaunch(ack, { server = '' } = {}) {
     try {
-        const resp = await fetch(serverBase(server) + ROUTES.relaunch, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ack }) });
+        const resp = await fetch(serverBase(server) + (isLocalServer(server) ? ROUTES.relaunchLocal : ROUTES.relaunch), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ack }) });
         if (resp.status === 202 && !isLocalServer(server)) noteRelaunchSent(server); // a machine behind the hub was told to relaunch: its Servers row says Updating (#5355)
         let body = {};
         try { body = await resp.json(); } catch { /* an empty body */ }
@@ -163,7 +167,7 @@ export async function requestCheckNow() {
     try { return (await fetch(ROUTES.check, { method: 'POST' })).ok; } catch { return false; }
 }
 
-/** Save "Install updates automatically" (only when the server has a route for it). */
+/** Save "Check for updates automatically". */
 export async function savePrefs({ auto }, was = {}) {
     if (serverHas.autoPref && auto !== undefined && !!auto !== (was.auto !== false)) {
         const resp = await fetch(ROUTES.prefs, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ auto: !!auto }) });

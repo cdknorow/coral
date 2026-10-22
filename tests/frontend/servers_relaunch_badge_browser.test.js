@@ -44,12 +44,12 @@ const TIP = 'Coral on this machine is restarting into an update. It reconnects o
         const close = () => ev(`import(${S} + 'cloud_servers.js').then(m => { m.hideCloudServers(); return true; })`);
 
         console.log('1. flag off: nothing is read, nothing shown');
-        await ev(`localStorage.removeItem('coral-updates-ui'); true`);
+        await ev(`import((window.__coralStatic || '/static/') + 'update_flag.js').then(m => { m.setUpdatesEnabled(false); return true; })`);
         await open([srv('m1', 'Alpha', true)], { m1: { status: 200, body: { relaunching: true } } });
         check('flag off: no read, no badge', (await ev('window.__calls.length')) === 0 && (await badges())[0].badge === null);
         await close();
 
-        await ev(`localStorage.setItem('coral-updates-ui', 'on'); true`);
+        await ev(`import((window.__coralStatic || '/static/') + 'update_flag.js').then(m => { m.setUpdatesEnabled(true); return true; })`);
         console.log('2. the fifteen hub replies');
         for (const c of CASES) {
             await open([srv('m1', 'Alpha', true)], { m1: { status: c.status, body: c.body } });

@@ -39,9 +39,10 @@ const agenticSt = { ...base, channel: 'agentic', approved: { version: '1.4.142',
         await Emulation.setTouchEmulationEnabled({ enabled: view.phone });
         await Emulation.setEmulatedMedia({ features: [{ name: 'prefers-color-scheme', value: view.theme }, { name: 'prefers-reduced-motion', value: 'reduce' }] });
         await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired();
-        await ev(`localStorage.clear(); localStorage.setItem('coral-updates-ui', 'on'); true`);
+        await ev(`localStorage.clear(); true`);
         await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired(); await install();
         await ev(`window.__coralReady.then(() => true)`);
+        await ev(`import((window.__coralStatic || '/static/') + 'update_flag.js').then(m => { m.setUpdatesEnabled(true); return true; })`);
         await installAudit(ev); await setTheme(ev, view.theme);
         await ev(STUB);
         await ev(`window.__ch.status = ${JSON.stringify(status)}; import(${S} + 'update_ui.js').then(m => m.startUpdateUi && m.startUpdateUi()).then(() => import(${S} + 'update_ui.js')).then(m => m.refreshUpdateStatus()).then(() => true)`);
@@ -65,7 +66,7 @@ const agenticSt = { ...base, channel: 'agentic', approved: { version: '1.4.142',
             await load(view, approvedSt);
             let p = await pane();
             check(`${tag}: Approved is the choice, with "Approved now" and its age, and no waiting list (${JSON.stringify(p.calm)})`, p.group && p.radios.map(r => `${r.v}:${r.checked}`).join() === 'approved:true,agentic:false' && p.calm[0] === 'Approved now: v1.4.142, approved 2 days ago.' && !p.waiting);
-            check(`${tag}: the automatic-install note is not shown on Approved`, p.calm.every(t => !/still uses Approved/.test(t)));
+            check(`${tag}: the automatic-check note is not shown on Approved`, p.calm.every(t => !/still uses Approved/.test(t)));
             await shot(`channel-approved-${view.name}-${view.theme}`);
             // an Approved release with no approval time says no age; past the approved release says so
             await ev(`window.__ch.status = ${JSON.stringify({ ...approvedSt, approved: { version: '1.4.142', approved_at: '' }, past_approved: true })}; import(${S} + 'update_ui.js').then(m => m.refreshUpdateStatus()).then(() => import(${S} + 'update_settings.js')).then(m => m.showUpdatesPane()).then(() => true)`); await settle(300);
@@ -79,7 +80,7 @@ const agenticSt = { ...base, channel: 'agentic', approved: { version: '1.4.142',
             await load(view, agenticSt);
             p = await pane();
             check(`${tag}: Agentic is the choice; the section is collapsed and says how many wait (${p.summary})`, p.radios.map(r => `${r.v}:${r.checked}`).join() === 'approved:false,agentic:true' && p.waiting && p.open === false && p.summary === 'Waiting for approval (2)');
-            check(`${tag}: the automatic-install note shows on Agentic`, p.calm.some(t => /Installing updates automatically still uses Approved releases only/.test(t)));
+            check(`${tag}: the automatic-check note shows on Agentic`, p.calm.some(t => /Checking for updates automatically still uses Approved releases only/.test(t)));
             await click('#update-pane-body .update-waiting > summary'); await settle(200);
             p = await pane();
             const c0 = p.cards[0], c1 = p.cards[1];

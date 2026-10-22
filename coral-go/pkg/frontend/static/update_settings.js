@@ -114,7 +114,7 @@ function channelBlock(s) {
     g.append(opt('agentic', 'Agentic (every release)', 'Every release as soon as it is published, including ones not yet approved. These may change faster and be less tested.'));
     if (s.approved) { const d = daysSince(s.approved.approvedAt); g.append(mk('p', 'update-calm', `Approved now: v${s.approved.version}${d === null ? '' : `, approved ${ago(d)}`}.`)); }
     if (s.pastApproved) g.append(mk('p', 'update-calm', 'You are already past the Approved release, so Approved offers nothing newer.'));
-    if (s.auto !== false) { const n = mk('p', 'update-calm update-channel-auto', 'Installing updates automatically still uses Approved releases only.'); n.hidden = s.channel !== 'agentic'; g.append(n); }
+    if (s.auto !== false) { const n = mk('p', 'update-calm update-channel-auto', 'Checking for updates automatically still uses Approved releases only.'); n.hidden = s.channel !== 'agentic'; g.append(n); }
     return g;
 }
 
@@ -165,7 +165,7 @@ export async function showUpdatesPane() {
     // Through Coral Hub the switch is not the hub's to change (the machine's owner sets it on that computer), so it is not drawn there
     const grid = mk('dl', 'info-grid settings-grid');
     const reason = unmanaged ? (s.installKind === 'homebrew' ? 'Homebrew manages updates.' : 'This install cannot update itself.') : '';
-    if (serverHas.autoPref) grid.append(row('settings-update-auto', 'Install updates automatically', unmanaged ? reason : 'Downloads in the background and checks the release is genuine. The update installs when you relaunch Coral, never while you work. Only the latest releases of Coral\'s own GitHub repository are used.', unmanaged ? false : s.auto !== false, unmanaged));
+    if (serverHas.autoPref) grid.append(row('settings-update-auto', 'Check for updates automatically', unmanaged ? reason : 'Downloads in the background and checks the release is genuine. The update installs when you relaunch Coral, never while you work. Only the latest releases of Coral\'s own GitHub repository are used.', unmanaged ? false : s.auto !== false, unmanaged));
     // The Coral Hub relaunch switch lives in Settings > Network and Hub (with the rest of what the hub may do here); this pane only says where it is
     if (hubOn !== null && !unmanaged) {
         const r = mk('div', 'settings-row'); const dt = mk('dt', null, 'Relaunch from Coral Hub'); const dd = mk('dd');
@@ -184,7 +184,7 @@ export async function showUpdatesPane() {
     host.append(mk('p', 'update-calm update-privacy', 'Coral contacts GitHub only, to read the release list and download the package.'));
 }
 
-/** Save what the pane changed, with Apply: "Install updates automatically" and the update channel (each only when it changed; a no-op when the pane was not drawn). Returns true when something was saved. */
+/** Save what the pane changed, with Apply: "Check for updates automatically" and the update channel (each only when it changed; a no-op when the pane was not drawn). Returns true when something was saved. */
 export async function applyUpdatePrefs() {
     const s = getUpdateStatus();
     if (isCloud() || !s) return false;

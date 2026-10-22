@@ -118,7 +118,8 @@ const FX = {
         // 5. the Updating badge
         console.log('5. the Updating badge');
         await load(1280, 'light');
-        await ev(`localStorage.setItem('coral-updates-ui', 'on'); (() => { const R = window.fetch; const json = (b, s = 200) => Promise.resolve(new Response(JSON.stringify(b), { status: s, headers: { 'content-type': 'application/json' } }));
+                await ev(`import((window.__coralStatic || '/static/') + 'update_flag.js').then(m => { m.setUpdatesEnabled(true); return true; })`);
+        await ev(`(() => { const R = window.fetch; const json = (b, s = 200) => Promise.resolve(new Response(JSON.stringify(b), { status: s, headers: { 'content-type': 'application/json' } }));
             window.fetch = (u, o = {}) => { const p = new URL(String(u), location.origin).pathname; if (p === '/api/servers') return json({ servers: [{ id: 'm1', label: 'Alpha', online: true, access_mode: 'launch', local_mode: 'launch', created_at: '2026-10-01T00:00:00Z', last_seen: '2026-10-20T08:00:00Z' }] }); if (/\\/api\\/system\\/update$/.test(p)) return json({ relaunching: true }); return R(u, o); };
             const h = document.createElement('div'); h.id = 'rb-host'; document.body.appendChild(h); return true; })()`);
         await ev(`import(${S} + 'cloud_servers.js').then(m => m.renderCloudServersInto(document.getElementById('rb-host')))`);

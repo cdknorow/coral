@@ -38,7 +38,7 @@ const upToDate = { ...idle, not_ready_reason: 'up_to_date' }; // what the server
             if (url.includes('/api/system/update')) {
                 const u2 = window.__upd; u2.calls.push({ method, url: url.replace(/^.*\\/api\\/system\\/update/, '') || '/status', body: o && o.body ? JSON.parse(o.body) : null });
                 if (url.endsWith('/api/system/update')) return u2.status ? json(u2.status) : json({ error: 'none' }, 404);
-                if (url.endsWith('/relaunch')) { const keys = Object.keys(u2.calls[u2.calls.length - 1].body || {}); if (method !== 'POST' || keys.join() !== 'ack') return json({ error: 'bad body' }, 400); /* the server's body is exactly {ack} */ return json(u2.relaunch.body, u2.relaunch.status); }
+                if (url.endsWith('/relaunch-local')) { const keys = Object.keys(u2.calls[u2.calls.length - 1].body || {}); if (method !== 'POST' || keys.join() !== 'ack') return json({ error: 'bad body' }, 400); /* the server's body is exactly {ack} */ return json(u2.relaunch.body, u2.relaunch.status); }
                 if (url.endsWith('/check')) return json({ ok: true }, u2.checkOk ? 200 : 500);
                 if (url.endsWith('/settings')) return json({ ok: true });
             }
@@ -50,13 +50,14 @@ const upToDate = { ...idle, not_ready_reason: 'up_to_date' }; // what the server
         await Emulation.setTouchEmulationEnabled({ enabled: view.phone });
         await Emulation.setEmulatedMedia({ features: [{ name: 'prefers-color-scheme', value: view.theme }, { name: 'prefers-reduced-motion', value: 'reduce' }] });
         await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired();
-        await ev(`localStorage.clear(); ${flag ? "localStorage.setItem('coral-updates-ui', 'on');" : ''} true`);
+        await ev(`localStorage.clear(); true`);
         await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired(); await install();
         await ev(`window.__coralReady.then(() => true)`);
+        if (flag) await ev(`import((window.__coralStatic || '/static/') + 'update_flag.js').then(m => { m.setUpdatesEnabled(true); return true; })`); // the server's `enabled` is what turns the UI on; the suite stands for a server that says so
         await installAudit(ev); await setTheme(ev, view.theme);
         await ev(STUB);
         // Check now and the auto switch exist only once the server has routes for them (QA, #5302): on here so their code stays covered; routes:false is the server as it is today
-        if (routes) await ev(`import(${S} + 'update_api.js').then(m => { m.serverHas.check = true; m.serverHas.autoPref = true; return true; })`);
+        await ev(`import(${S} + 'update_api.js').then(m => { m.serverHas.check = ${!!routes}; m.serverHas.autoPref = ${!!routes}; return true; })`); // the server has both routes now; routes:false is a server without them
         if (status) await setStatus(status);
     };
     const setStatus = async (st) => { await ev(`window.__upd.status = ${JSON.stringify(st)}; import(${S} + 'update_ui.js').then(m => m.startUpdateUi && m.startUpdateUi()).then(() => import(${S} + 'update_ui.js')).then(m => m.refreshUpdateStatus()).then(() => true)`); await settle(150); };
@@ -167,7 +168,7 @@ const upToDate = { ...idle, not_ready_reason: 'up_to_date' }; // what the server
             await ev(`window.__upd.calls.length = 0; window.__upd.relaunch = { status: 202, body: { ok: true, operation: 'op-1' } }; document.querySelector('#update-confirm-modal .update-go').click(); true`);
             await waitFor(`/Relaunching/.test(document.querySelector('#update-confirm-modal .modal-body').textContent)`, `${tag}: relaunching`, 4000);
             const post = await ev(`window.__upd.calls.filter(c => c.method === 'POST')`);
-            check(`${tag}: the request carries the new ack and nothing else (${JSON.stringify(post)})`, post.length === 1 && post[0].url === '/relaunch' && JSON.stringify(post[0].body) === '{"ack":"ack-2"}');
+            check(`${tag}: the request carries the new ack and nothing else (${JSON.stringify(post)})`, post.length === 1 && post[0].url === '/relaunch-local' && JSON.stringify(post[0].body) === '{"ack":"ack-2"}');
             await press('Escape', 'Escape', 27);
 
             // ═══ through Coral Hub: the hub's own answers (#5295)
@@ -225,11 +226,11 @@ const upToDate = { ...idle, not_ready_reason: 'up_to_date' }; // what the server
             for (const [what, st, expect] of [
                 ['up to date', upToDate, { title: 'Coral is up to date', act: 'Check now' }],
                 ['nothing known', idle, { title: 'Nothing is ready to install' }],
-                ['a newer one not promoted', { ...idle, not_ready_reason: 'not_promoted', latest: '1.4.130' }, { title: 'Coral 1.4.130 is out', sub: 'It will install automatically once it is ready.' }],
+                ['a newer one not promoted', { ...idle, not_ready_reason: 'not_promoted', latest: '1.4.130' }, { title: 'Coral 1.4.130 is out', sub: 'Coral will download and check it once it is ready. Installing it is up to you.' }],
                 ['backing off', { ...idle, not_ready_reason: 'backoff' }, { title: 'Nothing to install right now', sub: 'Coral will check again later.' }],
                 ['check failed', { ...idle, not_ready_reason: 'check_failed' }, { title: 'Coral could not check for updates', k: 'warm' }],
                 ['not checked yet', { ...idle, not_ready_reason: 'not_checked' }, { title: 'Coral has not checked for updates yet' }],
-                ['the switch is off', { ...idle, not_ready_reason: 'switch_off' }, { title: 'Automatic installs are off' }],
+                ['the switch is off', { ...idle, not_ready_reason: 'switch_off' }, { title: 'Automatic update checks are off' }],
                 ['downloading', { ...idle, progress: 64, staged: { version: '1.4.126', staged_at: '', days_ready: 0, verified: false } }, { title: 'Downloading Coral 1.4.126', bar: '64' }],
                 ['failed', { ...idle, state: 'failed', last_result: { at: '2026-10-19T10:00:00Z', from: '1.4.125', to: '1.4.126', result: 'refused', by: 'local' } }, { title: 'Coral found an update (v1.4.126) it could not verify, so it was not installed.', sub: 'Your version is unchanged.', act: 'Try again' }],
                 ['Homebrew', { ...idle, install_kind: 'homebrew', upgrade_command: 'brew upgrade --cask coral', relaunch: { ...idle.relaunch, reason: 'unsupported_install' } }, { title: 'Homebrew updates this Coral', cmd: 'brew upgrade --cask coral', autoOff: true }],
