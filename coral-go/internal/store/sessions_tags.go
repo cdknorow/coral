@@ -141,7 +141,7 @@ var ErrTooManyPinnedFolders = errors.New("too many pinned folders")
 // ListPinnedFolders returns the pinned folders, oldest pin first.
 func (s *SessionStore) ListPinnedFolders(ctx context.Context) ([]PinnedFolder, error) {
 	out := []PinnedFolder{}
-	err := s.reader().SelectContext(ctx, &out, "SELECT path, pinned_at FROM pinned_folders ORDER BY pinned_at, path")
+	err := s.reader().SelectContext(ctx, &out, "SELECT path, pinned_at FROM pinned_folders ORDER BY rowid") // the order they were pinned: pinned_at is RFC3339Nano text, which does not sort as time within a second (timestamp_order_lint_test.go)
 	return out, err
 }
 
