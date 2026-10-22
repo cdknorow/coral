@@ -59,7 +59,7 @@ var routeQueries = map[string]string{
 	"GET /api/sessions/live/{}/subagents/{}":      "session_id",
 	"GET /api/sessions/live/{}/tasks":             "limit,session_id",
 	"GET /api/settings/prompt-inspection":         "board",
-	"GET /api/system/cli-check":                   "source=cli_recheck,type=claude|agy|antigravity|gemini|codex|pi",
+	"GET /api/system/cli-check":                   "signin,source=cli_recheck,type=claude|agy|antigravity|gemini|codex|pi",
 	"GET /api/teams/all":                          "status",
 	"GET /api/teams/detail/{}/availability":       "activity,project,subscriber_id",
 	"GET /api/token-usage":                        "board_name,session_id,since",
