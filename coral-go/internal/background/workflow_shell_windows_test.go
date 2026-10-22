@@ -59,10 +59,13 @@ func TestStepsRunExternalCommandsWithOnlyGitCmdOnPath(t *testing.T) {
 	if !filepath.IsAbs(sh) {
 		t.Skip("no Git for Windows")
 	}
-	env := withShellDirs([]string{"PATH=" + filepath.Join(filepath.Dir(filepath.Dir(filepath.Dir(sh))), "cmd")}, sh)
-	cmd := exec.Command(sh, "-c", "uname -s && echo hi | cat")
+	// System32 follows Git\cmd as on a real machine: its find, sort and timeout must not shadow the POSIX ones.
+	sys32 := filepath.Join(os.Getenv("SystemRoot"), "System32")
+	env := withShellDirs([]string{"PATH=" + filepath.Join(filepath.Dir(filepath.Dir(filepath.Dir(sh))), "cmd") + ";" + sys32}, sh)
+	cmd := exec.Command(sh, "-c", "uname -s && echo hi | cat && find . -maxdepth 0 -name . && printf 'a\nb\n' | sort -r | head -1")
 	cmd.Env = env
 	out, err := cmd.CombinedOutput()
 	require.NoError(t, err, string(out))
 	assert.Contains(t, string(out), "hi")
+	assert.Contains(t, string(out), "b", "sort -r ran")
 }

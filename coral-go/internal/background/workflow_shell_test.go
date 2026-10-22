@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestWithShellDirsAddsTheShellsFoldersAfterThePath(t *testing.T) {
+func TestWithShellDirsAddsTheShellsFoldersBeforeThePath(t *testing.T) {
 	root := t.TempDir()
 	bin := filepath.Join(root, "usr", "bin")
 	mingw := filepath.Join(root, "mingw64", "bin")
@@ -17,10 +17,10 @@ func TestWithShellDirsAddsTheShellsFoldersAfterThePath(t *testing.T) {
 	sh := filepath.Join(bin, "sh.exe")
 	env := withShellDirs([]string{"A=1", "PATH=x", "B=2"}, sh)
 	got := env[len(env)-1]
-	assert.Equal(t, "PATH=x"+string(os.PathListSeparator)+bin+string(os.PathListSeparator)+mingw, got)
+	assert.Equal(t, "PATH="+mingw+string(os.PathListSeparator)+bin+string(os.PathListSeparator)+"x", got)
 	assert.Equal(t, []string{"A=1", "PATH=x", "B=2"}, env[:3], "the input is not changed")
 	assert.Equal(t, []string{"A=1"}, withShellDirs([]string{"A=1"}, "sh"), "a bare sh adds nothing")
-	assert.True(t, strings.HasPrefix(withShellDirs(nil, sh)[0], "PATH="+bin), "no PATH yet")
+	assert.True(t, strings.HasPrefix(withShellDirs(nil, sh)[0], "PATH="+mingw+string(os.PathListSeparator)+bin), "no PATH yet")
 }
 
 func TestNoShellErrorSaysWhatToInstall(t *testing.T) {
