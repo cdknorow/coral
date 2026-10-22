@@ -16,6 +16,7 @@ import (
 // Each must also hide its console (HideWindow, or executil.Command, which does): a Coral server that has no console of its own (started by a scheduled task or a launcher) gives every
 // console program it starts a visible window of its own otherwise (#211). The agent's own terminal (a PTY) is not started here and is not in this list.
 var agentCLIStarts = []string{
+	"agent/cli_gemini_guard.go",
 	"agent/cli_version.go",
 	"agentmodels/service.go",
 	"agentsignin/agentsignin.go",
