@@ -204,6 +204,13 @@
                 <button class="btn btn-primary" type="button" id="leftover-tmux-end" data-on-click="m-end-leftover-tmux">End them</button>
             </div>
 
+            <!-- #6064: the built-in terminal became the default: one line, once, for an install that ran on the old tmux default (terminal_backend.js) -->
+            <div id="default-notice-banner" class="leftover-tmux-banner default-notice-banner" role="status" hidden>
+                <span class="material-icons" aria-hidden="true">info</span>
+                <div class="leftover-tmux-text"><b>Agents now stop when you quit Coral.</b> To keep them running, choose tmux in <button type="button" class="default-notice-link" data-on-click="m-open-terminal-settings">Settings &gt; Terminal</button>.</div>
+                <button class="btn btn-primary" type="button" id="default-notice-dismiss" data-on-click="m-dismiss-default-notice">Got it</button>
+            </div>
+
             <!-- #3636: more agents were running when a pty Coral stopped than it wakes by itself -->
             <div id="auto-wake-banner" class="leftover-tmux-banner" role="alert" hidden>
                 <span class="material-icons" aria-hidden="true">bedtime</span>

@@ -409,6 +409,7 @@ func (s *Server) registerCloud(r *chi.Mux) {
 	r.Get("/api/system/terminal-backend", s.cloudHandler.TerminalBackend)
 	r.Put("/api/system/terminal-backend", s.cloudHandler.TerminalBackend)
 	r.Post("/api/system/terminal-backend/end-leftover", s.cloudHandler.EndLeftoverTmuxAgents)
+	r.Post("/api/system/terminal-backend/notice-seen", s.cloudHandler.DismissDefaultNotice)
 	r.Put("/api/system/hub-operator", s.cloudHandler.HubOperator)
 	s.cloudHandler.SetIdentityObserver(s.identity)
 	s.cloudHandler.SetBoardStore(s.boardStore)

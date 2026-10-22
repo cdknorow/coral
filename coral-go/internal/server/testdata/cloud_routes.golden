@@ -336,6 +336,7 @@ POST /api/system/login-token never
 POST /api/system/restart never
 POST /api/system/telemetry/acknowledge never
 POST /api/system/terminal-backend/end-leftover never
+POST /api/system/terminal-backend/notice-seen never
 POST /api/system/terminal-logs/delete-ended never
 POST /api/system/update/check never
 POST /api/system/update/install never

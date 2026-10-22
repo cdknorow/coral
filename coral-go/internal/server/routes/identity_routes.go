@@ -94,6 +94,7 @@ var operatorOnlyRoutes = map[string]string{
 	// #3634: the terminal backend, and ending agents left in Coral's old tmux server.
 	"PUT /api/system/terminal-backend":               "change the terminal backend",
 	"POST /api/system/terminal-backend/end-leftover": "end agents left in Coral's old tmux server",
+	"POST /api/system/terminal-backend/notice-seen":  "dismiss the line that agents now stop when Coral quits",
 	"PUT /api/cloud/max-mode":                        "change what Coral Hub may do",
 	"PUT /api/cloud/allow-auto-accept":               "change whether Coral Hub may turn on auto-accept",
 	"POST /api/hub-auto-accept":                      "change whether Coral Hub may turn on auto-accept (Coral Hub's owner)", // #5840

@@ -6,6 +6,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/subgentic/coral/internal/backendchoice"
 	setreg "github.com/subgentic/coral/internal/settings"
 	"github.com/subgentic/coral/internal/tmux"
 )
@@ -45,7 +46,7 @@ func (h *CloudHandler) refusePersonSystemSetting(w http.ResponseWriter, r *http.
 
 // TerminalBackend: GET/PUT /api/system/terminal-backend. PUT {"backend": "tmux"|"pty"} saves
 // the setting for the next start. The answer: {saved, running, forced, choice, restart_required,
-// can_restart, running_agents, leftover_tmux_agents}.
+// can_restart, running_agents, leftover_tmux_agents, next, default_notice}.
 func (h *CloudHandler) TerminalBackend(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPut {
 		if h.refusePersonSystemSetting(w, r) {
@@ -78,9 +79,12 @@ func (h *CloudHandler) TerminalBackend(w http.ResponseWriter, r *http.Request) {
 	if saved != "tmux" && saved != "pty" {
 		saved = ""
 	}
-	next := saved
-	if next == "" || !backendChoice() {
-		next = map[bool]string{true: "tmux", false: "pty"}[backendChoice()]
+	// What the next start runs: the same rules the start uses (backendchoice), so the dashboard never asks for a restart the start would not make.
+	next, _, _ := backendchoice.Resolve("", saved, runtime.GOOS, func() int {
+		return len(tmux.PrivateAgentSessions(r.Context(), tmux.PrivateSocketPath(h.dataDir)))
+	})
+	if next == "tmux" && !backendChoice() {
+		next = "pty"
 	}
 	if h.BackendForced {
 		next = h.BackendRunning
@@ -99,8 +103,10 @@ func (h *CloudHandler) TerminalBackend(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"saved": saved, "running": h.BackendRunning, "forced": h.BackendForced, "choice": backendChoice(),
-		"restart_required": next != h.BackendRunning, "can_restart": h.Restart != nil,
+		"next": next, "restart_required": next != h.BackendRunning, "can_restart": h.Restart != nil,
 		"running_agents": running, "leftover_tmux_agents": leftover,
+		// The one line "Agents now stop when you quit Coral" (#6064): owed to an install that ran on the old tmux default, until it is dismissed, and not once the person has made a choice.
+		"default_notice": setreg.Raw(s, setreg.TerminalDefaultNotice) == "pending" && saved == "" && h.BackendRunning == "pty",
 	})
 }
 
@@ -123,4 +129,17 @@ func (h *CloudHandler) EndLeftoverTmuxAgents(w http.ResponseWriter, r *http.Requ
 // isTerminalBackendKey reports a settings key only TerminalBackend may write.
 func isTerminalBackendKey(k string) bool {
 	return strings.EqualFold(strings.TrimSpace(k), TerminalBackendSetting)
+}
+
+// DismissDefaultNotice: POST /api/system/terminal-backend/notice-seen. The person dismissed the line "Agents now stop when you quit Coral": it is never shown again (#6064). The flag is in
+// the server's settings, so it holds across browsers and restarts.
+func (h *CloudHandler) DismissDefaultNotice(w http.ResponseWriter, r *http.Request) {
+	if h.refusePersonSystemSetting(w, r) {
+		return
+	}
+	if err := h.ss.SetSetting(r.Context(), setreg.TerminalDefaultNotice, "seen"); err != nil {
+		errInternalServer(w, "could not record that the notice was dismissed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }

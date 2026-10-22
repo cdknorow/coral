@@ -353,6 +353,7 @@ b POST /api/system/login-token
 b POST /api/system/restart
 b POST /api/system/telemetry/acknowledge
 b POST /api/system/terminal-backend/end-leftover
+b POST /api/system/terminal-backend/notice-seen
 b POST /api/system/terminal-logs/delete-ended
 b POST /api/system/update/install
 b POST /api/system/update/relaunch

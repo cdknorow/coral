@@ -67,6 +67,8 @@ func (b *backendRig) req(method, path, body, as string) *httptest.ResponseRecord
 		b.h.RestartServer(rec, r)
 	case "/api/system/terminal-backend/end-leftover":
 		b.h.EndLeftoverTmuxAgents(rec, r)
+	case "/api/system/terminal-backend/notice-seen":
+		b.h.DismissDefaultNotice(rec, r)
 	default:
 		b.h.TerminalBackend(rec, r)
 	}
@@ -82,7 +84,7 @@ func TestTerminalBackendSetting(t *testing.T) {
 	require.Equal(t, 200, rec.Code, rec.Body.String())
 	assert.Contains(t, rec.Body.String(), `"running":"tmux"`)
 	assert.Contains(t, rec.Body.String(), `"saved":""`)
-	assert.Contains(t, rec.Body.String(), `"restart_required":false`)
+	assert.Contains(t, rec.Body.String(), `"restart_required":true`, "no choice saved: the next start runs the built-in terminal (#6064), so a run on tmux is one to restart")
 	assert.Contains(t, rec.Body.String(), `"choice":true`)
 
 	for _, bad := range []string{`{}`, `{"backend":"PTY"}`, `{"backend":" pty"}`, `{"backend":"screen"}`} {
@@ -211,4 +213,65 @@ func TestEndLeftoverRefusesASymlinkedSocket(t *testing.T) {
 	assert.JSONEq(t, `{"ended":0,"left":0}`, rec.Body.String())
 	ls, _ := exec.Command(bin, "-S", target, "list-sessions", "-F", "#{session_name}").CombinedOutput()
 	assert.Contains(t, string(ls), "claude-11111111-2222-4333-8444-555555555555", "the server behind the link is untouched")
+}
+
+// The default is the built-in terminal (#6064): a pty run with no saved choice has nothing to apply; the one line "Agents now stop when you quit Coral" is owed to an install that ran on the old tmux
+// default, only while it runs pty on the default, until it is dismissed, and dismissing is the Operator's.
+func TestTerminalBackendDefaultAndTheOneTimeNotice(t *testing.T) {
+	b := newBackendRig(t, t.TempDir())
+	b.h.BackendRunning = "pty"
+	get := func() string { return b.req("GET", "/api/system/terminal-backend", "", "dashboard").Body.String() }
+
+	assert.Contains(t, get(), `"restart_required":false`, "pty running, no choice: that is the default")
+	assert.Contains(t, get(), `"default_notice":false`, "a new install is owed nothing")
+
+	require.NoError(t, b.ss.SetSetting(t.Context(), "terminal_default_notice", "none"))
+	assert.Contains(t, get(), `"default_notice":false`)
+
+	require.NoError(t, b.ss.SetSetting(t.Context(), "terminal_default_notice", "pending"))
+	assert.Contains(t, get(), `"default_notice":true`, "an install that ran on the old default is owed the line")
+
+	b.h.BackendRunning = "tmux"
+	assert.Contains(t, get(), `"default_notice":false`, "not while it runs tmux")
+	b.h.BackendRunning = "pty"
+
+	for _, as := range []string{"agent", "hub"} {
+		assert.Equal(t, 403, b.req("POST", "/api/system/terminal-backend/notice-seen", `{}`, as).Code, as)
+	}
+	assert.Contains(t, get(), `"default_notice":true`, "a refused caller dismisses nothing")
+
+	require.NoError(t, b.ss.SetSetting(t.Context(), TerminalBackendSetting, "pty"))
+	assert.Contains(t, get(), `"default_notice":false`, "once the person has chosen, the line is not about the default")
+	require.NoError(t, b.ss.SetSetting(t.Context(), TerminalBackendSetting, ""))
+
+	rec := b.req("POST", "/api/system/terminal-backend/notice-seen", `{}`, "dashboard")
+	require.Equal(t, 200, rec.Code, rec.Body.String())
+	s, _ := b.ss.GetSettings(t.Context())
+	assert.Equal(t, "seen", s["terminal_default_notice"], "the flag is in the server's settings")
+	assert.Contains(t, get(), `"default_notice":false`, "dismissed: never shown again")
+}
+
+// The exception in the dashboard's own answer: a tmux run with agents still in Coral's private tmux server is what the next start runs too, so it asks for no restart; without them it does.
+func TestTerminalBackendKeepsTmuxWhileAgentsAreInIt(t *testing.T) {
+	bin, ok := tmux.IsAvailable()
+	if !ok || !backendChoice() {
+		t.Skip("tmux not installed")
+	}
+	dataDir, err := os.MkdirTemp("/tmp", "cn")
+	require.NoError(t, err)
+	t.Cleanup(func() { os.RemoveAll(dataDir) })
+	private := tmux.PrivateSocketPath(dataDir)
+	t.Cleanup(func() { exec.Command(bin, "-S", private, "kill-server").Run() })
+	b := newBackendRig(t, dataDir)
+	get := func() string { return b.req("GET", "/api/system/terminal-backend", "", "dashboard").Body.String() }
+	assert.Contains(t, get(), `"restart_required":true`, "tmux running, none in it: the next start runs pty")
+
+	cmd := exec.Command(bin, "-S", private, "new-session", "-d", "-s", "claude-0b2f6c1e-3d4a-4b5c-8d6e-7f8091a2b3c4", "sleep 600")
+	cmd.Env = append(os.Environ(), "TMUX=")
+	out, err := cmd.CombinedOutput()
+	require.NoError(t, err, string(out))
+	assert.Contains(t, get(), `"restart_required":false`, "agents are running in tmux: the next start keeps tmux")
+
+	require.NoError(t, b.ss.SetSetting(t.Context(), TerminalBackendSetting, "pty"))
+	assert.Contains(t, get(), `"restart_required":true`, "a saved choice is not overridden by the exception")
 }

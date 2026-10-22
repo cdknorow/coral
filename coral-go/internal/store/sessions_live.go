@@ -167,6 +167,13 @@ func (s *SessionStore) CountLiveSessions(ctx context.Context) (int, error) {
 	return count, err
 }
 
+// HasRunAgents reports whether this install has ever started an agent (a row in live_sessions, active or not): what tells an install that has been used from a new one.
+func (s *SessionStore) HasRunAgents(ctx context.Context) (bool, error) {
+	var any bool
+	err := s.reader().GetContext(ctx, &any, "SELECT EXISTS(SELECT 1 FROM live_sessions)")
+	return any, err
+}
+
 // UpdateSessionPID stores the shell process PID for a live session.
 func (s *SessionStore) UpdateSessionPID(ctx context.Context, sessionID string, pid int) error {
 	_, err := s.db.ExecContext(ctx,

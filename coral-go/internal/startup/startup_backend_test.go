@@ -8,14 +8,14 @@ func TestResolveBackend(t *testing.T) {
 		flag, saved, goos, want string
 		forced                  bool
 	}{
-		{"", "", "darwin", "tmux", false},
-		{"", "", "linux", "tmux", false},
+		{"", "", "darwin", "pty", false},
+		{"", "", "linux", "pty", false},
 		{"", "", "windows", "pty", false},
 		{"", "pty", "darwin", "pty", false},
 		{"", "tmux", "linux", "tmux", false},
 		{"", "tmux", "windows", "pty", false},
-		{"", "PTY", "darwin", "tmux", false},
-		{"", "screen", "darwin", "tmux", false},
+		{"", "PTY", "darwin", "pty", false},
+		{"", "screen", "darwin", "pty", false},
 		{"pty", "tmux", "darwin", "pty", true},
 		{"tmux", "pty", "linux", "tmux", true},
 		{"tmux", "", "windows", "tmux", true},
