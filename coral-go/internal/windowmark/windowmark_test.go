@@ -7,6 +7,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/subgentic/coral/internal/linktest"
 )
 
 func TestTheMarkIsSetClearedAndOnlyAPlainFileCounts(t *testing.T) {
@@ -29,6 +31,18 @@ func TestTheMarkIsSetClearedAndOnlyAPlainFileCounts(t *testing.T) {
 	require.NoError(t, os.Remove(filepath.Join(dir, FileName)))
 	target := filepath.Join(dir, "elsewhere")
 	require.NoError(t, os.WriteFile(target, []byte("x"), 0o600))
-	require.NoError(t, os.Symlink(target, filepath.Join(dir, FileName)))
+	linktest.Symlink(t, target, filepath.Join(dir, FileName)) // skips where this user cannot make one
 	assert.False(t, Present(dir), "a link is no mark")
+}
+
+// Set never writes through a link planted at the marker's name (#183): a symbolic link, a junction (a folder) or a hard link is refused and its target is untouched. (The
+// symbolic link case skips where this user cannot make one; CI runs it.)
+func TestSetNeverWritesThroughALink(t *testing.T) {
+	dir := t.TempDir()
+	linktest.Each(t, filepath.Join(dir, FileName), func(t *testing.T, p linktest.Planted) {
+		Set(dir)
+		if p.Kind != "hardlink" { // (a hard link is a plain file by that name: a mark; what matters, and what the harness checks, is that its target is not written through)
+			assert.False(t, Present(dir), "a link is no mark, and Set did not turn it into one")
+		}
+	})
 }

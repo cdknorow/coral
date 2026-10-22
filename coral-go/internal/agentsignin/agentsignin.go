@@ -223,6 +223,7 @@ func CheckIn(ctx context.Context, agentType, bin, dir string) State {
 	var out, errOut limited
 	cmd.Stdout = &out
 	cmd.Stderr = &errOut
+	executil.NoCwdSearch(cmd) // Windows: a claude.cmd shim looks for node in the current folder first, so a repository's node.exe would run
 	err := cmd.Run()
 	if cctx.Err() != nil {
 		if ctx.Err() != nil {

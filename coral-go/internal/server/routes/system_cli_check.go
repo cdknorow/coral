@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/subgentic/coral/internal/agentenv"
+	"github.com/subgentic/coral/internal/executil"
 	"net/http"
 	"os"
 	"os/exec"
@@ -225,6 +226,7 @@ func probeCLIVersion(parent context.Context, path string) (version, probe string
 	cmd.WaitDelay = 200 * time.Millisecond
 	var out cliVersionOutput
 	cmd.Stdout = &out
+	executil.NoCwdSearch(cmd) // Windows: a claude.cmd shim looks for node in the current folder first, so a repository's node.exe would run
 	err := cmd.Run()
 	if err == nil {
 		version = strings.TrimSpace(out.String())

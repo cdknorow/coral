@@ -230,6 +230,7 @@ func callClaude(ctx context.Context, settings map[string]string, transcript stri
 		"--no-session-persistence",
 	)
 	cmd.Stdin = strings.NewReader(prompt)
+	executil.NoCwdSearch(cmd) // Windows: a claude.cmd shim looks for node in the current folder first, so a repository's node.exe would run
 	out, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("claude CLI failed: %w", err)
