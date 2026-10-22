@@ -137,10 +137,15 @@ func (b *TmuxBackend) Kill(name string) error {
 	b.mu.RUnlock()
 
 	if !ok {
-		return b.client.KillSession(ctx, name, "", "")
+		finish := paneTreeForAgent(ctx, b.client, name, "", "")
+		err := b.client.KillSession(ctx, name, "", "")
+		finish()
+		return err
 	}
 
+	finish := paneTreeForAgent(ctx, b.client, name, sess.info.AgentType, sess.info.SessionID) // what the agent started ends with it (#6141)
 	err := b.client.KillSession(ctx, name, sess.info.AgentType, sess.info.SessionID)
+	finish()
 
 	b.mu.Lock()
 	delete(b.sessions, name)
@@ -170,7 +175,10 @@ func (b *TmuxBackend) Restart(name, command string) error {
 
 	// Close pipe-pane, respawn, re-establish
 	b.client.ClosePipePane(ctx, pane.Target)
-	if err := b.client.RespawnPane(ctx, pane.Target, sess.info.WorkingDir); err != nil {
+	finish := paneTreeForTarget(ctx, b.client, pane.Target) // what the old agent started ends with it (#6141)
+	err = b.client.RespawnPane(ctx, pane.Target, sess.info.WorkingDir)
+	finish()
+	if err != nil {
 		return err
 	}
 
