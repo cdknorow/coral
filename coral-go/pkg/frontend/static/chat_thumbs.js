@@ -10,7 +10,7 @@ import { registerActions } from './actions.js';
 import { serverUrl, sessionServer, isCloud } from './server_base.js';
 import { fetchImageSrc } from './image_source.js';
 import { openChatImageTab } from './preview_pane.js';
-import { removeSharedCopy } from './shared_images.js';
+import { removeSharedCopy, removedCopyText } from './shared_images.js';
 import { showConfirmModal } from './confirm_dialog.js';
 import { showToast } from './utils.js';
 import { OWNER_LABEL_NOTE } from './owner_label.js'; // beside a thumbnail that cannot load because the computer has not confirmed its owner (#6108)
@@ -90,11 +90,13 @@ export function wireThumbs(bubble) {
 function askRemoveSharedCopy(x, after) {
     const s = state.currentSession;
     if (!x || !s || !s.session_id) return;
-    showConfirmModal('Remove the shared copy?', 'The image is removed from Coral Hub and from the chat here. The agent keeps its own file.', async () => {
-        if (await removeSharedCopy(serverOf(), s.session_id, x.dataset.artifact).catch(() => false)) {
+    showConfirmModal('Remove the shared copy?', 'The image is removed from this chat, and from Coral Hub unless another agent was given the same image. The agent keeps its own file.', async () => {
+        const result = await removeSharedCopy(serverOf(), s.session_id, x.dataset.artifact).catch(() => null);
+        if (result) {
             const thumb = x.previousElementSibling;
             if (thumb) thumb.hidden = true;
             x.hidden = true; // the chip with the file's name stays
+            showToast(removedCopyText(result)); // says whether the image stays shared with another agent
             if (after) after();
         } else showToast('Could not remove the shared copy.', true);
     });

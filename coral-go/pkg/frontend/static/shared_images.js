@@ -61,8 +61,19 @@ export function attachmentsLead(atts) {
     return parts;
 }
 
-/** Remove this agent's shared copy of an image: the Hub's view of it goes with it, the agent's file stays. */
+/** Remove this agent's shared copy of an image: the Hub's view of it goes with it unless another agent was given the same bytes, the agent's file stays.
+ *  null when it was not removed; otherwise { artifactRemoved }: true when the image itself went too, false when another agent's record keeps it, undefined when the answer did not say. */
 export async function removeSharedCopy(server, sessionId, hex) {
     const resp = await serverFetch(server, `/api/shared-images/${encodeURIComponent(hex)}?session_id=${encodeURIComponent(sessionId)}`, { method: 'DELETE' });
-    return resp.ok;
+    if (!resp.ok) return null;
+    let body = null;
+    try { body = await resp.json(); } catch { /* an answer with no body: removed, nothing more said */ }
+    return { artifactRemoved: body && typeof body.artifact_removed === 'boolean' ? body.artifact_removed : undefined };
+}
+
+/** What the person is told once their shared copy is removed: whether the image is gone from Coral Hub too, or stays because another agent was given the same image. */
+export function removedCopyText(result) {
+    if (result && result.artifactRemoved === false) return 'Removed from this chat. The same image is also shared with another agent, so it stays there.';
+    if (result && result.artifactRemoved === true) return 'Removed from this chat and from Coral Hub.';
+    return 'Removed from this chat.';
 }

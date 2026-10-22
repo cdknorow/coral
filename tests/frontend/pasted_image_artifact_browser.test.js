@@ -123,7 +123,7 @@ async function httpJson(method, p, body, headers = {}) {
                 await ev(`document.querySelector('#preview-toolbar .preview-unshare-btn').click(); true`);
             } else await ev(`document.querySelector('#pia-box .chat-attachment-unshare').click(); true`);
             await waitFor(`document.getElementById('confirm-modal').style.display === 'flex'`, `${tag}: the confirmation`, { timeout: 5000 });
-            check(`${tag}: removing asks first and says what is lost`, /removed from Coral Hub/.test(await ev(`document.getElementById('confirm-modal-message').textContent`)));
+            check(`${tag}: removing asks first and says what is lost`, /unless another agent was given the same image/.test(await ev(`document.getElementById('confirm-modal-message').textContent`)));
             await ev(`document.getElementById('confirm-modal-yes').click(); true`);
             await waitFor(`window.__rec.deletes.length === 1 && document.querySelector('#pia-box .chat-attachment-thumb').hidden === true`, `${tag}: the thumbnail turns back into the chip`, { timeout: 8000 });
             if (mobile) check(`${tag}: the opened image closes with its shared copy`, await ev(`!document.querySelector('#preview-toolbar .preview-unshare-btn')`));
