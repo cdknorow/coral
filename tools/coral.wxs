@@ -134,10 +134,13 @@
          who ran the installer, never the elevated one that installed the files (a deferred or no-impersonate action would run
          it as SYSTEM or elevated). ExitDialog shows the checkbox only on a first install or an upgrade (NOT Installed), and
          the launch has the same condition plus NOT REMOVE~="ALL", so a repair or an uninstall starts nothing. A silent or
-         basic-UI install (/qn, /passive) shows no ExitDialog and starts nothing. -->
+         basic-UI install (/qn, /passive) shows no ExitDialog and starts nothing.
+         From an ELEVATED client (msiexec run as administrator) that same token would start Coral elevated, with its server, agents and
+         tools running as an administrator (#5883): "--from-installer" makes coral-tray.exe start nothing when its own token is
+         elevated (cmd/coral-tray/installer_launch.go), before it spawns its background process. -->
     <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Launch $(var.ProductName)" />
     <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
-    <CustomAction Id="LaunchCoral" FileRef="coral_tray.exe" ExeCommand="" Execute="immediate" Return="asyncNoWait" />
+    <CustomAction Id="LaunchCoral" FileRef="coral_tray.exe" ExeCommand="--from-installer" Execute="immediate" Return="asyncNoWait" />
     <UI>
       <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchCoral"
         Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 AND NOT Installed AND NOT REMOVE~=&quot;ALL&quot;" />

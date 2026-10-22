@@ -62,7 +62,14 @@ func main() {
 	// "" = not given: Settings > Terminal backend, else tmux (pty on Windows) (#3634).
 	backendFlag := flag.String("backend", "", "Terminal backend: pty or tmux (default: Settings > Terminal backend, else tmux; pty on Windows)")
 	serverChild := flag.Bool("server-child", false, "Run Coral's server for the tray (used internally, #4163)")
+	fromInstaller := flag.Bool(installerLaunchFlag, false, "Started by the installer's Launch Coral: starts nothing when elevated (used internally, #5883)")
 	flag.Parse()
+
+	// Before the tray spawns its background process, which would inherit this elevated token.
+	if installerLaunchRefused(*fromInstaller, processElevated) {
+		fmt.Println("Coral was not started: the installer was run as administrator, and Coral does not start elevated. Open Coral from the Start Menu.")
+		return
+	}
 
 	// The tray's server child (#4163): the server only, supervised by the tray that started it.
 	if *serverChild {
