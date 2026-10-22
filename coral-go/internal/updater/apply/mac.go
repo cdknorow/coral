@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	instpkg "github.com/subgentic/coral/internal/updater/install"
 	"github.com/subgentic/coral/internal/windowmark"
 )
 
@@ -35,8 +36,9 @@ type Mac struct {
 	Parent int
 	// WaitFor is how long Coral gets to end; HealthFor how long the new install must stay up. Zero values take the defaults.
 	WaitFor, HealthFor time.Duration
-	// Prefixes are the Homebrew prefixes to look in (default /opt/homebrew, /usr/local and $HOMEBREW_PREFIX).
+	// Prefixes and Appdirs are the Homebrew prefixes and the appdirs to look in (default: install.MacOptions, which adds $HOMEBREW_PREFIX and ~/Applications); a test names its own.
 	Prefixes []string
+	Appdirs  []string
 	// DataDir is Coral's data folder: the relaunch after an update opens the window again only if it was open (windowmark).
 	DataDir string
 	// Self is this program's pid, excluded when looking for Coral processes in the install (it runs from inside it).
@@ -84,37 +86,29 @@ func (m *Mac) Install() (string, error) {
 	return app, nil
 }
 
-func (m *Mac) prefixes() []string {
+// options are where the Homebrew check looks: the Prefixes a test names, else the places a Finder-launched Coral looks (install.MacOptions).
+func (m *Mac) options() instpkg.Options {
 	if m.Prefixes != nil {
-		return m.Prefixes
+		return instpkg.Options{Prefixes: m.Prefixes, Appdirs: m.Appdirs}
 	}
-	p := []string{"/opt/homebrew", "/usr/local"}
-	if h := os.Getenv("HOMEBREW_PREFIX"); h != "" {
-		p = append(p, h)
-	}
-	return p
+	home, _ := os.UserHomeDir()
+	return instpkg.MacOptions(home, os.Getenv("HOMEBREW_PREFIX"))
 }
 
-// Unsupported: a Homebrew install (the Caskroom's Coral.app link points at the running bundle; the owner and the writability of the app cannot
+// Unsupported: a Homebrew install (the one shared classifier, internal/updater/install: the Caskroom link or the cask's recorded metadata; the owner and the writability of the app cannot
 // tell it from a dragged copy, #5231 section 9), and a volume without an atomic swap.
-func (m *Mac) Unsupported(install string) string {
-	real, err := filepath.EvalSymlinks(install)
-	if err != nil {
+func (m *Mac) Unsupported(inst string) string {
+	if _, err := filepath.EvalSymlinks(inst); err != nil {
 		return "unreadable_install"
 	}
-	for _, prefix := range m.prefixes() {
-		links, _ := filepath.Glob(filepath.Join(prefix, "Caskroom", "coral", "*", "Coral.app"))
-		for _, l := range links {
-			if target, err := filepath.EvalSymlinks(l); err == nil && target == real {
-				return "homebrew"
-			}
-		}
+	if instpkg.MacManaged(inst, m.options()) != "" {
+		return "homebrew"
 	}
 	probe := m.SwapSupported
 	if probe == nil {
 		probe = swapSupported
 	}
-	if !probe(filepath.Dir(install)) {
+	if !probe(filepath.Dir(inst)) {
 		return "no_atomic_swap"
 	}
 	return ""

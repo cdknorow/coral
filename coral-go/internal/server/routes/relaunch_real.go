@@ -49,6 +49,7 @@ const (
 // updaterProgram is the two things the updater program is asked: what it knows, and to apply (a test replaces it; the real one is execProgram).
 type updaterProgram interface {
 	Status(ctx context.Context) ([]byte, error)
+	RunCheck(ctx context.Context) ([]byte, error)
 	StartApply() (applyRun, error)
 }
 
@@ -411,6 +412,37 @@ func (u *realUpdater) giveUp(st relaunchState, reason string) {
 	u.cachedOK = false
 }
 
+// Check runs one check and returns the updater's own word for how it ended. It never installs.
+func (u *realUpdater) Check(ctx context.Context) (string, error) {
+	out, err := u.prog.RunCheck(ctx)
+	u.mu.Lock()
+	u.cachedOK = false // a check changes what is staged
+	u.mu.Unlock()
+	if err != nil {
+		return "", fmt.Errorf("the updater did not answer: %w", err)
+	}
+	var r struct {
+		Result string `json:"result"`
+	}
+	if json.Unmarshal(out, &r) != nil {
+		return "", errors.New("the updater's answer is not a result")
+	}
+	return resultToken(r.Result), nil
+}
+
+// resultToken keeps an updater result word (lower-case letters, digits and underscores, at most 40) and shows anything else as "other": it goes to the log and to the job's decision only.
+func resultToken(s string) string {
+	if s == "" || len(s) > 40 {
+		return "other"
+	}
+	for _, c := range s {
+		if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '_') {
+			return "other"
+		}
+	}
+	return s
+}
+
 // Audit appends one attempt to the history, keeping the last maxAuditRows.
 func (u *realUpdater) Audit(_ context.Context, a RelaunchAudit) error {
 	u.mu.Lock()
@@ -481,13 +513,20 @@ func (e execProgram) program() (string, error) {
 }
 
 func (e execProgram) Status(ctx context.Context) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, statusTimeout)
+	defer cancel()
+	return e.run(ctx, "status", "--json")
+}
+
+// RunCheck runs "coral-update check" (it fetches, verifies and stages; the caller's context bounds it) and returns its one JSON line.
+func (e execProgram) RunCheck(ctx context.Context) ([]byte, error) { return e.run(ctx, "check") }
+
+func (e execProgram) run(ctx context.Context, args ...string) ([]byte, error) {
 	p, err := e.program()
 	if err != nil {
 		return nil, err
 	}
-	ctx, cancel := context.WithTimeout(ctx, statusTimeout)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, p, "status", "--json")
+	cmd := exec.CommandContext(ctx, p, args...)
 	cmd.Env = programEnv()
 	cmd.WaitDelay = 2 * time.Second // a program that is killed at the timeout but left a child holding its output does not hold this call
 	var out limitedBuffer
