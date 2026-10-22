@@ -4549,6 +4549,10 @@ a.ibx-open, a.ibx-open:visited { color: var(--link-text); }
 .launch-cli-slot .acf-cli-warning code { color: var(--text-primary); overflow-wrap: anywhere; }
 .launch-cli-slot .acf-cli-warning .cli-install-link a { color: var(--link-text); }
 .launch-cli-slot .acf-cli-warning .btn { margin: 8px 0 0; }
+/* The dialog says it once: the app-wide banner steps aside while the dialog has the line (#6046). */
+body:has(#launch-modal[style*="flex"] :is(#launch-tmux-slot, #team-tmux-slot)[data-blocks-launch], #quick-launch-modal[style*="flex"] #quick-tmux-slot[data-blocks-launch]) #tmux-missing-banner { display: none; }
+#launch-tmux-slot code, #team-tmux-slot code, #quick-tmux-slot code { color: var(--text-primary); overflow-wrap: anywhere; }
+#launch-tmux-slot .btn, #team-tmux-slot .btn, #quick-tmux-slot .btn { margin: 8px 0 0; }
 
 /* The Not Found dialog's Check again answer (#5835): a live region that is always there and only gets its text, so it is announced; empty, it takes no room. */
 .cli-recheck-status { color: var(--text-secondary); font-size: 0.8125rem; line-height: 1.5; margin: 0; }

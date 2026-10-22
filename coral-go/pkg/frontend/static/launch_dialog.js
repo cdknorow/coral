@@ -12,6 +12,7 @@ const { launch } = await importOnce('./launch_state.js');
 const { _effectiveServer, _loadServerSettings, _serverSettings, _settingsFor } = await importOnce('./launch_models.js');
 const { defaultPermissionMode, syncDefaultPermissionMode, _normalizePermFlagsForAgent, _updatePermModeDescription } = await importOnce('./permission_flags.js');
 const { _checkAgentCLI } = await importOnce('./cli_check.js');
+import { checkTmuxForLaunch } from './prerequisites.js';
 const { _syncACFModelField, getAgentConfig, renderAgentConfigForm, cliWarningOf } = await importOnce('./agent_config_form.js');
 const { _checkPermissionFlag } = await importOnce('./cli_dialogs.js');
 const { _checkTeamGitDir, _initTeamForm, _loadExistingTeamBoards } = await importOnce('./team_dialogs.js');
@@ -41,9 +42,11 @@ function _selectLaunchType(type) {
             value: { agentType: _settingsFor(_effectiveServer(launch.server)).default_agent_type || 'claude' },
         });
         _wireDirNote(); _syncDirNote(); _syncLaunchBlock();
+        checkTmuxForLaunch(document.getElementById('launch-tmux-slot')); // tmux missing: said once, Launch off (#6046)
         document.getElementById('launch-dir')?.focus(); // the one thing most launches need: the folder
     } else if (type === "team") {
         _initTeamForm();
+        checkTmuxForLaunch(document.getElementById('team-tmux-slot'));
         const shell = document.querySelector('#launch-step-team .settings-shell');
         if (shell) { initSectionDialog(shell); showSection(shell, 'members'); } // always opens on Members; the name, which every launch needs, is above the sections (#5589 finding 6), and the keyboard starts in it
         document.getElementById('team-board-name')?.focus();
@@ -237,6 +240,15 @@ function _syncLaunchBlock() {
     if (why) { why.id ||= 'launch-cli-warning'; go.setAttribute('aria-describedby', why.id); } else go.removeAttribute('aria-describedby');
 }
 document.addEventListener('cli-blocks-launch', e => { if (e.target.closest && e.target.closest('#launch-step-agent')) _syncLaunchBlock(); });
+// A team launch on a machine without tmux says it once too, and Launch Team stays off (#6046).
+function _syncTeamBlock() {
+    const go = document.getElementById('launch-team-go');
+    if (!go) return;
+    const why = document.querySelector('#launch-step-team [data-blocks-launch]');
+    go.disabled = !!why;
+    if (why) go.setAttribute('aria-describedby', why.id); else go.removeAttribute('aria-describedby');
+}
+document.addEventListener('cli-blocks-launch', e => { if (e.target.closest && e.target.closest('#launch-step-team')) _syncTeamBlock(); });
 
 // The home folder is a wide place to start an agent in: the person may choose it, and one line says what that means (#5990).
 function _syncDirNote() {

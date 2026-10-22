@@ -102,6 +102,7 @@
                     </div>
                     </div>
                     <div id="launch-cli-slot" class="launch-cli-slot"></div>
+                    <div id="launch-tmux-slot" class="launch-cli-slot"></div>
                     <div class="sd-more-row">
                         <button type="button" class="sd-more-btn" id="launch-agent-more-btn" aria-expanded="false" aria-controls="launch-agent-more" data-on-click="m-toggle-launch-more"><span class="material-icons" aria-hidden="true">expand_more</span>More options</button>
                     </div>
@@ -319,9 +320,10 @@
                         </div>
                     </div>
                 </div>
+                <div id="team-tmux-slot" class="launch-cli-slot"></div>
                 <div class="modal-actions">
                     <button class="btn" data-on-click="m-hide-launch-modal">Cancel</button>
-                    <button class="btn btn-primary" data-on-click="m-launch-team">Launch Team</button>
+                    <button class="btn btn-primary" id="launch-team-go" data-on-click="m-launch-team">Launch Team</button>
                 </div>
             </div>
         </div>
@@ -1336,9 +1338,10 @@
                     </ul>
                 </div>
             </div>
+            <div id="quick-tmux-slot" class="launch-cli-slot"></div>
             <div class="modal-actions modal-footer">
                 <button class="btn" data-on-click="m-quick-launch-close">Cancel</button>
-                <button class="btn btn-primary" data-on-click="m-quick-launch-team">Launch</button>
+                <button class="btn btn-primary" id="quick-launch-go" data-on-click="m-quick-launch-team">Launch</button>
             </div>
         </div>
     </div>

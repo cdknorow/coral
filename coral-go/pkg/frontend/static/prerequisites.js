@@ -1,6 +1,7 @@
 /* Read-only setup checks. Installation commands are displayed, never executed. */
 import { serverFetch, normServer } from './server_base.js';
 import { fetchSystemStatus } from './system_status.js';
+import { setHidden } from './dom_write.js';
 const cache = new Map();
 const requests = new WeakMap();
 
@@ -103,6 +104,28 @@ export async function checkTmux(force = false) {
         command.hidden = true; banner.style.display = '';
     } finally {
         if (current(banner,controller)) { button.disabled=false;button.textContent='Check again'; }
+    }
+}
+
+/** First run: tmux missing is said once in the launch form, with the one command for this OS and a Check again; Launch stays off with it as the reason (#6046).
+ *  Only where the backend needs tmux; nothing is installed. */
+export async function checkTmuxForLaunch(element, {force = false} = {}) {
+    if (!element) return;
+    const controller = start(element);
+    const recheck = () => checkTmuxForLaunch(element, {force:true});
+    try {
+        const response = await fetchSystemStatus({fresh:force});
+        if (!response.ok) throw new Error(`Could not check tmux (HTTP ${response.status}).`);
+        const data = await response.json();
+        if (!data || typeof data.tmux_available !== 'boolean') throw new Error('Could not check tmux: unexpected response.');
+        if (!current(element,controller)) return;
+        if (data.tmux_available || data.tmux_required === false || data.effective_backend === 'pty') { element.replaceChildren(); setHidden(element, true); blocksLaunch(element, false); return; }
+        blocksLaunch(element, true); setHidden(element, false);
+        renderCLI(element, 'tmux is not installed. Coral needs it to run agents.', recheck, {command:data.tmux_install_command || ''});
+    } catch (error) {
+        if (!current(element,controller) || error.name === 'AbortError') return;
+        // A check that failed says nothing about tmux: it does not hold the launch.
+        element.replaceChildren(); setHidden(element, true); blocksLaunch(element, false);
     }
 }
 

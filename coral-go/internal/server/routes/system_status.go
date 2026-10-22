@@ -4,6 +4,7 @@ package routes
 
 import (
 	"net/http"
+	"os/exec"
 	"runtime"
 	"strings"
 	"time"
@@ -152,12 +153,23 @@ func securityWarning(warnings ...string) string {
 // folder with a broad access list).
 var dataDirWarning = config.DataDirWarning
 
-// tmuxInstallCommand returns the platform-appropriate install command for tmux.
+// tmuxInstallCommand returns the one install command for tmux on this OS: brew on macOS, and on Linux the
+// package manager that is here (apt, then dnf). Coral only shows it; it never runs it.
 func tmuxInstallCommand() string {
-	switch runtime.GOOS {
+	return tmuxInstallCommandFor(runtime.GOOS, func(name string) bool { _, err := exec.LookPath(name); return err == nil })
+}
+
+func tmuxInstallCommandFor(goos string, has func(string) bool) string {
+	switch goos {
 	case "darwin":
 		return "brew install tmux"
 	case "linux":
+		switch {
+		case has("apt"):
+			return "sudo apt install tmux"
+		case has("dnf"):
+			return "sudo dnf install tmux"
+		}
 		return "sudo apt install tmux  (or your distro's package manager)"
 	default:
 		return "install tmux for your platform"
