@@ -2610,3 +2610,6 @@ button.team-artifact-name { cursor: pointer; }
 .list-bar-panel > * { flex: 0 0 auto; } /* the dropdown's rule gives each child a whole line of the box's height; in a column, which is as tall as its rows, that stretched the rows */
 .list-bar-expand-all[hidden] { display: none; }
 @media (pointer: coarse) { .list-bar-toggle, .list-bar-expand-all { min-width: 44px; min-height: 44px; } }
+
+/* The remove-shared-copy button in an opened chat image's toolbar is a 44 px target on touch (#6137) */
+@media (pointer: coarse), (max-width: 767px) { .preview-unshare-btn { min-width: var(--control-touch-height, 44px); min-height: var(--control-touch-height, 44px); } }

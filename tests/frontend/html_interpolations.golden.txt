@@ -377,6 +377,7 @@
 1	preview_pane.js	preview
 1	preview_pane.js	renderMarkdownStrict(content)
 1	preview_pane.js	safe
+1	preview_pane.js	unshare
 1	prompt_modals.js	bg
 1	render.js	unfilteredCount ? '' : PHONE_WELCOME
 1	sandbox_frame.js	DOC_CSP

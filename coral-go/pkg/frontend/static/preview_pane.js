@@ -390,7 +390,8 @@ function _renderToolbar(tab) {
     }
 
     if (tab.kind === 'chat-image') { // an image the chat showed (#5028): its name, nothing to edit or star
-        bar.innerHTML = `<span class="preview-toolbar-path" title="${escapeAttr(tab.filepath)}">${escapeHtml(tab.filepath)}</span>`;
+        const unshare = tab.unshare ? `<div class="inline-preview-actions"><button type="button" class="inline-preview-mode-btn preview-unshare-btn" data-action="unshare" aria-label="Remove shared copy" title="Remove shared copy"><span class="material-icons" aria-hidden="true">delete</span></button></div>` : '';
+        bar.innerHTML = `<span class="preview-toolbar-path" title="${escapeAttr(tab.filepath)}">${escapeHtml(tab.filepath)}</span>${unshare}`;
         return;
     }
 
@@ -415,7 +416,8 @@ function _onToolbarClick(e) {
     else if (btn.dataset.action === 'star') {
         toggleStarFile(tab.filepath);
         _renderToolbar(tab);
-    } else if (btn.dataset.action === 'save') saveTab(tab, btn);
+    } else if (btn.dataset.action === 'unshare') tab.unshare?.(() => closeTab(tab.id));
+    else if (btn.dataset.action === 'save') saveTab(tab, btn);
 }
 
 /* ── Open / switch / close ─────────────────────────────────── */
@@ -479,10 +481,11 @@ export function openPreviewTab(filepath, line, opts = {}) {
 
 /** Open a chat chip's image (its thumbnail was clicked, #5028, #5032) in a tab: `label` is the chip's name, `path` the server-relative route that serves the image
  *  (the session's attachment, or an upload), `server` the one it is on. */
-export function openChatImageTab(label, path, server) {
+export function openChatImageTab(label, path, server, unshare = null) {
     if (!label || !path) return;
     let tab = _tabs.find(t => t.kind === 'chat-image' && t.path === path && t.server === server);
     if (tab) _pin(tab); else { tab = _newTab({ kind: 'chat-image', filepath: label, path, server }); _addTab(tab); }
+    tab.unshare = unshare; // the remove-shared-copy action of an image pasted in the dashboard, or null
     _activate(tab);
 }
 

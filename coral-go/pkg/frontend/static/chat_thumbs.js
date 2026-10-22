@@ -28,7 +28,8 @@ export function thumbHtml(att) {
     // An image pasted in the dashboard is named by its place ("Pasted image 2"): read as a sentence, "Open pasted image 2", not "Open Pasted image 2".
     const label = /^Pasted image\b/.test(label0) ? label0.charAt(0).toLowerCase() + label0.slice(1) : label0;
     // An artifact (an image pasted in the dashboard, #5284) is served by the artifact route, locally and through Coral Hub; its owner can remove the shared copy (on this computer only).
-    const unshare = artifact && !isCloud() ? `<button type="button" class="chat-attachment-unshare" data-on-click="chat-thumb-unshare" data-artifact="${escapeAttr(artifact)}" aria-label="Remove the shared copy of ${escapeAttr(label)}" title="Remove the shared copy (the image goes from Coral Hub and from this chat)" hidden>&times;</button>` : '';
+    // Named for what it does (it does not remove the attachment): the message keeps its image; the copy shared on Coral Hub and in this chat goes (#6137). Shown on hover or focus on a desktop; on a phone it is in the opened image's toolbar.
+    const unshare = artifact && !isCloud() ? `<button type="button" class="chat-attachment-unshare" data-on-click="chat-thumb-unshare" data-artifact="${escapeAttr(artifact)}" aria-label="Remove shared copy" title="Remove shared copy" hidden><span class="material-icons" aria-hidden="true">delete</span></button>` : '';
     return `<button type="button" class="chat-attachment-thumb" data-on-click="chat-thumb-open" data-artifact="${escapeAttr(artifact)}" data-ref="${escapeAttr(ref)}" data-upload="${escapeAttr(artifact || ref ? '' : file)}" ` +
         `aria-label="Open ${escapeAttr(label)}" hidden><img alt="${escapeAttr(file || label)}" width="${SIZE}" height="${SIZE}" decoding="async"></button>${unshare}`;
 }
@@ -85,21 +86,28 @@ export function wireThumbs(bubble) {
     for (const row of bubble.querySelectorAll('.chat-attachments')) { if (seen) seen.observe(row); else loadRow(row); }
 }
 
+/** Ask, then remove the shared copy behind a thumbnail's remove button x; after() runs once it is gone. */
+function askRemoveSharedCopy(x, after) {
+    const s = state.currentSession;
+    if (!x || !s || !s.session_id) return;
+    showConfirmModal('Remove the shared copy?', 'The image is removed from Coral Hub and from the chat here. The agent keeps its own file.', async () => {
+        if (await removeSharedCopy(serverOf(), s.session_id, x.dataset.artifact).catch(() => false)) {
+            const thumb = x.previousElementSibling;
+            if (thumb) thumb.hidden = true;
+            x.hidden = true; // the chip with the file's name stays
+            if (after) after();
+        } else showToast('Could not remove the shared copy.', true);
+    });
+}
+
 registerActions({
-    'chat-thumb-unshare': el => {
-        const x = el.closest('.chat-attachment-unshare'), s = state.currentSession;
-        if (!x || !s || !s.session_id) return;
-        showConfirmModal('Remove the shared copy?', 'The image is removed from Coral Hub and from the chat here. The agent keeps its own file.', async () => {
-            if (await removeSharedCopy(serverOf(), s.session_id, x.dataset.artifact).catch(() => false)) {
-                const thumb = x.previousElementSibling;
-                if (thumb) thumb.hidden = true;
-                x.hidden = true; // the chip with the file's name stays
-            } else showToast('Could not remove the shared copy.', true);
-        });
-    },
+    'chat-thumb-unshare': el => askRemoveSharedCopy(el.closest('.chat-attachment-unshare')),
     'chat-thumb-open': el => {
         const btn = el.closest('.chat-attachment-thumb');
         const path = btn && routeOf(btn);
-        if (path) openChatImageTab(btn.querySelector('img').alt || 'image', path, serverOf());
+        const x = btn && btn.nextElementSibling;
+        // An image with a shared copy opens with that copy's remove button in its toolbar: on a phone it is not on the thumbnail.
+        const unshare = x && x.classList.contains('chat-attachment-unshare') && !x.hidden ? after => askRemoveSharedCopy(x, after) : null;
+        if (path) openChatImageTab(btn.querySelector('img').alt || 'image', path, serverOf(), unshare);
     },
 });

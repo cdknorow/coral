@@ -1688,7 +1688,13 @@
 .chat-attachment-unshare[hidden] { display: none; }
 .chat-attachment-unshare:hover { color: var(--text-primary); background: var(--bg-hover); }
 .chat-attachment-unshare:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-@media (max-width: 767px) { .chat-attachment-unshare { min-width: 44px; min-height: 44px; } }
+/* A trash icon, there on hover or focus; the focus-visible outline above shows it to the keyboard. On a touch screen or a phone it is not on the thumbnail: it is in the opened image's toolbar (#6137). */
+.chat-attachment-unshare .material-icons { font-size: 1.1rem; vertical-align: middle; }
+@media (hover: hover) and (min-width: 768px) {
+    .chat-attachment-unshare { opacity: 0; }
+    .chat-attachment-image:hover > .chat-attachment-unshare, .chat-attachment-image:focus-within > .chat-attachment-unshare, .chat-attachment-unshare:focus-visible { opacity: 1; }
+}
+@media (hover: none), (max-width: 767px) { .chat-attachment-unshare { display: none !important; } }
 
 /* A pasted image is one compact chip (the operator's report): the thumbnail with its remove button as a strip on its right edge, in one bordered box. The name chip shows
    only while there is no thumbnail (the image has not loaded, the link is gone, the shared copy was removed). */
@@ -1698,7 +1704,6 @@
 .chat-attachment-image > .chat-attachment-thumb { border: 0; border-radius: 0; }
 .chat-attachment-image > .chat-attachment-unshare { align-self: stretch; min-width: 28px; min-height: 0; padding: 0 6px; border: 0; border-left: 1px solid var(--border); border-radius: 0; background: transparent; font-size: 1rem; line-height: 1; }
 .chat-attachment-image > .chat-attachment-unshare:hover { background: var(--bg-hover); }
-@media (max-width: 767px) { .chat-attachment-image > .chat-attachment-unshare { min-width: 44px; } }
 
 /* The sent time shares the existing Save/Copy row (#6063). Keep its reserved
    height and message spacing unchanged when the text is revealed. */

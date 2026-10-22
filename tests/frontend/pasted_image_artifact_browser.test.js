@@ -73,12 +73,25 @@ async function httpJson(method, p, body, headers = {}) {
             const bub = await ev(`(() => { const b = document.querySelector('#pia-box .chat-bubble.human'); const t = b.querySelector('.chat-attachment-thumb'); const x = b.querySelector('.chat-attachment-unshare'); const xr = x && x.getBoundingClientRect();
                 return { text: b.querySelector('.message-text').innerText.trim(), chip: (b.querySelector('.chat-attachment-chip') || {}).textContent, art: t.dataset.artifact, unshare: !!x && !x.hidden, unshareH: xr && Math.round(xr.height), raw: b.innerHTML.includes('coral://artifacts') || b.innerHTML.includes('/uploads/') }; })()`);
             check(`${tag}: the bubble shows the typed text alone, the file's name as a chip, a thumbnail of the artifact`, bub.text === 'what is this' && bub.chip === 'Pasted image' && bub.art === up.artifact.id && !bub.raw, JSON.stringify(bub));
-            const geo = await ev(`(() => { const w = document.querySelector('#pia-box .chat-attachment-image'); const t = w.querySelector('.chat-attachment-thumb').getBoundingClientRect(), x = w.querySelector('.chat-attachment-unshare').getBoundingClientRect(), r = w.getBoundingClientRect(), n = getComputedStyle(w.querySelector('.chat-attachment-name')).display;
-                return { nameShown: n !== 'none', chipH: Math.round(r.height), chipW: Math.round(r.width), thumbW: Math.round(t.width), xW: Math.round(x.width), xH: Math.round(x.height), thumbH: Math.round(t.height), xRightOfThumb: x.left >= t.right - 1, sameTop: Math.abs(x.top - t.top) < 2, boxed: getComputedStyle(w).borderTopWidth }; })()`);
-            check(`${tag}: a pasted image is one compact chip: the thumbnail and its remove button side by side, no 'Pasted image' pill`, !geo.nameShown && geo.chipH <= 52 && geo.xRightOfThumb && geo.sameTop && geo.xH === geo.thumbH && parseFloat(geo.boxed) >= 1 && geo.chipW <= geo.thumbW + geo.xW + 4, JSON.stringify(geo));
+            const geo = await ev(`(() => { const w = document.querySelector('#pia-box .chat-attachment-image'); const t = w.querySelector('.chat-attachment-thumb').getBoundingClientRect(), x = w.querySelector('.chat-attachment-unshare').getBoundingClientRect(), xd = getComputedStyle(w.querySelector('.chat-attachment-unshare')).display, r = w.getBoundingClientRect(), n = getComputedStyle(w.querySelector('.chat-attachment-name')).display;
+                return { nameShown: n !== 'none', chipH: Math.round(r.height), chipW: Math.round(r.width), thumbW: Math.round(t.width), xW: Math.round(x.width), xH: Math.round(x.height), thumbH: Math.round(t.height), xRightOfThumb: x.left >= t.right - 1, sameTop: Math.abs(x.top - t.top) < 2, boxed: getComputedStyle(w).borderTopWidth, xDisplay: xd }; })()`);
+            check(`${tag}: a pasted image is one compact chip: the thumbnail and, on a desktop, its remove-copy button beside it (not on a phone), no 'Pasted image' pill`, !geo.nameShown && geo.chipH <= 52 && (mobile ? geo.xDisplay === 'none' && geo.chipW <= geo.thumbW + 4 : geo.xRightOfThumb && geo.sameTop && geo.xH === geo.thumbH && geo.chipW <= geo.thumbW + geo.xW + 4) && parseFloat(geo.boxed) >= 1, JSON.stringify(geo));
             const names = await ev(`(() => { const b = document.querySelector('#pia-box .chat-bubble.human'); return { open: b.querySelector('.chat-attachment-thumb').getAttribute('aria-label'), alt: b.querySelector('.chat-attachment-thumb img').alt, remove: b.querySelector('.chat-attachment-unshare').getAttribute('aria-label') }; })()`);
-            check(`${tag}: the thumbnail and the remove button are named by the image's place, as a sentence`, names.open === 'Open pasted image' && names.alt === 'pasted image' && names.remove === 'Remove the shared copy of pasted image', JSON.stringify(names));
-            check(`${tag}: a "Remove shared copy" button is there${mobile ? ' and 44 px' : ''}`, bub.unshare && (!mobile || bub.unshareH >= 44), JSON.stringify(bub));
+            check(`${tag}: the thumbnail is named by the image's place, as a sentence, and the button by what it does`, names.open === 'Open pasted image' && names.alt === 'pasted image' && names.remove === 'Remove shared copy', JSON.stringify(names));
+            const vis = await ev(`(() => { const x = document.querySelector('#pia-box .chat-attachment-unshare'); const cs = getComputedStyle(x); return { display: cs.display, opacity: cs.opacity, title: x.title, glyph: x.textContent.trim(), icon: !!x.querySelector('.material-icons') }; })()`);
+            check(`${tag}: the trash button is there, titled "Remove shared copy", ${mobile ? 'not on the thumbnail on a phone' : 'hidden until hover or focus on a desktop'}`, bub.unshare && vis.title === 'Remove shared copy' && vis.glyph === 'delete' && vis.icon && (mobile ? vis.display === 'none' : vis.display !== 'none' && vis.opacity === '0'), JSON.stringify(vis));
+            if (!mobile) {
+                await Emulation.setFocusEmulationEnabled({ enabled: true }); // a headless page is not focused, so :focus-within would never match
+                await ev(`document.querySelector('#pia-box .chat-attachment-unshare').focus(); true`);
+                await waitFor(`getComputedStyle(document.querySelector('#pia-box .chat-attachment-unshare')).opacity === '1'`, `${tag}: focus shows the trash button`, { timeout: 3000 }); // the button fades in
+                check(`${tag}: focus shows the trash button`, true);
+                await ev(`document.querySelector('#pia-box .chat-attachment-unshare').blur(); true`);
+            }
+            // the opened image has the button in its toolbar (the way to it on a phone): named the same, 44 px on a phone
+            await ev(`document.querySelector('#pia-box .chat-attachment-thumb').click(); true`);
+            await waitFor(`!!document.querySelector('#preview-toolbar .preview-unshare-btn')`, `${tag}: the opened image has the button in its toolbar`, { timeout: 8000 });
+            const tb = await ev(`(() => { const b = document.querySelector('#preview-toolbar .preview-unshare-btn'), r = b.getBoundingClientRect(); return { name: b.getAttribute('aria-label'), title: b.title, w: Math.round(r.width), h: Math.round(r.height) }; })()`);
+            check(`${tag}: the toolbar button is "Remove shared copy"${mobile ? ' and 44 px' : ''}`, tb.name === 'Remove shared copy' && tb.title === 'Remove shared copy' && (!mobile || (tb.w >= 44 && tb.h >= 44)), JSON.stringify(tb));
 
             // 4. old messages and a user's own link are left as they were
             // (a session's history from before #5481 has "<path> <link>" pairs: they still show as a thumbnail)
@@ -99,11 +112,16 @@ async function httpJson(method, p, body, headers = {}) {
             // 6. Remove shared copy: the thumbnail goes back to the chip, the artifact is gone
             await render([{ type: 'user', content: typed, key: 'k5', timestamp: '2026-10-19T00:05:00Z' }]);
             await waitFor(`!!document.querySelector('#pia-box .chat-attachment-unshare:not([hidden])')`, `${tag}: the remove button`, { timeout: 10000 });
-            await ev(`document.querySelector('#pia-box .chat-attachment-unshare').click(); true`);
+            if (mobile) { // on a phone the way to it is the opened image's toolbar
+                await ev(`document.querySelector('#pia-box .chat-attachment-thumb').click(); true`);
+                await waitFor(`!!document.querySelector('#preview-toolbar .preview-unshare-btn')`, `${tag}: the toolbar button`, { timeout: 8000 });
+                await ev(`document.querySelector('#preview-toolbar .preview-unshare-btn').click(); true`);
+            } else await ev(`document.querySelector('#pia-box .chat-attachment-unshare').click(); true`);
             await waitFor(`document.getElementById('confirm-modal').style.display === 'flex'`, `${tag}: the confirmation`, { timeout: 5000 });
             check(`${tag}: removing asks first and says what is lost`, /removed from Coral Hub/.test(await ev(`document.getElementById('confirm-modal-message').textContent`)));
             await ev(`document.getElementById('confirm-modal-yes').click(); true`);
             await waitFor(`window.__rec.deletes.length === 1 && document.querySelector('#pia-box .chat-attachment-thumb').hidden === true`, `${tag}: the thumbnail turns back into the chip`, { timeout: 8000 });
+            if (mobile) check(`${tag}: the opened image closes with its shared copy`, await ev(`!document.querySelector('#preview-toolbar .preview-unshare-btn')`));
             check(`${tag}: the chip ("Pasted image") stays`, (await ev(`(document.querySelector('#pia-box .chat-attachment-chip') || {}).textContent`)) === 'Pasted image');
             check(`${tag}: the shared copy is gone from the artifact route (asked past the browser's cache: an artifact is cached for good)`, (await ev(`fetch('/api/artifacts/${up.artifact.id}?v=2', { cache: 'no-store' }).then(r => r.status)`)) === 404, JSON.stringify(await ev(`window.__rec.deletes`)));
 
@@ -123,7 +141,7 @@ async function httpJson(method, p, body, headers = {}) {
             await render([{ type: 'user', content: mk, key: 'k9', timestamp: '2026-10-19T00:09:00Z' }]);
             await waitFor(`document.querySelectorAll('#pia-box .chat-attachment-thumb:not([hidden])').length === 3`, `${tag}: three thumbnails`, { timeout: 10000 });
             const hnames = await ev(`[...document.querySelectorAll('#pia-box .chat-attachment-thumb')].map((t, i) => ({ open: t.getAttribute('aria-label'), alt: t.querySelector('img').alt, remove: document.querySelectorAll('#pia-box .chat-attachment-unshare')[i].getAttribute('aria-label') }))`);
-            check(`${tag}: three images in a message are named by their place too: "Open pasted image 2", "Remove the shared copy of pasted image 2"`, JSON.stringify(hnames.map(h => [h.open, h.alt, h.remove])) === JSON.stringify([1, 2, 3].map(n => [`Open pasted image ${n}`, `pasted image ${n}`, `Remove the shared copy of pasted image ${n}`])), JSON.stringify(hnames));
+            check(`${tag}: three images in a message are named by their place too: "Open pasted image 2" (the remove button is "Remove shared copy" on each)`, JSON.stringify(hnames.map(h => [h.open, h.alt, h.remove])) === JSON.stringify([1, 2, 3].map(n => [`Open pasted image ${n}`, `pasted image ${n}`, 'Remove shared copy'])), JSON.stringify(hnames));
             { // both themes hold 4.5:1 for the chips (composer strip and message), in the real light theme (#5781)
                 const { setTheme, installAudit, auditRegion } = require('./helpers/contrast');
                 await installAudit(ev);
