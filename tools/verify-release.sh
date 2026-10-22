@@ -442,13 +442,17 @@ if [ "$NOPREV" = 0 ] && [ -n "$meta" ]; then
   fi
 fi
 
+# The growth guard is 25% of the previous release. 1.4.153 ships coral-update, whose libraries add about 175 third-party licence entries to the Linux
+# tarballs and about 110 to the Windows ZIP (+51% and +47%, read and explained in the release notes): its limit is 155%.
+growth_limit=125
+case "$want_ver" in 1.4.153) growth_limit=155 ;; esac
 compare_count() { # file count countfn
   local f="$1" n="$2" fn="$3" pf pn
   pf="$PREVDIR/$(sed "s/$want_ver/${PREV#v}/" <<<"$f")"
   if [ -n "$PREV" ] && [ -f "$pf" ]; then
     pn="$($fn "$pf")"
     if [ "$n" -lt "$pn" ]; then fail contents "$f" "$n entries, $PREV had $pn: entries went missing"
-    elif [ $((n * 100)) -gt $((pn * 125)) ]; then fail contents "$f" "$n entries, $PREV had $pn: grew by more than 25%"
+    elif [ $((n * 100)) -gt $((pn * growth_limit)) ]; then fail contents "$f" "$n entries, $PREV had $pn: grew by more than $((growth_limit - 100))%"
     else pass contents "$f" "$n entries ($PREV: $pn, $(printf '%+d' $((n - pn))))"; fi
   else
     [ "$NOPREV" = 1 ] && skip contents "$f" "$n entries, not compared (--no-prev)" || skip contents "$f" "$n entries, no previous release to compare"
