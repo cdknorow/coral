@@ -41,7 +41,7 @@ const CSP = ["default-src 'self'", "script-src 'self'", "style-src 'self'", "sty
     if(!match)return original(u,o);
     const [_,server,path]=match;window.__remoteRequests.push({server,path,method:m,query:p.search});
     if(path==='/api/sessions/history' && server==='m1' && window.__holdHistory) return new Promise(resolve=>{window.__releaseHistory=()=>resolve(new Response(JSON.stringify({sessions:[{session_id:'same-chat',summary_title:'OLD LAPTOP RESULT'}],total:1}),{headers:{'content-type':'application/json'}}));});
-    if(path==='/api/sessions/history')return json({sessions:[{session_id:'same-chat',summary_title:server==='m1'?'Laptop conversation':'Desktop conversation',source_type:'claude'}],total:1,page:1,page_size:50});
+    if(path==='/api/sessions/history')return json({sessions:[{session_id:'same-chat',summary_title:server==='m1'?'Laptop conversation':'Desktop conversation',source_type:'claude'},{session_id:'chat-2',summary_title:'Second conversation on '+server,source_type:'claude'},{session_id:'chat-3',summary_title:'Third conversation on '+server,source_type:'codex'}],total:3,page:1,page_size:50});
     if(path==='/api/sessions/history/search')return json({status:'complete',results:[{session_id:'same-chat',type:'agent',hits:[{role:'user',excerpt:'needle from '+server,locator:{session_id:'same-chat',message_index:0}}]}]});
     if(path==='/api/sessions/history/same-chat')return json({agent_type:'claude',messages:[{type:'user',content:'needle from '+server},{type:'assistant',text:'Scoped to this computer.'}],total:2,start:0});
     if(path.endsWith('/notes'))return json({notes_md:'Notes from '+server});
@@ -50,7 +50,7 @@ const CSP = ["default-src 'self'", "script-src 'self'", "style-src 'self'", "sty
     if(path==='/api/tags'||/\\/(tags|events|tasks|agent-notes|files)$/.test(path))return json([]);
     if(path.endsWith('/git'))return json({commits:[]});
     if(path==='/api/board/projects')return json([{project:'same-team',board_label:'Release team',message_count:1,subscriber_count:1}]);
-    if(path.endsWith('/messages/all'))return json({messages:[{id:1,subscriber_id:'Operator',job_title:'Operator',content:'Board message from '+server,created_at:'2026-10-22T12:00:00Z'}],total:1,before_count:0});
+    if(path.endsWith('/messages/all'))return json({messages:[{id:1,subscriber_id:'Operator',job_title:'Operator',content:'Board message from '+server,created_at:'2026-10-22T12:00:00Z'},{id:2,subscriber_id:'Operator',job_title:'Operator',content:'Second message from '+server,created_at:'2026-10-22T12:00:20Z'},{id:3,subscriber_id:'Operator',job_title:'Operator',content:'Third message from '+server,created_at:'2026-10-22T12:00:40Z'}],total:3,before_count:0});
     if(path.endsWith('/subscribers'))return json([{subscriber_id:'Operator',job_title:'Owner'}]);
     if(path.endsWith('/paused'))return json({paused:false});
     if(path.endsWith('/sleep-status'))return json({sleeping:false});

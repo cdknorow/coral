@@ -12,23 +12,25 @@ const TEAM = 'census-' + Date.now().toString(36);
 const S = `(window.__coralStatic || '/static/')`;
 // Data for the screens that are empty on a fresh server: a History chat, a workflow with a run, a scheduled job (the paths the dashboard's own suites stub).
 const WF = { id: 7, name: 'Nightly build', description: 'Builds nightly', enabled: true, steps: [{ name: 's1', type: 'shell', command: 'echo hi' }] };
+const WF2 = { id: 8, name: 'Weekly report', description: 'Weekly', enabled: true, steps: [{ name: 's1', type: 'shell', command: 'echo hi' }] }, WF3 = { id: 9, name: 'Release check', description: 'Release', enabled: false, steps: [{ name: 's1', type: 'shell', command: 'echo hi' }] };
 const RUN = { id: 31, workflow_id: 7, workflow_name: 'Nightly build', status: 'failed', trigger_type: 'manual', started_at: '2026-10-15T10:00:00Z', finished_at: '2026-10-15T10:01:00Z',
     steps: [{ index: 0, name: 's1', type: 'shell', status: 'failed', exit_code: 1, output_tail: 'boom' }] };
 const JOB = { id: 5, name: 'Hourly job', cron_expr: '0 * * * *', enabled: true, agent_type: 'claude', prompt: 'p', repo_path: '/tmp', consecutive_failures: 0 };
+const JOB2 = { ...JOB, id: 6, name: 'Daily job', cron_expr: '0 9 * * *' }, JOB3 = { ...JOB, id: 7, name: 'Weekly job', cron_expr: '0 9 * * 1', enabled: false };
 const DATA_WORLD = `(() => {
     const inner = window.fetch;
     const json = b => Promise.resolve(new Response(JSON.stringify(b), { headers: { 'content-type': 'application/json' } }));
     window.fetch = (url, opts = {}) => {
         const u = String(url && url.url || url).replace(/^https?:\\/\\/[^/]+/, ''), path = u.split('?')[0], m = (opts.method || 'GET').toUpperCase();
         if (m === 'GET') {
-            if (path === '/api/workflows') return json({ workflows: [${JSON.stringify(WF)}] });
+            if (path === '/api/workflows') return json({ workflows: [${JSON.stringify(WF)}, ${JSON.stringify(WF2)}, ${JSON.stringify(WF3)}] });
             if (path === '/api/workflows/7') return json(${JSON.stringify(WF)});
             if (/^\\/api\\/workflows\\/7\\/runs/.test(path)) return json({ runs: [${JSON.stringify(RUN)}] });
             if (path === '/api/workflows/runs/31') return json(${JSON.stringify(RUN)});
-            if (path === '/api/scheduled/jobs') return json({ jobs: [${JSON.stringify(JOB)}] });
+            if (path === '/api/scheduled/jobs') return json({ jobs: [${JSON.stringify(JOB)}, ${JSON.stringify(JOB2)}, ${JSON.stringify(JOB3)}] });
             if (path === '/api/scheduled/jobs/5') return json(${JSON.stringify(JOB)});
             if (/^\\/api\\/scheduled\\/jobs\\/5\\/runs/.test(path)) return json({ runs: [] });
-            if (path === '/api/sessions/history') return json({ sessions: [{ session_id: 'census-chat', summary_title: 'Release notes chat', source_type: 'claude' }], total: 1, page: 1, page_size: 50 });
+            if (path === '/api/sessions/history') return json({ sessions: [{ session_id: 'census-chat', summary_title: 'Release notes chat', source_type: 'claude' }, { session_id: 'census-chat-2', summary_title: 'Build fix chat', source_type: 'claude' }, { session_id: 'census-chat-3', summary_title: 'Planning chat', source_type: 'codex' }], total: 3, page: 1, page_size: 50 });
             if (path === '/api/sessions/history/census-chat') return json({ agent_type: 'claude', messages: [{ type: 'user', content: 'hello' }, { type: 'assistant', text: 'Hi there.' }], total: 2, start: 0 });
             if (path === '/api/sessions/history/census-chat/notes') return json({ notes_md: 'A note' });
             if (path === '/api/sessions/history/census-chat/git') return json({ commits: [] });
@@ -52,10 +54,12 @@ async function httpJson(method, p, body) { const r = await fetch(BASE + p, { met
         standIn = await launchStandIn(httpJson, { displayName: 'Census Agent' });
         await httpJson('POST', `/api/board/${TEAM}/subscribe`, { subscriber_id: 'Boss', job_title: 'Orchestrator', session_name: 'boss-session' });
         await httpJson('POST', `/api/board/${TEAM}/messages`, { subscriber_id: 'Boss', content: 'Please check the release notes.' });
+        await httpJson('POST', `/api/board/${TEAM}/messages`, { subscriber_id: 'Boss', content: 'Then post the summary.' });
+        await httpJson('POST', `/api/board/${TEAM}/messages`, { subscriber_id: 'Boss', content: 'And tell me when it is done.' });
         await Page.enable(); await Page.addScriptToEvaluateOnNewDocument({ source: PRELOAD }); await Page.addScriptToEvaluateOnNewDocument({ source: DATA_WORLD });
         await Emulation.setDeviceMetricsOverride({ width: 390, height: 844, deviceScaleFactor: 1, mobile: true }); await Emulation.setTouchEmulationEnabled({ enabled: true });
         await load();
-        await sc('home (agent list)', async () => { await ev(`window.switchNavTab('agents'); true`); }, { min: 5, expect: `document.getElementById('nav-select').textContent.includes('Agents')` });
+        await sc('home (agent list)', async () => { await ev(`window.__m.add('rowa', 'Row A', 2, {}); window.__m.add('rowb', 'Row B', 2, {}); window.__m.add('rowc', 'Row C', 2, {}); window.switchNavTab('agents'); Promise.resolve(window._coralLoadLiveSessions && window._coralLoadLiveSessions()).then(() => true)`); await waitFor(`document.querySelectorAll('#mobile-agent-list .sidebar-kebab-btn').length >= 3`, 'three agent rows', 10000); }, { min: 5, expect: `document.getElementById('nav-select').textContent.includes('Agents')` });
         await sc('agent chat and composer', async () => {
             await ev(`localStorage.setItem('coral-live-view-mode', 'chat'); window.selectLiveSession(${JSON.stringify(standIn.name)}, 'claude', ${JSON.stringify(standIn.sid)}, 'local'); true`);
             await waitFor(`!!document.querySelector('#command-input') && document.querySelector('.mobile-send-btn[data-on-click="cmd-send"]').getClientRects().length > 0`, 'composer', 20000);
@@ -104,6 +108,7 @@ async function httpJson(method, p, body) { const r = await fetch(BASE + p, { met
         await sc('job detail', async () => { await tap('#scheduled-jobs-list [data-on-click="job-select"]'); await waitFor(`!!document.querySelector('#scheduler-detail [data-on-click="job-edit"]')`, 'detail', 10000); }, { min: 10, expect: `/Hourly job/.test(document.getElementById('scheduler-detail').textContent) && document.querySelector('#scheduler-detail [data-on-click="job-edit"]').getClientRects().length > 0` });
         await sc('job edit', async () => { await tap('#scheduler-detail [data-on-click="job-edit"]'); }, { min: 10, expect: `[...document.querySelectorAll('.modal, dialog')].some(m => m.getClientRects().length > 0 && /cron|schedule/i.test(m.textContent))` });
         await ev(`document.querySelectorAll('.modal.show, dialog[open]').forEach(m => { m.classList.remove('show'); if (m.close) m.close(); }); true`);
+        await load(); // a fresh page: nothing of the editors above is left open under the dialogs below
         for (const [n, tab, label] of [['analytics', 'tokens', 'Analytics'], ['docs', 'docs', 'Docs'], ['inbox', 'hub-inbox', 'Inbox']]) await sc(n, async () => { await ev(`window.switchNavTab('${tab}'); true`); }, { min: 3, expect: `document.getElementById('nav-select').textContent.includes('${label}')` });
         await ev(`window.switchNavTab('agents'); true`);
         for (const g of ['general', 'agents', 'terminal', 'notifications', 'files', 'cleanup', 'network', 'security']) await sc(`settings: ${g}`, async () => { await ev(`(async () => { await window.showSettingsModal(); return true; })()`); await ev(`(() => { const p = document.getElementById('settings-group-select'); p.value = '${g}'; p.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`); }, { min: 8, expect: `document.querySelector('#settings-modal .settings-pane:not([hidden])').dataset.group === '${g}'` });
