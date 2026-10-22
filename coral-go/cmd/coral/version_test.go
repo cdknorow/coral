@@ -42,8 +42,8 @@ func TestVersionAndHelpExitBeforeTheServerStarts(t *testing.T) {
 		{"-h --no-browser", 0, "Coral: ", ""}, // help is asked for: stdout, exit 0 (#235)
 		{"help --no-browser", 0, "Coral: ", ""},
 		{"--no-browser stop", 2, "", `unexpected argument "stop"`},
-		{"--no-browser --no-such-flag", 2, "", "flag provided but not defined"},
-		{"--no-browser stray", 2, "", `unexpected argument "stray"`}, // a positional word never starts a server
+		{"--no-browser --no-such-flag", 2, "", "coral: unknown option --no-such-flag"}, // coral's own line, not Go's "flag provided but not defined"
+		{"--no-browser stray", 2, "", `unexpected argument "stray"`},                   // a positional word never starts a server
 	} {
 		dataDir, home := t.TempDir(), t.TempDir()
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
