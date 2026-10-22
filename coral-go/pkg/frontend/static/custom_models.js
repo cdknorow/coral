@@ -65,31 +65,52 @@ function chips(m) {
     return wrap;
 }
 
-function form(provider, index) {
+function totalRows() { return PROVIDERS.reduce((n, [p]) => n + rows(p).length, 0); }
+const full = (p) => rows(p).length >= (limits.max_per_family || 50);
+
+/** The one form: a new model picks its provider here (the first with room), an edited one keeps its own. */
+function form(startProvider, index) {
+    let provider = startProvider;
     const cur = index >= 0 ? rows(provider)[index] : { value: '', display_name: '', efforts: [] };
     const f = mk('form', 'cm-form'); f.noValidate = true;
+    let pick = null;
+    if (index < 0) {
+        const pl = mk('label', 'cm-field'); pl.append(mk('span', null, 'Provider'));
+        pick = mk('select', 'settings-input'); pick.id = 'cm-provider';
+        for (const [k, name] of PROVIDERS) { const o = mk('option', null, name); o.value = k; o.disabled = full(k) && k !== provider; pick.append(o); }
+        pick.value = provider; pl.append(pick); f.append(pl);
+    } else f.append(mk('p', 'cm-editing', `${label(provider)} model`));
     const idLabel = mk('label', 'cm-field'); idLabel.append(mk('span', null, 'Model id'));
-    const id = mk('input', 'settings-input settings-mono-input'); id.type = 'text'; id.value = cur.value; id.autocomplete = 'off'; id.spellcheck = false; id.maxLength = 128; id.id = `cm-id-${provider}`;
+    const id = mk('input', 'settings-input settings-mono-input'); id.type = 'text'; id.value = cur.value; id.autocomplete = 'off'; id.spellcheck = false; id.maxLength = 128; id.id = 'cm-id';
     idLabel.append(id);
     const nameLabel = mk('label', 'cm-field'); nameLabel.append(mk('span', null, 'Display name (optional)'));
-    const name = mk('input', 'settings-input'); name.type = 'text'; name.value = cur.display_name || ''; name.autocomplete = 'off'; name.maxLength = MAX_NAME; name.id = `cm-name-${provider}`;
+    const name = mk('input', 'settings-input'); name.type = 'text'; name.value = cur.display_name || ''; name.autocomplete = 'off'; name.maxLength = MAX_NAME; name.id = 'cm-name';
     nameLabel.append(name);
-    const err = mk('p', 'cm-error'); err.setAttribute('role', 'alert'); err.hidden = true; err.id = `cm-err-${provider}`;
+    const err = mk('p', 'cm-error'); err.setAttribute('role', 'alert'); err.hidden = true; err.id = 'cm-err';
     id.setAttribute('aria-describedby', err.id);
     f.append(idLabel, nameLabel);
-    const lv = levelsOf(provider);
-    const boxes = [];
-    if (lv.length) {
-        const fs = mk('fieldset', 'cm-levels-field'); fs.append(mk('legend', null, 'Thinking levels this model accepts'));
-        for (const l of lv) {
-            const lab = mk('label', 'cm-level'); const cb = document.createElement('input'); cb.type = 'checkbox'; cb.value = l; cb.checked = (cur.efforts || []).includes(l);
-            lab.append(cb, mk('span', null, l)); fs.append(lab); boxes.push(cb);
+    // the thinking levels a provider takes: drawn again when the provider changes
+    let boxes = [];
+    const levelsHost = mk('div', 'cm-levels-host');
+    const drawLevels = () => {
+        levelsHost.replaceChildren(); boxes = [];
+        const lv = levelsOf(provider);
+        if (lv.length) {
+            const fs = mk('fieldset', 'cm-levels-field'); fs.append(mk('legend', null, 'Thinking levels this model accepts'));
+            const had = index >= 0 ? (cur.efforts || []) : [];
+            for (const l of lv) {
+                const lab = mk('label', 'cm-level'); const cb = document.createElement('input'); cb.type = 'checkbox'; cb.value = l; cb.checked = had.includes(l);
+                lab.append(cb, mk('span', null, l)); fs.append(lab); boxes.push(cb);
+            }
+            fs.append(mk('span', 'settings-hint', 'With none ticked the model offers no level choice and runs at the CLI\'s own default.'));
+            levelsHost.append(fs);
+        } else {
+            levelsHost.append(mk('p', 'settings-hint', `Coral does not pass thinking levels to ${label(provider)} yet, so there is nothing to choose here.`));
         }
-        fs.append(mk('span', 'settings-hint', 'With none ticked the model offers no level choice and runs at the CLI\'s own default.'));
-        f.append(fs);
-    } else {
-        f.append(mk('p', 'settings-hint', `Coral does not pass thinking levels to ${label(provider)} yet, so there is nothing to choose here.`));
-    }
+    };
+    drawLevels();
+    f.append(levelsHost);
+    if (pick) pick.addEventListener('change', () => { provider = pick.value; drawLevels(); });
     const acts = mk('div', 'cm-actions');
     const ok = mk('button', 'btn btn-small', index >= 0 ? 'Update model' : 'Add model'); ok.type = 'submit';
     const cancel = mk('button', 'btn btn-small', 'Cancel'); cancel.type = 'button';
@@ -103,45 +124,40 @@ function form(provider, index) {
         if (index >= 0) rows(provider)[index] = entry; else rows(provider).push(entry);
         editing = null; render(); focusAfter(provider, index >= 0 ? index : rows(provider).length - 1);
     });
-    cancel.addEventListener('click', () => { editing = null; render(); focusAdd(provider); });
+    cancel.addEventListener('click', () => { editing = null; render(); focusAdd(); });
     f.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); cancel.click(); } });
-    return { f, focus: () => id.focus() };
+    return { f, focus: () => (pick || id).focus() };
 }
 
-function focusAdd(p) { const b = host && host.querySelector(`[data-cm-add="${p}"]`); if (b) b.focus(); }
-function focusAfter(p, i) { const b = host && host.querySelector(`[data-cm-edit="${p}:${i}"]`); if (b) b.focus(); else focusAdd(p); }
-
-function group(provider) {
-    const g = mk('fieldset', 'cm-group'); g.append(mk('legend', null, label(provider)));
-    const list = mk('ul', 'cm-list');
-    rows(provider).forEach((m, i) => {
-        const li = mk('li', 'cm-row');
-        if (editing && editing.provider === provider && editing.index === i) { const fm = form(provider, i); li.append(fm.f); list.append(li); queueMicrotask(fm.focus); return; }
-        const text = mk('span', 'cm-text'); text.append(mk('code', 'cm-id', m.value)); if (m.display_name) text.append(mk('span', 'cm-name', m.display_name));
-        const edit = mk('button', 'btn btn-small', 'Edit'); edit.type = 'button'; edit.dataset.cmEdit = `${provider}:${i}`; edit.setAttribute('aria-label', `Edit ${m.value}`);
-        edit.addEventListener('click', () => { editing = { provider, index: i }; render(); });
-        const rm = mk('button', 'btn btn-small', 'Remove'); rm.type = 'button'; rm.setAttribute('aria-label', `Remove ${m.value}`);
-        rm.addEventListener('click', () => { rows(provider).splice(i, 1); if (editing && editing.provider === provider) editing = null; render(); focusAdd(provider); });
-        li.append(text, chips(m), edit, rm); list.append(li);
-    });
-    if (!rows(provider).length && !(editing && editing.provider === provider)) list.append(mk('li', 'cm-empty', 'None added.'));
-    g.append(list);
-    if (editing && editing.provider === provider && editing.index === -1) { const fm = form(provider, -1); g.append(fm.f); queueMicrotask(fm.focus); }
-    else {
-        const add = mk('button', 'btn btn-small cm-add', 'Add a model'); add.type = 'button'; add.dataset.cmAdd = provider;
-        add.disabled = rows(provider).length >= (limits.max_per_family || 50);
-        add.addEventListener('click', () => { editing = { provider, index: -1 }; render(); });
-        g.append(add);
-    }
-    return g;
-}
+function focusAdd() { const b = host && host.querySelector('[data-cm-add]'); if (b) b.focus(); }
+function focusAfter(p, i) { const b = host && host.querySelector(`[data-cm-edit="${p}:${i}"]`); if (b) b.focus(); else focusAdd(); }
 
 function render() {
     if (!host) return;
     host.replaceChildren();
-    for (const [p] of PROVIDERS) host.append(group(p));
+    const list = mk('ul', 'cm-list');
+    for (const [provider] of PROVIDERS) rows(provider).forEach((m, i) => {
+        const li = mk('li', 'cm-row'); li.dataset.provider = provider;
+        if (editing && editing.provider === provider && editing.index === i) { const fm = form(provider, i); li.append(fm.f); list.append(li); queueMicrotask(fm.focus); return; }
+        const text = mk('span', 'cm-text'); text.append(mk('span', 'cm-provider', label(provider)), mk('code', 'cm-id', m.value)); if (m.display_name) text.append(mk('span', 'cm-name', m.display_name));
+        const edit = mk('button', 'btn btn-small', 'Edit'); edit.type = 'button'; edit.dataset.cmEdit = `${provider}:${i}`; edit.setAttribute('aria-label', `Edit ${m.value}`);
+        edit.addEventListener('click', () => { editing = { provider, index: i }; render(); });
+        const rm = mk('button', 'btn btn-small', 'Remove'); rm.type = 'button'; rm.setAttribute('aria-label', `Remove ${m.value}`);
+        rm.addEventListener('click', () => { rows(provider).splice(i, 1); if (editing && editing.provider === provider) editing = null; render(); focusAdd(); });
+        li.append(text, chips(m), edit, rm); list.append(li);
+    });
+    const adding = editing && editing.index === -1;
+    if (!totalRows() && !adding) list.append(mk('li', 'cm-empty', 'None added.'));
+    host.append(list);
+    if (adding) { const fm = form(editing.provider, -1); host.append(fm.f); queueMicrotask(fm.focus); }
+    else {
+        const add = mk('button', 'btn btn-small cm-add', 'Add a model'); add.type = 'button'; add.dataset.cmAdd = '1';
+        add.disabled = PROVIDERS.every(([p]) => full(p));
+        add.addEventListener('click', () => { editing = { provider: (PROVIDERS.find(([p]) => !full(p)) || PROVIDERS[0])[0], index: -1 }; render(); });
+        host.append(add);
+    }
     const st = mk('p', 'cm-status settings-hint'); st.setAttribute('role', 'status'); st.setAttribute('aria-live', 'polite');
-    host.append(st, mk('p', 'settings-hint', 'Model ids are passed to the CLI as they are written here. They appear in every model picker, including the one that switches a running agent\'s model.'));
+    host.append(st);
     status();
 }
 

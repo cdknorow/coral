@@ -4469,8 +4469,8 @@ a.ibx-open, a.ibx-open:visited { color: var(--link-text); }
 
 /* Settings > Agents > Custom models (#5480): a group per provider, a row per model, an inline form to add or edit one */
 .settings-custom-models { display: flex; flex-direction: column; gap: var(--space-md, 8px); width: 100%; min-width: 0; }
-.cm-group { border: 1px solid var(--border); border-radius: var(--radius-md); margin: 0; padding: var(--space-md, 8px) var(--space-lg, 12px); min-width: 0; width: 100%; box-sizing: border-box; }
-.cm-group > legend { font-size: 0.75rem; font-weight: 600; color: var(--text-secondary); padding: 0 var(--space-sm, 4px); }
+.cm-provider { min-width: 5.5rem; font-size: 0.75rem; font-weight: 600; color: var(--text-secondary); }
+.cm-editing { margin: 0; font-size: 0.75rem; font-weight: 600; color: var(--text-secondary); }
 .cm-list { list-style: none; margin: 0 0 var(--space-md, 8px); padding: 0; display: flex; flex-direction: column; gap: var(--space-sm, 4px); }
 .cm-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-sm, 4px) var(--space-md, 8px); min-width: 0; }
 .cm-text { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-sm, 4px) var(--space-md, 8px); flex: 1 1 12rem; min-width: 0; }
