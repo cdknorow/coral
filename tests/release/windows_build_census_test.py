@@ -108,26 +108,18 @@ def check(wt, rel, resolve, commands, gui):
     return errs
 
 
-# The first release whose MSI is an x64 package (-arch x64 everywhere, #6009's W1; v1.4.157). smoke_windows.ps1 refuses a 32-bit MSI, so the
-# "Windows runner dry run" workflow, which smoke-tests a PUBLISHED release, must not default to an older one (its MSI is 32-bit and the
-# smoke test rightly fails it: the 158 gate's red). Move FIRST_X64_RELEASE only when the MSI build itself changes.
-FIRST_X64_RELEASE = (1, 4, 157)
-
-
+# smoke_windows.ps1 refuses a 32-bit MSI, and the releases before v1.4.157 have one (#6009's W1 made it x64). The "Windows runner dry run" workflow smoke-tests a
+# PUBLISHED release, so a version pinned in it goes stale in the other direction too (it was v1.4.153: the 158 gate's red). It names no version of its own: with
+# none given it resolves the latest published release, and it must only download a package, never build an MSI.
 def check_dryrun(dry):
-    """Errors in .github/workflows/windows-runner-dryrun.yml's default release (the dispatch input's and the push fallback's)."""
+    """Errors in .github/workflows/windows-runner-dryrun.yml's choice of release."""
     errs = []
-    inputs = re.findall(r'default:\s*"(\d+)\.(\d+)\.(\d+)"', dry)
-    fallbacks = re.findall(r"\|\|\s*'(\d+)\.(\d+)\.(\d+)'", dry)
-    if len(inputs) != 1 or len(fallbacks) != 1:
-        return ["windows-runner-dryrun.yml: its default release is not found in both places (the input's default and VERSION's fallback)"]
-    a, b = tuple(map(int, inputs[0])), tuple(map(int, fallbacks[0]))
-    if a != b:
-        errs.append(f"windows-runner-dryrun.yml: the input's default {'.'.join(map(str, a))} and VERSION's fallback {'.'.join(map(str, b))} differ")
-    for v in (a, b):
-        if v < FIRST_X64_RELEASE:
-            errs.append(f"windows-runner-dryrun.yml defaults to v{'.'.join(map(str, v))}, whose MSI is a 32-bit package: smoke_windows.ps1 fails it "
-                        f"(the first release with an x64 MSI is v{'.'.join(map(str, FIRST_X64_RELEASE))})")
+    if re.search(r'default:\s*"\d+\.\d+\.\d+"', dry):
+        errs.append("windows-runner-dryrun.yml pins a default release for the dispatch input: it goes stale (use an empty default: the latest release)")
+    if re.search(r"\|\|\s*'\d+\.\d+\.\d+'", dry):
+        errs.append("windows-runner-dryrun.yml pins a fallback release for a push: it goes stale (the step resolves the latest release)")
+    if "gh release list" not in dry or "--limit 1" not in dry:
+        errs.append("windows-runner-dryrun.yml does not resolve the latest published release (gh release list --limit 1)")
     if re.search(r"\bwix build\b", dry):
         errs.append("windows-runner-dryrun.yml builds an MSI: it must only download a published one (or be added to the -arch x64 census above)")
     return errs
@@ -169,9 +161,9 @@ def main():
             errs.append(f"the census did not notice: {name}")
             print("FAIL: the census did not notice:", name)
     dry_mutations = [
-        ("the dry run's input defaults to a 32-bit release", dry.replace('default: "1.4.157"', 'default: "1.4.153"', 1)),
-        ("the dry run's push fallback is a 32-bit release", dry.replace("|| '1.4.157'", "|| '1.4.153'", 1)),
-        ("the dry run's two defaults differ", dry.replace("|| '1.4.157'", "|| '1.4.158'", 1)),
+        ("the dry run pins its input's default release", dry.replace('default: ""', 'default: "1.4.153"', 1)),
+        ("the dry run pins a push fallback release", dry.replace("${{ github.event.inputs.version }}", "${{ github.event.inputs.version || '1.4.153' }}", 1)),
+        ("the dry run stops resolving the latest release", dry.replace("gh release list", "gh release view", 1)),
         ("the dry run builds an MSI", dry + "\n          wix build tools\\coral.wxs -o x.msi\n"),
     ]
     for name, text in dry_mutations:

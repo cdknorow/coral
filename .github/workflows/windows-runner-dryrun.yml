@@ -13,9 +13,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Released version to smoke test (no leading v), e.g. 1.4.69"
-        required: true
-        default: "1.4.157"
+        description: "Released version to smoke test (no leading v), e.g. 1.4.157; empty: the latest published release"
+        required: false
+        default: ""
   push:
     branches: ["ci/**"]
     paths:
@@ -36,8 +36,8 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 15
     env:
-      # workflow_dispatch supplies the version; a push (no inputs) defaults to a release that ships every program tests/release/commands.txt lists (1.4.153 added coral-update; move this with each release that adds one).
-      VERSION: ${{ github.event.inputs.version || '1.4.157' }}
+      # workflow_dispatch may name a version; with none (and on a push) the latest published release is used, resolved in the first step.
+      VERSION: ${{ github.event.inputs.version }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
@@ -53,6 +53,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          if (-not $env:VERSION) {
+            # The newest release, a pre-release too (the releases are pre-releases until the operator promotes one), whose packages are all published.
+            $tag = gh release list --repo "${{ github.repository }}" --limit 1 --json tagName --jq '.[0].tagName'
+            if ($LASTEXITCODE -ne 0 -or -not $tag) { throw "could not read the latest release" }
+            $env:VERSION = $tag.TrimStart('v')
+            echo "VERSION=$env:VERSION" >> $env:GITHUB_ENV
+          }
+          "smoke testing v$env:VERSION"
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           gh release download "v$env:VERSION" --repo "${{ github.repository }}" --pattern "Coral-*-x64-portable.zip" --dir dist
           $zip = Get-ChildItem dist\Coral-*-x64-portable.zip | Select-Object -First 1
