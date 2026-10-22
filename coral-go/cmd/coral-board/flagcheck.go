@@ -75,7 +75,7 @@ func checkReadNumbers(args []string) error {
 			value = args[i+1]
 		}
 		if n, err := strconv.Atoi(value); err != nil || n < 1 {
-			return fmt.Errorf("%s needs a whole number from 1 up, got %q", name, value)
+			return fmt.Errorf("%s needs a whole number, 1 or more (got %q)", name, value)
 		}
 	}
 	return nil
