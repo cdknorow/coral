@@ -1,7 +1,7 @@
 // test_base.js resolves the suites' server URL from CORAL_TEST_URL only and refuses production.
 'use strict';
 const assert = require('assert');
-const { execFileSync } = require('child_process');
+const { execFileSync } = require('./helpers/child_process.js');
 const path = require('path');
 
 const MOD = path.join(__dirname, 'test_base.js');

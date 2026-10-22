@@ -2,7 +2,7 @@
 // (escapeAttr/escapeHtml/Number), and no built markup has an inline on* handler (#3645).
 // It replaces csp_shapes_check.test.js, which ran this lint next to the handler-shape check.
 //   node attr_holes.test.js
-const { spawnSync } = require('child_process');
+const { spawnSync } = require('./helpers/child_process.js');
 const path = require('path');
 const assert = require('assert');
 const root = path.resolve(__dirname, '../..');

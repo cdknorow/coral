@@ -79,7 +79,7 @@
 // that is no longer alive (runners running at the same time are left alone), and only groups whose
 // command line still names that run's temp directory, so a reused pid is never hit.
 // Never run bare 'tmux' from an agent shell: $TMUX there points at production Coral's ~/.coral/tmux.sock.
-import { execFileSync, spawn, spawnSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from './helpers/child_process.js';
 // The browser password every test server starts with (a throwaway; never printed or logged).
 const TEST_PASSWORD = 'coral-cdp-suites-test-password';
 import { createRequire } from 'node:module';

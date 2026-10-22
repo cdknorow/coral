@@ -1,6 +1,6 @@
 // coral-agent task CLI, end to end: a real terminal agent on the test server
 // claims and completes the tasks the operator gave it (agents not on a board).
-const { execFileSync } = require('child_process');
+const { execFileSync } = require('./helpers/child_process.js');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');

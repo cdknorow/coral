@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync } from './helpers/child_process.js';
 import { snapshot, diff, rowLeaks, restoreSettings, leftovers, cleanup } from './helpers/server_state.mjs';
 
 // The throwaway database is made with the sqlite3 command-line tool, which a Windows machine has not by default: without it there is nothing to run against.

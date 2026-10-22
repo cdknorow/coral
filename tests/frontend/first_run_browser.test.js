@@ -16,7 +16,7 @@ const fs = require('node:fs');
 const net = require('node:net');
 const os = require('node:os');
 const path = require('node:path');
-const { spawn } = require('node:child_process');
+const { spawn } = require('./helpers/child_process.js');
 const CDP = require('chrome-remote-interface');
 
 if (process.platform === 'win32') { console.log('first_run_browser: skipped on Windows (sh stand-ins, /usr/bin PATH)'); process.exit(0); }

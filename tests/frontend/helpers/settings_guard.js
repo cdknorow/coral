@@ -10,7 +10,7 @@
 // the suite ADDED is deleted again and the settings are exactly as found; alone, it PUTs the old values through the API and an added key is set to '' (the API has no way to unset one; the
 // server reads '' as unset for the settings that matter here). Returns the number of keys put back.
 'use strict';
-const { execFileSync } = require('node:child_process');
+const { execFileSync } = require('./child_process.js');
 const path = require('node:path');
 const { BASE } = require('../test_base');
 
