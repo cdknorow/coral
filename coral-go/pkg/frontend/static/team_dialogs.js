@@ -421,6 +421,7 @@ async function launchTeam() {
         return;
     }
 
+    if (document.querySelector('#launch-step-team [data-blocks-launch]')) return; // tmux is missing: the line above Launch Team says so (#6046)
     const server = _effectiveServer(launch.server);
     if (_launchBlocked(server)) return;
     const agentType = document.getElementById("team-agent-type").value;

@@ -3,6 +3,7 @@ import { importOnce } from './import_once.js';
 import { showToast, escapeHtml, escapeAttr, boardNameProblem } from './utils.js';
 import { loadLiveSessions } from './api.js';
 import { recordRecentDir } from './browser.js';
+import { checkTmuxForLaunch } from './prerequisites.js';
 const { launch } = await importOnce('./launch_state.js');
 const { _effectiveServer, _settingsFor } = await importOnce('./launch_models.js');
 const { defaultPermissionMode, _getPermissionFlagsForAgentMode } = await importOnce('./permission_flags.js');
@@ -74,7 +75,19 @@ function _renderTeamTemplateSelector() {
 }
 
 /** Launch a team preset from the welcome screen — opens the team modal pre-filled. */
+// tmux missing is said once in the dialog and Launch stays off, like the other launch dialogs (#6046).
+function _syncQuickBlock() {
+    const go = document.getElementById('quick-launch-go'), why = document.querySelector('#quick-launch-modal [data-blocks-launch]');
+    if (!go) return;
+    go.disabled = !!why;
+    if (why) go.setAttribute('aria-describedby', why.id); else go.removeAttribute('aria-describedby');
+}
+document.addEventListener('cli-blocks-launch', e => { if (e.target.closest && e.target.closest('#quick-launch-modal')) _syncQuickBlock(); });
+
 window._quickLaunchTeam = async function() {
+    const tmuxSlot = document.getElementById('quick-tmux-slot');
+    await checkTmuxForLaunch(tmuxSlot);
+    if (tmuxSlot?.dataset.blocksLaunch) return; // tmux is missing: the line above Launch says so, and no request is sent
     const templateName = document.getElementById('quick-launch-template').value;
     const boardName = document.getElementById('quick-launch-board-name').value.trim() ||
         document.getElementById('quick-launch-board-name').placeholder;
