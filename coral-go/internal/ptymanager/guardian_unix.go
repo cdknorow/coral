@@ -227,32 +227,48 @@ func (g *guardianClient) alive() bool {
 }
 
 // send writes a line, starting a guardian first if there is none (which is told every registered terminal, this line's included).
-func (g *guardianClient) send(line string) {
+//
+// It returns a guardian whose pipe failed while it may still be running, for the caller to retire AFTER releasing g.mu (retire can wait seconds, and every terminal start and end would wait behind it); then
+// the caller starts the next (afterRetire).
+func (g *guardianClient) send(line string) (failed *guardianHandle) {
 	if !g.alive() {
 		if g.h != nil { // exited, its watcher not yet through
 			g.h = nil
 		}
 		g.start()
-		return
+		return nil
 	}
 	if _, err := io.WriteString(g.h.in, line); err != nil {
-		g.retire(g.h)
-		g.h = nil
+		failed, g.h = g.h, nil
+	}
+	return failed
+}
+
+// afterRetire retires a guardian whose pipe failed, without holding g.mu, and then starts the next if nothing else has (g.mu not held).
+func (g *guardianClient) afterRetire(failed *guardianHandle) {
+	if failed == nil {
+		return
+	}
+	g.retire(failed)
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.h == nil && !g.stopping && !g.off && len(g.regs) > 0 {
 		g.start()
 	}
 }
 
-// retire gets rid of a guardian whose pipe failed (g.mu held), and never closes the pipe of one that is still running: EOF on it is what makes a guardian end every registered tree, and Coral is alive.
+// retire gets rid of a guardian whose pipe failed (g.mu NOT held: it waits), and never closes the pipe of one that is still running: EOF on it is what makes a guardian end every registered tree, and Coral is alive.
 // A running guardian is first told to exit (SIGTERM ends it and ends no tree; SIGKILL after two seconds, which ends nothing either) and waited for; its pipe is closed only once it has gone.
 func (g *guardianClient) retire(h *guardianHandle) {
 	select {
 	case <-h.done:
 	default:
-		syscall.Kill(h.cmd.Process.Pid, syscall.SIGTERM)
+		// Through the os.Process, which knows when it has already been waited for: a pid that was reused in the gap since the check is never signalled.
+		h.cmd.Process.Signal(syscall.SIGTERM)
 		select {
 		case <-h.done:
 		case <-time.After(2 * time.Second):
-			syscall.Kill(h.cmd.Process.Pid, syscall.SIGKILL)
+			h.cmd.Process.Kill()
 			select {
 			case <-h.done:
 			case <-time.After(2 * time.Second):
@@ -266,15 +282,17 @@ func (g *guardianClient) retire(h *guardianHandle) {
 // add registers a terminal's shell with the guardian.
 func (g *guardianClient) add(root member, tag string) {
 	g.mu.Lock()
-	defer g.mu.Unlock()
 	if g.off || root.pid <= 1 {
+		g.mu.Unlock()
 		return
 	}
 	if g.regs == nil {
 		g.regs = map[int]guarded{}
 	}
 	g.regs[root.pid] = guarded{root: root, tag: tag}
-	g.send(fmt.Sprintf("add %d %d %s\n", root.pid, root.created, tag))
+	failed := g.send(fmt.Sprintf("add %d %d %s\n", root.pid, root.created, tag))
+	g.mu.Unlock()
+	g.afterRetire(failed)
 }
 
 // remove unregisters a terminal that has ended.
