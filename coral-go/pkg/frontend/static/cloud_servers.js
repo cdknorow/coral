@@ -49,9 +49,10 @@ export async function showCloudServers(focusId) {
 
 /** Render the server list into `el` (the Servers tab) and keep it fresh. Resolves once loaded. */
 export async function renderCloudServersInto(el) {
+    if (host !== el) enrollOpen = null; // a new visit follows the account again; a redraw into the same page keeps what the person opened
     host = el;
     confirming = null; renaming = null; loadError = '';
-    loaded = false; enrollOpen = null;
+    loaded = false;
     resetRelaunchReads(); // the first list of a visit reads each online machine's relaunch status once
     render();
     await load();

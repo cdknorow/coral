@@ -94,6 +94,7 @@ const BASE = require('./test_base').BASE;
             window.__cloudShape = true;
             const host2 = document.createElement('div'); host2.id = 'fs-cloud'; document.body.appendChild(host2);
             await cl.renderCloudServersInto(host2);
+            host2.querySelector('#cs-enroll-toggle')?.click(); // "Add a machine" is folded while the account has machines (#5992): open it first
             const code = host2.querySelector('input.cloud-code'); out.hasCode = !!code;
             if (code) { code.focus(); code.value = 'AB12'; code.setSelectionRange(2, 3); }
             window.__setServers(remote, cloud.concat([{ id: 'c2', label: 'desktop', online: false, allow_launch: false, last_seen: new Date().toISOString() }]));
