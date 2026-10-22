@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/subgentic/coral/internal/clihelp"
 )
@@ -74,8 +75,33 @@ non-ASCII text into '?' when piped to one. For text with quotes or non-ASCII use
 file), or pipe to "-" after  $OutputEncoding = [Text.UTF8Encoding]::new()  (PowerShell 7 and cmd.exe
 need neither).`
 
-// sendFlags are send's options, for the typo check after the text of a message.
-var sendFlags = []string{"--board", "--to", "--address", "--reply-to", "--message-id", "--attach", "--file"}
+// postFlags and sendFlags are the options of post and of send. They are read in any case (--TO is --to) and anywhere before or among the words of the message.
+var (
+	postFlags = []string{"--to", "--file"}
+	sendFlags = []string{"--board", "--to", "--address", "--reply-to", "--message-id", "--attach", "--file"}
+)
+
+// foldOpt is arg lower-cased when that is one of known (so --TO is --to), else arg as it is.
+func foldOpt(arg string, known []string) string {
+	if strings.HasPrefix(arg, "--") {
+		low := strings.ToLower(arg)
+		for _, k := range known {
+			if low == k {
+				return k
+			}
+		}
+	}
+	return arg
+}
+
+// unknownOptionError is the refusal of an option-shaped first word of a message, with a "did you mean" when it is a typo of a real option.
+func unknownOptionError(cmd, arg string, known []string) error {
+	hint := "put -- before message text that starts with '-'"
+	if near, ok := clihelp.NearFlag(arg, known); ok {
+		hint = "did you mean " + near + "? (put -- before message text that starts with '-')"
+	}
+	return fmt.Errorf("unknown option %q for %s (%s)", arg, cmd, hint)
+}
 
 // checkFreeText rejects free text that is really an option, so a mistyped
 // flag is never posted or stored: the first word of a post, and the value of
@@ -86,50 +112,37 @@ func checkFreeText(args []string) error {
 	}
 	rest := args[1:]
 	if args[0] == "post" {
-		seenText := false
+		// Options are read before the message and among its words; once the text has begun, a "--word" that is not an option is text
+		// ("post use --force here" posts as written, "post hello --fix" too). Only a first word that looks like an option is refused.
 		for i := 0; i < len(rest); i++ {
 			if rest[i] == "--" {
 				break
 			}
-			if rest[i] == "--to" || rest[i] == "--file" {
+			if opt := foldOpt(rest[i], postFlags); opt == "--to" || opt == "--file" {
 				i++
 				continue
 			}
 			if clihelp.IsFlagLike(rest[i]) {
-				if !seenText {
-					return fmt.Errorf("unknown option %q for post (put -- before message text that starts with '-')", rest[i])
-				}
-				// After the text, a separate argument that is one letter off a real option is a typo ("post hello --too Lead"); any other
-				// "--word" is text ("post use --force here" posts as written).
-				if near, ok := clihelp.NearFlag(rest[i], []string{"--to", "--file"}); ok {
-					return fmt.Errorf("unknown option %q for post: did you mean %s? (put -- before message text that has it)", rest[i], near)
-				}
+				return unknownOptionError("post", rest[i], postFlags)
 			}
-			seenText = true
+			break
 		}
 	}
 	if args[0] == "send" {
 		// The message's first word must not be an option.
-		seenText := false
 		for i := 0; i < len(rest); i++ {
 			if rest[i] == "--" {
 				break
 			}
-			switch rest[i] {
+			switch foldOpt(rest[i], sendFlags) {
 			case "--board", "--to", "--address", "--reply-to", "--message-id", "--attach", "--file":
 				i++
 				continue
 			}
 			if clihelp.IsFlagLike(rest[i]) {
-				if !seenText {
-					return fmt.Errorf("unknown option %q for send (put -- before message text that starts with '-')", rest[i])
-				}
-				// After the words of the message, only a typo of a real option is refused ("send ... hello --reply-too 4"); other "--word"s are text.
-				if near, ok := clihelp.NearFlag(rest[i], sendFlags); ok {
-					return fmt.Errorf("unknown option %q for send: did you mean %s? (put -- before message text that has it)", rest[i], near)
-				}
+				return unknownOptionError("send", rest[i], sendFlags)
 			}
-			seenText = true
+			break
 		}
 	}
 	return clihelp.CheckTextFlags(rest, textFlags)

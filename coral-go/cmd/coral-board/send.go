@@ -41,7 +41,7 @@ func runSend(args []string, id sendIdentity, out io.Writer) error {
 	var msgParts []string
 	literal := false
 	for i := 0; i < len(args); i++ {
-		switch args[i] {
+		switch foldOpt(args[i], sendFlags) { // --BOARD is --board
 		case "--":
 			msgParts = append(msgParts, args[i+1:]...)
 			literal = true
@@ -50,7 +50,7 @@ func runSend(args []string, id sendIdentity, out io.Writer) error {
 			if i+1 >= len(args) || args[i+1] == "" {
 				return fmt.Errorf("%s needs a value", args[i])
 			}
-			switch args[i] {
+			switch foldOpt(args[i], sendFlags) {
 			case "--board":
 				target = args[i+1]
 			case "--to":

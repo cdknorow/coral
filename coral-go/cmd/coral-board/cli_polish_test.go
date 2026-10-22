@@ -242,44 +242,45 @@ func TestTaskCurrentJSON(t *testing.T) {
 	assert.Contains(t, res.stdout, "No active task")
 }
 
-// A misspelt option after the text of a post is refused, not posted as text (#241).
-func TestPostRefusesAMisspeltOptionAfterTheText(t *testing.T) {
+// Options are read before the words of a message: an option-looking first word is refused, with a "did you mean" when it is a typo (#241).
+func TestPostRefusesAnUnknownOptionBeforeTheText(t *testing.T) {
 	srv := newRecordingServer(t)
 	dir := subscribedDataDir(t, srv.URL)
-	for _, args := range [][]string{{"post", "hello", "--too", "Lead"}, {"post", "hello", "world", "--fiel", "x"}} {
-		res := runBoard(t, srv.URL, dir, args...)
-		assert.Equal(t, 2, res.code, "%v: %q", args, res.stderr)
-		assert.Contains(t, res.stderr, "unknown option")
-	}
+	res := runBoard(t, srv.URL, dir, "post", "--too", "Lead", "hello")
+	assert.Equal(t, 2, res.code, res.stderr)
+	assert.Contains(t, res.stderr, "did you mean --to")
+	res = runBoard(t, srv.URL, dir, "post", "--nope", "hello")
+	assert.Equal(t, 2, res.code)
+	assert.Contains(t, res.stderr, "unknown option")
+	assert.NotContains(t, res.stderr, "did you mean")
 	assert.Empty(t, srv.requests())
-	res := runBoard(t, srv.URL, dir, "post", "--to", "Lead", "hello there")
-	assert.Equal(t, 0, res.code, res.stderr)
-	res = runBoard(t, srv.URL, dir, "post", "--", "see", "--help")
-	assert.Equal(t, 0, res.code, res.stderr)
 }
 
-// Flags inside the text of a post are text: only a separate argument one letter off --to or --file, after the words, is taken for a typo.
+// Once the text has begun, a "--word" that is not an option is text, whatever it looks like (#241); --to and --file are read anywhere, in any case.
 func TestPostTreatsFlagsInTextAsText(t *testing.T) {
-	for _, args := range [][]string{
-		{"post", "use --force here"},
-		{"post", "run go test --count=1"},
-		{"post", "use", "--force", "here"},
-		{"post", "pass", "--verbose", "to", "it"},
-		{"post", "hello", "--on"},
+	for _, c := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"post", "use --force here"}, "use --force here"},
+		{[]string{"post", "use", "--force", "here"}, "use --force here"},
+		{[]string{"post", "hello", "--fix"}, "hello --fix"},
+		{[]string{"post", "scroll", "to", "--top"}, "scroll to --top"},
+		{[]string{"post", "hello", "--too", "Lead"}, "hello --too Lead"},
+		{[]string{"post", "list", "the", "--files"}, "list the --files"},
+		{[]string{"post", "hello", "--go", "-o", "--no"}, "hello --go -o --no"},
+		{[]string{"post", "run go test --count=1"}, "run go test --count=1"},
+		{[]string{"post", "--TO", "Lead", "hello"}, "@Lead hello"},
+		{[]string{"post", "hello", "--TO", "Lead"}, "@Lead hello"},
 	} {
 		srv := newRecordingServer(t)
-		res := runBoard(t, srv.URL, subscribedDataDir(t, srv.URL), args...)
-		assert.Equal(t, 0, res.code, "%v: %q", args, res.stderr)
-		assert.Len(t, srv.requests(), 1, "%v", args)
+		res := runBoard(t, srv.URL, subscribedDataDir(t, srv.URL), c.args...)
+		require.Equal(t, 0, res.code, "%v: %q", c.args, res.stderr)
+		assert.Equal(t, c.want, postedContent(t, srv), "%v", c.args)
 	}
-	srv := newRecordingServer(t)
-	res := runBoard(t, srv.URL, subscribedDataDir(t, srv.URL), "post", "hello", "--too", "Lead")
-	assert.Equal(t, 2, res.code)
-	assert.Contains(t, res.stderr, "did you mean --to")
-	assert.Empty(t, srv.requests())
 }
 
-// An unknown command is a usage error (2); --file at a folder says so; a typo of a send option after the message is refused (QA's pass on #100).
+// An unknown command is a usage error (2); --file at a folder says so; send refuses an option-looking first word, with a hint (QA's pass on #100).
 func TestUsageExitAndFileFolderAndSendTypo(t *testing.T) {
 	srv := newRecordingServer(t)
 	dir := subscribedDataDir(t, srv.URL)
@@ -292,11 +293,10 @@ func TestUsageExitAndFileFolderAndSendTypo(t *testing.T) {
 	assert.Contains(t, res.stderr, "is a folder")
 	assert.NotContains(t, res.stderr, "Incorrect function")
 
-	for _, args := range [][]string{{"send", "--board", "other", "hello", "--reply-too", "4"}, {"send", "--board", "other", "hello", "--boad", "x"}} {
-		res = runBoard(t, srv.URL, dir, args...)
-		assert.Equal(t, 2, res.code, "%v: %q", args, res.stderr)
-		assert.Contains(t, res.stderr, "did you mean")
-	}
-	res = runBoard(t, srv.URL, dir, "send", "--board", "other", "use", "--force", "here")
-	assert.NotContains(t, res.stderr, "unknown option", "other --words in a send message are text")
+	res = runBoard(t, srv.URL, dir, "send", "--board", "other", "--reply-too", "4", "hello")
+	assert.Equal(t, 2, res.code, res.stderr)
+	assert.Contains(t, res.stderr, "did you mean --reply-to")
+	res = runBoard(t, srv.URL, dir, "send", "--BOARD", "other", "use", "--force", "here")
+	assert.NotContains(t, res.stderr, "unknown option", "options are read in any case, and --words after the text are text")
+	assert.NotContains(t, res.stderr, "needs a value")
 }

@@ -115,13 +115,14 @@ func cmdPost() {
 			literal = true
 			break
 		}
-		if os.Args[i] == "--to" && i+1 < len(os.Args) {
+		opt := foldOpt(os.Args[i], postFlags) // --TO is --to
+		if opt == "--to" && i+1 < len(os.Args) {
 			toNames = os.Args[i+1]
 			i++ // skip the value
-		} else if os.Args[i] == "--file" && i+1 < len(os.Args) {
+		} else if opt == "--file" && i+1 < len(os.Args) {
 			filePath = os.Args[i+1]
 			i++
-		} else if os.Args[i] == "--to" || os.Args[i] == "--file" {
+		} else if opt == "--to" || opt == "--file" {
 			fmt.Fprintf(os.Stderr, "Error: %s needs a value\n", os.Args[i])
 			os.Exit(2)
 		} else {
