@@ -385,7 +385,7 @@ func runForeground(host string, port int, noBrowser, debugMode bool, backendType
 		mLog := systray.AddMenuItem("Open Log", "Open tray.log, which says why")
 		mRetry := systray.AddMenuItem("Retry", "Start Coral's server again")
 		status.attach(mReason, mLog, mRetry)
-		mOpenApp := systray.AddMenuItem("Open in App", "Open Coral in native window")
+		mOpenApp := systray.AddMenuItem("Open Coral", "Open Coral in its own window")
 		mOpenBrowser := systray.AddMenuItem("Open in Browser", "Open Coral in web browser")
 		mUpdate := systray.AddMenuItem("Check for Updates", "Check for new versions")
 		// "Update to vX available": shown only while the server reports a newer approved release and the update feature is on (updater D, #6006)
@@ -400,11 +400,11 @@ func runForeground(host string, port int, noBrowser, debugMode bool, backendType
 		if runtime.GOOS == "windows" {
 			// On Windows (PTY backend), agents cannot survive without the server,
 			// so there is only one exit action.
-			mShutdown = systray.AddMenuItem("Quit — Stop Agents & Exit", "Stop all agents and exit Coral")
+			mShutdown = systray.AddMenuItem("Quit and stop all agents", "Stop all agents and exit Coral")
 			mQuit = mShutdown // both point to the same item
 		} else {
-			mShutdown = systray.AddMenuItem("Shutdown — Kill Agents & Stop Server", "Kill all agents and stop the server")
-			mQuit = systray.AddMenuItem("Quit — Exit Coral", "Exit the tray app (agents keep running)")
+			mShutdown = systray.AddMenuItem("Quit and stop all agents", "Kill all agents, then stop the server and exit")
+			mQuit = systray.AddMenuItem("Quit Coral", "Exit Coral. Agents keep running only on the tmux terminal backend; on the PTY backend they end with the server.")
 		}
 
 		go func() {
@@ -546,7 +546,7 @@ func checkForUpdates(baseURL, dataDir string) {
 		return
 	}
 	if a.Available {
-		beeep.Notify("Coral", a.notice("Update available: v%s\nYou have v%s", version), "")
+		beeep.Notify("Coral", a.notice("Update available: v%s (you have v%s)", version), "")
 		executil.OpenBrowser(a.pageURL())
 		tracking.TrackUpdateNotice(a.Latest, tracking.UpdateSourceTray, string(a.channelOf()))
 		tracking.TrackUpdateOffer(a.Latest, tracking.UpdateSourceTray, string(a.channelOf())) // a deliberate Check for Updates opens the release page (#5952)

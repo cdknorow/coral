@@ -10,8 +10,8 @@ package main
 
 static char *coralDatabasePasswordOnMain(void) {
     NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = @"Coral — Unlock database";
-    alert.informativeText = @"Enter your database password. It is used only before Coral opens its databases.";
+    alert.messageText = @"Unlock Coral";
+    alert.informativeText = @"Enter your database password.";
     alert.alertStyle = NSAlertStyleInformational;
     [alert addButtonWithTitle:@"Unlock"];
     [alert addButtonWithTitle:@"Cancel"];
