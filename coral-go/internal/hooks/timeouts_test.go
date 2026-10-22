@@ -35,7 +35,7 @@ func TestTimeoutsAreWhatTheHooksSay(t *testing.T) {
 	assert.Less(t, FastTimeout, time.Second)
 }
 
-// The bound is a few times the largest payload a real CLI sends (674 KB seen in 110,000 transcript lines), not tens of megabytes.
+// The bound is a few times the largest payload a real CLI sends (674 KB seen in 110,000 Claude transcript lines; Codex and agy not measured), not tens of megabytes.
 func TestStdinBoundIsSmall(t *testing.T) {
 	assert.LessOrEqual(t, MaxHookStdin, 8<<20)
 	assert.GreaterOrEqual(t, MaxHookStdin, 2<<20, "well above the largest payload seen")

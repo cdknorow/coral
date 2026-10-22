@@ -105,9 +105,10 @@ func LivePath(agentName, route string) string {
 
 // MaxHookStdin bounds what a hook reads from the agent CLI: a tool's whole output rides in a PostToolUse payload, and every tool call runs a hook.
 //
-// 4 MiB: the largest record in 110,000 lines of real Claude Code transcripts (tool results included) is 674 KB, so this is six times the largest payload seen. The cap was
-// 32 MiB, and a hostile 31 MB array of numbers peaked near 1.2 GB when decoded (Security's #244); at 4 MiB the same shape peaks around 150 MB.
-const MaxHookStdin = 4 << 20
+// 8 MiB: the largest record in 110,000 lines of real Claude Code transcripts (tool results included) is 674 KB, so this is twelve times the largest payload seen there. Codex and
+// agy payloads were not measured, which is why it is not lower. The cap was 32 MiB, and a hostile 31 MB array of numbers peaked near 1.2 GB when decoded (Security's #244); just
+// under 8 MiB the same shape peaks around 300 MB. A payload over the bound drops that one event only: the hook records nothing and exits 0, and the tool call goes on.
+const MaxHookStdin = 8 << 20
 
 // ReadStdin reads a hook's stdin up to MaxHookStdin. A longer payload (a tool that printed a huge file) is not held and not parsed: the hook
 // records nothing for that call, as for one that is not JSON, and the CLI goes on.
@@ -145,7 +146,7 @@ func BoardStateFileName(sessionName string) string {
 }
 
 // APITimeout is how long a hook waits for Coral when its reply matters (or the request must have been taken before the agent goes on): a silent Coral costs the
-// agent this on every call. FastTimeout is for a post whose reply nothing reads (a tool call that ended, a token count, a task created): the agent should not
+// agent this on every call. FastTimeout is for a post whose reply nothing reads and whose loss is harmless (a tool call that ended, a token count, a model name; not a task created): the agent should not
 // wait seconds on it every tool call when Coral is stopped or stuck.
 const (
 	APITimeout  = 3 * time.Second
