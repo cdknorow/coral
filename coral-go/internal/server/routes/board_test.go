@@ -103,7 +103,13 @@ func TestBoardCompleteTask_PersistsChangesArtifact(t *testing.T) {
 		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 			return err
 		}
-		return os.WriteFile(path, []byte("diff --git a/a.txt b/a.txt\n"), 0644)
+		// Like the real writer (PersistTaskChanges): written aside and renamed in, so the file is never seen empty. A bare WriteFile creates it first,
+		// and the wait below could read it in that instant.
+		tmp := path + ".tmp"
+		if err := os.WriteFile(tmp, []byte("diff --git a/a.txt b/a.txt\n"), 0644); err != nil {
+			return err
+		}
+		return os.Rename(tmp, path)
 	})
 	base := server.URL + "/api/board/eval/tasks"
 
