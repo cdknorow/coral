@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"sync"
 	"testing"
@@ -37,8 +38,8 @@ func resetListenerCheck(t *testing.T, pids func(string, int) ([]uint32, error), 
 }
 
 // #224 B, the real system lookups: a listener this process opens on 127.0.0.1 and on [::1] is found as the one a connection would
-// reach, owned by this user; and the check then refuses it, since its image is the test binary, not Coral's coral.exe or
-// coral-tray.exe (the image is enforced). Nothing listening is fine.
+// reach, owned by this user. A listener in this very process (a test's in-process server) passes: a tool never listens on
+// Coral's port itself. The image rule for any other process is TestTheImageMustBeCoralFromItsOwnFolder's. Nothing listening is fine.
 func TestTheRealLookupsFindTheListenerAndEnforceTheImage(t *testing.T) {
 	resetListenerCheck(t, tcpListenerPIDs, processOwner)
 	me, err := currentUserSID()
@@ -57,8 +58,7 @@ func TestTheRealLookupsFindTheListenerAndEnforceTheImage(t *testing.T) {
 		sid, image, err := processOwner(uint32(os.Getpid()))
 		require.NoError(t, err)
 		assert.True(t, sid.Equals(me), "owned by this user")
-		var foreign *ForeignListenerError
-		assert.True(t, errors.As(checkListener(host, port), &foreign), "%s is not Coral's image: refused", image)
+		assert.NoError(t, checkListener(host, port), "this very process (%s) listening: passes", image)
 		ln.Close()
 	}
 	assert.NoError(t, checkListener("127.0.0.1", 1), "nothing listening: the connection fails by itself")
@@ -184,4 +184,21 @@ func TestARealForeignListenerOnThisComputer(t *testing.T) {
 		}
 	}
 	t.Skip("nothing of another account listens on 8420 here (" + strconv.Itoa(len(pids)) + " listeners)")
+}
+
+// A test runs its CLI as a child of the test binary, which serves on the port: the listener is then this tool's own
+// executable file, which passes; a different program in another folder still does not.
+func TestAListenerRunningThisToolsOwnExecutablePasses(t *testing.T) {
+	me, err := currentUserSID()
+	require.NoError(t, err)
+	exe, err := os.Executable()
+	require.NoError(t, err)
+	resetListenerCheck(t, func(string, int) ([]uint32, error) { return []uint32{77}, nil },
+		func(uint32) (*windows.SID, string, error) { return me, exe, nil })
+	coralFolders = func() []string { return nil }
+	assert.NoError(t, checkListener("127.0.0.1", 8450), "the listener is %s, this tool's own executable", exe)
+	listenerVerified = sync.Map{}
+	pidOwner = func(uint32) (*windows.SID, string, error) { return me, `C:\elsewhere\` + filepath.Base(exe), nil }
+	var foreign *ForeignListenerError
+	assert.True(t, errors.As(checkListener("127.0.0.1", 8450), &foreign), "the same name in another folder is not this tool's executable")
 }
