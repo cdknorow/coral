@@ -44,7 +44,8 @@ func TestMSILaunchPassesTheInstallerFlag(t *testing.T) {
 	require.NoError(t, err)
 	m := regexp.MustCompile(`<CustomAction Id="LaunchCoral"[^>]*ExeCommand="([^"]*)"[^>]*/>`).FindSubmatch(wxs)
 	require.NotNil(t, m, "the LaunchCoral action")
-	assert.Equal(t, "--"+installerLaunchFlag, string(m[1]))
+	// The quoted program in its install folder (a Directory-based action), then the flag as its one argument.
+	assert.Equal(t, "&quot;[INSTALLFOLDER]coral-tray.exe&quot; --"+installerLaunchFlag, string(m[1]))
 }
 
 // An XML comment cannot hold a double hyphen: wix build stops with WIX0104 and the release has no MSI (QA's run 39717624469 on the
