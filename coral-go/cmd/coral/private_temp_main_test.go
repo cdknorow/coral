@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/subgentic/coral/internal/cliauth"
 	"os"
 	"testing"
 
@@ -12,6 +13,7 @@ import (
 // such a file, which made TestAutoAcceptOffNeverSendsUnsigned fail while an agent's Codex ran at the same time (#83, #28).
 func TestMain(m *testing.M) {
 	cleanup := secfiletest.UsePrivateTemp()
+	cliauth.DisableProofForTests() // the package's stand-in servers answer the hello, not the proof (the proof has its own tests in internal/cliauth and internal/serverproof)
 	code := m.Run()
 	cleanup()
 	os.Exit(code)

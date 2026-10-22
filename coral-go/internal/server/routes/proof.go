@@ -2,6 +2,7 @@ package routes
 
 import (
 	"context"
+	"github.com/subgentic/coral/internal/httputil"
 	"net/http"
 	"sync"
 	"time"
@@ -32,7 +33,9 @@ func (h *CloudHandler) ProofKeys(ctx context.Context, kind, tokenHash string) ([
 
 // Proof: GET /api/system/proof?n=<32 hex>&k=operator, or &k=session&h=<sha256 of the session token>.
 func (h *CloudHandler) Proof() http.Handler {
-	inner := serverproof.Handler(h.ProofKeys, proofRate.allow)
+	inner := serverproof.Handler(h.ProofKeys, proofRate.allow, func(w http.ResponseWriter) {
+		httputil.WriteActionLimit(w, 1, "proof_limit", "too many proof requests from this computer right now; try again in a few seconds")
+	})
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if cloud.Tunneled(r) {
 			http.Error(w, "not available through Coral Hub", http.StatusForbidden)

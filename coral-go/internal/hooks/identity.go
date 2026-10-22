@@ -2,6 +2,7 @@ package hooks
 
 import (
 	"errors"
+	"github.com/subgentic/coral/internal/serverproof"
 	"net"
 	"net/http"
 	"net/url"
@@ -38,6 +39,10 @@ type identityTransport struct {
 	tool  string
 	token string
 	hosts []string // the configured Coral's hosts, besides loopback
+
+	// proof is base with every new connection proved before the token goes on it (#6103): set for a "v2." session token on macOS and Linux (the Windows check of who owns the port is used there, and an
+	// older token's tools do not ask). nil: the token is sent as before.
+	proof http.RoundTripper
 }
 
 // errRedirectRefused: a reply redirected the request to another host or scheme.
@@ -67,6 +72,9 @@ func (t identityTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	if r.Header.Get("User-Agent") == "" {
 		r.Header.Set("User-Agent", t.tool+"/"+Version)
 	}
+	if t.proof != nil && r.Response == nil && r.URL.Scheme == "http" && r.Header.Get(SessionTokenHeader) != "" && t.localCoral(r.URL) {
+		return t.proof.RoundTrip(r) // the token goes only on a connection whose server answered the challenge (#6103)
+	}
 	return t.base.RoundTrip(r)
 }
 
@@ -79,7 +87,26 @@ func InstallIdentity(tool string) {
 	if _, done := base.(identityTransport); done {
 		return
 	}
-	http.DefaultTransport = identityTransport{base: base, tool: tool, token: token, hosts: configuredHosts()}
+	http.DefaultTransport = identityTransport{base: base, tool: tool, token: token, hosts: configuredHosts(), proof: sessionProof(base, token)}
+}
+
+// proofEnabled: macOS and Linux prove the program on Coral's port with a challenge; Windows checks who owns it (listener_owner_windows.go).
+var proofEnabled = runtime.GOOS != "windows"
+
+// DisableProofForTests turns the proof off for the rest of the process: a test whose stand-in server does not serve /api/system/proof says so. Nothing else calls it.
+func DisableProofForTests() { proofEnabled = false }
+
+// sessionProof is the transport that proves each new connection to a Coral on this computer before the session token goes on it, or nil when there is nothing to prove with: no token, a token without
+// the "v2." mark (an agent started before proof keys existed), or a base whose dialing cannot be hooked.
+func sessionProof(base http.RoundTripper, token string) http.RoundTripper {
+	if !proofEnabled || !strings.HasPrefix(token, serverproof.SessionTokenPrefix) {
+		return nil
+	}
+	rt, ok := serverproof.NewTransport(base, serverproof.Credential{Kind: serverproof.KindSession, Secret: token})
+	if !ok {
+		return nil
+	}
+	return rt
 }
 
 // sessionToken is the agent session's token: CORAL_SESSION_TOKEN, or when that is missing (in

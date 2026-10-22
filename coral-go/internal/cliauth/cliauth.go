@@ -10,9 +10,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/subgentic/coral/internal/auth"
 	"github.com/subgentic/coral/internal/serverproof"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -265,6 +267,12 @@ type CLIClient struct {
 // answered.
 func (c CLIClient) Do(ctx context.Context, method, path string, body []byte, header http.Header, timeout time.Duration) (*http.Response, error) {
 	client := &http.Client{Timeout: timeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	if u, err := url.Parse(c.Base); err == nil && u.Scheme == "http" && auth.IsLoopbackHost(u.Hostname()) {
+		if rt := newProofTransports(baseHTTP()).get(c.Token); rt != nil {
+			client.Transport = rt // every new connection to this Coral is proved before the hello goes on it (#6103)
+			defer rt.(*http.Transport).CloseIdleConnections()
+		}
+	}
 	cn := make([]byte, cliNonceBytes)
 	if _, err := rand.Read(cn); err != nil {
 		return nil, err
@@ -279,7 +287,10 @@ func (c CLIClient) Do(ctx context.Context, method, path string, body []byte, hea
 	// connection the proof came back on.
 	hresp, err := client.Do(hreq)
 	if err != nil {
-		return nil, err
+		if isRefused(err) {
+			return nil, notCoral{err} // the program on the port did not prove it is Coral (#6103): nothing was sent
+		}
+		return nil, err // nothing answered
 	}
 	var hello struct {
 		Nonce string `json:"nonce"`

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/subgentic/coral/internal/serverproof"
 	"io"
 	"net/http"
 	"os"
@@ -129,6 +130,9 @@ type Transport struct {
 	Base  http.RoundTripper
 	Token string
 	Dir   string // where the token was read (named in the error when a server can't prove it)
+
+	// Proof proves, on each new connection, that the program on Coral's port is this Coral (#6103); nil: nothing is proved (Windows has its own check, and a Base that cannot be hooked).
+	Proof *proofTransports
 }
 
 func (t Transport) RoundTrip(r *http.Request) (*http.Response, error) {
@@ -152,14 +156,19 @@ func (t Transport) RoundTrip(r *http.Request) (*http.Response, error) {
 	out.ContentLength = int64(len(body))
 	out.GetBody = func() (io.ReadCloser, error) { return io.NopCloser(bytes.NewReader(body)), nil }
 	base := r.URL.Scheme + "://" + r.URL.Host
-	cn, sn, err := t.hello(r.Context(), base)
-	if errors.Is(err, ErrNotCoral) && t.Dir != "" {
+	rt := t.carrier(r)
+	cn, sn, err := t.helloOn(r.Context(), base, rt)
+	if (errors.Is(err, ErrNotCoral) || isRefused(err)) && t.Dir != "" {
 		// The server may have a newer token than the one this process read at its start (it
 		// restarted, or `coral reset-password` replaced it, #4041): read it again, once.
 		if tok, rerr := ReadToken(t.Dir); rerr == nil && tok != t.Token {
 			t.Token = tok
-			cn, sn, err = t.hello(r.Context(), base)
+			rt = t.carrier(r)
+			cn, sn, err = t.helloOn(r.Context(), base, rt)
 		}
+	}
+	if isRefused(err) {
+		return nil, notCoral{err} // the program on the port did not prove it is Coral (#6103): nothing was sent, and the error says what to do
 	}
 	if errors.Is(err, ErrNotCoral) {
 		// Never sent unsigned (#3421 v2, operator decision): the server rejects unsigned
@@ -179,12 +188,32 @@ func (t Transport) RoundTrip(r *http.Request) (*http.Response, error) {
 		return nil, ErrNotCoral
 	}
 	out.Header.Set(CLIAuthHeader, sig)
-	return t.Base.RoundTrip(out)
+	return rt.RoundTrip(out)
+}
+
+// carrier is the transport a request to a loopback Coral travels on: the one that proves each new connection when there is one, else Base.
+func (t Transport) carrier(r *http.Request) http.RoundTripper {
+	if r.URL.Scheme == "http" {
+		if p := t.Proof.get(t.Token); p != nil {
+			return p
+		}
+	}
+	return t.Base
+}
+
+func isRefused(err error) bool {
+	var re *serverproof.RefusedError
+	return errors.As(err, &re)
 }
 
 // hello is step 1: it returns the client and server nonces once the server has proved it
 // knows the token (otherwise ErrNotCoral, and nothing else was sent).
 func (t Transport) hello(ctx context.Context, base string) (clientNonce, serverNonce string, err error) {
+	return t.helloOn(ctx, base, t.Base)
+}
+
+// helloOn is hello sent on rt (the transport that proves each new connection, when there is one).
+func (t Transport) helloOn(ctx context.Context, base string, rt http.RoundTripper) (clientNonce, serverNonce string, err error) {
 	cn := make([]byte, cliNonceBytes)
 	if _, err := rand.Read(cn); err != nil {
 		return "", "", err
@@ -195,7 +224,7 @@ func (t Transport) hello(ctx context.Context, base string) (clientNonce, serverN
 		return "", "", err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := t.Base.RoundTrip(req)
+	resp, err := rt.RoundTrip(req)
 	if err != nil {
 		return "", "", err
 	}
@@ -242,7 +271,7 @@ func InstallOperatorSigning() bool {
 	if _, done := http.DefaultTransport.(Transport); done {
 		return true
 	}
-	http.DefaultTransport = Transport{Base: http.DefaultTransport, Token: tok, Dir: dir}
+	http.DefaultTransport = Transport{Base: http.DefaultTransport, Token: tok, Dir: dir, Proof: newProofTransports(baseHTTP())}
 	return true
 }
 

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/subgentic/coral/internal/httputil"
 	"io"
 	"net"
 	"net/http"
@@ -115,7 +116,7 @@ func Prove(ctx context.Context, conn net.Conn, c Credential) error {
 	body, rerr := io.ReadAll(io.LimitReader(resp.Body, 1024))
 	resp.Body.Close()
 	switch {
-	case resp.StatusCode == http.StatusTooManyRequests:
+	case resp.Header.Get(httputil.ActionLimitHeader) != "": // Coral's own answer to a flood of challenges
 		return fail("Coral is answering too many proof requests from this computer right now. Try again in a few seconds.", nil)
 	case resp.StatusCode == http.StatusNotFound:
 		return fail("The program on that port cannot prove who it is: it may be a Coral older than this tool, or one that does not know this "+c.scope()+". Restart Coral"+c.restartHint()+", or stop the program that holds the port.", nil)

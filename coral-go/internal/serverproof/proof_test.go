@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/subgentic/coral/internal/httputil"
 	"io"
 	"net"
 	"net/http"
@@ -48,7 +49,7 @@ func newCoral(t *testing.T, key []byte) *coral {
 		}
 		return key, true
 	}
-	mux.Handle(Path, Handler(lookup, nil))
+	mux.Handle(Path, Handler(lookup, nil, nil))
 	mux.HandleFunc("/echo", func(w http.ResponseWriter, r *http.Request) {
 		c.mu.Lock()
 		c.echoes = append(c.echoes, r.RemoteAddr)
@@ -142,7 +143,7 @@ func TestARelayThatForwardsTheChallengeToTheRealCoralOnAnotherAddressFails(t *te
 	startReal := func(t *testing.T, ln net.Listener) *coral {
 		real := &coral{}
 		mux := http.NewServeMux()
-		mux.Handle(Path, Handler(func(context.Context, string, string) ([]byte, bool) { return DeriveKey(KindOperator, secret), true }, nil))
+		mux.Handle(Path, Handler(func(context.Context, string, string) ([]byte, bool) { return DeriveKey(KindOperator, secret), true }, nil, nil))
 		mux.HandleFunc("/echo", func(w http.ResponseWriter, r *http.Request) {
 			real.mu.Lock()
 			real.echoes = append(real.echoes, r.RemoteAddr)
@@ -267,8 +268,11 @@ func TestAnImpostorThatCannotProveGetsNothing(t *testing.T) {
 			_, port, _ := net.SplitHostPort(s)
 			json.NewEncoder(w).Encode(map[string]string{"proof": Proof(DeriveKey(KindOperator, other), port, r.URL.Query().Get("n"), c, s)})
 		}, "did not prove"},
-		"a redirect":              {func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/elsewhere", http.StatusFound) }, "did not prove"},
-		"Coral's 429 for a flood": {func(w http.ResponseWriter, r *http.Request) { http.Error(w, "x", http.StatusTooManyRequests) }, "too many proof requests"},
+		"a redirect": {func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/elsewhere", http.StatusFound) }, "did not prove"},
+		"Coral's own limit answer for a flood": {func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set(httputil.ActionLimitHeader, "action")
+			w.WriteHeader(429)
+		}, "too many proof requests"},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -429,7 +433,7 @@ func TestTheSessionProofNeedsTheSessionAndItsHash(t *testing.T) {
 
 func TestHandlerAnswersOnlyAWellFormedChallenge(t *testing.T) {
 	key := DeriveKey(KindOperator, secret)
-	srv := httptest.NewServer(Handler(func(_ context.Context, kind, hash string) ([]byte, bool) { return key, kind == KindOperator }, nil))
+	srv := httptest.NewServer(Handler(func(_ context.Context, kind, hash string) ([]byte, bool) { return key, kind == KindOperator }, nil, nil))
 	t.Cleanup(srv.Close)
 	nonce := strings.Repeat("ab", 16)
 	status := func(method, query string) int {
@@ -450,7 +454,8 @@ func TestHandlerAnswersOnlyAWellFormedChallenge(t *testing.T) {
 
 func TestHandlerIsRateBounded(t *testing.T) {
 	var n atomic.Int32
-	srv := httptest.NewServer(Handler(func(context.Context, string, string) ([]byte, bool) { return []byte("k"), true }, func() bool { return n.Add(1) <= 2 }))
+	srv := httptest.NewServer(Handler(func(context.Context, string, string) ([]byte, bool) { return []byte("k"), true }, func() bool { return n.Add(1) <= 2 },
+		func(w http.ResponseWriter) { w.Header().Set(httputil.ActionLimitHeader, "action"); w.WriteHeader(429) }))
 	t.Cleanup(srv.Close)
 	q := "?k=operator&n=" + strings.Repeat("cd", 16)
 	var codes []int

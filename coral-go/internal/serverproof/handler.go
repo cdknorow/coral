@@ -13,8 +13,9 @@ import (
 type KeyLookup func(ctx context.Context, kind, tokenHash string) (key []byte, ok bool)
 
 // Handler answers a challenge. It is public (the tool has no credential to give before it knows who it talks to) and answers only a well-formed challenge; it writes nothing but the proof.
-// allow is the rate bound (nil: none): a flood of challenges from this computer cannot make Coral do unbounded work.
-func Handler(lookup KeyLookup, allow func() bool) http.Handler {
+// allow is the rate bound (nil: none): a flood of challenges from this computer cannot make Coral do unbounded work; limited answers a challenge that is over it (the server writes its one kind of
+// per-action limit there, httputil.WriteActionLimit, which the tools recognise by its marker header).
+func Handler(lookup KeyLookup, allow func() bool, limited func(http.ResponseWriter)) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		if r.Method != http.MethodGet {
@@ -22,8 +23,7 @@ func Handler(lookup KeyLookup, allow func() bool) http.Handler {
 			return
 		}
 		if allow != nil && !allow() {
-			w.Header().Set("Retry-After", "1")
-			http.Error(w, "too many challenges", http.StatusTooManyRequests)
+			limited(w)
 			return
 		}
 		q, err := url.ParseQuery(r.URL.RawQuery)

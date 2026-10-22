@@ -7,12 +7,15 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/subgentic/coral/internal/serverproof"
 )
 
 func TestExitCodes(t *testing.T) {
@@ -113,4 +116,27 @@ func TestDescribe(t *testing.T) {
 	assert.Equal(t, "Coral answered HTTP 500", Describe(nil, 500, nil))
 	assert.Equal(t, "boom", Describe(errors.New("boom"), 0, nil))
 	assert.NotContains(t, Describe(nil, 404, []byte(`{}`)), "nil")
+}
+
+// #6103: a program on Coral's port that could not prove it is Coral is "refused" (5), never "cannot reach" (3), whether the tool is the agent's (the session token) or the person's (the
+// command-line token): a script that restarts Coral on 3 would start a second one beside the foreign program.
+func TestAProofRefusalIsRefusedNotCannotReach(t *testing.T) {
+	imposter := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) }))
+	t.Cleanup(imposter.Close)
+	for name, cred := range map[string]serverproof.Credential{
+		"the agent's token":      {Kind: serverproof.KindSession, Secret: "v2.abc"},
+		"the command-line token": {Kind: serverproof.KindOperator, Secret: "tok"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			rt, ok := serverproof.NewTransport(&http.Transport{}, cred)
+			require.True(t, ok)
+			_, err := (&http.Client{Transport: rt, Timeout: 5 * time.Second}).Get(imposter.URL + "/api/x")
+			require.Error(t, err)
+			e := CannotReach(imposter.URL, err, 5*time.Second)
+			assert.Equal(t, Refused, KindOf(e))
+			assert.Equal(t, ExitRefused, KindOf(e).Code())
+			assert.True(t, strings.HasPrefix(e.Error(), "Refused: "+name+" was not sent to port"), e.Error())
+			assert.NotContains(t, e.Error(), "cannot reach")
+		})
+	}
 }

@@ -238,6 +238,16 @@ returns an error listing the supported types instead of silently starting Claude
 launch types are `claude`, `codex`, `agy` and `pi`; `gemini` is a deprecated alias for `agy`.
 An empty `agent_type` uses the default (Claude).
 
+### "Refused: the agent's token was not sent to port 8420" (or "the command-line token")
+
+On macOS and Linux a tool checks that the program on Coral's port is your Coral before it sends a credential. If another program took the port while Coral was stopped, the tool refuses (exit code 5) and sends nothing: the agent's session token (coral-board, coral-agent and the hooks) and the command-line token (a command you run yourself) never reach it. The check is a challenge only Coral can answer, made on the connection the credential then uses, so a program that forwards the challenge to the real Coral cannot reuse the answer.
+
+- Start Coral, or stop the program that holds the port (`lsof -nP -iTCP:8420` shows it).
+- "cannot prove who it is" (a 404): the Coral on that port is older than the tool, or does not know this agent's session. Restart Coral, and restart the agent.
+- "too many proof requests": Coral limits the challenges from one computer; try again in a few seconds.
+- An agent started before this check existed has an unmarked token and is not asked to prove anything; restarting it brings the check.
+- Windows does not use this challenge: its tools check which account and program own the port.
+
 ### Terminal backend and tmux launch errors
 
 Coral runs each agent in its own built-in terminal (pty) by default, so agents stop when you quit
