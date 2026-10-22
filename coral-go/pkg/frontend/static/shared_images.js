@@ -37,6 +37,17 @@ export function splitSharedImages(text) {
     return { images, rest: s.slice(m[0].length).trim() };
 }
 
+const TOAST_CHARS = 28;
+
+/** What the "Sent" toast says: the person's own words, short. The image links and the hint after them (for the agent) are left out, only the first line is kept and it is cut at 28 characters (one line at 320 px); with no words (images only) it is
+ *  just "Sent". A toast that carried the whole message covered a phone screen (#6137). */
+export function sentToastText(command) {
+    const rest = splitSharedImages(command).rest;
+    const line = String(rest).split(/\r?\n/).map(l => l.trim()).find(Boolean) || '';
+    if (!line) return 'Sent';
+    return 'Sent: ' + (line.length > TOAST_CHARS ? line.slice(0, TOAST_CHARS - 1).trimEnd() + '\u2026' : line);
+}
+
 /** What Send types for one pending attachment: its artifact link; the local path only when it has no artifact (nothing else to name it by). */
 export function attachmentText(att) {
     return att.artifact && att.artifact.uri ? att.artifact.uri : att.path;

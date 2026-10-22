@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 const here = path.dirname(fileURLToPath(import.meta.url));
-const { splitSharedImages, attachmentText, attachmentsLead, imageHint } = await import(pathToFileURL(path.resolve(here, '../../coral-go/pkg/frontend/static/shared_images.js')).href);
+const { splitSharedImages, attachmentText, attachmentsLead, imageHint, sentToastText } = await import(pathToFileURL(path.resolve(here, '../../coral-go/pkg/frontend/static/shared_images.js')).href);
 
 const H1 = 'a'.repeat(64), H2 = 'b1'.repeat(32);
 const P1 = '/home/dev/.coral/uploads/screenshot_20261019_101500_ab12.png';
@@ -72,3 +72,17 @@ assert.ok(!attachmentsLead([{ path: P1, artifact: { uri: L1 } }]).join(' ').incl
 r = splitSharedImages([...attachmentsLead([{ path: P1, artifact: { uri: L1 } }, { path: P2, artifact: { uri: L2 } }]), 'and the question'].join(' '));
 assert.deepEqual(r.images.map(i => i.hex), [H1, H2]); assert.equal(r.rest, 'and the question');
 console.log('shared_images: ok');
+
+// The "Sent" toast says the person's words, short: never the image links or the hint for the agent (#6137).
+{
+    const link = `coral://artifacts/${H1}`, hint = imageHint([`coral://artifacts/${H1}`]);
+    assert.equal(sentToastText(`${link} ${hint}`), 'Sent', 'images only: just Sent');
+    assert.equal(sentToastText(`${link} ${hint} what is this?`), 'Sent: what is this?', 'the words, not the links or the hint');
+    assert.equal(sentToastText(`${P1} ${link} look`), 'Sent: look', 'the older form');
+    assert.equal(sentToastText('first message'), 'Sent: first message', 'plain text as before');
+    assert.equal(sentToastText('line one\nline two'), 'Sent: line one', 'one line');
+    const long = sentToastText('x'.repeat(300));
+    assert.ok(long.length <= 'Sent: '.length + 28 && long.endsWith('\u2026'), 'cut: ' + long.length);
+    assert.equal(sentToastText(''), 'Sent');
+    assert.ok(!/artifact|coral-agent|download/.test(sentToastText(`${link} ${hint} ok`)));
+}

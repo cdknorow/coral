@@ -40,6 +40,15 @@ const chips = n => Array.from({ length: n }, (_, i) => `<div class="image-attach
             await ev(`window.__coralReady.then(() => true)`);
             await ev(`window.selectLiveSession(${JSON.stringify(name)}, 'claude', ${JSON.stringify(sid)}, 'local'); true`);
             await waitFor(`!!window.T && T.state.currentSession && T.state.currentSession.session_id === ${JSON.stringify(sid)}`, 'the agent is open', { timeout: 15000 });
+            // the "Sent" toast of a message that carried two images, a long question and the hint for the agent is one short line (#6137)
+            await ev(`(async () => { const U = await import((window.__coralStatic || '/static/') + 'utils.js'), SI = await import((window.__coralStatic || '/static/') + 'shared_images.js');
+                const h = 'a'.repeat(64), g = 'b'.repeat(64), links = ['coral://artifacts/' + h, 'coral://artifacts/' + g];
+                U.showToast(SI.sentToastText(links.join(' ') + ' ' + SI.imageHint(links) + ' what do these two screenshots show, and is the second one the same page as the first? ' + 'more words '.repeat(20)));
+                return true; })()`);
+            await waitFor(`!!document.querySelector('.toast')`, 'the toast', { timeout: 5000 });
+            const toast = await ev(`(() => { const t = [...document.querySelectorAll('.toast')].pop(); const b = t.getBoundingClientRect(), lh = parseFloat(getComputedStyle(t).lineHeight) || 20; t.remove();
+                return { text: t.textContent.trim(), h: Math.round(b.height), w: Math.round(b.width), lineHeight: lh, right: b.right }; })()`);
+            check(`${w}px: the Sent toast is short (no links, no hint), one line and inside the screen`, !/artifact|coral-agent|download/.test(toast.text) && toast.text.length <= 36 && toast.h <= 72 && toast.right <= w + 0.5, JSON.stringify(toast));
             for (const theme of ['light', 'dark']) {
                 await ev(`${themeJs(theme)}; true`);
                 await ev(`(() => { const c = document.getElementById('image-attachments'); c.innerHTML = ''; c.style.display = 'none'; return true; })()`);

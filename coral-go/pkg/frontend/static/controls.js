@@ -17,7 +17,7 @@ import { serverFetch, currentServer, serverForSession, sessionServer, isCloud } 
 import { applySleepingView } from './sleeping_view.js';
 import { hubBlocked, blockedReason } from './hub_access.js';
 import { prepareImage, artifactErrorText, PICKER_ACCEPT, parseUploadReply, uploadStatusFailure, UPLOAD_UNFINISHED } from './image_attach.js';
-import { attachmentsLead } from './shared_images.js';
+import { attachmentsLead, sentToastText } from './shared_images.js';
 import { loadModals } from './lazy_panels.js';
 import { responseErrorText, responseError } from './server_status.js';
 import { reportSendError, showComposerError, clearComposerError, awaitSocketAccept, nextInputId, refuseSocketSends } from './terminal_gone.js';
@@ -194,7 +194,7 @@ export async function sendCommand({ nudge = false } = {}) {
                 clearAttachments(targetSession);
                 const key = sessionKey(targetSession);
                 if (key) saveSessionDraft(key, "");
-                showToast(`Sent: ${command}`);
+                showToast(sentToastText(command));
                 _getXtermModule().then(m => m.focusTerminal());
             }
         } catch (e) {
@@ -217,7 +217,7 @@ function _settleSocketSend(session, command, sentAt, ok) {
         confirmPendingMessage(session.session_id, sentAt);
         // Text typed since the send is a new draft and stays.
         if (key && saved.trim() === command) saveSessionDraft(key, "");
-        showToast(`Sent: ${command}`);
+        showToast(sentToastText(command));
         return;
     }
     removePendingMessage(session.session_id, sentAt);
