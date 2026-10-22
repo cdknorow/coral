@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/subgentic/coral/internal/jsonl"
 )
@@ -102,5 +104,41 @@ func TestNoTranscriptWithoutASession(t *testing.T) {
 func TestEncodeProjectDir(t *testing.T) {
 	if got := encodeProjectDir("/srv/a.b/my repo"); got != "-srv-a-b-my-repo" {
 		t.Errorf("got %q", got)
+	}
+}
+
+// MOCK_AGENT_REPLY_DELAY: the prompt is in the transcript at once, as Claude records it, and the reply only after the delay (a slow first answer).
+func TestReplyDelayKeepsThePromptImmediate(t *testing.T) {
+	t.Setenv("CLAUDE_PROJECTS_DIR", t.TempDir())
+	t.Setenv("MOCK_AGENT_REPLY_DELAY", "0.4")
+	tr := newTranscript("00000000-0000-4000-8000-00000000a0c5", "claude-sonnet-5-5")
+	if tr == nil {
+		t.Fatal("no transcript")
+	}
+	count := func() int {
+		b, err := os.ReadFile(tr.path)
+		if err != nil {
+			return 0
+		}
+		return strings.Count(string(b), "\n")
+	}
+	done := make(chan error, 1)
+	go func() { done <- tr.Turn("hello") }()
+	deadline := time.Now().Add(300 * time.Millisecond)
+	for count() == 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if n := count(); n != 1 {
+		t.Fatalf("before the delay the transcript has %d lines, want just the prompt", n)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if n := count(); n < 3 {
+		t.Fatalf("after the delay the transcript has %d lines, want the reply too", n)
+	}
+	t.Setenv("MOCK_AGENT_REPLY_DELAY", "nonsense")
+	if replyDelay() != 0 {
+		t.Fatal("a delay that is not a number is no delay")
 	}
 }

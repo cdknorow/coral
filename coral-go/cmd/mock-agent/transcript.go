@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -133,6 +134,28 @@ func (t *transcript) Turn(prompt string) error {
 	end["isMeta"] = false
 	lines = append(lines, end)
 
+	// MOCK_AGENT_REPLY_DELAY=<seconds>: the prompt is in the transcript at once, as Claude records it, and the reply only after the delay (a slow first answer).
+	if d := replyDelay(); d > 0 && len(lines) > 1 {
+		if err := t.append(lines[:1]); err != nil {
+			return err
+		}
+		time.Sleep(d)
+		return t.append(lines[1:])
+	}
+	return t.append(lines)
+}
+
+// replyDelay is MOCK_AGENT_REPLY_DELAY as a duration (seconds), 0 when unset or not a number.
+func replyDelay() time.Duration {
+	secs, err := strconv.ParseFloat(os.Getenv("MOCK_AGENT_REPLY_DELAY"), 64)
+	if err != nil || secs <= 0 {
+		return 0
+	}
+	return time.Duration(secs * float64(time.Second))
+}
+
+// append writes lines to the transcript.
+func (t *transcript) append(lines []map[string]any) error {
 	var buf strings.Builder
 	for _, l := range lines {
 		b, err := json.Marshal(l)

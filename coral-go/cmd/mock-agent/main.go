@@ -7,6 +7,8 @@
 // With --mock-transcript (or MOCK_AGENT_TRANSCRIPT=1) it also writes a Claude Code transcript
 // (transcript.go): a turn for every line typed in and one every 30 seconds, with --model's
 // model (default claude-opus-5-5), so stress and soak runs read real transcripts.
+// MOCK_AGENT_REPLY_DELAY=<seconds> keeps each turn's prompt in the transcript at once and writes the reply after the delay (a slow first answer); MOCK_AGENT_EXIT_ON_INPUT=1 makes it die
+// when it is first asked something, before any reply (#6050).
 package main
 
 import (
@@ -160,6 +162,11 @@ func main() {
 		}
 	}
 	turn := func(prompt string) {
+		// MOCK_AGENT_EXIT_ON_INPUT=1: a CLI that dies when it is first asked something, before any reply (the person sees the prompt go and nothing come back).
+		if os.Getenv("MOCK_AGENT_EXIT_ON_INPUT") == "1" && prompt != "ready" {
+			fmt.Fprintf(os.Stderr, "[mock-agent] exiting on input, no reply\n")
+			os.Exit(1)
+		}
 		if err := tr.Turn(prompt); err != nil {
 			fmt.Fprintf(os.Stderr, "[mock-agent] transcript: %v\n", err)
 		}
