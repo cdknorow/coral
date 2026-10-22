@@ -12,9 +12,9 @@ import { state } from './state.js';
 import { sessionServer } from './server_base.js';
 import { escapeAttr } from './utils.js';
 import { scheduleLiveSessionsRender } from './render.js';
-import { loadLiveSessions } from './api.js';
 import { TERMINAL_GONE_MESSAGE } from './server_status.js';
 import { isPopout } from './popout.js';
+import { importOnce } from './import_once.js';
 
 /** Agents whose terminal answered terminal_gone, by server and session id. A restart
  *  gives the agent a new session id, so its new row is never marked. */
@@ -118,7 +118,7 @@ export function reportSendError(session, message, code, exited = false) {
     if (exited) {
         const who = (session && (session.display_name || session.name)) || 'The agent';
         showComposerError(`${who} stopped before answering. Your message is kept below; Restart the agent to send it.`, { restart: true });
-        loadLiveSessions();
+        importOnce('./api.js').then(m => m.loadLiveSessions()).catch(() => {}); // loaded when it is needed: a static import pulls api.js's tabs into the startup sequence
         return;
     }
     if (code === 'terminal_gone') {
