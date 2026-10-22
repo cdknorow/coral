@@ -55,6 +55,9 @@ type LaunchParams struct {
 	CoralDir        string                 // path to coral data directory (~/.coral) for CA cert location
 	CoralHost       string                 // host this Coral server is bound to
 	CoralPort       int                    // port this Coral server is listening on
+	// RunTag is the CORAL_PTY_RUN value of an agent started on tmux (#6141): exported with the agent's other variables so everything the agent starts carries it, and Kill can find what detached. Empty on the built-in
+	// terminal, whose processes get a tag of their own when the terminal is made.
+	RunTag string
 }
 
 // CoralEnv returns the Coral environment every launched agent needs, as
@@ -89,6 +92,7 @@ func CoralEnv(params LaunchParams) [][2]string {
 		add("CORAL_HOST", host)
 		add("CORAL_URL", fmt.Sprintf("http://%s:%s", host, port))
 	}
+	add("CORAL_PTY_RUN", params.RunTag)
 	add("CORAL_DIR", params.CoralDir)
 	add("CORAL_DATA_DIR", params.CoralDir)
 	return env
