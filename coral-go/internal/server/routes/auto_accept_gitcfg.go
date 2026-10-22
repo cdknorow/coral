@@ -164,6 +164,7 @@ func gitCodeExecRisk(args []string) string {
 func gitConfigWriteRisk(args []string) string {
 	var pos []string
 	edit, wide, readOnly := false, false, false
+	file := ""
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		switch {
@@ -172,6 +173,9 @@ func gitConfigWriteRisk(args []string) string {
 		case a == "-e" || a == "--edit":
 			edit = true
 		case a == "-f" || a == "--file" || a == "--blob" || a == "--default" || a == "--type" || a == "--rename-section":
+			if (a == "-f" || a == "--file") && i+1 < len(args) {
+				file = args[i+1]
+			}
 			i++
 			if a == "--rename-section" {
 				readOnly = true
@@ -208,6 +212,9 @@ func gitConfigWriteRisk(args []string) string {
 	if len(pos) >= 2 {
 		if bad, key := gitExecKey(pos[0], pos[1]); bad {
 			return gitExecWhy(key)
+		}
+		if file != "" && gitHookPath(file) { // any write to .git/config by `git config -f` (a harmless key too: the file is the place) (#186)
+			return gitHookWhy(file)
 		}
 	}
 	return ""
