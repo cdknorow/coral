@@ -74,6 +74,16 @@ func (h *SystemHandler) GetAgentModels(w http.ResponseWriter, r *http.Request) {
 	for k, v := range agenttypes.AgentTypeModels {
 		out[k] = agentmodels.MergeCustomValues(v, k, custom)
 	}
+	// Every agent type of a CLI family reads its family's list: the agy family is agy, antigravity and gemini (#5910), one CLI. A type with no curated entry of its own
+	// (the antigravity alias) gets the family's main type's list, with the customs, so the launch dialog's picker is not empty for it.
+	for k := range agenttypes.AgentTypeModels {
+		types := agentmodels.FamilyTypes(agentmodels.Family(k))
+		for _, t := range types {
+			if _, ok := out[t]; !ok && len(types) > 0 {
+				out[t] = append([]string{}, out[types[0]]...)
+			}
+		}
+	}
 	// A provider with no curated entry (Pi) still gets the customs added for it, under its main type.
 	for _, c := range custom {
 		if types := agentmodels.FamilyTypes(c.Family); len(types) > 0 {

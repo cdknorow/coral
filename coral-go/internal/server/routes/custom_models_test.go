@@ -263,3 +263,31 @@ func TestAPutWithoutTheModelsListChangesNothing(t *testing.T) {
 	assert.Equal(t, http.StatusOK, code, "an explicit empty list is how the set is cleared")
 	assert.Empty(t, getCustom(t, h)["models"])
 }
+
+// #5910 (review of #5909): every agent type of a CLI family has a list in the catalog the launch dialog reads, the antigravity alias included: it runs agy, and the curated map
+// has no entry of its own for it, so its picker was empty.
+func TestAgentModelsCatalogHasAListForEveryTypeOfAFamily(t *testing.T) {
+	h := customRig(t)
+	get := func() map[string][]string {
+		rec := httptest.NewRecorder()
+		h.GetAgentModels(rec, httptest.NewRequest(http.MethodGet, "/api/agent-models", nil))
+		var out map[string][]string
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &out))
+		return out
+	}
+	curated := get()
+	require.NotEmpty(t, curated["agy"])
+	for _, typ := range []string{"agy", "antigravity", "gemini"} {
+		assert.Equal(t, curated["agy"], curated[typ], typ+" has agy's curated list")
+	}
+
+	code, body := putCustom(t, h, `{"models":[{"family":"agy","value":"agy-custom"},{"family":"codex","value":"gpt-x"}]}`)
+	require.Equal(t, http.StatusOK, code, body)
+	withCustom := get()
+	for _, typ := range []string{"agy", "antigravity", "gemini"} {
+		assert.Contains(t, withCustom[typ], "agy-custom", typ+" has the family's custom model")
+		assert.Equal(t, 1, strings.Count(strings.Join(withCustom[typ], ","), "agy-custom"), typ+": once")
+		assert.NotContains(t, withCustom[typ], "gpt-x", typ+": another provider's custom is not mixed in")
+	}
+	assert.NotContains(t, withCustom["claude"], "agy-custom")
+}
