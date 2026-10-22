@@ -23,7 +23,9 @@ func TestApplyWithoutTheInstallMarkerAsksNothing(t *testing.T) {
 
 	require.NoError(t, trigger.WriteMarker(dir, "1.5.0", time.Now()))
 	assert.Equal(t, "", installRequest(dir, time.Now()), "after a click in Settings")
+	assert.Equal(t, "1.5.0", clickedVersion, "the version the click saw is kept for the apply to compare")
 	assert.Equal(t, resultNotRequested, installRequest(dir, time.Now()), "the marker is good for one apply only")
+	assert.Equal(t, "", clickedVersion, "and nothing is left over from the last run")
 
 	require.NoError(t, trigger.WriteMarker(dir, "1.5.0", time.Now().Add(-trigger.MarkerTTL-time.Minute)))
 	assert.Equal(t, resultRequestExpired, installRequest(dir, time.Now()), "a leftover")
