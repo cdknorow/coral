@@ -57,20 +57,20 @@ fi
 cd "$GO_DIR"
 
 echo "==> Compiling coral.exe"
-GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build $BUILD_TAGS -ldflags="-s -w" -o "$BUILD_DIR/coral.exe" ./cmd/coral/
+GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath $BUILD_TAGS -ldflags="-s -w" -o "$BUILD_DIR/coral.exe" ./cmd/coral/
 
 echo "==> Compiling launch-coral.exe"
-GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build $BUILD_TAGS -ldflags="-s -w" -o "$BUILD_DIR/launch-coral.exe" ./cmd/launch-coral/
+GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath $BUILD_TAGS -ldflags="-s -w" -o "$BUILD_DIR/launch-coral.exe" ./cmd/launch-coral/
 
 echo "==> Compiling coral-board.exe"
-GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build $BUILD_TAGS -ldflags="-s -w" -o "$BUILD_DIR/coral-board.exe" ./cmd/coral-board/
+GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath $BUILD_TAGS -ldflags="-s -w" -o "$BUILD_DIR/coral-board.exe" ./cmd/coral-board/
 
 echo "==> Compiling coral-agent.exe"
-GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build $BUILD_TAGS -ldflags="-s -w" -o "$BUILD_DIR/coral-agent.exe" ./cmd/coral-agent/
+GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath $BUILD_TAGS -ldflags="-s -w" -o "$BUILD_DIR/coral-agent.exe" ./cmd/coral-agent/
 
 for hook in coral-hook-agentic-state coral-hook-task-sync coral-hook-message-check coral-hook-session-start coral-update; do
     echo "==> Compiling $hook.exe"
-    GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build $BUILD_TAGS -ldflags="-s -w" -o "$BUILD_DIR/$hook.exe" "./cmd/$hook/"
+    GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath $BUILD_TAGS -ldflags="-s -w" -o "$BUILD_DIR/$hook.exe" "./cmd/$hook/"
 done
 
 echo "==> Creating ZIP"
