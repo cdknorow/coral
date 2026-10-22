@@ -23,6 +23,9 @@ import (
 // Compile-time on purpose: nothing a caller, a setting or the environment says turns it on.
 var applyEnabled = applyOn(runtime.GOOS, applyEnabledDarwin, applyEnabledLinux, applyEnabledWindows, windowsApplyBuilt)
 
+// installProbe says what this install is (a variable so a test can answer for one it cannot build).
+var installProbe = probeInstall
+
 const (
 	checkTimeout   = 30 * time.Minute
 	bytesPerSecond = 8 << 20
@@ -95,6 +98,11 @@ func run(args []string, getenv func(string) string, stdout io.Writer) int {
 	}
 	if args[0] == "apply" && !applyEnabled {
 		print(stdout, output{Result: "not_enabled", Installed: config.Version})
+		return 0
+	}
+	// An install a package manager owns (Homebrew's cask) is never staged or applied: the same classifier the status and the apply use says so before any network or any trusted root.
+	if i := installProbe(); i != nil && i.Unsupported != "" {
+		print(stdout, output{Result: "unsupported_install", Installed: config.Version, FailedStage: i.Unsupported})
 		return 0
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), checkTimeout)

@@ -26,6 +26,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode"
 
@@ -173,6 +174,9 @@ type RelaunchUpdater interface {
 	Apply(ctx context.Context, by string) (operation string, err error)
 	// Audit appends an attempt to the history (capped at 50 there).
 	Audit(ctx context.Context, a RelaunchAudit) error
+	// Check runs one check ("coral-update check": find the newest promoted release, verify it, stage it) and waits for it. The result is the updater's own word for how it ended
+	// ("" when it could not say); an error is a check that could not run at all. It never installs.
+	Check(ctx context.Context) (result string, err error)
 }
 
 // UpdateRelaunchHandler serves the two routes.
@@ -195,6 +199,16 @@ type UpdateRelaunchHandler struct {
 	// Feeds names the release feeds the channel facts (approved, past_approved, waiting) are read from; nil adds the channel only and asks nothing
 	// (#5557). The server sets releaseFeeds; a test that does not mean to reach a feed leaves it nil, so it never reaches GitHub.
 	Feeds func() updatecheck.Feeds
+
+	// SetSetting writes a setting (the update_auto switch's own route uses it).
+	SetSetting func(ctx context.Context, key, value string) error
+
+	// checking is true while a check runs (a person's "Check now" and the background job share it: one at a time); lastManual is when a person's check was last started.
+	checking   atomic.Bool
+	checkMu    sync.Mutex
+	lastManual time.Time
+	// checkTimes are the background job's timing (the defaults unless a test says otherwise).
+	checkTimes checkTimes
 
 	mu            sync.Mutex
 	noLabelLogged sync.Once
@@ -588,6 +602,11 @@ func (h *UpdateRelaunchHandler) Status(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.addChannelFacts(r, out)
+	if !viaTunnel(r) { // the local dashboard's "check automatically" switch; the Hub's shape is unchanged
+		if settings, err := h.Settings(r.Context()); err == nil {
+			out["auto"] = UpdateAutoOn(settings)
+		}
+	}
 	writeJSON(w, http.StatusOK, out)
 }
 

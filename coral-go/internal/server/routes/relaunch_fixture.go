@@ -379,3 +379,6 @@ func (u *fixtureUpdater) Audit(ctx context.Context, a RelaunchAudit) error {
 	}
 	return nil
 }
+
+// Check: the fixture has no network and runs nothing; a check ends at once with nothing to say.
+func (f *fixtureUpdater) Check(context.Context) (string, error) { return "none", nil }

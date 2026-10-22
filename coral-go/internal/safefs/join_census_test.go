@@ -46,6 +46,7 @@ var joinSites = map[string]joinEntry{
 	"internal/windowmark/windowmark.go\tClear":                                               {2, joinFixed, "the marker's own constant name (FileName) in the data folder: no input names it"},
 	"internal/windowmark/windowmark.go\tPresent":                                             {1, joinFixed, "the marker's own constant name (FileName) in the data folder: no input names it"},
 	"internal/updater/apply/apply.go\tRun":                                                   {3, joinID, "the updates and apply folders and the ready marker are constants; the staged version folder is the verified record's version (verify.ParseVersion)"},
+	"internal/updater/install/install.go\tMacManaged":                                        {2, joinOwn, "the prefixes are the default places and the one the environment names (absolute, cleaned); the folder names are constants and the app name is the running app's own base name; the result is only matched against, never opened for writing"},
 	"internal/updater/apply/apply.go\twriteReady":                                            {1, joinOwn, "the updates folder and the constant marker name"},
 	"internal/updater/apply/apply.go\tcopyVerified":                                          {1, joinID, "joins the private work folder with the record's asset name, which LoadStaged checked to be a plain file name"},
 	"internal/updater/apply/apply.go\treadJournal":                                           {1, joinOwn, "the journal's file name, a constant, in the updates folder"},

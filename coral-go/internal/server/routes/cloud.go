@@ -50,6 +50,12 @@ const AllowHubAutoAcceptSetting = "cloud_allow_hub_auto_accept"
 // PUT /api/settings refuses it like the mode cap.
 const HubRelaunchSetting = "hub_relaunch_updates"
 
+// UpdateAutoSetting is "check for updates automatically" (#5280 step 3 B): the background check and staging. Installing one always needs a person (the relaunch with its acknowledgement).
+const UpdateAutoSetting = "update_auto"
+
+// UpdateAutoOn: on unless the owner turned it off.
+func UpdateAutoOn(settings map[string]string) bool { return setreg.Bool(settings, UpdateAutoSetting) }
+
 // HubCrossTeamSetting is the local lock "Let Coral Hub change cross-team settings" (#5572). On unless set to "false" (the default is the settings registry's, written by code); when it is off the Coral Hub
 // owner's dedicated routes refuse both directions. Written only by PUT /api/cloud/hub-cross-team, never through the tunnel: its write has its own route, and PUT /api/settings refuses it like the mode cap.
 const HubCrossTeamSetting = "hub_cross_team_settings"

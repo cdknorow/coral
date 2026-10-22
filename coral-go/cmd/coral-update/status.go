@@ -185,6 +185,9 @@ func plainStatus(s statusOut, w io.Writer) {
 		switch {
 		case i.Unsupported != "":
 			p("This install (%s) is not updated by Coral: %s", i.Kind, i.Unsupported)
+			if i.Kind == "homebrew" {
+				p("Update it with: brew upgrade --cask coral (a Homebrew in a custom prefix is not seen by Coral when it is opened from Finder, and then Coral would try to update itself)")
+			}
 		case !i.Writable:
 			p("This install (%s) is in a folder this user cannot write, so Coral cannot replace it", i.Kind)
 		default:
