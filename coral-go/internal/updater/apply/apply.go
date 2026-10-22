@@ -4,13 +4,16 @@
 //
 // The order, and why (the design is #5231 section 4 and #5245 section 12):
 //
-//  1. Nothing running: it waits for Coral (its parent) to end. It never stops Coral and never starts while it runs.
-//  2. One apply, and none during a check (locks).
-//  3. Verify again, from the staged files, against the compiled-in pins, with the trusted root: the record proves nothing.
-//  4. Copy the package into a private folder while hashing it, and use only the copy: a swap of the staged file after it was verified is useless.
-//  5. Build the new install beside the old (same volume) from the copy, and verify THAT, where it will run: signature, signer, notarization, version.
+//  1. One apply, and none during a check (locks).
+//  2. Verify again, from the staged files, against the compiled-in pins, with the trusted root: the record proves nothing.
+//  3. Copy the package into a private folder while hashing it, and use only the copy: a swap of the staged file after it was verified is useless.
+//  4. Build the new install beside the old (same volume) from the copy, and verify THAT, where it will run: signature, signer, notarization, version.
+//     Steps 2 to 4 run while Coral is still running: a package that fails any of them costs the person nothing (#5982).
+//  5. Say "ready to swap" (status.ReadyFile): the server that started this apply ends itself only on that. Then wait for Coral (its parent) to end;
+//     it never stops Coral and never swaps while it runs.
 //  6. Swap in one atomic step, keeping the old for rollback; start the new; check it is up; only then remove the old and move the high-water mark.
-//  7. If anything after the swap fails, swap back and start the old again.
+//  7. If anything after the swap fails, swap back and start the old again; if anything stops the apply after Coral ended and before the swap, start
+//     the old one again (never leave the person with no Coral), and say restart_failed when that fails too.
 package apply
 
 import (
@@ -26,6 +29,7 @@ import (
 	"time"
 
 	"github.com/subgentic/coral/internal/updater/stage"
+	"github.com/subgentic/coral/internal/updater/status"
 	"github.com/subgentic/coral/internal/updater/verify"
 )
 
@@ -202,6 +206,7 @@ func Run(ctx context.Context, cfg Config) Result {
 		return res
 	}
 	defer release()
+	defer os.Remove(filepath.Join(dir, status.ReadyFile)) // the marker is only true while this apply runs
 
 	if !cfg.Platform.Pinned() {
 		res.Result = ResultPinsNotSet
@@ -232,13 +237,7 @@ func Run(ctx context.Context, cfg Config) Result {
 	res.To = staged.Version
 	st, _ := verify.LoadState(dir) // an unreadable state is a first run, never permission
 
-	// Coral must be gone before anything is touched; this waits for it and never stops it.
-	if !cfg.Platform.WaitCoralGone(ctx, install) {
-		res.Result = ResultCoralRunning
-		return res
-	}
-
-	// 3: the whole chain again, from the staged files.
+	// 2: the whole chain again, from the staged files. Coral is still running: nothing here touches it, and a refusal here leaves it as it was.
 	rec, err := stage.Reverify(cfg.Verifier, cfg.Pins, staged, cfg.Asset, st, cfg.Installed, now, cfg.MaxPkg)
 	if err != nil {
 		var f *verify.Failure
@@ -253,7 +252,7 @@ func Run(ctx context.Context, cfg Config) Result {
 		return res
 	}
 
-	// 4: the copy everything else uses.
+	// 3: the copy everything else uses.
 	work := filepath.Join(dir, "apply")
 	if err := freshDir(work); err != nil {
 		res.Result, res.FailedStage = ResultFailed, "work_folder"
@@ -283,7 +282,7 @@ func Run(ctx context.Context, cfg Config) Result {
 		return res
 	}
 
-	// 5: the new install beside the old, verified where it will run.
+	// 4: the new install beside the old, verified where it will run.
 	newPath, cleanup, err := cfg.Platform.Build(ctx, pkg, install, work)
 	if err != nil {
 		res.Result, res.FailedStage = ResultFailed, "build"
@@ -299,17 +298,23 @@ func Run(ctx context.Context, cfg Config) Result {
 		return res
 	}
 
-	// 6: swap, start, check; roll back on any failure from here.
+	// 5: everything that can be done while Coral runs is done. Say so: the server that started this apply ends itself on this and not before (#5982), then wait for it to end;
+	// this never stops Coral. When it does not end nothing is swapped and Coral is still the one that was running.
 	if cfg.BeforeSwap != nil {
 		cfg.BeforeSwap()
 	}
-	// Coral may have been started again while the package was copied and checked (minutes): the first wait proves nothing about now. Ask again
-	// just before the swap; a Coral that is up now is waited for the same way (never stopped), and when it does not end nothing is swapped.
+	if err := writeReady(dir, rec.Version); err != nil {
+		_ = os.RemoveAll(newPath)
+		res.Result, res.FailedStage = ResultFailed, "ready_marker"
+		return res
+	}
 	if !cfg.Platform.WaitCoralGone(ctx, install) {
 		_ = os.RemoveAll(newPath)
 		res.Result = ResultCoralRunning
 		return res
 	}
+	// From here Coral has ended (this run's wait saw it go): any stop before the swap starts the old one again.
+	// 6: swap, start, check; roll back on any failure from here.
 	// The new install sits beside the old one between its first check and now; check it again right before the swap (it narrows what anyone who can
 	// write that folder could change in between).
 	if err := cfg.Platform.Verify(ctx, newPath, rec.Version); err != nil {
@@ -317,23 +322,23 @@ func Run(ctx context.Context, cfg Config) Result {
 		st.Refuse(staged.Version, &verify.Failure{Stage: "platform_signature", Reason: err.Error()}, now)
 		_ = verify.SaveState(dir, st)
 		res.Result, res.FailedStage = ResultRefused, "platform_signature"
-		return res
+		return startPreviousAgain(ctx, cfg, dir, &st, install, res)
 	}
 	if why := cfg.Platform.CanRestart(install); why != "" { // the record may have gone while the package was copied and checked
 		_ = os.RemoveAll(newPath)
 		res.Result, res.FailedStage = ResultUnsupported, why
-		return res
+		return startPreviousAgain(ctx, cfg, dir, &st, install, res)
 	}
 	if err := writeJournal(dir, journal{Phase: "swapping", From: cfg.Installed, To: rec.Version, NewPath: newPath, Install: install, Record: rec}); err != nil {
 		_ = os.RemoveAll(newPath)
 		res.Result, res.FailedStage = ResultFailed, "journal"
-		return res
+		return startPreviousAgain(ctx, cfg, dir, &st, install, res)
 	}
 	if err := cfg.Platform.Swap(newPath, install); err != nil {
 		_ = os.RemoveAll(newPath)
 		removeJournal(dir)
 		res.Result, res.FailedStage = ResultFailed, "swap"
-		return res
+		return startPreviousAgain(ctx, cfg, dir, &st, install, res)
 	}
 	_ = writeJournal(dir, journal{Phase: "swapped", From: cfg.Installed, To: rec.Version, NewPath: newPath, Install: install, Record: rec})
 	if cfg.AfterSwap != nil {
@@ -377,6 +382,23 @@ func rollBack(ctx context.Context, cfg Config, dir string, st *verify.State, ins
 	}
 	st.Refuse(to, &verify.Failure{Stage: why, Reason: "the new version did not come up; the previous one is back"}, cfg.now())
 	_ = verify.SaveState(dir, *st)
+	return res
+}
+
+// writeReady says the update is ready to swap: the marker the server that started this apply waits for before it ends itself.
+func writeReady(dir, version string) error {
+	b, _ := json.Marshal(status.Ready{Version: version, PID: os.Getpid(), At: time.Now().UTC().Format(time.RFC3339)})
+	return verify.WritePrivate(filepath.Join(dir, status.ReadyFile), b)
+}
+
+// startPreviousAgain is what an apply does when it stops, after Coral ended, without having swapped: the person asked for an update and must not be left with no Coral. The previous
+// install is intact (nothing was swapped), so it is started; when that fails too the result says restart_failed and the history records it (#5419, #5982). res keeps its own result.
+func startPreviousAgain(ctx context.Context, cfg Config, dir string, st *verify.State, install string, res Result) Result {
+	if err := cfg.Platform.Start(ctx, install); err != nil {
+		res.RestartFailed = true
+		cfg.history(st, cfg.Installed, res.To, "restart_failed", res.FailedStage)
+		_ = verify.SaveState(dir, *st)
+	}
 	return res
 }
 

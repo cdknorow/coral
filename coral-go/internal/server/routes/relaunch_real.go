@@ -37,14 +37,25 @@ const (
 	recordCacheFor    = 2 * time.Second
 	// applyingFor is how long a started relaunch counts as running when the updater has recorded no result for it.
 	applyingFor = 20 * time.Minute
-	// quitAfter gives the reply to the relaunch request time to leave before this server ends.
+	// readyWithin is how long the apply gets to be ready to swap (verify again, copy, build and check the new install, all while Coral runs); no marker in that time and Coral is
+	// not ended: it keeps running, the apply is ended and the person is told why.
+	readyWithin = 15 * time.Minute
+	readyPoll   = 500 * time.Millisecond
+	// quitAfter gives the reply to the relaunch request time to leave before this server ends, once the apply is ready.
 	quitAfter = 2 * time.Second
 )
 
 // updaterProgram is the two things the updater program is asked: what it knows, and to apply (a test replaces it; the real one is execProgram).
 type updaterProgram interface {
 	Status(ctx context.Context) ([]byte, error)
-	StartApply() error
+	StartApply() (applyRun, error)
+}
+
+// applyRun is a started apply: its pid (the marker it writes names it), a channel that closes when it has ended, and a way to end it.
+type applyRun struct {
+	PID  int
+	Done <-chan struct{}
+	Kill func()
 }
 
 // relaunchState is what this updater itself keeps: the version a hub relaunch was started for (once per version) and when, and the attempt in flight.
@@ -56,6 +67,14 @@ type relaunchState struct {
 	To              string    `json:"to,omitempty"`
 	Operation       string    `json:"operation,omitempty"`
 	By              string    `json:"by,omitempty"`
+	// Failed is a relaunch that ended without an update and without the updater saying why: it never got ready, or it ended first (#5982). Reason is a fixed word.
+	Failed *relaunchFailure `json:"failed,omitempty"`
+}
+
+// relaunchFailure is how a started relaunch ended without a swap and without a result of the updater's own.
+type relaunchFailure struct {
+	At     time.Time `json:"at"`
+	Reason string    `json:"reason"` // not_ready (no ready marker in time) or updater_ended (the updater ended before it was ready)
 }
 
 type realUpdater struct {
@@ -63,8 +82,8 @@ type realUpdater struct {
 	prog updaterProgram
 	quit func()
 	now  func() time.Time
-	// quitDelay is how long after a started relaunch quit is called (quitAfter unless a test says otherwise).
-	quitDelay time.Duration
+	// quitDelay is how long after the apply is ready quit is called (quitAfter unless a test says otherwise); readyWithin and readyPoll likewise.
+	quitDelay, readyWithin, readyPoll time.Duration
 
 	mu       sync.Mutex
 	cached   UpdaterRecord
@@ -161,6 +180,16 @@ func recordFrom(out status.Out, st relaunchState, now time.Time) UpdaterRecord {
 			rec.State = updApplying
 		}
 	}
+	// A relaunch that ended with no swap and no result of the updater's own (never ready, or the updater ended first) is a failed attempt the person is told about (#5982).
+	if f := st.Failed; f != nil && (out.LastApply == nil || parseTime(out.LastApply.At).Before(f.At)) && out.Installed == st.From {
+		rec.LastResult = &UpdateResult{At: f.At, From: st.From, To: st.To, By: st.By, Result: resultRefused}
+		if rec.State != updApplying {
+			rec.State = updFailed
+			if rec.Staged != nil {
+				rec.State = updStaged // still staged: it can be tried again
+			}
+		}
+	}
 	rec.NotReady = notReady(out, rec, now)
 	return rec
 }
@@ -231,56 +260,135 @@ func (u *realUpdater) saveState(st relaunchState) error {
 	return u.dir.write(relaunchStateFile, b)
 }
 
-// Apply starts the apply for a relaunch by by ("local" or a hub pseudonym): it records that this version was started (once per version), starts the updater program, and ends this server
-// shortly after, so the program, which waits for it to end, can replace the install. Nothing in the request chooses what is installed.
+// Apply starts the apply for a relaunch by by ("local" or a hub pseudonym): it records that this version was started (once per version) and starts the updater program. This server
+// does NOT end itself yet: the apply verifies the package again, copies it and builds and checks the new install while Coral still runs, and says "ready to swap" (status.ReadyFile) only
+// after all of that (#5982). watchReady ends this server on that marker, so a package that fails any step costs the person nothing. Nothing in the request chooses what is installed.
 func (u *realUpdater) Apply(ctx context.Context, by string) (string, error) {
-	u.mu.Lock()
-	u.cachedOK = false // read it fresh: this decides what is installed
-	u.mu.Unlock()
-	rec, err := u.read(ctx)
-	if err != nil {
-		return "", err
-	}
-	switch {
-	case !rec.Enabled:
-		return "", errors.New("the updater is switched off")
-	case !rec.Supported:
-		return "", errors.New("this install cannot be updated")
-	case rec.Staged == nil || !rec.Staged.Verified:
-		return "", errors.New("nothing verified is staged")
-	case rec.State == updApplying:
-		return "", errors.New("an update is already being applied")
-	}
 	var nonce [8]byte
 	if _, err := rand.Read(nonce[:]); err != nil {
 		return "", err
 	}
 	op := hex.EncodeToString(nonce[:])
-	now := u.clock()
+
+	// One Apply at a time: the "is one already running" check and the record that says one is, are one step (a second request in between would start a second updater and a second quit).
+	u.mu.Lock()
+	u.cachedOK = false // read it fresh: this decides what is installed
+	rec, err := u.read(ctx)
+	if err != nil {
+		u.mu.Unlock()
+		return "", err
+	}
+	switch {
+	case !rec.Enabled:
+		err = errors.New("the updater is switched off")
+	case !rec.Supported:
+		err = errors.New("this install cannot be updated")
+	case rec.Staged == nil || !rec.Staged.Verified:
+		err = errors.New("nothing verified is staged")
+	case rec.State == updApplying:
+		err = errors.New("an update is already being applied")
+	}
+	if err != nil {
+		u.mu.Unlock()
+		return "", err
+	}
 	prev, err := u.loadState()
 	if err != nil {
+		u.mu.Unlock()
 		return "", err
 	}
+	now := u.clock()
 	st := relaunchState{HubRelaunched: rec.Staged.Version, LastHubRelaunch: now, StartedAt: now, From: rec.Installed, To: rec.Staged.Version, Operation: op, By: by}
 	if err := u.saveState(st); err != nil {
+		u.mu.Unlock()
 		return "", err
 	}
-	if err := u.prog.StartApply(); err != nil {
+	u.cachedOK = false
+	u.mu.Unlock()
+
+	_ = u.dir.remove(status.ReadyFile) // a marker left by an earlier apply says nothing about this one
+	run, err := u.prog.StartApply()
+	if err != nil {
+		u.mu.Lock()
 		_ = u.saveState(prev) // nothing started: the version may be tried again
+		u.cachedOK = false
+		u.mu.Unlock()
 		return "", fmt.Errorf("the updater did not start: %w", err)
 	}
-	if u.quit != nil {
-		quit := u.quit
-		safego.Go("update relaunch quit", func() {
+	safego.Go("update relaunch ready", func() { u.watchReady(run, st) })
+	return op, nil
+}
+
+// watchReady ends this server when the apply says it is ready to swap, and only then. The marker must name the version and the pid of the apply this updater started. When the
+// apply ends first, or says nothing within readyWithin, the server keeps running (the apply is ended) and the record says why, so the person is told and can try again.
+func (u *realUpdater) watchReady(run applyRun, st relaunchState) {
+	deadline := time.Now().Add(readyWithin)
+	if u.readyWithin > 0 {
+		deadline = time.Now().Add(u.readyWithin)
+	}
+	poll := readyPoll
+	if u.readyPoll > 0 {
+		poll = u.readyPoll
+	}
+	tick := time.NewTicker(poll)
+	defer tick.Stop()
+	for {
+		if u.readyMarker(run, st) {
 			d := u.quitDelay
 			if d == 0 {
 				d = quitAfter
 			}
 			time.Sleep(d)
-			quit()
-		})
+			if u.quit != nil {
+				u.quit()
+			}
+			return
+		}
+		select {
+		case <-run.Done:
+			if u.readyMarker(run, st) { // it wrote the marker and ended in the same moment: the marker is what it said
+				continue
+			}
+			u.giveUp(st, "updater_ended")
+			return
+		case <-tick.C:
+			if time.Now().After(deadline) {
+				if run.Kill != nil {
+					run.Kill()
+				}
+				u.giveUp(st, "not_ready")
+				return
+			}
+		}
 	}
-	return op, nil
+}
+
+// readyMarker says whether the marker is there and is this apply's, for this version.
+func (u *realUpdater) readyMarker(run applyRun, st relaunchState) bool {
+	b, err := u.dir.read(status.ReadyFile, maxStateBytes)
+	if err != nil {
+		return false
+	}
+	var r status.Ready
+	if json.Unmarshal(b, &r) != nil {
+		return false
+	}
+	return r.Version == st.To && r.PID == run.PID && run.PID > 0
+}
+
+// giveUp records that the relaunch ended without a swap and without a result of the updater's own: nothing is in flight, the version is spent for the spacing rule but the record says
+// what happened.
+func (u *realUpdater) giveUp(st relaunchState, reason string) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	cur, err := u.loadState()
+	if err != nil || cur.Operation != st.Operation {
+		return // another relaunch has been started since
+	}
+	cur.StartedAt = time.Time{}
+	cur.Failed = &relaunchFailure{At: u.clock(), Reason: reason}
+	_ = u.saveState(cur)
+	u.cachedOK = false
 }
 
 // Audit appends one attempt to the history, keeping the last maxAuditRows.
@@ -373,19 +481,20 @@ func (e execProgram) Status(ctx context.Context) ([]byte, error) {
 	return out.Bytes(), nil
 }
 
-func (e execProgram) StartApply() error {
+func (e execProgram) StartApply() (applyRun, error) {
 	p, err := e.program()
 	if err != nil {
-		return err
+		return applyRun{}, err
 	}
 	cmd := exec.Command(p, "apply")
 	cmd.Env = programEnv()
 	detach(cmd)
 	if err := cmd.Start(); err != nil {
-		return err
+		return applyRun{}, err
 	}
-	safego.Go("update apply wait", func() { _ = cmd.Wait() })
-	return nil
+	done := make(chan struct{})
+	safego.Go("update apply wait", func() { _ = cmd.Wait(); close(done) })
+	return applyRun{PID: cmd.Process.Pid, Done: done, Kill: func() { _ = cmd.Process.Kill() }}, nil
 }
 
 // limitedBuffer keeps at most statusMaxBytes and says when there was more.
