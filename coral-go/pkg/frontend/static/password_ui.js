@@ -148,8 +148,9 @@ function untilNoDialog() {
     });
 }
 
-/** The card that asks while the keyboard is in a terminal (#294): role="status", in the page's order after the terminal (so
- *  Tab and F6 reach its button), never focused by itself. "Set password" opens the dialog with the focus in its field; the card
+/** The card that asks while the keyboard is in a terminal (#294): role="status", placed right after the terminal's area in the
+ *  page (so F6 from the terminal lands on its button, and Tab reaches it), never focused by itself. It goes in empty and gets its
+ *  words a moment later, so screen readers (NVDA, JAWS) announce them: a live region filled as it is added is often not read. "Set password" opens the dialog with the focus in its field; the card
  *  goes once the dialog is answered, or once a password is set (looked for when the page is focused or shown, and every few
  *  seconds, as the dialog does). */
 function passwordCard({ local }) {
@@ -161,7 +162,6 @@ function passwordCard({ local }) {
     const text = el('p', 'security-warning-text', 'Browsers on other computers sign in to Coral with it.');
     const open = el('button', 'btn btn-primary', 'Set password'); open.type = 'button'; open.id = 'set-password-card-open';
     body.append(header, text, open);
-    card.append(body);
     let timer = null;
     const remove = () => {
         clearInterval(timer);
@@ -181,7 +181,15 @@ function passwordCard({ local }) {
     document.addEventListener('visibilitychange', onVisible);
     window.addEventListener('focus', recheck);
     timer = pollEvery(recheck, 5000);
-    document.body.appendChild(card);
+    // Right after the terminal's area (its status bar, else the terminal itself): the next control there in the page's order, so F6
+    // (#121) and Tab from the terminal reach it. It is drawn at the corner (position: fixed) wherever it sits in the page.
+    const term = document.activeElement && document.activeElement.closest ? document.activeElement.closest('.xterm') : null;
+    let after = term ? (term.closest('#xterm-container') || term) : null;
+    const bar = document.getElementById('terminal-statusbar');
+    if (after && bar && bar.previousElementSibling === after) after = bar; // the dashboard's terminal: its bar comes next, then the card
+    if (after) after.insertAdjacentElement('afterend', card);
+    else document.body.appendChild(card);
+    setTimeout(() => { if (card.isConnected) card.append(body); }, 100); // the words a tick after the empty region (see above)
 }
 
 export function showSetPasswordModal({ local = false } = {}) {

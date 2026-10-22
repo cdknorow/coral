@@ -46,8 +46,13 @@ const { connect } = require('./agent_view_harness');
             x.innerHTML = '<textarea id="qa-xterm-input"></textarea>'; document.body.appendChild(x); document.getElementById('qa-xterm-input').focus(); return true; })()`);
         // Keys as the terminal sees them: counted at the textarea, wherever the focus is.
         await ev(`window.__keys = 0; document.getElementById('qa-xterm-input').addEventListener('keydown', () => { window.__keys++; }); true`);
+        // What the card held the moment it was added: empty, so a screen reader announces the words that follow a tick later.
+        await ev(`window.__cardAtInsert = null; new MutationObserver((ms, o) => { const c = document.getElementById('set-password-card'); if (c) { window.__cardAtInsert = c.textContent; o.disconnect(); } }).observe(document.body, { childList: true, subtree: true }); true`);
         await ask();
-        await waitFor(`!!document.getElementById('set-password-card')`, 'the card', 3000);
+        await waitFor(`!!document.getElementById('set-password-card-open')`, 'the card with its words', 3000);
+        assert.equal(await ev(`window.__cardAtInsert`), '', 'the status region is added empty, then filled');
+        assert.match(await ev(`document.getElementById('set-password-card').textContent`), /Set a password for Coral/);
+        assert.equal(await ev(`(() => { const r = document.getElementById('set-password-card').getBoundingClientRect(); return r.width > 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight; })()`), true, 'drawn inside the window');
         assert.equal(await shown(), false, 'no dialog over the terminal');
         assert.equal(await ev(`window.__settled`), true, 'settled: the card is up');
         assert.equal(await ev(`document.getElementById('set-password-card').getAttribute('role')`), 'status');
@@ -62,8 +67,13 @@ const { connect } = require('./agent_view_harness');
         await pause(3500);
         assert.equal(await ev(`document.activeElement && document.activeElement.id`), 'qa-xterm-input', 'the card never takes the focus, however long it waits');
         assert.equal(await shown(), false, 'and no dialog opens by itself');
-        // Tab or F6 reach the button: it is in the page's order, after the terminal.
+        // Tab or F6 reach the button: it is the next control after the terminal in the page's order. F6 is #121's: with it, F6's own
+        // step (focusBesideTerminal) from the terminal lands on the button; without it (before #121 merges) the order is checked.
         assert.equal(await ev(`(() => { const b = document.getElementById('set-password-card-open'); return b.tabIndex >= 0 && !!(document.getElementById('qa-xterm').compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING); })()`), true, 'its button is reachable after the terminal');
+        const f6 = await ev(`(async () => { const x = await import((window.__coralStatic || '/static/') + 'xterm_renderer.js'); if (typeof x.focusBesideTerminal !== 'function') return 'no F6 (#121 not merged)';
+            x.focusBesideTerminal(document.getElementById('qa-xterm'), false); const a = document.activeElement; const id = a && a.id; document.getElementById('qa-xterm-input').focus(); return id; })()`);
+        console.log('   F6 from the terminal: ' + f6);
+        if (f6 !== 'no F6 (#121 not merged)') assert.equal(f6, 'set-password-card-open', 'F6 from the terminal lands on the card');
         await ev(`document.getElementById('set-password-card-open').click(); true`);
         await waitFor(`!!document.getElementById('set-password-modal')`, 'the dialog from the card', 2000);
         assert.equal(await ev(`!!document.getElementById('set-password-card')`), false, 'the card goes when the dialog opens');
