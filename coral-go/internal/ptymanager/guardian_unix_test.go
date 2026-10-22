@@ -3,12 +3,15 @@
 package ptymanager
 
 import (
+	"errors"
 	"github.com/shirou/gopsutil/v4/process"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -335,5 +338,81 @@ func TestTheRestartDelayBacksOffAndResets(t *testing.T) {
 	}
 	if d := nextRestartDelay(5*time.Second, guardianLives); d != guardianRestartMin {
 		t.Fatalf("a guardian that lived long enough starts the delay again, got %v", d)
+	}
+}
+
+// failingPipe is a guardian's pipe whose writes fail while the guardian is alive: what is behind it is untouched, and a Close while the guardian still runs is recorded (it would be EOF: the guardian would
+// end every registered tree while Coral lives).
+type failingPipe struct {
+	io.WriteCloser
+	pid           int
+	closedAlive   *atomic.Bool
+	failedWrites  *atomic.Int32
+	failRemaining atomic.Int32
+}
+
+func (f *failingPipe) Write(b []byte) (int, error) {
+	if f.failRemaining.Add(-1) >= 0 {
+		f.failedWrites.Add(1)
+		return 0, errors.New("forced write error")
+	}
+	return f.WriteCloser.Write(b)
+}
+
+func (f *failingPipe) Close() error {
+	if syscall.Kill(f.pid, 0) == nil && !isZombie(f.pid) {
+		f.closedAlive.Store(true)
+	}
+	return f.WriteCloser.Close()
+}
+
+func isZombie(pid int) bool {
+	p, err := process.NewProcess(int32(pid))
+	if err != nil {
+		return true
+	}
+	st, err := p.Status()
+	return err != nil || (len(st) > 0 && st[0] == "Z")
+}
+
+// A write to the guardian fails while it is alive: it is told to exit and waited for, its pipe is never closed while it runs, no terminal's tree is ended, and a new guardian is told every terminal.
+func TestAFailedWriteNeverClosesALiveGuardiansPipe(t *testing.T) {
+	canFork(t)
+	b := NewPTYBackend()
+	t.Cleanup(func() { b.Close() })
+	spawn := func(n string) string {
+		id := "00000000-0000-4000-8000-00000000615" + n
+		name := "claude-" + id
+		if err := b.Spawn(name, "claude", t.TempDir(), id, "sleep 600", 80, 24); err != nil {
+			t.Fatal(err)
+		}
+		return name
+	}
+	first := spawn("0")
+	g1, _ := guardian.pid()
+	if g1 <= 1 {
+		t.Fatal("a guardian should be running")
+	}
+	time.Sleep(700 * time.Millisecond) // it is up and serving
+	fp := &failingPipe{pid: g1, closedAlive: new(atomic.Bool), failedWrites: new(atomic.Int32)}
+	fp.failRemaining.Store(1)
+	guardian.mu.Lock()
+	fp.WriteCloser = guardian.h.in
+	guardian.h.in = fp
+	guardian.mu.Unlock()
+
+	second := spawn("1") // its registration is the write that fails
+	if fp.failedWrites.Load() != 1 {
+		t.Fatalf("the write was meant to fail once (%d)", fp.failedWrites.Load())
+	}
+	if fp.closedAlive.Load() {
+		t.Fatal("the pipe of a guardian that was still running was closed: it would end every registered tree while Coral lives")
+	}
+	if p, regs := guardian.pid(); p <= 1 || p == g1 || regs < 2 {
+		t.Fatalf("a new guardian should be running, told both terminals (pid %d after %d, %d registered)", p, g1, regs)
+	}
+	time.Sleep(500 * time.Millisecond) // time for a wrongly closed pipe's guardian to have ended something
+	if !b.IsRunning(first) || !b.IsRunning(second) {
+		t.Fatal("a terminal's tree was ended though Coral is running")
 	}
 }

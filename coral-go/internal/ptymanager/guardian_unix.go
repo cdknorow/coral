@@ -236,10 +236,31 @@ func (g *guardianClient) send(line string) {
 		return
 	}
 	if _, err := io.WriteString(g.h.in, line); err != nil {
-		g.h.in.Close()
+		g.retire(g.h)
 		g.h = nil
 		g.start()
 	}
+}
+
+// retire gets rid of a guardian whose pipe failed (g.mu held), and never closes the pipe of one that is still running: EOF on it is what makes a guardian end every registered tree, and Coral is alive.
+// A running guardian is first told to exit (SIGTERM ends it and ends no tree; SIGKILL after two seconds, which ends nothing either) and waited for; its pipe is closed only once it has gone.
+func (g *guardianClient) retire(h *guardianHandle) {
+	select {
+	case <-h.done:
+	default:
+		syscall.Kill(h.cmd.Process.Pid, syscall.SIGTERM)
+		select {
+		case <-h.done:
+		case <-time.After(2 * time.Second):
+			syscall.Kill(h.cmd.Process.Pid, syscall.SIGKILL)
+			select {
+			case <-h.done:
+			case <-time.After(2 * time.Second):
+				return // it will not go: leave its pipe open rather than end the trees of a Coral that is running
+			}
+		}
+	}
+	h.in.Close()
 }
 
 // add registers a terminal's shell with the guardian.
