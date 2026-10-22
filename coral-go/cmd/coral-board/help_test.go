@@ -169,7 +169,7 @@ func TestHelpShowsTheCommandsOwnUsage(t *testing.T) {
 				t.Errorf("%s: usage %q does not mention %q", args, res.stdout, want)
 			}
 			if strings.HasPrefix(args, "post ") {
-				for _, guidance := range []string{"one-line summary", "one per line; answer by number", "@Name", "SHAs, branches and paths", "coral-agent artifact upload <file>", "coral://artifacts/<digest>", "Short posts with backticks"} {
+				for _, guidance := range []string{"one-line summary", "one per line; answer by number", "@Name", "SHAs, branches and paths", "coral-agent artifact upload <file>", "coral://artifacts/<digest>", "Multi-line posts and anything with backticks"} {
 					if !strings.Contains(res.stdout, guidance) {
 						t.Errorf("%s: usage missing posting guidance %q", args, guidance)
 					}
