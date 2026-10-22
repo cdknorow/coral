@@ -29,7 +29,7 @@ const BASE = require('./test_base').BASE;
         };
         const words = () => ev(`(() => { const e = document.querySelector('#live-history-messages > .chat-empty'); return e ? { role: e.getAttribute('role'), title: (e.querySelector('.chat-empty-title') || {}).textContent || '', hint: (e.querySelector('.chat-empty-hint') || {}).textContent || '', size: getComputedStyle(e).fontSize } : null; })()`);
         const open = async (name, patch) => {
-            await ev(`window.__m.add('${name}', '${name}', 0, { sleeping: ${patch.sleeping ? 'true' : 'false'} }); { const r = window.T.state.liveSessions.find(x => x.session_id === '${name}-id'); if (r) r.staleness_seconds = ${patch.fresh ? 'null' : '5'}; } true`); // the CLI has written output (5 s ago) unless this one is a just-launched agent with none (#6058)
+            await ev(`window.__m.add('${name}', '${name}', 0, { sleeping: ${patch.sleeping ? 'true' : 'false'} }); { const r = window.T.state.liveSessions.find(x => x.session_id === '${name}-id'); if (r) r.staleness_seconds = ${patch.fresh || patch.old ? 'null' : '5'}; ${patch.age !== undefined ? 'r.created_at = new Date(Date.now() - ' + patch.age + ' * 1000).toISOString();' : ''} } true`); // the CLI has written output (5 s ago) unless this one is a just-launched agent with none (#6058)
             await ev(`window.selectLiveSession('${name}', 'claude', '${name}-id', 'local'); true`);
             await waitFor(`!!document.querySelector('#live-history-messages > .chat-empty')`, `the empty state of ${name}`, 8000);
         };
@@ -44,11 +44,17 @@ const BASE = require('./test_base').BASE;
         await shot('idle');
 
         console.log('1b. The first seconds of a new agent: its CLI has written nothing yet, so it says it is coming up (#6058)');
-        await open('ec-fresh', { fresh: true });
+        await open('ec-fresh', { fresh: true, age: 3 });
         w = await words();
         assert.equal(w.title, 'Waiting for Claude to start');
         assert.match(w.hint, /first screen is not up yet/);
         await shot('starting');
+
+        console.log('1c. An agent started hours ago with no output on record is not "starting": the 25 s counts from its own start (created_at), not from this page opening it');
+        await open('ec-old', { old: true, age: 7200 });
+        w = await words();
+        assert.equal(w.title, 'No messages yet', 'an old live agent with no output age: ' + JSON.stringify(w));
+        assert.equal(w.hint, 'Type below to start.');
 
         console.log('2. The words are written once, not at every refresh');
         await ev(`window.__ecMuts = 0; new MutationObserver(m => { window.__ecMuts += m.length; }).observe(document.querySelector('#live-history-messages > .chat-empty'), { childList: true, characterData: true, subtree: true }); true`);

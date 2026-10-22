@@ -488,6 +488,7 @@ func (h *SessionsHandler) liveSessionRowsBefore4713(r *http.Request, trace *phas
 			"needs_login":           state.NeedsLogin,
 			"awaiting_user":         state.AwaitingUser,
 			"not_started":           state.NotStarted,
+			"created_at":            createdAtMap[sid], // new in #6058, here too: a fixed time
 			"done":                  state.Done,
 			"waiting_reason":        nilIf(!state.NeedsInput, state.WaitingReason),
 			"waiting_summary":       nilIf(!state.NeedsInput, state.WaitingSummary),

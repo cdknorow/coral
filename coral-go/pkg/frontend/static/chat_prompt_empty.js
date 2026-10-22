@@ -8,12 +8,14 @@ import { responseError } from './server_status.js';
 import { reportSendError } from './terminal_gone.js';
 import { announcePrompt, promptOptionsBySession, syncNeedsInputCard } from './needs_input_card.js';
 
-// The first seconds of a new agent (#6058): its CLI has written nothing yet (the list has no output age for it), and this page first saw it less than STARTING_MS ago. "No messages yet" there reads as ready; it says the CLI is coming up.
+// The first seconds of a new agent (#6058): its CLI has written nothing yet (the list has no output age for it), and it was started less than STARTING_MS ago by the list's created_at AND this page first saw it less than STARTING_MS ago (the second bounds a server clock that runs ahead of this one). "No messages yet" there reads as ready; it says the CLI is coming up.
 // After that the row's own states take over (the "Waiting in the terminal" card from 25 s with no event at all).
 const STARTING_MS = 25 * 1000;
 const firstSeen = new Map(); // session_id -> ms of the first look at its empty chat
 function isStarting(row) {
     if (!row || !row.session_id || row.agent_type === "terminal" || row.not_started || row.working || row.waiting_for_input || typeof row.staleness_seconds === "number") return false;
+    const startedAt = Date.parse(row.created_at || ""); // the agent's own start: one that has been idle for hours is not starting, whenever this page opens it
+    if (Number.isFinite(startedAt) && Date.now() - startedAt >= STARTING_MS) return false;
     if (!firstSeen.has(row.session_id)) firstSeen.set(row.session_id, Date.now());
     return Date.now() - firstSeen.get(row.session_id) < STARTING_MS;
 }
