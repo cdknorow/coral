@@ -178,6 +178,8 @@
     opacity: 1;
 }
 
+/* "Edit & Resubmit" is a 44 px target on touch and at phone width (it was 97 x 18) (#6130) */
+@media (pointer: coarse), (max-width: 767px) { .chat-bubble .edit-btn { min-height: var(--control-touch-height, 44px); min-width: var(--control-touch-height, 44px); } }
 .chat-bubble .edit-btn:hover {
     background: var(--accent-dim);
     color: var(--text-primary);
