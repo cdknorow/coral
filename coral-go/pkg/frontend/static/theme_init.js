@@ -1,7 +1,11 @@
-/* Apply the saved theme before first paint (classic script, runs in <head>). */
+/* Apply the saved theme before first paint (classic script, runs in <head>). Only dark, light and system are themes here: anything else (a name a hub stored, an old value) is not one, and a page with no saved choice
+   starts dark on this computer and follows the system on the Cloud Hub (#6087: a phone through the hub has no saved choice, and must never be left with no theme tokens). */
 (function () {
-    var t = 'dark';
-    try { t = localStorage.getItem('coral-theme') || 'dark'; } catch (_) {}
+    var mode = 'local';
+    try { mode = JSON.parse(document.getElementById('coral-boot').textContent).mode || 'local'; } catch (_) {}
+    var t = null;
+    try { t = localStorage.getItem('coral-theme'); } catch (_) {}
+    if (t !== 'dark' && t !== 'light' && t !== 'system') t = mode === 'cloud' ? 'system' : 'dark';
     if (t === 'system') t = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
     document.documentElement.setAttribute('data-theme', t);
 })();
