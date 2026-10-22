@@ -48,17 +48,22 @@ function render(root, st, sessions) {
     root.replaceChildren();
     const head = el('div', 'tb-head');
     const label = el('span', 'tb-label', 'Browser sign-in'); label.id = 'sec-label';
-    head.append(label, el('span', 'tb-now', st.password_set ? 'password set' : 'no password'));
+    // The one sentence that explains the row is behind an (i): a button that says it is about this row, closed at first, the text in the page.
+    const why = el('button', 'settings-info-btn', ''); why.type = 'button'; why.id = 'sec-why';
+    why.setAttribute('aria-expanded', 'false'); why.setAttribute('aria-controls', 'sec-why-text'); why.setAttribute('aria-label', 'About browser sign-in');
+    const icon = el('span', 'material-icons', 'info'); icon.setAttribute('aria-hidden', 'true'); why.append(icon);
+    const whyText = el('p', 'settings-info-text', 'Browsers ask for this password. The Coral app, the tray and coral open sign in by themselves.'); whyText.id = 'sec-why-text'; whyText.hidden = true;
+    why.addEventListener('click', () => { whyText.hidden = !whyText.hidden; why.setAttribute('aria-expanded', String(!whyText.hidden)); });
+    head.append(label, why, el('span', 'tb-now', st.password_set ? 'password set' : 'no password'));
     root.setAttribute('aria-labelledby', 'sec-label');
-    root.append(head);
-    root.append(el('p', 'tb-sub', 'Browsers ask for this password. The Coral app, the tray and coral open sign in by themselves.'));
+    root.append(head, whyText);
     if (!st.password_set) {
         const b = el('button', 'btn btn-small', 'Set a password'); b.type = 'button'; b.id = 'sec-set';
         b.addEventListener('click', () => showSetPasswordModal({ local: st.local === true }));
         root.append(b);
         return;
     }
-    root.append(changeForm(), sessionsBlock(sessions), el('p', 'tb-note', 'Forgot it? Run coral reset-password on this computer.'));
+    root.append(changeForm(), sessionsBlock(sessions));
 }
 
 function changeForm() {
@@ -91,13 +96,13 @@ function changeForm() {
         document.dispatchEvent(new CustomEvent('coral:password-changed'));
         loadSecurityRow();
     });
-    d.append(form);
+    d.append(form, el('p', 'tb-note', 'Forgot it? Run coral reset-password on this computer.'));
     return d;
 }
 
 function sessionsBlock(data) {
     const box = el('div', 'sec-sessions');
-    if (data && data.needSignIn) { const b = el('div', 'sec-sessions'); b.append(el('p', 'tb-note', 'Sign in in this browser to see signed-in browsers and sign the others out.')); return b; }
+    if (data && data.needSignIn) { const b = el('div', 'sec-sessions'); b.append(el('p', 'tb-note', 'Sign in here to manage browsers.')); return b; }
     const all = (data && Array.isArray(data.sessions)) ? data.sessions : null;
     const list = all && all.filter(s => s.method !== 'hub');   // Coral Hub sign-ins are listed, with Sign out, in their own block
     if (!list) { box.append(el('p', 'tb-note', 'The list of signed-in browsers could not be loaded.')); return box; }
