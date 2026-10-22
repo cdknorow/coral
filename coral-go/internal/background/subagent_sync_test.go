@@ -368,3 +368,11 @@ func TestSyncSubagentSpend_TracksFinishedState(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, env.get(subFixtureID).Finished, "the realistic fixture ends with end_turn")
 }
+
+func TestSyncOneSubagent_SkipsAnEmptyOrMarkupID(t *testing.T) {
+	e := newSubagentEnv(t)
+	for _, id := range []string{"", "<b onclick=x>"} {
+		err := syncOneSubagent(context.Background(), e.subagents, "sess", subagent.Files{SubagentID: id, TranscriptPath: filepath.Join(t.TempDir(), "none.jsonl")})
+		assert.Error(t, err, id)
+	}
+}
