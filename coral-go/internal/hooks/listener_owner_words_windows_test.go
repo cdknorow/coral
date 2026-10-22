@@ -30,7 +30,7 @@ func TestEachRefusalSaysWhyAndWhatToDo(t *testing.T) {
 			[]string{"(PID 4242) runs as another account (S-1-5-21-1-2-3-1001), not as you or the owner of Coral's data folder.",
 				"Start Coral as yourself, or stop that program."}},
 		{"an owner that can't be read", func(uint32) (*windows.SID, string, error) { return nil, "", windows.ERROR_ACCESS_DENIED },
-			[]string{"Coral couldn't check who runs the program on that port (PID 4242):", "Start Coral, or stop that program."}},
+			[]string{"Coral couldn't check who runs the program on that port (PID 4242):", "Check what is listening on port 8450, or start Coral."}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
