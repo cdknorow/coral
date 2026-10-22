@@ -171,7 +171,7 @@ async function run() {
                 if (process.env.CORAL_SCREENSHOT_DIR) { fs.mkdirSync(process.env.CORAL_SCREENSHOT_DIR, { recursive: true }); fs.writeFileSync(`${process.env.CORAL_SCREENSHOT_DIR}/connect-question-${label}-${theme}.png`, Buffer.from((await Page.captureScreenshot({ format: 'png' })).data, 'base64')); }
               }
               await setTheme(ev, 'dark'); }
-            check(`${label}: an accessible dialog, focused on Connect, on screen`, !!s && s.role === 'dialog' && s.modal === 'true' && s.labelled && s.focus && s.inView && (await ev(`document.activeElement.dataset.cloud`)) === 'connect', JSON.stringify(s));
+            check(`${label}: an accessible dialog, focused on the question's chosen answer (Launch), on screen`, !!s && s.role === 'dialog' && s.modal === 'true' && s.labelled && s.focus && s.inView && (await ev(`(() => { const a = document.activeElement; return a.type === 'radio' && a.checked && a.value === 'launch' && a.hasAttribute('data-cloud-mode'); })()`)) === true, JSON.stringify(s));
             await click('#editions-modal [data-cloud="connect"]');
             await until(`!!document.querySelector('#editions-modal [data-cloud="code"]:not([hidden])')`, 'the code');
             s = await screen();

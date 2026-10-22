@@ -187,7 +187,7 @@ function _ownHubHtml() {
 
 // Each status: once connected, Done replaces Skip (the question "What may Coral Hub do on this computer?" is answered before Connect, and can still be changed here). Enrolled but reconnecting counts as connected: the hub approved this server,
 // and the access choice applies when the tunnel comes back. The first status moves focus to
-// Connect (it is hidden until then).
+// the question's chosen answer (Connect when there is no question); Connect is hidden until then.
 function _onState(st) {
     const m = document.getElementById('editions-modal');
     if (!m) return;
@@ -200,8 +200,11 @@ function _onState(st) {
     if (connected && focusWasOnSkip) done.focus();
     if (!m.dataset.focused) {
         m.dataset.focused = '1';
+        // The question comes first: focus the choice that is on (Launch unless the install saved another), so it and its answer are read before Connect is pressed; with no question on screen, Connect.
+        const ask = q('[data-cloud="ask-row"]'), chosen = ask && !ask.hidden && ask.querySelector('input[data-cloud-mode]:checked');
         const connect = q('[data-cloud="connect"]');
-        if (connect && !connect.hidden) connect.focus();
+        if (chosen) chosen.focus();
+        else if (connect && !connect.hidden) connect.focus();
     }
 }
 

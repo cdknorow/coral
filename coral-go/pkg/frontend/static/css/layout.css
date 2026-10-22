@@ -940,7 +940,7 @@ body.hub-no-machine .welcome-launch-list, body.hub-no-machine .welcome-header p,
 .editions-auto-accept { display: flex; align-items: center; gap: 8px; color: var(--text-secondary); font-size: 0.8125rem; }
 .editions-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .editions-actions-spacer { flex: 1; }
-.editions-actions .btn.editions-own { padding-left: 0; padding-right: 0; background: none; border-color: transparent; box-shadow: none; color: var(--accent); }
+.editions-actions .btn.editions-own { padding-left: 0; padding-right: 0; background: none; border-color: transparent; box-shadow: none; color: var(--link-text); /* the accent is 4.44:1 on the light panel */ }
 .editions-actions .btn.editions-own:hover, .editions-actions .btn.editions-own:focus-visible { background: none; text-decoration: underline; }
 .editions-steps { margin: 0 0 16px; padding-left: 20px; color: var(--text-secondary); font-size: 0.875rem; line-height: 1.55; }
 .editions-steps li + li { margin-top: 8px; }

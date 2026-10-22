@@ -791,6 +791,13 @@ button.subscriber-history-link {
     outline: none;
 }
 
+/* A text field's focus is its accent border; a native checkbox or radio has no border to change, so the keyboard's focus is the outline (the rule above took it away: only a 15% glow was left, 1.2:1). */
+.modal-content input[type="checkbox"]:focus-visible,
+.modal-content input[type="radio"]:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
 /* Size text fields without changing native checkbox/radio/color controls. */
 .modal-content input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="range"]),
 .modal-content select {
