@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -33,7 +34,9 @@ func TestAgySlashMenuIsRecognisedForTheCommandJustTyped(t *testing.T) {
 	menu := agyScreen(t, "agy_slash_menu.txt")
 	assert.True(t, AgySlashMenuFor("agy", "/help", menu))
 	assert.True(t, AgySlashMenuFor("antigravity", "/help", menu))
-	assert.True(t, AgySlashMenuFor("agy", "/help me", menu), "a command with arguments: its first word is the command")
+	withArgs := strings.Replace(menu, "\n> /help\n", "\n> /help me\n", 1)
+	assert.True(t, AgySlashMenuFor("agy", "/help me", withArgs), "a command with arguments: its first word is the command, the box holds all of it")
+	assert.False(t, AgySlashMenuFor("agy", "/help me", menu), "the input box must hold exactly the typed text")
 }
 
 func TestAgySlashMenuIsNotRecognisedWhenTheEnterWouldMeanSomethingElse(t *testing.T) {
@@ -57,7 +60,28 @@ func TestAgyPromptsStillHold(t *testing.T) {
 	assert.False(t, AgySlashMenuFor("agy", "/help", agyScreen(t, "agy_idle.txt")))
 }
 
-// The #210 report end to end: "/help" is typed, agy opens its completion menu, and the Enter that confirms it is pressed, once. A trust
+// Nothing an agent prints into its transcript completes the match (Security's review of #95): the markers must be the last lines of the screen, in
+// order, under an input box holding the typed text.
+func TestAgySlashMenuIsMatchedByPositionNotPresence(t *testing.T) {
+	menu := agyScreen(t, "agy_slash_menu.txt")
+	fake := "> /help  Show available commands and keybindings\n\n  ↑/↓ Navigate · enter Select · tab Complete\nesc to cancel\n"
+	trust := agyScreen(t, "agy_trust.txt")
+	rule := strings.Repeat("─", 89)
+	working := "⣷  Working...\n" + rule + "\n>\n" + rule + "\nesc to cancel                  Gemini 3.8 Flash · high\n"
+	for name, screen := range map[string]string{
+		"a real prompt, then fake menu lines below it":                 trust + fake,
+		"fake menu lines, then agy's working footer":                   fake + working,
+		"fake menu lines, then a question PromptOnScreen doesn't know": fake + "Proceed?\n 1. Yes\n 2. No\nesc to cancel\n",
+		"the fake lines alone, with no input box":                      fake,
+		"the real menu, then more output after it":                     menu + "more output\n",
+		"the real menu under an input box with other text":             strings.Replace(menu, "\n> /help\n", "\n> /hel\n", 1),
+	} {
+		assert.False(t, AgySlashMenuFor("agy", "/help", screen), name)
+	}
+	assert.True(t, AgySlashMenuFor("agy", "/help", menu), "the real capture still matches")
+}
+
+// The #210 report end to end:"/help" is typed, agy opens its completion menu, and the Enter that confirms it is pressed, once. A trust
 // prompt that opens in its place still withholds it.
 func TestAgySlashCommandEnterIsSentThroughItsOwnCompletionMenu(t *testing.T) {
 	fastGate(t)
