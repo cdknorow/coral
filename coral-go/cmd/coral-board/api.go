@@ -226,7 +226,7 @@ func failFromServer(data []byte, status int, err error) {
 	if json.Unmarshal(data, &errResp) == nil && errResp["error"] != "" {
 		fmt.Fprintf(os.Stderr, "Error: %s\n", errResp["error"])
 	} else {
-		fmt.Fprintf(os.Stderr, "Error: HTTP %d: %s\n", status, string(data))
+		fmt.Fprintln(os.Stderr, "Error: "+clierr.Describe(nil, status, data))
 	}
 	clierr.Exit1()
 }
@@ -249,6 +249,6 @@ func failFromRefusal(data []byte, status int, err error) {
 			clierr.Exit1()
 		}
 	}
-	fmt.Fprintf(os.Stderr, "Error: HTTP %d: %s\n", status, string(data))
+	fmt.Fprintln(os.Stderr, "Error: "+clierr.Describe(nil, status, data))
 	clierr.Exit1()
 }

@@ -242,7 +242,7 @@ func cmdTaskAdd(st *boardState, args []string) {
 		clierr.Exit1()
 	}
 	if status != http.StatusCreated && status != http.StatusOK {
-		fmt.Fprintf(os.Stderr, "Error creating task: %s\n", string(data))
+		fmt.Fprintf(os.Stderr, "Error creating task: %s\n", clierr.Describe(nil, status, data))
 		clierr.Exit1()
 	}
 
@@ -302,7 +302,7 @@ func fetchAllTasks(st *boardState) []map[string]any {
 			clierr.Exit1()
 		}
 		if statusCode != http.StatusOK {
-			fmt.Fprintf(os.Stderr, "Error listing tasks: %s\n", string(data))
+			fmt.Fprintf(os.Stderr, "Error listing tasks: %s\n", clierr.Describe(nil, statusCode, data))
 			clierr.Exit1()
 		}
 		var page struct {
@@ -363,7 +363,7 @@ func cmdTaskClaim(st *boardState, args ...string) {
 		return
 	}
 	if status != http.StatusOK {
-		fmt.Fprintf(os.Stderr, "Error claiming task: %s\n", string(data))
+		fmt.Fprintf(os.Stderr, "Error claiming task: %s\n", clierr.Describe(nil, status, data))
 		taskcli.PrintBlocked(os.Stderr, data)
 		clierr.Exit1()
 	}
@@ -402,7 +402,7 @@ func cmdTaskCurrent(st *boardState, asJSON bool) {
 		return
 	}
 	if status != http.StatusOK {
-		fmt.Fprintf(os.Stderr, "Error: %s\n", string(data))
+		fmt.Fprintf(os.Stderr, "Error: %s\n", clierr.Describe(nil, status, data))
 		clierr.Exit1()
 	}
 
@@ -481,7 +481,7 @@ func cmdTaskComplete(st *boardState, args []string) {
 		clierr.Exit1()
 	}
 	if status != http.StatusOK {
-		fmt.Fprintf(os.Stderr, "Error completing task: %s\n", string(data))
+		fmt.Fprintf(os.Stderr, "Error completing task: %s\n", clierr.Describe(nil, status, data))
 		clierr.Exit1()
 	}
 
@@ -545,7 +545,7 @@ func cmdTaskCancel(st *boardState, args []string) {
 		clierr.Exit1()
 	}
 	if status != http.StatusOK {
-		fmt.Fprintf(os.Stderr, "Error cancelling task: %s\n", string(data))
+		fmt.Fprintf(os.Stderr, "Error cancelling task: %s\n", clierr.Describe(nil, status, data))
 		clierr.Exit1()
 	}
 
@@ -603,7 +603,7 @@ func cmdTaskReassign(st *boardState, args []string) {
 		clierr.Exit1()
 	}
 	if status != http.StatusOK {
-		fmt.Fprintf(os.Stderr, "Error reassigning task: %s\n", string(data))
+		fmt.Fprintf(os.Stderr, "Error reassigning task: %s\n", clierr.Describe(nil, status, data))
 		clierr.Exit1()
 	}
 
@@ -664,7 +664,7 @@ func cmdTaskAmend(st *boardState, args []string) {
 		clierr.Exit1()
 	}
 	if status != http.StatusOK {
-		fmt.Fprintf(os.Stderr, "Error amending task: %s\n", string(data))
+		fmt.Fprintf(os.Stderr, "Error amending task: %s\n", clierr.Describe(nil, status, data))
 		clierr.Exit1()
 	}
 	var task map[string]any

@@ -42,7 +42,7 @@ func runBoardStatus(args []string, out io.Writer) error {
 		return err
 	}
 	if status != http.StatusOK {
-		return fmt.Errorf("board status failed (HTTP %d): %s", status, data)
+		return fmt.Errorf("board status failed: %s", clierr.Describe(nil, status, data))
 	}
 	// A board with no subscriber, message or open task is not there (#285): not found (6), not an empty board's "No queue health
 	// issues". A server from before the "exists" field says nothing, and its answer is printed as it was.

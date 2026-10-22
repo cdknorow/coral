@@ -116,7 +116,7 @@ func cmdHistorySearch(args []string) {
 		if json.Unmarshal(data, &errResp) == nil && errResp.Error != "" {
 			fmt.Fprintf(os.Stderr, "Search error (%d): %s\n", status, errResp.Error)
 		} else {
-			fmt.Fprintf(os.Stderr, "Search error (%d): %s\n", status, string(data))
+			fmt.Fprintf(os.Stderr, "Search error: %s\n", clierr.Describe(nil, status, data))
 		}
 		clierr.Exit1()
 	}
@@ -262,7 +262,7 @@ func cmdHistoryContext(args []string) {
 		if json.Unmarshal(data, &errResp) == nil && errResp.Error != "" {
 			fmt.Fprintf(os.Stderr, "Context error (%d): %s\n", status, errResp.Error)
 		} else {
-			fmt.Fprintf(os.Stderr, "Context error (%d): %s\n", status, string(data))
+			fmt.Fprintf(os.Stderr, "Context error: %s\n", clierr.Describe(nil, status, data))
 		}
 		clierr.Exit1()
 	}

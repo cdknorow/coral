@@ -76,3 +76,25 @@ func TestAgentInputValidationIsAUsageError(t *testing.T) {
 	assert.NotContains(t, stderr, "subagent", "the usage on error is the short list, not the handoff paragraph")
 	assert.False(t, asked, "none of these reached Coral")
 }
+
+// The same for coral-agent: a failed request prints the words and the status, not the server's JSON (#296).
+func TestAgentNoCommandPrintsARawErrorBody(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte(`{"code":"identity_mismatch","detail":{"a":1},"message":"you are not on that board"}`))
+	}))
+	defer srv.Close()
+	for _, args := range [][]string{
+		{"task", "list"},
+		{"task", "add", "x"},
+		{"task", "claim", "3"},
+		{"task", "complete", "3"},
+		{"history", "search", "word"},
+	} {
+		code, _, stderr := runAgent(t, srv.URL, args...)
+		assert.NotEqual(t, 0, code, "%v", args)
+		assert.NotContains(t, stderr, `{"code"`, "%v prints the words, not the JSON: %q", args, stderr)
+		assert.Contains(t, stderr, "(HTTP 403)", "%v: %q", args, stderr)
+	}
+}

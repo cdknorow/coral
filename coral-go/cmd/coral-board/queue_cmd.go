@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/subgentic/coral/internal/clierr"
 	"net/http"
 	"net/url"
 	"os"
@@ -43,7 +44,7 @@ func cmdQueue() {
 	}
 	data, status, err := apiCallRaw("GET", "/"+url.PathEscape(st.Project)+"/queue", nil)
 	if err != nil || status != http.StatusOK {
-		fmt.Fprintln(os.Stderr, "Could not read the queue:", err, string(data))
+		fmt.Fprintln(os.Stderr, "Could not read the queue: "+clierr.Describe(err, status, data))
 		exitFn(1)
 		return
 	}

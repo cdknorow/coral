@@ -89,3 +89,28 @@ func TestReviewVerbsExitCodes(t *testing.T) {
 	res = runBoard(t, srv.URL, dir, "task", "send-back", "999")
 	assert.Equal(t, 2, res.code, res.stderr)
 }
+
+// A failed request never prints the server's raw JSON body: it reads "<words> (HTTP N)" (#296: status --board printed {"code":"identity_mismatch",...}).
+func TestNoCommandPrintsARawErrorBody(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte(`{"code":"identity_mismatch","detail":{"a":1},"message":"you are not on that board"}`))
+	}))
+	defer srv.Close()
+	dir := subscribedDataDir(t, srv.URL)
+	for _, args := range [][]string{
+		{"status", "--board", "other"},
+		{"task", "list"},
+		{"task", "add", "x"},
+		{"task", "claim", "3"},
+		{"task", "complete", "3"},
+		{"queue"},
+		{"working-mode"},
+	} {
+		res := runBoard(t, srv.URL, dir, args...)
+		assert.NotEqual(t, 0, res.code, "%v", args)
+		assert.NotContains(t, res.stderr, `{"code"`, "%v prints the words, not the JSON: %q", args, res.stderr)
+		assert.Contains(t, res.stderr, "(HTTP 403)", "%v: %q", args, res.stderr)
+	}
+}

@@ -402,7 +402,7 @@ func cmdLaunch(args []string) {
 			msg, _ = result["error"].(string)
 		}
 		if msg == "" {
-			msg = string(data)
+			msg = clierr.Describe(nil, status, data)
 		}
 		fmt.Fprintf(os.Stderr, "Error launching agent: %s\n", msg)
 		clierr.Exit1()
@@ -510,7 +510,7 @@ func cmdTaskAdd(args []string) {
 		clierr.Exit1()
 	}
 	if status != http.StatusCreated && status != http.StatusOK {
-		fmt.Fprintf(os.Stderr, "Error creating task: %s\n", string(data))
+		fmt.Fprintf(os.Stderr, "Error creating task: %s\n", clierr.Describe(nil, status, data))
 		clierr.Exit1()
 	}
 
@@ -526,7 +526,7 @@ func cmdTaskList(asJSON bool) {
 		clierr.Exit1()
 	}
 	if statusCode != http.StatusOK {
-		fmt.Fprintf(os.Stderr, "Error listing tasks: %s\n", string(data))
+		fmt.Fprintf(os.Stderr, "Error listing tasks: %s\n", clierr.Describe(nil, statusCode, data))
 		clierr.Exit1()
 	}
 
@@ -581,7 +581,7 @@ func cmdTaskClaim(args ...string) {
 		return
 	}
 	if status != http.StatusOK {
-		fmt.Fprintf(os.Stderr, "Error claiming task: %s\n", string(data))
+		fmt.Fprintf(os.Stderr, "Error claiming task: %s\n", clierr.Describe(nil, status, data))
 		taskcli.PrintBlocked(os.Stderr, data)
 		clierr.Exit1()
 	}
@@ -618,7 +618,7 @@ func cmdTaskCurrent(asJSON bool) {
 		return
 	}
 	if status != http.StatusOK {
-		fmt.Fprintf(os.Stderr, "Error: %s\n", string(data))
+		fmt.Fprintf(os.Stderr, "Error: %s\n", clierr.Describe(nil, status, data))
 		clierr.Exit1()
 	}
 
@@ -696,7 +696,7 @@ func cmdTaskFinish(args []string, verb string) {
 		clierr.Exit1()
 	}
 	if status != http.StatusOK {
-		fmt.Fprintf(os.Stderr, "Error %s task: %s\n", errWord, string(data))
+		fmt.Fprintf(os.Stderr, "Error %s task: %s\n", errWord, clierr.Describe(nil, status, data))
 		clierr.Exit1()
 	}
 
