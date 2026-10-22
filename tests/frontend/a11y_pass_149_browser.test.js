@@ -2,7 +2,7 @@
 //   - the artifact viewer's "Who can read this" is reached with Tab: the page's Tab trap (modal_chrome.js) did not count a <summary>, so from Close (the
 //     last control it knew) it went back to Download and the disclosure could not be reached;
 //   - Team settings > Messaging at 200% text on a 390 px phone: the "Link a team on another Coral" button wraps, it is not one line cut off by the panel;
-//   - Settings > Network and Hub: the access list's label reads as a sentence ("The most the hub may do on this computer").
+//   - Settings > Network and Hub: the access list's label reads as a sentence ("What may Coral Hub do on this computer?").
 // Drives Chrome over CDP against the isolated dev server through agent_view_harness.js; run_cdp_suites.mjs finds it by name.
 const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
@@ -55,7 +55,7 @@ const BASE = require('./test_base').BASE;
         console.log('3. Network and Hub: the access list reads as a sentence');
         await start(1280, 900, false);
         await ev(`(async () => { await window.showSettingsModal('network'); return true; })()`);
-        assert.equal(await ev(`document.querySelector('label[for="settings-cloud-max-mode"]').textContent.trim()`), 'The most the hub may do on this computer');
+        assert.equal(await ev(`document.querySelector('label[for="settings-cloud-max-mode"]').textContent.trim()`), 'What may Coral Hub do on this computer?');
         console.log('   ✓');
     } finally { await removeBoards(ev, [TEAM]); await client.close(); }
 })().catch(e => { console.error(e); process.exit(1); });

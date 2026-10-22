@@ -1033,14 +1033,14 @@
                         <button type="button" id="settings-cloud-rekey" data-cloud="rekey" class="btn btn-small">Replace the secret key</button>
                     </div>
                     <div class="settings-cloud-mode" id="settings-cloud-mode-row" data-cloud="mode-row" hidden>
-                        <label for="settings-cloud-max-mode">The most the hub may do on this computer</label>
+                        <label for="settings-cloud-max-mode">What may Coral Hub do on this computer?</label>
                         <select id="settings-cloud-max-mode" data-cloud="max-mode" class="settings-select" aria-describedby="settings-cloud-mode-desc">
-                            <option value="view">View (default)</option>
+                            <option value="view">View</option>
                             <option value="interact">Interact</option>
                             <option value="launch">Launch</option>
                         </select>
                         <div id="settings-cloud-mode-desc" data-cloud="mode-desc" class="settings-hint"></div>
-                        <div class="settings-hint settings-cloud-hub-mode-hint">The hub has its own setting per server (default View). The lower of the two applies.</div>
+                        <div class="settings-hint settings-cloud-hub-mode-hint">Coral Hub's owner can limit this further for each server, never raise it.</div>
                         {{ template "includes/cloud_switch_row" (cloudSwitch "settings-cloud-auto-accept-row" "data-cloud=\"auto-accept-row\" hidden" "settings-cloud-allow-auto-accept" "Coral Hub can turn on auto-accept" "settings-cloud-auto-accept-desc" "On by default while access is Launch. A hub user can then let an agent's permission prompts be approved for it, for up to 8 hours (1 hour unless they choose otherwise). Turn this off to keep that on this computer only; it also stops any auto-accept the hub turned on." "data-cloud=\"allow-auto-accept\" aria-describedby=\"settings-cloud-auto-accept-desc settings-cloud-auto-accept-changed\"") }}
                         <div id="settings-cloud-auto-accept-changed" class="settings-cloud-changed" data-cloud="auto-accept-changed" hidden></div>
                         {{ template "includes/cloud_switch_row" (cloudSwitch "settings-cloud-hub-relaunch-row" "data-flag=\"updates\"" "settings-cloud-hub-relaunch" "Let Coral Hub relaunch this Coral to install updates" "settings-cloud-hub-relaunch-desc" "On by default. Coral Hub can ask for the relaunch of a version this computer has already downloaded and checked; it cannot choose a version or start one that is not ready, and it cannot change this switch. It only works at the Launch level above. Changed on this computer only." "data-cloud=\"hub-relaunch\" aria-describedby=\"settings-cloud-hub-relaunch-desc\"") }}
@@ -1059,7 +1059,7 @@
                             <label class="check-hit"><input type="checkbox" id="settings-cloud-hub-operator" data-cloud="hub-operator" aria-describedby="settings-cloud-hub-operator-desc"></label>
                         </div>
                     </div>
-                    <div class="settings-hint" data-info>The hub can read everything you view through it. This is a ceiling: the mode actually in effect is the lower of this setting and the one chosen on the hub, and only you can change this one, here. Interact lets a hub user type into running agents, which can run commands; Launch also lets them start, stop, sleep, wake and restart agents. Disconnect removes the token from this computer; revoke the server on the hub's Servers page to cut it off from there.</div>
+                    <div class="settings-hint" data-info>The hub can read everything you view through it. This is the most Coral Hub can ever do here: its owner can limit it further for each server but never raise it, and only you can change it, here. Interact lets a hub user type into running agents, which can run commands; Launch also lets them start, stop, sleep, wake and restart agents. Disconnect removes the token from this computer; revoke the server on the hub's Servers page to cut it off from there.</div>
                 </dd>
                 </div>
                 <div class="settings-row settings-row-wide">

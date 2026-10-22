@@ -127,6 +127,13 @@ export async function showHubSetup(step = 'connect') {
     (m.querySelector('[data-editions-focus]:not([hidden])') || m.querySelector('button:not([hidden])'))?.focus();
 }
 
+// The one question the Connect screen asks (the full wording is in Settings): the short line says what the choice lets Coral Hub do.
+const ASK_MODES = [
+    ['view', 'View', 'Look at agents, boards and files. Nothing can be typed or started from the web.'],
+    ['interact', 'Interact', 'View, plus type into running agents, answer their prompts, post on boards and change tasks.'],
+    ['launch', 'Launch', 'Interact, plus start, stop and restart agents, choose folders and manage boards. Launching runs code on this computer as you.'],
+];
+
 function _connectHtml() {
     return `<div class="modal-content editions-content">
         <h2 id="editions-title" class="editions-title">Connect to Coral Hub</h2>
@@ -138,22 +145,17 @@ function _connectHtml() {
                 <div class="editions-usercode" data-cloud="usercode"></div>
             </div>
             <div class="cloud-command-row" data-cloud="command-row" hidden><code data-cloud="command"></code><button type="button" class="btn btn-small" data-cloud="copy">Copy</button></div>
+            <fieldset class="editions-ask" data-cloud="ask-row" hidden>
+                <legend id="editions-ask-q">What may Coral Hub do on this computer?</legend>
+                ${ASK_MODES.map(([value, name, text]) => `<label class="editions-ask-opt"><input type="radio" name="editions-mode" value="${value}" data-cloud-mode aria-describedby="editions-ask-${value}"><span class="editions-ask-text"><span class="editions-ask-name">${name}</span><span class="editions-ask-desc" id="editions-ask-${value}">${text}</span></span></label>`).join('')}
+                <div data-cloud="auto-accept-row" hidden>
+                    ${switchRow({ label: 'Coral Hub can turn on auto-accept', labelClass: 'editions-auto-accept', attrs: ' data-cloud="allow-auto-accept"', desc: 'Agents it launches act without asking for permission each time.', descId: 'editions-ask-auto', descClass: 'editions-ask-desc', descTag: 'div' })}
+                </div>
+                <div class="editions-ask-note">You can change this any time in Settings › Network and Hub.</div>
+            </fieldset>
             <div class="editions-cloud-actions">
                 <button type="button" class="btn btn-primary editions-connect" data-cloud="connect" data-editions-focus hidden>Connect</button>
                 <button type="button" class="btn" data-cloud="cancel" hidden>Cancel</button>
-            </div>
-            <div class="editions-mode" data-cloud="mode-row" hidden>
-                <label for="editions-max-mode">Most Coral Hub may do on this computer</label>
-                <select id="editions-max-mode" class="settings-select" data-cloud="max-mode" aria-describedby="editions-mode-desc">
-                    <option value="view">View (default)</option>
-                    <option value="interact">Interact</option>
-                    <option value="launch">Launch</option>
-                </select>
-                <div id="editions-mode-desc" class="settings-hint" data-cloud="mode-desc"></div>
-                <div data-cloud="auto-accept-row" hidden>
-                    ${switchRow({ label: 'Coral Hub can turn on auto-accept', labelClass: 'editions-auto-accept', attrs: ' data-cloud="allow-auto-accept"' })}
-                </div>
-                <div class="settings-hint">You can change this any time in Settings › Coral Hub.</div>
             </div>
         </div>
         <div class="modal-actions editions-actions">
@@ -183,8 +185,7 @@ function _ownHubHtml() {
     </div>`;
 }
 
-// Each status: once connected, choosing how much the hub may do is the next step and Done
-// replaces Skip. Enrolled but reconnecting counts as connected: the hub approved this server,
+// Each status: once connected, Done replaces Skip (the question "What may Coral Hub do on this computer?" is answered before Connect, and can still be changed here). Enrolled but reconnecting counts as connected: the hub approved this server,
 // and the access choice applies when the tunnel comes back. The first status moves focus to
 // Connect (it is hidden until then).
 function _onState(st) {
@@ -192,11 +193,10 @@ function _onState(st) {
     if (!m) return;
     const connected = !!st && (st.state === 'connected' || (_cc && _cc.enrolledRetrying(st)));
     const q = sel => m.querySelector(sel);
-    const skip = q('[data-editions="skip"]'), done = q('[data-editions="done"]'), mode = q('[data-cloud="mode-row"]');
+    const skip = q('[data-editions="skip"]'), done = q('[data-editions="done"]');
     const focusWasOnSkip = skip && document.activeElement === skip;
     if (skip) skip.hidden = connected;
     if (done) done.hidden = !connected;
-    if (mode && !connected) mode.hidden = true;
     if (connected && focusWasOnSkip) done.focus();
     if (!m.dataset.focused) {
         m.dataset.focused = '1';

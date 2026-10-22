@@ -56,7 +56,12 @@ const STUB = `
     if (m !== 'GET') window.__cloudCalls.push(m + ' ' + path + (opts.body && opts.body !== '{}' ? ' ' + opts.body : ''));
     if (path === '/api/cloud/connect/cancel') { Object.assign(window.__cloud, { state: 'idle', user_code: '', verification_url: '' }); return json({ ok: true }); }
     if (path === '/api/cloud/disconnect') Object.assign(window.__cloud, { state: 'idle', user_code: '', verification_url: '' });
-    if (path === '/api/cloud/connect') Object.assign(window.__cloud, { state: 'enrolling', user_code: 'ABCD-EFGH', verification_url: '${VERIFY}' });
+    if (path === '/api/cloud/connect') {
+      const b = opts.body ? JSON.parse(opts.body) : {};
+      if (b.mode) Object.assign(window.__cloud, { max_mode: b.mode, max_mode_saved: true });
+      if ('allow_auto_accept' in b) window.__cloud.allow_hub_auto_accept = b.allow_auto_accept;
+      Object.assign(window.__cloud, { state: 'enrolling', user_code: 'ABCD-EFGH', verification_url: '${VERIFY}' });
+    }
     if (path === '/api/cloud/max-mode') window.__cloud.max_mode = JSON.parse(opts.body).mode;
     if (path === '/api/cloud/allow-auto-accept') window.__cloud.allow_hub_auto_accept = JSON.parse(opts.body).allow;
     // loading (#3285): the first window.__cloudLoadingFor status reads say loading, then __cloudAfterLoad applies.
@@ -93,7 +98,8 @@ async function run() {
         return { title: q('#editions-title').textContent, status: (q('[data-cloud="status"]') || {}).textContent || null,
             connect: vis('[data-cloud="connect"]'), cancel: vis('[data-cloud="cancel"]'), command: vis('[data-cloud="command-row"]') ? q('[data-cloud="command"]').textContent : null, code: vis('[data-cloud="code"]') ? q('[data-cloud="usercode"]').textContent : null,
             link: q('[data-cloud="link"]') ? q('[data-cloud="link"]').getAttribute('href') : null,
-            mode: vis('[data-cloud="mode-row"]'), modeValue: (q('[data-cloud="max-mode"]') || {}).value || null,
+            mode: vis('[data-cloud="ask-row"]'), modeValue: (q('[data-cloud-mode]:checked') || {}).value || null, asked: (q('#editions-ask-q') || {}).textContent || null,
+            autoRow: vis('[data-cloud="auto-accept-row"]'), autoOn: !!(q('[data-cloud="allow-auto-accept"]') || {}).checked,
             skip: vis('[data-editions="skip"]'), done: vis('[data-editions="done"]'), own: vis('[data-editions="own-hub"]'),
             role: m.getAttribute('role'), modal: m.getAttribute('aria-modal'), labelled: !!document.getElementById(m.getAttribute('aria-labelledby')),
             focus: !!document.activeElement && m.contains(document.activeElement),
@@ -155,13 +161,22 @@ async function run() {
             await load();
             await until(`!!document.querySelector('#editions-modal [data-cloud="connect"]:not([hidden])')`, 'the Connect button');
             let s = await screen();
-            check(`${label}: first launch opens "Connect to Coral Hub", ready to connect (no mode choice yet)`, !!s && s.title === 'Connect to Coral Hub' && s.connect && /Nothing is sent until you connect/.test(s.status) && s.skip && !s.done && s.own && !s.mode, JSON.stringify(s));
+            check(`${label}: first launch opens "Connect to Coral Hub", ready to connect, asking what Coral Hub may do (Launch preselected, auto-accept on)`, !!s && s.title === 'Connect to Coral Hub' && s.connect && /Nothing is sent until you connect/.test(s.status) && s.skip && !s.done && s.own && s.mode && s.asked === 'What may Coral Hub do on this computer?' && s.modeValue === 'launch' && s.autoRow && s.autoOn, JSON.stringify(s));
+            // The question's words hold 4.5:1 in both themes (and are looked at: CORAL_SCREENSHOT_DIR keeps the shots).
+            { const { setTheme, installAudit, auditRegion } = require('./helpers/contrast'); const fs = require('node:fs');
+              for (const theme of ['dark', 'light']) {
+                await installAudit(ev); await setTheme(ev, theme);
+                const au = await auditRegion(ev, ['#editions-modal .editions-ask']);
+                check(`${label}: the question holds 4.5:1 (${theme})`, au.checked > 0 && !au.fails.length, JSON.stringify(au.fails).slice(0, 300));
+                if (process.env.CORAL_SCREENSHOT_DIR) { fs.mkdirSync(process.env.CORAL_SCREENSHOT_DIR, { recursive: true }); fs.writeFileSync(`${process.env.CORAL_SCREENSHOT_DIR}/connect-question-${label}-${theme}.png`, Buffer.from((await Page.captureScreenshot({ format: 'png' })).data, 'base64')); }
+              }
+              await setTheme(ev, 'dark'); }
             check(`${label}: an accessible dialog, focused on Connect, on screen`, !!s && s.role === 'dialog' && s.modal === 'true' && s.labelled && s.focus && s.inView && (await ev(`document.activeElement.dataset.cloud`)) === 'connect', JSON.stringify(s));
             await click('#editions-modal [data-cloud="connect"]');
             await until(`!!document.querySelector('#editions-modal [data-cloud="code"]:not([hidden])')`, 'the code');
             s = await screen();
             check(`${label}: Connect shows the hub's link (code prefilled) and the code, and waits`, !!s && s.code === 'ABCD-EFGH' && s.link === VERIFY && s.status === 'Waiting for you to approve…' && !s.connect && s.skip, JSON.stringify(s));
-            check(`${label}: Connect went to this server's /api/cloud/connect`, JSON.stringify(await ev('window.__cloudCalls')) === '["POST /api/cloud/connect"]', JSON.stringify(await ev('window.__cloudCalls')));
+            check(`${label}: Connect went to this server's /api/cloud/connect`, JSON.stringify(await ev('window.__cloudCalls')) === '["POST /api/cloud/connect {\\"mode\\":\\"launch\\",\\"allow_auto_accept\\":true}"]', JSON.stringify(await ev('window.__cloudCalls')));
             check(`${label}: while the code is shown, Cancel is offered`, s.cancel, JSON.stringify(s));
             // Cancel (#3285): stops the enrollment; Connect comes back.
             await click('#editions-modal [data-cloud="cancel"]');
@@ -169,14 +184,22 @@ async function run() {
             s = await screen();
             check(`${label}: Cancel calls /api/cloud/connect/cancel and offers Connect again`, (await ev('window.__cloudCalls')).includes('POST /api/cloud/connect/cancel') && s.connect && !s.code && !s.cancel, JSON.stringify({ s, calls: await ev('window.__cloudCalls') }));
             await ev(`window.__cloudCalls = []; true`);
+            // The answer is held until Connect: choosing Interact saves nothing and hides the auto-accept switch (it is for Launch); choosing Launch again and turning auto-accept off goes with Connect.
+            await click('#editions-modal [data-cloud-mode][value="interact"]');
+            s = await screen();
+            check(`${label}: before Connect a choice is held (no request), and auto-accept is shown only with Launch`, s.modeValue === 'interact' && !s.autoRow && (await ev('window.__cloudCalls')).length === 0, JSON.stringify({ s, calls: await ev('window.__cloudCalls') }));
+            await click('#editions-modal [data-cloud-mode][value="launch"]');
+            await click('#editions-modal [data-cloud="allow-auto-accept"]');
+            check(`${label}: the auto-accept switch is held too`, (await ev('window.__cloudCalls')).length === 0 && !(await screen()).autoOn);
             await click('#editions-modal [data-cloud="connect"]');
+            check(`${label}: Connect carries the answer in the same call`, JSON.stringify(await ev('window.__cloudCalls')) === '["POST /api/cloud/connect {\\"mode\\":\\"launch\\",\\"allow_auto_accept\\":false}"]', JSON.stringify(await ev('window.__cloudCalls')));
             await until(`!!document.querySelector('#editions-modal [data-cloud="code"]:not([hidden])')`, 'the code again');
             // The hub approves: the panel's own status poll picks it up.
             await ev(`Object.assign(window.__cloud, { state: 'connected', label: 'My Laptop', user_code: '', verification_url: '' }); true`);
             await until(`!!document.querySelector('#editions-modal [data-editions="done"]:not([hidden])')`, 'connected', 6000);
             s = await screen();
-            check(`${label}: connected: the status, the mode choice, Done instead of Skip`, !!s && s.status === 'Connected to Coral Hub as My Laptop.' && s.mode && s.modeValue === 'view' && s.done && !s.skip && !s.code, JSON.stringify(s));
-            await ev(`(() => { const sel = document.querySelector('#editions-modal [data-cloud="max-mode"]'); sel.value = 'interact'; sel.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+            check(`${label}: connected: the status, the answer kept, Done instead of Skip`, !!s && s.status === 'Connected to Coral Hub as My Laptop.' && s.mode && s.modeValue === 'launch' && !s.autoOn && s.done && !s.skip && !s.code, JSON.stringify(s));
+            await click('#editions-modal [data-cloud-mode][value="interact"]');
             await until(`window.__cloud.max_mode === 'interact'`, 'the mode saved');
             check(`${label}: the mode is set through /api/cloud/max-mode`, (await ev('window.__cloudCalls')).includes('PUT /api/cloud/max-mode {"mode":"interact"}'), JSON.stringify(await ev('window.__cloudCalls')));
             await click('#editions-modal [data-editions="done"]');
@@ -196,7 +219,7 @@ async function run() {
             await ev(`Object.assign(window.__cloud, { state: 'retrying', last_error: 'the hub is unreachable; retrying', user_code: '', verification_url: '' }); true`);
             await until(`/Not connected right now/.test(document.querySelector('#editions-modal [data-cloud="status"]').textContent)`, 'not connected', 6000);
             s = await screen();
-            check(`${label}: retrying without an enrollment: not connected, Skip, no access choice`, !!s && /^Not connected right now/.test(s.status) && s.skip && !s.done && !s.mode, JSON.stringify(s));
+            check(`${label}: retrying without an enrollment: not connected, Skip, the question still answerable`, !!s && /^Not connected right now/.test(s.status) && s.skip && !s.done && s.mode && s.modeValue === 'launch', JSON.stringify(s));
             await ev(`Object.assign(window.__cloud, { label: 'e2e-box', server_id: 'srv-e2e' }); true`);
             await until(`!!document.querySelector('#editions-modal [data-editions="done"]:not([hidden])')`, 'connected (reconnecting)', 6000);
             s = await screen();

@@ -259,6 +259,9 @@ func (h *CloudHandler) manager() *cloud.Manager {
 type cloudStatus struct {
 	cloud.Status
 	AllowHubAutoAccept bool `json:"allow_hub_auto_accept"`
+	// MaxMode is the saved cap (the connector's own max_mode is what the tunnel enforces); MaxModeSaved says the owner chose it (Connect's question, or Settings): an unset cap reads as view, so without this an
+	// existing install and a new one look the same, and the Connect screen could not keep what an install has while offering Launch to a new one.
+	MaxModeSaved bool `json:"max_mode_saved"`
 	// RedactTokens: tokens and private keys are hidden from Coral Hub viewers (#3560).
 	RedactTokens bool `json:"redact_tokens"`
 	// HubRelaunchUpdates is the local switch "Let Coral Hub relaunch this Coral to install updates" (#5280).
@@ -285,7 +288,9 @@ func (h *CloudHandler) status() cloudStatus {
 	}
 	allow, redact, relaunch, crossTeam := true, true, true, true
 	var boot, changed json.RawMessage
+	modeSaved := false
 	if s, err := h.ss.GetSettings(context.Background()); err == nil {
+		_, modeSaved = tunnel.ParseMode(setreg.Raw(s, MaxModeSetting))
 		if v := setreg.Raw(s, setreg.HubAutoAcceptChanged); json.Valid([]byte(v)) {
 			changed = json.RawMessage(v)
 		}
@@ -294,7 +299,7 @@ func (h *CloudHandler) status() cloudStatus {
 			boot = json.RawMessage(v)
 		}
 	}
-	out := cloudStatus{Status: st, AllowHubAutoAccept: allow, RedactTokens: redact, HubRelaunchUpdates: relaunch, HubCrossTeamSettings: crossTeam, AllowHubAutoAcceptChanged: changed, Bootstrap: boot, OfferAtLaunch: h.OfferAtLaunch}
+	out := cloudStatus{Status: st, AllowHubAutoAccept: allow, MaxModeSaved: modeSaved, RedactTokens: redact, HubRelaunchUpdates: relaunch, HubCrossTeamSettings: crossTeam, AllowHubAutoAcceptChanged: changed, Bootstrap: boot, OfferAtLaunch: h.OfferAtLaunch}
 	if rs := h.secrets(); rs != nil {
 		if ks, err := rs.KeyState(context.Background()); err == nil && ks.State == "refused" {
 			out.SecretKey = &ks
@@ -482,7 +487,7 @@ func (h *CloudHandler) GetStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, h.status())
 }
 
-// Connect: POST /api/cloud/connect — starts enrollment and returns the user code.
+// Connect: POST /api/cloud/connect — starts enrollment and returns the user code. The body is optional: {"mode": "view|interact|launch", "allow_auto_accept": bool} is the answer to "What may Coral Hub do on this computer?", saved in this call before the enrollment starts (see decodeConnectAnswer).
 func (h *CloudHandler) Connect(w http.ResponseWriter, r *http.Request) {
 	if h.refuseCloud(w, r, allowDashboard|allowCLI) || !requireJSON(w, r) {
 		return
@@ -491,6 +496,30 @@ func (h *CloudHandler) Connect(w http.ResponseWriter, r *http.Request) {
 	if m == nil {
 		errBadRequest(w, cloud.ErrNotConfigured.Error())
 		return
+	}
+	// The optional answer to "What may Coral Hub do on this computer?" (the dashboard's Connect screen): saved here, before the enrollment starts, in this one call, so nothing is half done. A closed body
+	// (unknown fields are refused); nothing is saved when any part is invalid. This route is local only (refuseCloud above), so Coral Hub can never choose its own mode through the tunnel.
+	if !m.Status().Configured { // nothing is saved for a server that has no hub to connect to
+		errBadRequest(w, cloud.ErrNotConfigured.Error())
+		return
+	}
+	ans, err := decodeConnectAnswer(r)
+	if err != nil {
+		errBadRequest(w, err.Error())
+		return
+	}
+	save := context.WithoutCancel(r.Context()) // a page that goes away mid-call must not leave half of the answer saved
+	if ans.mode != nil {
+		if err := h.applyMaxMode(save, *ans.mode); err != nil {
+			errInternalServer(w, err.Error())
+			return
+		}
+	}
+	if ans.allowAutoAccept != nil {
+		if err := h.applyAllowAutoAccept(save, *ans.allowAutoAccept); err != nil {
+			errInternalServer(w, err.Error())
+			return
+		}
 	}
 	if err := m.Connect(r.Context()); err != nil {
 		if err == cloud.ErrNotConfigured {
@@ -513,6 +542,46 @@ func (h *CloudHandler) Connect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, h.status())
+}
+
+// connectAnswer is the decoded optional body of POST /api/cloud/connect.
+type connectAnswer struct {
+	mode            *tunnel.Mode
+	allowAutoAccept *bool
+}
+
+// decodeConnectAnswer reads POST /api/cloud/connect's optional body {"mode": "view|interact|launch", "allow_auto_accept": bool}: both fields optional, an empty body or {} is the plain connect the
+// command line sends, unknown fields and a second value are refused, and the body is capped at 256 bytes.
+func decodeConnectAnswer(r *http.Request) (connectAnswer, error) {
+	var out connectAnswer
+	var body struct {
+		Mode            *string `json:"mode"`
+		AllowAutoAccept *bool   `json:"allow_auto_accept"`
+	}
+	raw, err := io.ReadAll(io.LimitReader(r.Body, 257))
+	if err != nil || len(raw) > 256 {
+		return out, errors.New("the body is too large")
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&body); err != nil {
+		if errors.Is(err, io.EOF) {
+			return out, nil
+		}
+		return out, errors.New(`the body is {"mode": "view"|"interact"|"launch", "allow_auto_accept": true|false}, both optional`)
+	}
+	if dec.More() {
+		return out, errors.New("the body must be one JSON object")
+	}
+	if body.Mode != nil {
+		m, ok := tunnel.ParseMode(*body.Mode)
+		if !ok {
+			return out, errors.New("mode must be view, interact or launch")
+		}
+		out.mode = &m
+	}
+	out.allowAutoAccept = body.AllowAutoAccept
+	return out, nil
 }
 
 // CancelConnect: POST /api/cloud/connect/cancel — stops an enrollment in
@@ -751,6 +820,23 @@ func (h *CloudHandler) IdentityReport(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, o.Report())
 }
 
+// applyMaxMode saves the cap and applies it: below Launch what the hub enabled auto-accept for ends, and a running tunnel learns the new mode. The error text is for the person.
+func (h *CloudHandler) applyMaxMode(ctx context.Context, mode tunnel.Mode) error {
+	if err := h.ss.SetSetting(ctx, MaxModeSetting, mode.String()); err != nil {
+		return errors.New("Could not save the setting")
+	}
+	if mode < tunnel.TierLaunch {
+		// Enabling auto-accept from the hub needs Launch: what it enabled ends.
+		if _, err := h.ss.ClearHubAutoAccept(ctx, store.AutoAcceptModeLowered); err != nil {
+			return errors.New("Could not turn off Coral Hub auto-accept")
+		}
+	}
+	if m := h.manager(); m != nil {
+		m.ModeChanged(ctx)
+	}
+	return nil
+}
+
 // SetMaxMode: PUT /api/cloud/max-mode {"mode": "view"|"interact"|"launch"}
 func (h *CloudHandler) SetMaxMode(w http.ResponseWriter, r *http.Request) {
 	if h.refuseCloud(w, r, allowDashboard|allowCLI) || !requireJSON(w, r) {
@@ -768,19 +854,9 @@ func (h *CloudHandler) SetMaxMode(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "mode must be view, interact or launch")
 		return
 	}
-	if err := h.ss.SetSetting(r.Context(), MaxModeSetting, mode.String()); err != nil {
-		errInternalServer(w, "Could not save the setting")
+	if err := h.applyMaxMode(r.Context(), mode); err != nil {
+		errInternalServer(w, err.Error())
 		return
-	}
-	if mode < tunnel.TierLaunch {
-		// Enabling auto-accept from the hub needs Launch: what it enabled ends.
-		if _, err := h.ss.ClearHubAutoAccept(r.Context(), store.AutoAcceptModeLowered); err != nil {
-			errInternalServer(w, "Could not turn off Coral Hub auto-accept")
-			return
-		}
-	}
-	if m := h.manager(); m != nil {
-		m.ModeChanged(r.Context())
 	}
 	writeJSON(w, http.StatusOK, h.status())
 }
@@ -863,22 +939,29 @@ func (h *CloudHandler) SetAllowHubAutoAccept(w http.ResponseWriter, r *http.Requ
 		errBadRequest(w, "allow is required")
 		return
 	}
-	v := "true"
-	if !*body.Allow {
-		v = "false"
-	}
-	if err := h.ss.SetSetting(r.Context(), AllowHubAutoAcceptSetting, v); err != nil {
-		errInternalServer(w, "Could not save the setting")
+	if err := h.applyAllowAutoAccept(r.Context(), *body.Allow); err != nil {
+		errInternalServer(w, err.Error())
 		return
 	}
-	if !*body.Allow {
-		if _, err := h.ss.ClearHubAutoAccept(r.Context(), store.AutoAcceptHubAllowOff); err != nil {
-			errInternalServer(w, "Could not turn off Coral Hub auto-accept")
-			return
+	writeJSON(w, http.StatusOK, h.status())
+}
+
+// applyAllowAutoAccept saves this computer's switch (off ends every auto-accept the hub enabled) and records that it was changed here.
+func (h *CloudHandler) applyAllowAutoAccept(ctx context.Context, allow bool) error {
+	v := "true"
+	if !allow {
+		v = "false"
+	}
+	if err := h.ss.SetSetting(ctx, AllowHubAutoAcceptSetting, v); err != nil {
+		return errors.New("Could not save the setting")
+	}
+	if !allow {
+		if _, err := h.ss.ClearHubAutoAccept(ctx, store.AutoAcceptHubAllowOff); err != nil {
+			return errors.New("Could not turn off Coral Hub auto-accept")
 		}
 	}
-	h.recordAutoAcceptChange(r.Context(), "local", "")
-	writeJSON(w, http.StatusOK, h.status())
+	h.recordAutoAcceptChange(ctx, "local", "")
+	return nil
 }
 
 // hubAutoAcceptChange is who last changed the Coral Hub auto-accept switch and when (HubAutoAcceptChanged, #5840): By is "hub" (the Coral Hub owner, User the validated hub user) or "local"

@@ -1,7 +1,7 @@
 /* Connect to Coral Hub (the cloud connector): Settings > Coral Hub and the first-launch
  * screen (#3221) share this one implementation. Each renders into a container whose parts
  * carry data-cloud roles (status, code, link, usercode, connect, cancel, disconnect,
- * command-row, command, copy, mode-row, max-mode, mode-desc, auto-accept-row,
+ * command-row, command, copy, ask-row (the Connect screen's question), mode-row, max-mode, mode-desc, auto-accept-row,
  * allow-auto-accept, hub-cross-team, hub-operator-row, hub-operator, hub-operator-msg, hub-operator-actions,
  * hub-operator-actions-list); a container may
  * leave any of them out.
@@ -190,7 +190,18 @@ class CloudPanel {
         const rt = this.part('rekey-text');
         if (rt) rt.textContent = sk ? rekeyText(sk) : '';
         this.secretKey = sk || null;
-        const mode = st.max_mode || 'view';
+        this.last = st;
+        let mode = st.max_mode || 'view';
+        // The Connect screen's one question, "What may Coral Hub do on this computer?" (ask-row, radios named by data-cloud-mode): before the connection the answer is held here and goes with Connect
+        // in the same call (Launch preselected for an install that never chose; an install keeps what it saved); once connecting or connected it is the saved cap and a change saves at once.
+        const ask = this.part('ask-row');
+        this.asking = false;
+        if (ask) {
+            this.asking = st.state === 'idle' || st.state === 'revoked';
+            if (this.asking) { if (!this.pick) this.pick = st.max_mode_saved ? mode : 'launch'; mode = this.pick; } else this.pick = null;
+            ask.hidden = !st.configured || st.state === 'off';
+            for (const r of ask.querySelectorAll('input[data-cloud-mode]')) r.checked = r.value === mode;
+        }
         const sel = this.part('max-mode');
         if (sel) sel.value = mode;
         const desc = this.part('mode-desc');
@@ -199,7 +210,7 @@ class CloudPanel {
         // on unless the owner turned it off here. Only changeable on this computer.
         show('auto-accept-row', mode === 'launch');
         const allow = this.part('allow-auto-accept');
-        if (allow) allow.checked = st.allow_hub_auto_accept !== false;
+        if (allow) allow.checked = this.asking && this.pickAuto !== undefined ? this.pickAuto : st.allow_hub_auto_accept !== false;
         // Who last changed it (#5847, from status allow_hub_auto_accept_changed {by: hub|local, user, at}): a local Off that Coral Hub turned on again is visible to the person at this computer. Nothing is said until it was changed.
         const changed = this.part('auto-accept-changed');
         if (changed) { const t = autoAcceptChangedText(st); changed.textContent = t; show('auto-accept-changed', mode === 'launch' && !!t); }
@@ -349,7 +360,18 @@ class CloudPanel {
     bind() {
         if (this.root.dataset.cloudBound) return;
         this.root.dataset.cloudBound = '1';
-        this.part('connect')?.addEventListener('click', () => this.act('POST', '/api/cloud/connect'));
+        // With the question on screen the answer goes in the Connect call itself (the server saves it before the enrollment starts).
+        this.part('connect')?.addEventListener('click', () => {
+            const ask = this.part('ask-row'), allow = this.part('allow-auto-accept');
+            const answer = ask && !ask.hidden && this.pick ? { mode: this.pick, ...(this.pick === 'launch' && allow ? { allow_auto_accept: allow.checked } : {}) } : undefined;
+            this.pickAuto = undefined;
+            this.act('POST', '/api/cloud/connect', answer);
+        });
+        this.part('ask-row')?.addEventListener('change', e => {
+            const r = e.target && e.target.closest && e.target.closest('input[data-cloud-mode]');
+            if (!r) return;
+            if (this.asking) { this.pick = r.value; if (this.last) this.render(this.last); } else this.act('PUT', '/api/cloud/max-mode', { mode: r.value });
+        });
         this.part('disconnect')?.addEventListener('click', () => this.act('POST', '/api/cloud/disconnect'));
         this.part('cancel')?.addEventListener('click', () => this.cancel());
         this.part('rekey')?.addEventListener('click', () => this.rekey());
@@ -360,7 +382,10 @@ class CloudPanel {
             setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
         });
         this.part('max-mode')?.addEventListener('change', (e) => this.act('PUT', '/api/cloud/max-mode', { mode: e.target.value }));
-        this.part('allow-auto-accept')?.addEventListener('change', (e) => this.act('PUT', '/api/cloud/allow-auto-accept', { allow: e.target.checked }));
+        this.part('allow-auto-accept')?.addEventListener('change', (e) => {
+            if (this.asking) { this.pickAuto = e.target.checked; return; } // held until Connect, which sends it
+            this.act('PUT', '/api/cloud/allow-auto-accept', { allow: e.target.checked });
+        });
         this.part('redact-tokens')?.addEventListener('change', (e) => this.act('PUT', '/api/cloud/redact-tokens', { redact: e.target.checked }));
         this.part('hub-relaunch')?.addEventListener('change', (e) => this.act('PUT', '/api/cloud/hub-relaunch', { allow: e.target.checked }));
         this.part('hub-cross-team')?.addEventListener('change', (e) => this.act('PUT', '/api/cloud/hub-cross-team', { allow: e.target.checked }));
