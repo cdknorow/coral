@@ -477,4 +477,9 @@ func TestTheApplyHonoursOnlyAClickForWhatIsStaged(t *testing.T) {
 		assert.Equal(t, []string{"wait", "start"}, r.msi.calls, "clicked %q: no hold, no prompt; the old Coral is started", clicked)
 		assert.Equal(t, why, r.lastHistory().Reason)
 	}
+	// The click for exactly what is staged: the apply goes on.
+	r := newMSIRig(t)
+	r.cfg.ClickedVersion = "1.4.130"
+	assert.Equal(t, ResultRelaunched, r.run().Result)
+	assert.Contains(t, r.msi.calls, "msiexec /i")
 }
