@@ -28,15 +28,17 @@ Pop-Location
 Get-ChildItem $ov -Filter *.exe | ForEach-Object { Copy-Item $_.FullName "$coralDir\$($_.Name)" -Force }
 "overlaid " + (Get-ChildItem $ov -Filter *.exe).Count + " programs: coral-tray is " + (& "$coralDir\coral.exe" --version 2>&1 | Select-Object -First 1)
 
+Section "the real CLIs, installed the way their docs say (npm -g), NOT signed in"
+npm install -g --no-audit --no-fund --loglevel=error '@anthropic-ai/claude-code' '@openai/codex@0.163.0' 2>&1 | Select-Object -Last 3
+$npmBin = (npm config get prefix).Trim()
+"npm prefix: $npmBin"; Get-ChildItem $npmBin -Filter 'claude*' | ForEach-Object { "  " + $_.Name }; Get-ChildItem $npmBin -Filter 'codex*' | ForEach-Object { "  " + $_.Name }
+
 Section "the PowerShell execution policy, as a Windows 11 client has it by default (Restricted)"
 Set-ExecutionPolicy Restricted -Scope LocalMachine -Force -ErrorAction Continue
 Set-ExecutionPolicy Undefined -Scope CurrentUser -Force -ErrorAction Continue
 Get-ExecutionPolicy -List | ForEach-Object { "  {0,-14} {1}" -f $_.Scope, $_.ExecutionPolicy }
 
-Section "the real CLIs, installed the way their docs say (npm -g), NOT signed in"
-npm install -g --no-audit --no-fund --loglevel=error '@anthropic-ai/claude-code' '@openai/codex@0.163.0' 2>&1 | Select-Object -Last 3
-$npmBin = (npm config get prefix).Trim()
-"npm prefix: $npmBin"; Get-ChildItem $npmBin -Filter 'claude*' | ForEach-Object { "  " + $_.Name }; Get-ChildItem $npmBin -Filter 'codex*' | ForEach-Object { "  " + $_.Name }
+Section "what the CLIs do in each shell under that policy"
 "--- claude --version through cmd.exe: " + (cmd /c "claude --version" 2>&1)
 "--- codex --version through cmd.exe: " + (cmd /c "codex --version" 2>&1)
 "--- claude --version through powershell.exe (Windows PowerShell 5.1) under Restricted:"
