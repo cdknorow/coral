@@ -4,8 +4,8 @@
    A route is { view, server?, id?, sub?, run?, query? }:
      /agents                              { view: 'agents' }
      /agents/[@<server>/]<session>[/<sub>]  { view: 'agents', server, id, sub }
-     /chats[?filters]                     { view: 'chats', query }
-     /chats/<id>                          { view: 'chats', id }
+     /chats[/@<server>][?filters]         { view: 'chats', query }
+     /chats/[@<server>/]<id>              { view: 'chats', id }
      /team/[@<server>/]<team>[/settings]  { view: 'team', server, id, sub }
      /board/[@<server>/]<name>            { view: 'board', server, id }
      /workflows[/<id>[/runs/<run>]]       { view: 'workflows', id, run }
@@ -81,10 +81,13 @@ export function parse(pathname, search = '') {
             return { view: 'agents', server: t.server, id: id.toLowerCase(), sub };
         }
         case 'chats': {
-            if (!rest.length) return { view: 'chats', query: chatsQuery(search) };
+            const t = take();
+            if (t.bad) return null;
+            const source = t.server ? { server: t.server } : {};
+            if (!rest.length) return { view: 'chats', ...source, query: chatsQuery(search) };
             if (rest.length !== 1) return null;
             const id = decode(rest[0]);
-            return id !== null && HISTORY_ID_RE.test(id) ? { view: 'chats', id } : null;
+            return id !== null && HISTORY_ID_RE.test(id) ? { view: 'chats', ...source, id } : null;
         }
         case 'team': case 'board': {
             const t = take();
@@ -141,7 +144,7 @@ export function build(r) {
         case 'agents':
             return r.id ? `/agents/${srvSeg(r.server)}${seg(r.id)}${r.sub ? '/' + r.sub : ''}` : '/agents';
         case 'chats':
-            return r.id ? `/chats/${seg(r.id)}` : `/chats${r.query ? '?' + r.query : ''}`;
+            return r.id ? `/chats/${srvSeg(r.server)}${seg(r.id)}` : `/chats${r.server ? '/' + srvSeg(r.server).replace(/\/$/, '') : ''}${r.query ? '?' + r.query : ''}`;
         case 'team':
             return `/team/${srvSeg(r.server)}${seg(r.id)}${r.sub === 'settings' ? '/settings' : ''}`;
         case 'board':

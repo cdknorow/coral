@@ -74,12 +74,12 @@
             <button class="top-nav-tab" id="nav-tab-servers" data-on-click="m-switch-nav-tab" data-arg="servers" aria-controls="servers-view" hidden>Servers</button>
             <!-- Inbox right after Servers (so right after Agents on a Coral with no Servers tab), on every Coral (inbox_tab.js, #4718, #4811): the hub's /inbox page in a frame where the hub serves the dashboard, the dashboard's own Inbox elsewhere (Needs you, Saved for later); the number of agents waiting for input is its badge. -->
             <button class="top-nav-tab" id="nav-tab-hub-inbox" data-on-click="m-switch-nav-tab" data-arg="hub-inbox" data-label="Inbox" aria-controls="inbox-view">Inbox<span class="nav-tab-badge" id="nav-tab-hub-inbox-badge" hidden></span></button>
-            <button class="top-nav-tab" data-local-only id="nav-tab-history" data-on-click="m-switch-nav-tab" data-arg="history">Chats</button>
+            <button class="top-nav-tab" id="nav-tab-history" data-on-click="m-switch-nav-tab" data-arg="history">Chats</button>
             <button class="top-nav-tab" data-local-only id="nav-tab-workflows" data-on-click="m-switch-nav-tab" data-arg="workflows">Workflows</button>
             <button class="top-nav-tab" data-local-only id="nav-tab-jobs" data-on-click="m-switch-nav-tab" data-arg="jobs">Jobs</button>
             <button class="top-nav-tab" data-local-only id="nav-tab-tokens" data-on-click="m-switch-nav-tab" data-arg="tokens" title="Analytics — token usage and cost">Analytics</button>
             <button class="top-nav-tab" id="nav-tab-docs" data-on-click="m-switch-nav-tab" data-arg="docs">Docs</button>
-            <button class="top-nav-tab" id="nav-tab-board" data-on-click="m-switch-nav-tab" data-arg="board" style="display:none">Board</button>
+            <button class="top-nav-tab" id="nav-tab-board" data-cloud-only data-on-click="m-switch-nav-tab" data-arg="board">Board</button>
         </nav>
         <div id="startup-loading" class="startup-loading" role="status" aria-live="polite">
             <span class="startup-spinner"></span>

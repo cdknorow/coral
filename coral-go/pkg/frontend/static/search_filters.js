@@ -63,7 +63,7 @@ export function urlSearchFor(page, existingSearch) {
 export function serializeToUrl(page) {
     const r = currentRoute();
     if (!r || r.view !== 'chats' || r.id) return;
-    note({ view: 'chats', query: urlSearchFor(page, '').replace(/^\?/, '') }, { replace: true });
+    note({ view: 'chats', ...(r.server ? { server: r.server } : {}), query: urlSearchFor(page, '').replace(/^\?/, '') }, { replace: true });
 }
 
 export function deserializeFromUrl() {

@@ -17,7 +17,7 @@ const isPhone = () => window.matchMedia('(max-width: 767px)').matches;
 function availableTabs() {
     const cloud = document.body.classList.contains('cloud-mode');
     return [...document.querySelectorAll('.top-nav-tabs > .top-nav-tab[data-arg]')]
-        .filter(el => !el.hidden && el.style.display !== 'none' && !(cloud && el.hasAttribute('data-local-only')))
+        .filter(el => !el.hidden && el.style.display !== 'none' && !(cloud && el.hasAttribute('data-local-only')) && !(!cloud && el.hasAttribute('data-cloud-only')))
         .map(el => ({ id: el.id, arg: el.dataset.arg, label: (el.dataset.label || el.textContent).trim(), active: el.classList.contains('active'), el }));
 }
 

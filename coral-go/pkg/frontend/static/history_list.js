@@ -1,4 +1,6 @@
 /* The Chats list and a history transcript (moved out of render.js, #4996; no behaviour change). */
+import { historyServer } from './history_source.js';
+import { identityKey } from './server_base.js';
 import { state } from './state.js';
 import { scrollBehavior } from './motion.js';
 import { formatDurationSec as formatDuration, escapeHtml, escapeAttr } from './utils.js';
@@ -32,7 +34,7 @@ export function renderHistorySessions(sessions, total, page, pageSize) {
             const countInfo = s.message_count != null ? `${s.message_count} msgs` : "";
             const subsInfo = s.subscriber_count != null ? `${s.subscriber_count} members` : "";
             const meta = [countInfo, subsInfo].filter(Boolean).join(' · ');
-            return `<li class="${escapeAttr(isActive ? 'active' : '')}" data-on-click="board-open" data-board="${escapeAttr(projectName)}">
+            return `<li class="${escapeAttr(isActive ? 'active' : '')}" data-on-click="board-open" data-board="${escapeAttr(identityKey(historyServer(), projectName))}">
                 <div class="session-row-top">${timeTag}<span class="badge board-badge">Group</span></div>
                 <div class="session-row-mid"><span class="session-label" title="${escapeHtml(label)}">${escapeHtml(truncated)}</span></div>
                 ${meta ? `<div class="session-row-bottom"><span class="session-meta">${escapeHtml(meta)}</span></div>` : ""}
@@ -131,7 +133,7 @@ export function renderHistoryNodes(messages, agentType = "claude", baseIndex = 0
     renderTranscript(normalized, holder, agentType);
     for (const bubble of holder.querySelectorAll(".chat-bubble.human")) {
         bubble.insertAdjacentHTML("beforeend",
-            `<button class="edit-btn" data-on-click="msg-edit-resubmit">Edit & Resubmit</button>`);
+            `<button class="edit-btn" data-history-local-only data-on-click="msg-edit-resubmit">Edit & Resubmit</button>`);
     }
     return [...holder.childNodes];
 }

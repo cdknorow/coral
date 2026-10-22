@@ -52,7 +52,7 @@ import { copyBranchName, showView, showToast, viewChanges, buildWelcome } from '
 import './preview_pane.js';
 import { initScheduler, showJobModal, hideJobModal, validateCronPreview, saveScheduledJob, switchJobType, pickSchedulePreset } from './scheduler.js';
 import { initLiveJobs, selectLiveJobRun } from './live_jobs.js';
-import { initMessageBoard, selectBoardProject, postBoardMessage, deleteMessageBoardProject, toggleBoardPause, showExportBoardModal, toggleSelectMode, openBoardSubscribers, hideBoardSubscribers } from './message_board.js';
+import { initMessageBoard, showMessageBoardProjects, selectBoardProject, postBoardMessage, deleteMessageBoardProject, toggleBoardPause, showExportBoardModal, toggleSelectMode, openBoardSubscribers, hideBoardSubscribers } from './message_board.js';
 import { loadAllFolderTags, showFolderTagDropdown, addFolderTag, removeFolderTag, createAndAddFolderTag } from './folder_tags.js';
 import { loadPinnedFolders, pinFolder, unpinFolder, showOpenFolderModal, hideOpenFolderModal, submitOpenFolder } from './pinned_folders.js';
 import { initMobile, syncMobileAgentList } from './mobile.js';
@@ -430,6 +430,8 @@ function resetTeam(boardName) {
 // ── Top Nav Tab Switching ─────────────────────────────────────────────
 let _navGeneration = 0;
 
+import { historyRoute, historyServer, setHistorySource } from './history_source.js';
+
 function switchNavTab(tab, opts = {}) {
     // A panel that loads on first use (lazy_panels.js) shows its view only if
     // nothing else was selected or shown while it loaded. Once loaded it shows at once.
@@ -450,7 +452,7 @@ function switchNavTab(tab, opts = {}) {
     if (!opts.fromHistory && TAB_ROUTE[tab]) {
         const cur = currentRoute();
         const route = tabRoute(tab, TAB_ROUTE[tab]);
-        if (!cur || cur.view !== route.view || cur.id !== route.id) note(route);
+        if (!cur || cur.view !== route.view || cur.id !== route.id || cur.server !== route.server) note(route);
     }
 
     // Toggle sidebar visibility — full-width views hide the sidebar
@@ -480,7 +482,7 @@ function switchNavTab(tab, opts = {}) {
 
     // Switch main view based on tab
     if (tab === 'board') {
-        showView('messageboard-view');
+        showMessageBoardProjects();
     } else if (tab === 'jobs') {
         showView('scheduler-view');
     } else if (tab === 'workflows') {
@@ -526,7 +528,7 @@ function tabRoute(tab, view) {
     const cur = state.currentSession;
     if (tab === 'agents' && state.selectedTeam) return keyRoute('team', state.selectedTeam);
     if (tab === 'agents' && cur && cur.type === 'live' && window.innerWidth > 767) return liveRoute(sessionServer(cur), cur.session_id);
-    if (tab === 'history') return cur && cur.type === 'history' ? { view: 'chats', id: cur.name } : { view: 'chats', query: currentChatsQuery() };
+    if (tab === 'history') return historyRoute(cur?.type === 'history' ? cur.name : null, currentChatsQuery());
     return { view };
 }
 
@@ -695,10 +697,12 @@ function registerRouteHandlers() {
     });
 
     route('chats', async (r, opts) => {
+        await liveListReady;
+        if (r.server && !setHistorySource(r.server)) return notFound('That computer was not found', { view: 'chats' });
         if (r.id) {
             switchNavTab('history', { fromHistory: true });
             const cur = state.currentSession;
-            if (!(cur && cur.type === 'history' && cur.name === r.id) && (await selectHistorySession(r.id)) === false) {
+            if (!(cur && cur.type === 'history' && cur.name === r.id && sessionServer(cur) === historyServer()) && (await selectHistorySession(r.id)) === false) {
                 state.currentSession = null;
                 notFound('That chat was not found', { view: 'chats', query: currentChatsQuery() });
             }

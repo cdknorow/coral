@@ -1,3 +1,4 @@
+import { historyFetch } from './history_source.js';
 /* Session tags: CRUD, tag pills, dropdown picker */
 
 import { state } from './state.js';
@@ -8,25 +9,27 @@ import { showToast } from './utils.js';
 let allTags = [];
 let currentSessionTags = [];
 
-export async function loadAllTags() {
+export async function loadAllTags(forHistory = false) {
     try {
-        const resp = await fetch("/api/tags");
+        const resp = await (forHistory ? historyFetch("/api/tags") : fetch("/api/tags"));
         allTags = await resp.json();
     } catch (e) {
+        if (e.name === 'AbortError') return null;
         console.error("Failed to load tags:", e);
         allTags = [];
     }
     // Expose cache for cross-module access (folder_tags.js)
-    window._allTagsCache = allTags;
+    if (!forHistory) window._allTagsCache = allTags;
     return allTags;
 }
 
 export async function loadSessionTags(sessionId) {
     try {
-        const resp = await fetch(`/api/sessions/history/${encodeURIComponent(sessionId)}/tags`);
+        const resp = await historyFetch(`/api/sessions/history/${encodeURIComponent(sessionId)}/tags`);
         currentSessionTags = await resp.json();
         renderSessionTags(currentSessionTags);
     } catch (e) {
+        if (e.name === 'AbortError') return null;
         console.error("Failed to load session tags:", e);
         currentSessionTags = [];
         renderSessionTags([]);
@@ -45,7 +48,7 @@ export function renderSessionTags(tags) {
     container.innerHTML = tags.map(tag =>
         `<span class="tag-pill" style="background:${escapeAttr(tagColor(tag.color))}">
             ${escapeHtml(tag.name)}
-            <span class="tag-remove" data-on-click="session-tag-remove" data-name="${escapeAttr(state.currentSession.name)}" data-tag-id="${Number(tag.id)}">&times;</span>
+            <span class="tag-remove" data-history-local-only data-on-click="session-tag-remove" data-name="${escapeAttr(state.currentSession.name)}" data-tag-id="${Number(tag.id)}">&times;</span>
         </span>`
     ).join("");
 }
@@ -83,7 +86,7 @@ function renderTagDropdownList() {
 
 export async function addTagToSession(sessionId, tagId) {
     try {
-        const resp = await fetch(`/api/sessions/history/${encodeURIComponent(sessionId)}/tags`, {
+        const resp = await historyFetch(`/api/sessions/history/${encodeURIComponent(sessionId)}/tags`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ tag_id: tagId }),
@@ -98,13 +101,14 @@ export async function addTagToSession(sessionId, tagId) {
         renderTagDropdownList();
         showToast("Tag added");
     } catch (e) {
+        if (e.name === 'AbortError') return null;
         showToast("Failed to add tag", true);
     }
 }
 
 export async function removeTagFromSession(sessionId, tagId) {
     try {
-        const resp = await fetch(`/api/sessions/history/${encodeURIComponent(sessionId)}/tags/${tagId}`, {
+        const resp = await historyFetch(`/api/sessions/history/${encodeURIComponent(sessionId)}/tags/${tagId}`, {
             method: "DELETE",
         });
         const result = await resp.json();
@@ -116,6 +120,7 @@ export async function removeTagFromSession(sessionId, tagId) {
         await loadSessionTags(sessionId);
         showToast("Tag removed");
     } catch (e) {
+        if (e.name === 'AbortError') return null;
         showToast("Failed to remove tag", true);
     }
 }
@@ -148,6 +153,7 @@ export async function createTag() {
         renderTagDropdownList();
         showToast(`Tag "${name}" created`);
     } catch (e) {
+        if (e.name === 'AbortError') return null;
         showToast("Failed to create tag", true);
     }
 }

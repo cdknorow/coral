@@ -14,7 +14,8 @@ import { BOARD_SAVE_BUTTON } from './saved_marks.js';
 import { messageTimeHtml } from './message_time.js';
 import { paintPauseButton } from './board_pause_button.js';
 import { pathId, keyLabel, noteBoardLabel, hasBoardLabel, onBoardLabelsChanged, splitKey, boardFetch, teamFetch, isCloud, inTeam } from './server_base.js';
-import { launchBlockedReason } from './hub_access.js';
+import { importOnce } from './import_once.js';
+import { launchBlockedReason, blockedReason } from './hub_access.js';
 import { pollEvery, afterPause, isBusyStatus, busyRetryingText, machineOf } from './overload.js';
 import { note } from './nav.js';
 import { keyRoute } from './routes.js';
@@ -125,7 +126,8 @@ export function selectBoardProject(project, messageId = null) {
             if (d && typeof d.board_label === 'string') noteBoardLabel(splitKey(project).server, splitKey(project).name, d.board_label);
         }).catch(() => {});
     }
-    document.getElementById('messageboard-title').textContent = 'Message Board';
+    const computer = (state.servers || []).find(s => s.id === state.currentBoardServer);
+    document.getElementById('messageboard-title').textContent = isCloud() && computer ? `Board on ${computer.label || computer.id}` : 'Message Board';
     mountBoardSearch(document.getElementById('mb-tools'), project, SEARCH_HOOKS);
 
     // Ensure dashboard is subscribed as a reader
@@ -143,6 +145,7 @@ export function selectBoardProject(project, messageId = null) {
 }
 
 export function showMessageBoardProjects() {
+    document.getElementById('messageboard-title').textContent = 'Message Board';
     setMoreOpen(false);
     resetBoardSearch();
     currentProject = null;
@@ -194,7 +197,7 @@ async function loadBoardProjectList() {
                 style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px">
                 <div>
                     <strong>${escapeHtml(keyLabel(p.project))}</strong>
-                    <div class="mb-project-meta">${p.subscriber_count} subscriber${p.subscriber_count !== 1 ? 's' : ''}</div>
+                    <div class="mb-project-meta">${p.server ? escapeHtml((state.servers || []).find(s => s.id === p.server)?.label || p.server) + ' · ' : ''}${p.subscriber_count} subscriber${p.subscriber_count !== 1 ? 's' : ''}</div>
                 </div>
                 <span class="mb-project-meta">${p.message_count} messages</span>
             </li>
@@ -675,6 +678,10 @@ export function hideBoardSubscribers() {
 
 async function subscribeDashboard(project) {
     try {
+        if (isCloud()) {
+            const access = await (await importOnce('./cloud_servers.js')).serverAccess(splitKey(project).server);
+            if (!access?.mayInteract) return;
+        }
         await boardFetch(project, `/subscribe`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -689,6 +696,8 @@ async function subscribeDashboard(project) {
 
 export async function postBoardMessage() {
     if (!currentProject) return;
+    const blocked = blockedReason(splitKey(currentProject).server, 'interact');
+    if (blocked) { showToast(blocked, true); return; }
     const input = document.getElementById('mb-post-input');
     const content = input.value.trim();
     if (!content) return;

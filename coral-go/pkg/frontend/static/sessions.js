@@ -9,7 +9,7 @@ import { state, sessionKey, saveSessionDraft } from './state.js';
 import { showToast, escapeHtml, escapeAttr, dbg, showView } from './utils.js';
 import { loadHistoryMessages } from './api.js';
 import { HISTORY_PAGE, setHistoryWindow } from './history_pages.js';
-import { normServer, serverForSession, serverFetch, sessionServer, agentPath, identityKey, keyLabel } from './server_base.js';
+import { normServer, serverForSession, serverFetch, sessionServer, agentPath, identityKey, keyLabel, isCloud } from './server_base.js';
 import { updateHeaderContext } from './header_context.js';
 import { stopCaptureRefresh, startCaptureRefresh } from './capture.js';
 import { updateSessionStatus, updateSessionSummary, updateSessionBranch, updateSessionFolder, updateWaitingIndicator, updateTokenUsage, updateHistoryTokenUsage, renderHistoryChat, showBoardChatTab, hideBoardChatTab, resolveSessionIdentity, commandPlaceholder, applyTerminalDot } from './render.js';
@@ -24,7 +24,7 @@ import { renderEventTimeline, switchAgenticTab } from './agentic_state.js';
 import { loadHistoryEvents, loadHistoryTasks, loadHistoryAgentNotes } from './history_tabs.js';
 import { loadHistoryChanges } from './history_changes.js';
 import { note, currentRoute } from './nav.js';
-import { liveRoute } from './routes.js';
+import { liveRoute, normalize } from './routes.js';
 import { stopLiveHistoryPoll, resetLiveHistory, applyLiveViewMode, effectiveLiveViewMode, clearViewOverride } from './live_chat.js';
 import { agentViewVisible, onAgentView } from './agent_view.js';
 import { syncPaneWidth, resetSyncedCols } from './capture.js';
@@ -392,7 +392,12 @@ export async function selectLiveSession(name, agentType, sessionId, server) {
     _loadAgentSecondary(name, sessionId, agentData, srv, generation, transcriptReady);
 }
 
+import { historyServer, historyRoute } from './history_source.js';
+
 export async function selectHistorySession(sessionId, locator = null) {
+    const source = historyServer();
+    const route = normalize(historyRoute(sessionId));
+    if (!route || (isCloud() && !source)) return false;
     const generation = ++switchGeneration;
     stopCaptureRefresh();
     leaveSessionOwnership();
@@ -405,11 +410,11 @@ export async function selectHistorySession(sessionId, locator = null) {
         saveSessionDraft(oldKey, input.value);
     }
 
-    state.currentSession = { type: "history", name: sessionId };
+    state.currentSession = { type: "history", name: sessionId, server: source || 'local' };
     refreshAgentUI();
 
     // The chat's page (#3532).
-    note({ view: 'chats', id: sessionId });
+    note(route);
 
     // Restore input text for the new session
     const newKey = sessionKey(state.currentSession);
@@ -419,6 +424,12 @@ export async function selectHistorySession(sessionId, locator = null) {
 
     document.getElementById("history-session-title").textContent = `Session: ${sessionId}`;
     document.getElementById("history-session-id").textContent = sessionId;
+    const computer = (state.servers || []).find(s => s.id === source);
+    const sourceLabel = document.getElementById('history-session-source');
+    if (sourceLabel) {
+        sourceLabel.hidden = !isCloud();
+        sourceLabel.textContent = computer?.label || source || '';
+    }
 
     // Update branch from history sessions data
     const historyEntry = state.historySessionsList.find(s => s.session_id === sessionId);
@@ -446,7 +457,7 @@ export async function selectHistorySession(sessionId, locator = null) {
         const boardName = historyEntry?.board_project || historyEntry?.board_name;
         if (boardName) {
             boardLink.textContent = keyLabel(boardName); // its label (#3536)
-            boardLink.onclick = () => { if (window.selectBoardProject) window.selectBoardProject(boardName); };
+            boardLink.onclick = () => { if (window.selectBoardProject) window.selectBoardProject(identityKey(source, boardName)); };
             boardLink.style.display = "";
         } else {
             boardLink.style.display = "none";
@@ -461,7 +472,7 @@ export async function selectHistorySession(sessionId, locator = null) {
     // The newest page (#3718: a whole transcript can be too big for one reply through Coral Hub).
     let data = await loadHistoryMessages(sessionId, { limit: HISTORY_PAGE });
     let messageBaseIndex = 0;
-    if (generation !== switchGeneration) return;
+    if (generation !== switchGeneration || source !== historyServer()) return;
     if (data && data.messages) {
         messageBaseIndex = data.start;
         // Search locators identify the absolute message index. Fetch a page

@@ -1,5 +1,7 @@
 /* Cloud Hub additions. Loaded on every page; inert unless body.cloud-mode. */
 body.cloud-mode [data-local-only] { display: none !important; }
+body:not(.cloud-mode) [data-cloud-only] { display: none !important; }
+body.cloud-mode [data-history-local-only] { display: none !important; }
 .cloud-account-wrapper { position: relative; display: inline-block; }
 .cloud-account-menu { position: absolute; right: 0; top: 100%; z-index: 1000; min-width: 220px; padding: 6px;
     background: var(--bg-secondary, #151a22); border: 1px solid var(--border, var(--fx-navy-line)); border-radius: var(--radius-lg); box-shadow: 0 8px 24px rgba(var(--black-rgb), .4); }

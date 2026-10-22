@@ -18,14 +18,14 @@ import { pollEvery } from './overload.js';
 // stopping, sleeping and waking one agent need Launch, as a team's or every agent's do.
 const INTERACT = new Set(['cmd-send', 'cmd-send-menu', 'cmd-send-team', 'send-menu-send', 'send-menu-team', 'send-menu-resend',
     'send-menu-protocol', 'cmd-quick', 'cmd-raw-keys', 'cmd-macro', 'macro-show', 'macro-delete', 'cmd-mode-toggle',
-    'agent-rename', 'agent-icon', 'agent-archive']);
-const LAUNCH = new Set(['agent-restart', 'agent-attach', 'agent-kill', 'agent-sleep', 'team-sleep', 'board-chat-pause', 'mb-pause', 'mb-msg-delete',
+    'agent-rename', 'agent-icon', 'agent-archive', 'mb-post']);
+const LAUNCH = new Set(['agent-restart', 'agent-attach', 'agent-kill', 'agent-sleep', 'team-sleep', 'board-chat-pause', 'mb-pause', 'mb-msg-delete', 'mb-delete-board',
     'attach-image']); // POST /api/upload writes a file on the host: Launch (#6088)
 // Turning auto-accept on needs Launch, turning it off Interact: the menu item says which by aria-checked.
 const AUTO_ACCEPT = 'agent-auto-accept';
 // What #3942 moved to Launch through the Hub: sleeping a team, pausing a board and deleting a board message.
 // Team sleep and a board's pause and delete act on the machine that holds the board.
-const BOARD = new Set(['team-sleep', 'board-chat-pause', 'mb-pause', 'mb-msg-delete']);
+const BOARD = new Set(['mb-post', 'team-sleep', 'board-chat-pause', 'mb-pause', 'mb-msg-delete', 'mb-delete-board']);
 // The sleeping bar's buttons name their action in data-action.
 const BAR = { wake: 'launch', restart: 'launch', unarchive: 'interact' };
 
