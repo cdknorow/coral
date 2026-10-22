@@ -255,6 +255,7 @@
 1	cost_dashboard.js	t.id
 1	cost_dashboard.js	t.num_agents || 0
 2	cost_dashboard.js	teamHtml
+1	editions.js	ASK_MODES.map(([value, name, text]) => `<label class="editions-ask-opt"><input type="radio" name="editions-mod
 1	editions.js	switchRow({ label: 'Coral Hub can turn on auto-accept', labelClass: 'editions-auto-accept', attrs: ' data-clou
 1	event_row.js	durationChip(ev)
 1	event_row.js	formatClockTime(ev.created_at)

@@ -1,6 +1,6 @@
 // Servers tab (#3070): the Cloud Hub's machines (and a self-hosted hub's remotes) are a top-level tab, not a
-// dialog. Pins: when the tab shows, the nav button's aria-current, the region and focus, each row's access line (Hub / Machine /
-// Effective) and 'Raise hub mode' only when the hub is the limit (PATCH {access_mode: <machine>}), Revoke
+// dialog. Pins: when the tab shows, the nav button's aria-current, the region and focus, each row's one lower-only
+// 'Hub access' control (Follow this computer / Limit to Interact / Limit to View: PATCH {access_mode}, no Raise, no Launch dialog), Revoke
 // contrast, deep links (#servers, #servers/<id>, the agent list's server chip), no overflow at 375 px with the
 // actions stacked, and the enroll page's Servers note.
 //
@@ -17,14 +17,14 @@ const BASE = require('./test_base').BASE;
 const { framesJs } = require('./helpers/wait');
 
 const SERVERS = [
-    // The hub limits (View) while the machine allows Launch: Raise offered.
+    // The owner limited it to View while the computer allows Launch: the note, and the way back (Follow this computer).
     { id: 'm1', label: 'Box One', online: true, access_mode: 'view', local_mode: 'launch', last_seen: '2026-10-13T00:00:00Z' },
-    // The machine limits: no Raise.
-    { id: 'm2', label: 'Box Two', online: true, access_mode: 'launch', local_mode: 'view', last_seen: '2026-10-13T00:00:00Z' },
-    // Nothing limits: no Raise.
-    { id: 'm3', label: 'Box Three', online: false, access_mode: 'launch', local_mode: 'launch', last_seen: '2026-10-12T00:00:00Z' },
-    // The machine's mode is unknown; the hub's own effective_mode / limited_by win over the computed ones.
-    { id: 'm4', label: 'Box Four', online: true, access_mode: 'interact', effective_mode: 'view', limited_by: 'hub', last_seen: '2026-10-13T00:00:00Z' },
+    // Following a computer that allows View only: its note, the path to the question.
+    { id: 'm2', label: 'Box Two', online: true, access_mode: 'follow', local_mode: 'view', last_seen: '2026-10-13T00:00:00Z' },
+    // Following a computer that allows Launch: nothing limits.
+    { id: 'm3', label: 'Box Three', online: false, access_mode: 'follow', local_mode: 'launch', last_seen: '2026-10-12T00:00:00Z' },
+    // The computer has not announced: View until it connects; the hub's own effective_mode / limited_by win over the computed ones.
+    { id: 'm4', label: 'Box Four', online: true, access_mode: 'interact', effective_mode: 'view', limited_by: 'machine', last_seen: '2026-10-13T00:00:00Z' },
 ];
 
 // The live list's servers entries (#3099): version, agent count and the hub's update notice per machine.
@@ -117,7 +117,6 @@ const contrast = (a, b) => {
     const rows = () => ev(`[...document.querySelectorAll('#servers-view .cs-row')].map(r => ({
         id: r.id, tabindex: r.getAttribute('tabindex'),
         access: (r.querySelector('.cs-access') || {}).textContent || '',
-        raise: r.querySelector('.cs-raise') ? r.querySelector('.cs-raise').textContent.trim() : null,
         target: r.classList.contains('server-row-target'),
     }))`);
 
@@ -145,149 +144,81 @@ const contrast = (a, b) => {
         assert.equal(await ev(`!!document.getElementById('cloud-servers-modal')`), false, 'no Servers dialog any more');
         console.log('   ✓ nav button aria-current/controls, region, heading focused, no dialog');
 
-        console.log('2. Row access lines and Raise');
-        let r = Object.fromEntries((await rows()).map(x => [x.id, x]));
-        const access = id => r['server-row-' + id].access.replace(/\s+/g, ' ');
-        assert.match(access('m1'), /Hub: View/); assert.match(access('m1'), /Machine: Launch/); assert.match(access('m1'), /Effective: View/);
-        assert.equal(r['server-row-m1'].raise, 'Raise hub mode to Launch', 'the hub limits and the machine allows Launch');
-        assert.match(access('m2'), /Hub: Launch/); assert.match(access('m2'), /Machine: View/); assert.match(access('m2'), /Effective: View/);
-        assert.equal(r['server-row-m2'].raise, null, 'no Raise when the machine is the limit');
-        assert.match(access('m3'), /Effective: Launch/);
-        assert.equal(r['server-row-m3'].raise, null, 'no Raise when nothing limits');
-        assert.match(access('m4'), /Machine: unknown/i, 'an unknown machine mode says so');
-        assert.match(access('m4'), /Effective: View/, "the hub's effective_mode wins over the computed one");
-        assert.equal(r['server-row-m4'].raise, null, 'no Raise to an unknown machine mode');
-        assert.ok(Object.values(r).every(x => x.tabindex === '-1'), 'rows are focus targets (tabindex=-1)');
-        // Raising to Launch asks first (#3115). Every way out but 'Raise to Launch' sends nothing.
-        const dlgState = () => ev(`(() => {
-            const d = document.querySelectorAll('dialog.cs-confirm');
-            const x = d[0]; if (!x) return { n: 0 };
-            const by = id => (document.getElementById(x.getAttribute(id)) || {}).textContent || null;
-            return { n: d.length, open: x.open, modal: x.matches(':modal'), title: by('aria-labelledby'), text: by('aria-describedby'),
-                focus: document.activeElement && document.activeElement.textContent, buttons: [...x.querySelectorAll('button')].map(b => b.textContent) };
-        })()`);
-        const raiseM1 = async () => {
-            await ev(`document.querySelector('#server-row-m1 .cs-raise').click(); true`);
-            await waitFor(`!!document.querySelector('dialog.cs-confirm[open]')`, 'the Launch confirmation', 3000);
+        // The row's words hold 4.5:1 in both themes (the control, the helper line, the notes, the Follow button; Revoke has its own check below), and CORAL_SCREENSHOT_DIR keeps the shots to look at.
+        const rowShots = async (tag) => {
+            const { installAudit, auditRegion, setTheme } = require('./helpers/contrast');
+            await installAudit(ev);
+            for (const theme of ['dark', 'light']) {
+                await setTheme(ev, theme);
+                const au = await auditRegion(ev, ['#servers-view .cs-launch', '#servers-view .cs-access-help', '#servers-view .cs-limit', '#servers-view .cs-note']);
+                assert.ok(au.checked > 0 && !au.fails.length, `${tag} ${theme}: the row's words hold 4.5:1: ${JSON.stringify(au.fails).slice(0, 300)}`);
+                if (process.env.CORAL_SCREENSHOT_DIR) { fs.mkdirSync(process.env.CORAL_SCREENSHOT_DIR, { recursive: true }); fs.writeFileSync(`${process.env.CORAL_SCREENSHOT_DIR}/servers-access-${tag}-${theme}.png`, Buffer.from((await Page.captureScreenshot({ format: 'png' })).data, 'base64')); }
+            }
+            await setTheme(ev, 'dark');
         };
-        const noDialog = what => waitFor(`!document.querySelector('dialog.cs-confirm')`, `the dialog gone after ${what}`, 3000);
+        console.log('2. Row access: one lower-only control, no Raise, no Launch dialog');
         const settled = () => ev(framesJs(2));
-        // After a cancel the row re-renders; focus goes back to the control the user came from, not the heading.
         const focusIs = (sel, what) => waitFor(`document.activeElement === document.querySelector(${JSON.stringify(sel)})`, what, 3000,
             `(() => { const a = document.activeElement; return a ? a.tagName + '#' + a.id + '.' + a.className : null; })()`);
-        await raiseM1();
-        let d = await dlgState();
-        assert.equal(d.n, 1, 'one dialog');
-        assert.ok(d.open && d.modal, 'a modal dialog (showModal)');
-        assert.equal(d.title, 'Allow Box One to launch agents from the Coral Hub?', 'aria-labelledby names the server');
-        assert.equal(d.text, 'This lets the hub start new processes on that machine.', 'aria-describedby says what Launch allows');
-        assert.deepEqual(d.buttons, ['Cancel', 'Raise to Launch']);
-        assert.equal(d.focus, 'Cancel', 'Cancel has focus, so Enter does not raise');
-        await ev(`[...document.querySelectorAll('dialog.cs-confirm button')].find(b => b.textContent === 'Cancel').click(); true`);
-        await noDialog('Cancel');
-        await settled();
-        assert.deepEqual(await ev('window.__patches'), [], 'Cancel sends nothing');
-        await focusIs('#server-row-m1 .cs-raise', 'focus back on Raise after Cancel');
-        assert.ok(await ev(`!!document.querySelector('#server-row-m1 .cs-raise')`), 'Raise is still offered after Cancel');
+        const rowView = id => ev(`(() => { const r = document.getElementById('server-row-${id}'); const sel = r.querySelector('.cs-launch select');
+            return { options: [...sel.options].map(o => o.textContent), value: sel.value, label: r.querySelector('.cs-launch').firstChild.textContent.trim(), describedBy: sel.getAttribute('aria-describedby'),
+                help: (document.getElementById(sel.getAttribute('aria-describedby')) || {}).textContent || null,
+                notes: [...r.querySelectorAll('.cs-limit, .cs-note')].map(n => n.textContent.replace(/\\s+/g, ' ').trim()), follow: !!r.querySelector('.cs-follow'),
+                raise: !!r.querySelector('.cs-raise'), summary: !!r.querySelector('.cs-access'), dialogs: document.querySelectorAll('dialog.cs-confirm').length }; })()`);
+        let r = Object.fromEntries((await rows()).map(x => [x.id, x]));
+        assert.ok(Object.values(r).every(x => x.tabindex === '-1'), 'rows are focus targets (tabindex=-1)');
+        await rowShots('desktop');
+        // m1: the owner limited it to View, the computer allows Launch: the note and a way back; every option offered at or below Launch.
+        let v = await rowView('m1');
+        assert.deepEqual(v.options, ['Follow this computer (now Launch)', 'Limit to Interact', 'Limit to View']);
+        assert.equal(v.value, 'view'); assert.equal(v.label, 'Hub access');
+        assert.ok(v.notes.includes('You limited Coral Hub to View on this computer. It allows Launch. Follow this computer'), JSON.stringify(v.notes));
+        assert.ok(v.follow && !v.raise && !v.summary && v.dialogs === 0, 'a Follow button, no Raise, no Hub/Machine/Effective line, no dialog');
+        assert.match(v.help, /^Coral Hub may do on this computer what you allowed in Coral\. Now: View\./);
+        assert.ok(v.describedBy && v.help, 'the helper line describes the select');
+        // m2: following, the computer allows View only: the machine's note with the path to the question; only View to limit to.
+        v = await rowView('m2');
+        assert.deepEqual(v.options, ['Follow this computer (now View)', 'Limit to View']);
+        assert.equal(v.value, 'follow');
+        assert.ok(v.notes.some(n => /^This computer allows View only\. To allow more, open Coral on that computer: Settings > Network and Hub, and set "What may Coral Hub do on this computer\?"$/.test(n)), JSON.stringify(v.notes));
+        assert.ok(!v.follow);
+        // m3: following a computer that allows Launch: nothing to say but what it means.
+        v = await rowView('m3');
+        assert.deepEqual(v.options, ['Follow this computer (now Launch)', 'Limit to Interact', 'Limit to View']);
+        assert.equal(v.value, 'follow'); assert.deepEqual(v.notes, []); assert.match(v.help, /Now: Launch\./);
+        // m4: the computer has not announced: View until it connects, never unlimited; the current choice stays offered.
+        v = await rowView('m4');
+        assert.deepEqual(v.options, ['Follow this computer', 'Limit to Interact', 'Limit to View']);
+        assert.equal(v.value, 'interact'); assert.equal(v.help, 'View until this computer connects.');
+        assert.ok(Object.values(await Promise.all(['m1', 'm2', 'm3', 'm4'].map(rowView))).every(x => !x.options.some(o => /Launch$/.test(o) && !/^Follow/.test(o))), 'no Launch option anywhere');
 
-        await raiseM1();
-        await client.Input.dispatchKeyEvent({ type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
-        await client.Input.dispatchKeyEvent({ type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
-        await noDialog('Escape');
-        await settled();
-        assert.deepEqual(await ev('window.__patches'), [], 'Escape sends nothing');
-        await focusIs('#server-row-m1 .cs-raise', 'focus back on Raise after Escape');
-
-        await raiseM1();
-        await ev(`document.querySelector('dialog.cs-confirm').close(); true`);
-        await noDialog('close()');
-        await settled();
-        assert.deepEqual(await ev('window.__patches'), [], 'closing the dialog any other way sends nothing');
-        await focusIs('#server-row-m1 .cs-raise', 'focus back on Raise after close()');
-
-        // A double click on Raise gives one dialog; a double click on 'Raise to Launch' one PATCH.
-        await ev(`(() => { const b = document.querySelector('#server-row-m1 .cs-raise'); b.click(); b.click(); return true; })()`);
-        await waitFor(`!!document.querySelector('dialog.cs-confirm[open]')`, 'the Launch confirmation', 3000);
-        assert.equal((await dlgState()).n, 1, 'a double click on Raise opens one dialog');
-        await ev(`(() => { const b = [...document.querySelectorAll('dialog.cs-confirm button')].find(b => b.textContent === 'Raise to Launch'); b.click(); b.click(); return true; })()`);
-        await waitFor(`window.__patches.length > 0`, 'the PATCH', 3000);
-        await noDialog('confirm');
-        await settled();
-        assert.deepEqual(await ev('window.__patches'), [{ id: 'm1', body: { access_mode: 'launch' } }], 'a double click on Raise to Launch sends one PATCH');
-        // Put m1 back for the rest of the suite.
-        await ev(`(async () => { window.__qaServers.find(s => s.id === 'm1').access_mode = 'view'; window.__patches = []; const cs = await import((window.__coralStatic || '/static/') + 'cloud_servers.js'); await cs.renderCloudServersInto(document.getElementById('servers-tab-body')); return true; })()`);
-        await waitFor(`!!document.querySelector('#server-row-m1 .cs-raise')`, 'Raise back on m1', 3000);
-
-        // The Access select goes through the same gate: only a raise TO Launch asks.
-        const pick = (id, mode) => ev(`(() => { const s = document.querySelector('#server-row-${id} select'); s.value = ${JSON.stringify(mode)}; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
-        const selectOf = id => ev(`document.querySelector('#server-row-' + ${JSON.stringify(id)} + ' select').value`);
-        await pick('m1', 'interact');
-        await waitFor(`window.__patches.length > 0`, 'the Interact PATCH', 3000);
-        await settled();
-        assert.equal((await dlgState()).n, 0, 'raising to Interact does not ask');
-        assert.deepEqual(await ev('window.__patches'), [{ id: 'm1', body: { access_mode: 'interact' } }], 'select Interact: one PATCH, no dialog');
-        await waitFor(`document.querySelector('#server-row-m1 select').value === 'interact'`, 'm1 at Interact', 3000);
-        await ev(`window.__patches = []; true`);
-        await pick('m1', 'launch');
-        await waitFor(`!!document.querySelector('dialog.cs-confirm[open]')`, 'the Launch confirmation from the select', 3000);
-        assert.equal((await dlgState()).title, 'Allow Box One to launch agents from the Coral Hub?');
-        await ev(`[...document.querySelectorAll('dialog.cs-confirm button')].find(b => b.textContent === 'Cancel').click(); true`);
-        await noDialog('Cancel from the select');
-        await waitFor(`document.querySelector('#server-row-m1 select').value === 'interact'`, 'the select back on the current mode', 3000);
-        await settled();
-        assert.deepEqual(await ev('window.__patches'), [], 'select Launch then Cancel: nothing sent');
-        assert.equal(await selectOf('m1'), 'interact', 'select Launch then Cancel: the select shows the current mode again');
-        await focusIs('#server-row-m1 .cs-launch select', 'focus back on the Access select after Cancel');
-        // Lowering never asks.
-        await pick('m3', 'view');
-        await waitFor(`window.__patches.length > 0`, 'the lowering PATCH', 3000);
-        await settled();
-        assert.equal((await dlgState()).n, 0, 'lowering from Launch does not ask');
-        assert.deepEqual(await ev('window.__patches'), [{ id: 'm3', body: { access_mode: 'view' } }]);
-        // ...and raising it back through the select asks, and confirming sends exactly that.
-        await waitFor(`document.querySelector('#server-row-m3 select').value === 'view'`, 'm3 at View', 3000);
-        await ev(`window.__patches = []; true`);
-        await pick('m3', 'launch');
-        await waitFor(`!!document.querySelector('dialog.cs-confirm[open]')`, 'the Launch confirmation for m3', 3000);
-        assert.equal((await dlgState()).title, 'Allow Box Three to launch agents from the Coral Hub?', 'the dialog names the server whose select changed');
-        await ev(`[...document.querySelectorAll('dialog.cs-confirm button')].find(b => b.textContent === 'Raise to Launch').click(); true`);
-        await waitFor(`window.__patches.length > 0`, 'the m3 PATCH', 3000);
-        await settled();
-        assert.deepEqual(await ev('window.__patches'), [{ id: 'm3', body: { access_mode: 'launch' } }], 'select Launch then confirm: one PATCH');
-        // Put m1 back to View for the original Raise check below.
-        // The stub row is reset behind the app's back, so drop the access cache too: since #3138 the app re-reads it after each change (it would still hold m1 at Interact from the PATCH above).
-        await ev(`(async () => { window.__qaServers.find(s => s.id === 'm1').access_mode = 'view'; window.__patches = []; const cs = await import((window.__coralStatic || '/static/') + 'cloud_servers.js'); cs.invalidateServerAccess(); await cs.renderCloudServersInto(document.getElementById('servers-tab-body')); return true; })()`);
-        await waitFor(`!!document.querySelector('#server-row-m1 .cs-raise') && document.querySelector('#server-row-m3 select').value === 'launch'`, 'm1 back at View, m3 at Launch', 3000);
-
-        // The label is text, never markup; exactly one callback runs.
-        const xss = await ev(`(async () => {
-            const cs = await import((window.__coralStatic || '/static/') + 'cloud_servers.js');
-            const calls = [];
-            const dlg = cs.confirmLaunch('<img src=x onerror="window.__qaXss=1">', () => calls.push('yes'), () => calls.push('no'));
-            const r = { img: !!dlg.querySelector('img'), title: dlg.querySelector('h3').textContent };
-            dlg.querySelector('button').click();
-            dlg.close();
-            await new Promise(res => setTimeout(res, 0));
-            return { ...r, calls, xss: !!window.__qaXss };
-        })()`);
-        assert.equal(xss.img, false, 'a label with markup renders no element');
-        assert.equal(xss.title, 'Allow <img src=x onerror="window.__qaXss=1"> to launch agents from the Coral Hub?');
-        assert.equal(xss.xss, false);
-        assert.deepEqual(xss.calls, ['no'], 'Cancel then close(): exactly one callback');
-        console.log('   ✓ Launch confirmation: modal, labelled, Cancel focused; Cancel/Escape/close send nothing and focus returns to Raise/the select; one dialog and one PATCH on double clicks; select Interact and lowering never ask; select Launch asks and Cancel restores it; label is text');
-
-        // Warm the 15 s access cache with m1 at View, so the check after the Raise shows the cache was dropped (#3125).
         const accessOf = id => ev(`import((window.__coralStatic || '/static/') + 'cloud_servers.js').then(cs => cs.serverAccess(${JSON.stringify(id)})).then(a => a && { effective: a.effective, mayInteract: a.mayInteract })`);
-        assert.deepEqual(await accessOf('m1'), { effective: 'view', mayInteract: false }, 'before the Raise, m1 is View');
-        await ev(`document.querySelector('#server-row-m1 .cs-raise').click(); true`);
-        // Raising to Launch asks first (#3115); confirm it.
-        await waitFor(`!!document.querySelector('dialog.cs-confirm[open]')`, 'the Launch confirmation', 3000);
-        await ev(`[...document.querySelectorAll('dialog.cs-confirm button')].find(b => b.textContent === 'Raise to Launch').click(); true`);
-        await waitFor(`window.__patches.length > 0`, 'the PATCH', 3000);
-        assert.deepEqual(await ev('window.__patches'), [{ id: 'm1', body: { access_mode: 'launch' } }], 'Raise sends PATCH /api/servers/m1 {access_mode: launch}');
-        assert.deepEqual(await accessOf('m1'), { effective: 'launch', mayInteract: true }, 'after the Raise the next access check sees Launch at once, not up to 15 s later (#3125)');
-        await waitFor(`!document.querySelector('#server-row-m1 .cs-raise')`, 'Raise gone once the hub allows Launch', 6000);
-        console.log('   ✓ Hub/Machine/Effective per row, Raise only for m1, PATCH {access_mode:"launch"}, then gone');
+        // Follow this computer from the note: immediate (no dialog), one PATCH, focus lands on the select.
+        await ev(`window.__patches = []; document.querySelector('#server-row-m1 .cs-follow').click(); true`);
+        await waitFor(`window.__patches.length > 0`, 'the follow PATCH', 3000);
+        await settled();
+        assert.deepEqual(await ev('window.__patches'), [{ id: 'm1', body: { access_mode: 'follow' } }], 'Follow this computer sends {access_mode: follow}, no confirmation');
+        await waitFor(`document.querySelector('#server-row-m1 .cs-launch select').value === 'follow' && !document.querySelector('#server-row-m1 .cs-follow')`, 'm1 following', 3000);
+        assert.equal((await rowView('m1')).dialogs, 0);
+        await focusIs('#server-row-m1 .cs-launch select', 'focus on the select after Follow this computer');
+        assert.deepEqual(await accessOf('m1'), { effective: 'launch', mayInteract: true }, 'the next access check sees Launch at once (#3125)');
+        // The select: a lower cap is immediate; the note appears with the way back; focus stays on the select.
+        const pick = (id, mode) => ev(`(() => { const s = document.querySelector('#server-row-${id} select'); s.focus(); s.value = ${JSON.stringify(mode)}; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+        await ev(`window.__patches = []; true`);
+        await pick('m3', 'interact');
+        await waitFor(`window.__patches.length > 0 && document.querySelector('#server-row-m3 .cs-follow')`, 'the Interact PATCH and the note', 3000);
+        await settled();
+        assert.deepEqual(await ev('window.__patches'), [{ id: 'm3', body: { access_mode: 'interact' } }]);
+        assert.ok((await rowView('m3')).notes.includes('You limited Coral Hub to Interact on this computer. It allows Launch. Follow this computer'));
+        await focusIs('#server-row-m3 .cs-launch select', 'focus stays on the select after a change');
+        assert.equal((await rowView('m3')).dialogs, 0, 'a lower cap asks nothing');
+        await ev(`window.__patches = []; true`);
+        await pick('m3', 'follow');
+        await waitFor(`window.__patches.length > 0 && !document.querySelector('#server-row-m3 .cs-follow')`, 'the follow PATCH from the select', 3000);
+        await settled();
+        assert.deepEqual(await ev('window.__patches'), [{ id: 'm3', body: { access_mode: 'follow' } }], 'choosing Follow in the select is immediate too');
+        assert.equal((await rowView('m3')).dialogs, 0);
+        console.log('   ✓ Hub access: Follow / Limit to Interact / Limit to View, only options the computer allows, no Raise, no dialog, focus kept, the notes');
 
         console.log('2b. Row meta (status · Coral version · agents · last contact when offline), update badge, no "null", hidden sr-only state');
         const rowInfo = await ev(`Object.fromEntries([...document.querySelectorAll('#servers-view .cs-row')].map(r => {
@@ -385,6 +316,7 @@ const contrast = (a, b) => {
         assert.ok(phone.doc <= 0 && phone.view <= 0 && phone.rows <= 0, `no horizontal overflow at 375 (${JSON.stringify(phone)})`);
         assert.ok(phone.stacked, 'actions stack under the details');
         assert.ok(phone.inside, 'every control is inside the viewport');
+        await rowShots('phone');
         await Emulation.clearDeviceMetricsOverride();
         console.log('   ✓ overflow 0 (document, view, rows), actions stacked, controls inside');
 
@@ -419,7 +351,7 @@ const contrast = (a, b) => {
 
         console.log('7. Enroll page points new machines at Servers');
         const enroll = fs.readFileSync(path.join(__dirname, '../../coral-go/pkg/frontend/templates/cloud/enroll.html'), 'utf8');
-        assert.match(enroll, /New machines start in View mode \(read-only\): you can raise access later in <a href="\/servers">Servers<\/a>\./);
+        assert.match(enroll, /A machine connected from the command line starts in View \(read-only\) until you change that in Coral on it; you can limit access further in <a href="\/servers">Servers<\/a>\./);
         assert.match(enroll, /<a class="cloud-btn" href="\/servers">Open Servers<\/a>/);
         console.log('   ✓ review note + done-step Open Servers link to /servers');
 

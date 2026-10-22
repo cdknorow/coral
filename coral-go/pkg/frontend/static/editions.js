@@ -17,7 +17,7 @@
 import { state } from './state.js';
 import { isCloud } from './server_base.js';
 import { isPopout } from './popout.js';
-import { escapeAttr, showToast } from './utils.js';
+import { escapeAttr, escapeHtml, showToast } from './utils.js';
 import { switchRow } from './switch_row.js';
 import { importOnce } from './import_once.js';
 import { trapTab } from './dialog_focus.js';
@@ -147,7 +147,7 @@ function _connectHtml() {
             <div class="cloud-command-row" data-cloud="command-row" hidden><code data-cloud="command"></code><button type="button" class="btn btn-small" data-cloud="copy">Copy</button></div>
             <fieldset class="editions-ask" data-cloud="ask-row" hidden>
                 <legend id="editions-ask-q">What may Coral Hub do on this computer?</legend>
-                ${ASK_MODES.map(([value, name, text]) => `<label class="editions-ask-opt"><input type="radio" name="editions-mode" value="${value}" data-cloud-mode aria-describedby="editions-ask-${value}"><span class="editions-ask-text"><span class="editions-ask-name">${name}</span><span class="editions-ask-desc" id="editions-ask-${value}">${text}</span></span></label>`).join('')}
+                ${ASK_MODES.map(([value, name, text]) => `<label class="editions-ask-opt"><input type="radio" name="editions-mode" value="${escapeAttr(value)}" data-cloud-mode aria-describedby="editions-ask-${escapeAttr(value)}"><span class="editions-ask-text"><span class="editions-ask-name">${escapeHtml(name)}</span><span class="editions-ask-desc" id="editions-ask-${escapeAttr(value)}">${escapeHtml(text)}</span></span></label>`).join('')}
                 <div data-cloud="auto-accept-row" hidden>
                     ${switchRow({ label: 'Coral Hub can turn on auto-accept', labelClass: 'editions-auto-accept', attrs: ' data-cloud="allow-auto-accept"', desc: 'Agents it launches act without asking for permission each time.', descId: 'editions-ask-auto', descClass: 'editions-ask-desc', descTag: 'div' })}
                 </div>

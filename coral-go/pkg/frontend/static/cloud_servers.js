@@ -4,15 +4,17 @@
  * enrollment instructions. All text from the server goes through textContent.
  *
  * API (docs/enrollment-tunnel.md in coral-hub):
- *   GET    /api/servers                -> {servers: [{id, label, created_at, last_seen, allow_launch, online}]}
- *   PATCH  /api/servers/{id} {label?, allow_launch?}
+ *   GET    /api/servers                -> {servers: [{id, label, created_at, last_seen, access_mode, local_mode, effective_mode, limited_by, online}]}
+ *   PATCH  /api/servers/{id} {label?, access_mode?: follow|interact|view}
  *   DELETE /api/servers/{id}           (revoke; closes the live tunnel)
  *
- * Access modes (see docs/access-modes): each server has a hub-side `access_mode`
- * ("view" | "interact" | "launch", default view) and the connector reports the most
- * it will allow locally as `local_mode`. The effective mode is the LOWER of the two,
- * so raising the hub setting alone never grants more than the machine permits.
- * Servers without `access_mode` (older hub) fall back to the `allow_launch` switch. */
+ * Access modes (see docs/access-modes): the connector reports the most it will allow
+ * locally as `local_mode` (chosen on that computer when it connected: "What may Coral Hub do
+ * on this computer?"). The owner's access to a server FOLLOWS it (`access_mode` "follow", the
+ * default; the old "launch" means follow) or is limited to "interact" or "view": a control that
+ * only lowers, never raises. The effective mode is the machine's announced max when following,
+ * else the LOWER of the owner's cap and the announced max; a machine that has not announced yet
+ * counts as View. The hub's own effective_mode / limited_by win when the row carries them. */
 
 import { rememberFocus } from './dom_morph.js';
 import { importOnce } from './import_once.js';
@@ -75,7 +77,7 @@ async function load() {
 
 async function call(id, method, body) {
     busy.add(id); render();
-    const accessChange = method === 'PATCH' && !!body && ('access_mode' in body || 'allow_launch' in body);
+    const accessChange = method === 'PATCH' && !!body && 'access_mode' in body;
     let changed = false;
     try {
         const r = await fetch(`/api/servers/${encodeURIComponent(id)}`, {
@@ -89,49 +91,6 @@ async function call(id, method, body) {
     // An agent already open on this server re-decides its read-only state from a
     // fresh lookup: the effective mode, not the hub setting alone (#3138).
     if (changed) accessChanged(id, await serverAccess(id));
-}
-
-/** Ask before raising a server's hub mode to Launch (#3115): Launch lets the hub
- *  start processes on that machine. A modal <dialog> with Cancel focused; Escape,
- *  Cancel and closing all count as no. Exactly one of the callbacks runs. */
-export function confirmLaunch(label, onConfirm, onCancel) {
-    document.querySelectorAll('dialog.cs-confirm').forEach(d => d.remove());
-    const cancel = h('button', { type: 'button', className: 'btn', text: 'Cancel', autofocus: true });
-    const ok = h('button', { type: 'button', className: 'btn btn-primary', text: 'Raise to Launch' });
-    const dlg = h('dialog', { className: 'cs-confirm', 'aria-labelledby': 'cs-confirm-title', 'aria-describedby': 'cs-confirm-text' },
-        h('h3', { id: 'cs-confirm-title', text: `Allow ${label} to launch agents from the Coral Hub?` }),
-        h('p', { id: 'cs-confirm-text', text: 'This lets the hub start new processes on that machine.' }),
-        h('div', { className: 'cs-confirm-actions' }, cancel, ok));
-    let done = false;
-    const finish = (yes) => {
-        if (done) return;
-        done = true;
-        if (dlg.open) dlg.close();
-        dlg.remove();
-        if (yes) onConfirm(); else if (onCancel) onCancel();
-    };
-    cancel.addEventListener('click', () => finish(false));
-    ok.addEventListener('click', () => finish(true));
-    dlg.addEventListener('cancel', (e) => { e.preventDefault(); finish(false); }); // Escape
-    dlg.addEventListener('close', () => finish(false));
-    document.body.appendChild(dlg);
-    dlg.showModal();
-    cancel.focus();
-    return dlg;
-}
-
-/** Change a server's hub mode; raising it to Launch asks first. A cancelled
- *  change re-renders, so the Access select shows the current mode again, and
- *  focus goes back to the control the user came from (`via`: 'raise' or 'select'). */
-function setHubMode(s, mode, legacy, via) {
-    const send = () => call(s.id, 'PATCH', legacy ? { allow_launch: mode === 'launch' } : { access_mode: mode });
-    if (mode !== 'launch' || hubMode(s) === 'launch') { send(); return; }
-    confirmLaunch(s.label || 'this server', send, () => {
-        render();
-        const r = document.getElementById(rowId(s.id));
-        const back = r && (r.querySelector(via === 'select' ? '.cs-launch select' : '.cs-raise') || r);
-        if (back) back.focus();
-    });
 }
 
 export const MODES = ['view', 'interact', 'launch'];
@@ -153,22 +112,38 @@ export function lowerMode(a, b) {
     return rank(a) <= rank(b) ? a : b;
 }
 
-/** The mode a server row currently has, from access_mode or the legacy allow_launch. */
-export function hubMode(s) {
-    if (rank(s.access_mode) >= 0) return s.access_mode;
-    return s.allow_launch ? 'launch' : 'view';
+/** What the owner chose for a server's hub access: 'follow' (the default; the hub's old 'launch' means follow), 'interact' or 'view'. An unknown or missing value never widens: view. */
+export function accessChoice(s) {
+    const m = s && s.access_mode;
+    if (m === 'follow' || m === 'launch') return 'follow';
+    return m === 'interact' ? 'interact' : 'view';
 }
 
-/** What actually applies: the lower of the hub setting and the machine's own limit. */
-export function effectiveMode(s) { return lowerMode(hubMode(s), s.local_mode); }
+/** The owner's cap in modes: following is no cap (Launch); otherwise what was chosen. */
+export function hubMode(s) {
+    const c = accessChoice(s);
+    return c === 'follow' ? 'launch' : c;
+}
 
-/** Note shown under a row when the machine's own setting limits what the hub setting allows. */
+/** What actually applies: the lower of the owner's cap and the machine's announced max; a machine that has not announced counts as View. */
+export function effectiveMode(s) {
+    return rank(s.local_mode) < 0 ? 'view' : lowerMode(hubMode(s), s.local_mode);
+}
+
+/** Note shown under a row when the machine's own setting limits what Coral Hub may do (the announced max is below Launch, or below the owner's cap). Fixed words, never machine text. */
 export function launchNote(s) {
-    const want = hubMode(s), eff = effectiveMode(s);
-    if (eff !== want) {
-        return `Limited by this machine's local setting: it allows ${MODE_INFO[eff].label} only (you chose ${MODE_INFO[want].label}). To allow more, open Coral on that machine: Settings > Coral Hub > "Most the hub may do on this computer".`;
+    const local = rank(s.local_mode) >= 0 ? s.local_mode : null;
+    if (local && rank(local) < rank(hubMode(s))) {
+        return `This computer allows ${MODE_INFO[local].label} only. To allow more, open Coral on that computer: Settings > Network and Hub, and set "What may Coral Hub do on this computer?"`;
     }
     return '';
+}
+
+/** Note shown when the owner limited Coral Hub below what the computer allows, or ''. */
+export function limitNote(s) {
+    const choice = accessChoice(s), local = rank(s.local_mode) >= 0 ? s.local_mode : null;
+    if (choice === 'follow' || !local || rank(local) <= rank(choice)) return '';
+    return `You limited Coral Hub to ${MODE_INFO[choice].label} on this computer. It allows ${MODE_INFO[local].label}.`;
 }
 
 let _modeCache = { at: 0, byId: null, pending: null };
@@ -228,7 +203,7 @@ function _access(s, serverId) {
     const local = rank(s.local_mode) >= 0 ? s.local_mode : null;
     const effective = rank(s.effective_mode) >= 0 ? s.effective_mode : effectiveMode(s);
     let limitedBy = s.limited_by === 'hub' || s.limited_by === 'machine' ? s.limited_by : null;
-    if (!limitedBy && rank(effective) < rank('launch')) limitedBy = local && rank(local) < rank(hub) ? 'machine' : 'hub';
+    if (!limitedBy && rank(effective) < rank('launch')) limitedBy = !local || rank(local) < rank(hub) ? 'machine' : 'hub'; // a computer that has not announced is the limit: there is nothing for the owner to raise
     return { hub, local, effective, limitedBy, mayInteract: rank(effective) >= rank('interact'), mayLaunch: rank(effective) >= rank('launch'), label: s.label || serverId };
 }
 
@@ -260,6 +235,13 @@ function updateBadge(e) {
         title: n.text, 'aria-label': n.text, text: n.label }) : null;
 }
 
+/** Change a server's hub access (follow | interact | view). Immediate, no dialog: a lower cap is the safety valve and following is what the connect-time question allowed. Focus stays on (or returns to) the select. */
+async function setAccess(s, value, fromButton = false) {
+    await call(s.id, 'PATCH', { access_mode: value });
+    const sel = document.getElementById(rowId(s.id))?.querySelector('.cs-launch select');
+    if (sel && (fromButton || document.activeElement === document.body)) sel.focus();
+}
+
 function row(s) {
     // Version, agent count and the update notice come with the live list's servers entry (#3059, #3099).
     const live = { ...s, ...((state.servers || []).find(x => x && x.id === s.id) || {}) };
@@ -282,30 +264,30 @@ function row(s) {
     const version = serverVersion(live);
     const agents = serverAgentCount(live);
     const meta = h('div', { className: 'cs-meta', text: [online ? 'Online' : 'Offline', version ? `Coral ${version}` : '', `${agents} agent${agents === 1 ? '' : 's'}`, online ? '' : `last contact ${formatLastSeen(s.last_seen)}`].filter(Boolean).join(' · ') });
-    const mode = hubMode(s);
-    const legacy = rank(s.access_mode) < 0;
-    const picker = h('label', { className: 'cs-meta cs-launch' }, 'Access ',
-        h('select', {
-            disabled: isBusy, 'aria-label': 'Access mode', value: mode,
-            onchange: e => setHubMode(s, e.target.value, legacy, 'select'),
-        }, MODES.map(m => h('option', { value: m, selected: m === mode, text: MODE_INFO[m].label }))));
-    const modeText = h('div', { className: 'cs-meta', text: MODE_INFO[mode].text });
-    // C1: what each side allows and what applies. The hub's effective_mode and
-    // limited_by win; older hubs fall back to the lower of the two here.
-    const machine = rank(s.local_mode) >= 0 ? s.local_mode : null;
+    // One control, lower-only (the connect-time question on that computer is the consent to Launch): Follow this computer (default), Limit to Interact, Limit to View. Only options at or below the
+    // computer's announced max; the current choice stays offered. No Launch option and no raise: Launch is reached only by following a computer that allows it.
+    const choice = accessChoice(s);
+    const local = rank(s.local_mode) >= 0 ? s.local_mode : null;
     const effective = rank(s.effective_mode) >= 0 ? s.effective_mode : effectiveMode(s);
-    const limitedBy = s.limited_by === 'hub' || s.limited_by === 'machine' ? s.limited_by
-        : (machine && rank(machine) < rank(mode) ? 'machine' : (rank(effective) < rank(machine || 'launch') ? 'hub' : null));
-    const access = h('div', { className: 'cs-access', role: 'group', 'aria-label': 'Access' },
-        h('span', { className: 'cs-access-item', text: `Hub: ${MODE_INFO[mode].label}` }),
-        h('span', { className: 'cs-access-item', text: `Machine: ${machine ? MODE_INFO[machine].label : 'unknown'}` }),
-        h('span', { className: 'cs-access-item cs-access-effective', text: `Effective: ${MODE_INFO[effective].label}` }));
-    // The hub is what holds this server back: one click raises it to what the machine allows.
-    const raise = limitedBy === 'hub' && machine && rank(machine) > rank(mode) && !legacy
-        ? h('button', { type: 'button', className: 'btn btn-small btn-primary cs-raise', disabled: isBusy,
-            text: `Raise hub mode to ${MODE_INFO[machine].label}`, onclick: () => setHubMode(s, machine, false, 'raise') })
+    const followLabel = local ? `Follow this computer (now ${MODE_INFO[local].label})` : 'Follow this computer'; // what following gives: the announced max, whatever the owner's cap is now
+    const options = [['follow', followLabel]];
+    if ((local && rank(local) >= rank('interact')) || choice === 'interact') options.push(['interact', 'Limit to Interact']);
+    options.push(['view', 'Limit to View']);
+    const helpId = `${rowId(s.id)}-access-help`;
+    const picker = h('label', { className: 'cs-meta cs-launch' }, 'Hub access ',
+        h('select', {
+            disabled: isBusy, value: choice, 'aria-describedby': helpId,
+            onchange: e => setAccess(s, e.target.value),
+        }, options.map(([v, text]) => h('option', { value: v, selected: v === choice, text }))));
+    const modeText = h('div', { className: 'cs-meta cs-access-help', id: helpId, text: local
+        ? `Coral Hub may do on this computer what you allowed in Coral. Now: ${MODE_INFO[effective].label}. ${MODE_INFO[effective].text}`
+        : 'View until this computer connects.' });
+    const limited = limitNote(s);
+    const follow = limited
+        ? h('div', { className: 'cs-meta cs-limit' }, h('span', { text: limited + ' ' }),
+            h('button', { type: 'button', className: 'btn btn-small btn-link cs-follow', disabled: isBusy, text: 'Follow this computer', onclick: () => setAccess(s, 'follow', true) }))
         : null;
-    const launch = h('div', {}, access, raise, picker, modeText);
+    const launch = h('div', {}, picker, modeText, follow);
     const actions = confirming === s.id
         ? [h('button', { type: 'button', className: 'btn btn-small btn-danger', text: 'Confirm revoke', onclick: () => { confirming = null; call(s.id, 'DELETE'); } }),
            h('button', { type: 'button', className: 'btn btn-small', text: 'Cancel', onclick: () => { confirming = null; render(); } })]
@@ -364,7 +346,7 @@ function render() {
     // replaceChildren() would render a null as the text "null": leave it out.
     const restoreFocus = rememberFocus(host); // a control the redraw replaced gets focus back (#4882)
     host.replaceChildren(...[
-        h('p', { className: 'servers-intro', text: 'Machines connected to your account. Each one connects out to this hub; no inbound port is needed. New machines start in View.' }),
+        h('p', { className: 'servers-intro', text: 'Machines connected to your account. Each one connects out to this hub; no inbound port is needed. What Coral Hub may do on a machine is what you allowed when you connected it; you can limit it further here.' }),
         loadError ? h('div', { className: 'servers-form-error', role: 'alert', text: loadError }) : null,
         list,
         enrollBlock()].filter(Boolean));

@@ -27,8 +27,8 @@ export function accessBlockedMessage(a, required = 'interact') {
     if (label(a.local)) parts.push(`This machine allows: ${label(a.local)}`);
     if (label(a.effective)) parts.push(`Effective: ${label(a.effective)}`);
     const fix = a.limitedBy === 'machine'
-        ? 'Change it in Coral on that machine (Settings > Coral Hub).'
-        : 'Raise it in Servers.';
+        ? 'Change it in Coral on that machine (Settings > Network and Hub).'
+        : 'Choose "Follow this computer" in Servers.';
     const need = label(required) ? ` needs ${label(required)}` : ' is read-only through the Coral Hub';
     return `Blocked: ${a.label || 'this server'}${need}${parts.length ? ` (${parts.join(' · ')})` : ''}. ${fix}`;
 }
