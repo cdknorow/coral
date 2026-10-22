@@ -59,12 +59,15 @@ const DATABASE = 'The sessions database is damaged (page 12 is corrupt). Stop Co
         await ev(`(async () => { const m = await import(${STATIC} + 'update_check.js'); await m.showFirewallWarning(${JSON.stringify(FIREWALL)}); return true; })()`);
         await waitFor(`!!document.getElementById('firewall-warning-toast')`, 'the firewall toast');
         const fw = await ev(`(() => { const t = document.getElementById('firewall-warning-toast'); const d = t.querySelector('details'); const b = t.getBoundingClientRect();
-            return { text: t.querySelector('.security-warning-text').textContent, open: d.open, copies: t.querySelectorAll('.firewall-copy').length, cmds: [...t.querySelectorAll('.firewall-cmd code')].map(c => c.textContent), h: b.height, lh: parseFloat(getComputedStyle(t.querySelector('.security-warning-text')).lineHeight) || 20, role: t.getAttribute('role'), never: !![...t.querySelectorAll('button')].find(x => /Don.t show again/.test(x.textContent)) }; })()`);
+            return { text: t.querySelector('.security-warning-text').textContent, open: d.open, copies: t.querySelectorAll('.firewall-copy').length, cmds: [...t.querySelectorAll('.firewall-cmd code')].map(c => c.textContent), h: b.height, textH: t.querySelector('.security-warning-text').getBoundingClientRect().height, lh: parseFloat(getComputedStyle(t.querySelector('.security-warning-text')).lineHeight) || 20, role: t.getAttribute('role'), never: !![...t.querySelectorAll('button')].find(x => /Don.t show again/.test(x.textContent)) }; })()`);
         assert.ok(/more than it needs/.test(fw.text) && !/Set-NetFirewallRule/.test(fw.text), 'the toast says the problem in a sentence, not the commands: ' + fw.text);
         assert.equal(fw.open, false, 'the commands are behind a disclosure');
         assert.equal(fw.copies, 4, 'a Copy button for each of the four commands');
         assert.ok(fw.cmds.every(c => /^(Set|Remove)-NetFirewallRule -Name /.test(c)), 'each command is a command and nothing else: ' + JSON.stringify(fw.cmds));
-        assert.ok(fw.h <= fw.lh * 14, `the toast is short while the commands are closed (at most 14 lines, whatever the font): ${fw.h}px of ${fw.lh}px lines`);
+        // QA measured 205 px on Windows fonts at 1280x800 for four rules, with a 13 px text at line-height 1.45 (18.85 px): 10.9 lines, almost all of it the header, the
+        // padding, the disclosure and the button. 12 lines leaves 10% room; the sentence itself is held to 3 lines, so a long text cannot hide behind the chrome.
+        assert.ok(fw.textH <= fw.lh * 3 + 1, `the sentence is at most 3 lines: ${fw.textH}px of ${fw.lh}px lines`);
+        assert.ok(fw.h <= fw.lh * 12, `the closed toast is at most 12 lines tall, whatever the font: ${fw.h}px of ${fw.lh}px lines`);
         assert.equal(fw.role, null, "announced politely by the notices' own region, not by a role of its own (#6213)");
         assert.ok(fw.never, 'it can be dismissed for good');
         await ev(`[...document.querySelectorAll('#firewall-warning-toast button')].find(x => /Don.t show again/.test(x.textContent)).click(); true`);
