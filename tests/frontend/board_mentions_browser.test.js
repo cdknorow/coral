@@ -33,7 +33,7 @@ const BASE = require('./test_base').BASE;
         const ref = refs.find(r => r.links.length);
         assert.equal(refs.filter(r => r.links.length).length, 1, 'one message has a bare reference link');
         assert.equal(ref.links.length, 1, 'only the bare one is linked');
-        assert.equal(ref.links[0].text, 'artifact 81b837f8'); assert.equal(ref.links[0].aria, `artifact 81b837f8: id ${HEX}`);
+        assert.equal(ref.links[0].text, 'artifact 81b837f8'); assert.equal(ref.links[0].aria, null, 'the accessible name is the visible words, not 64 characters');
         assert.match(ref.links[0].href, new RegExp(`/api/artifacts/${HEX}`), 'pointed at the artifact on the board\'s server, as a named link is'); assert.ok(ref.links[0].cls.includes('board-artifact-link'), 'the board\'s own artifact pass took it'); assert.equal(ref.links[0].hex, HEX); assert.equal(ref.links[0].blank, '_blank');
         assert.ok(ref.code.includes(`coral://artifacts/${HEX}`) && !ref.code.includes('LINK'), 'a code span stays code');
         assert.ok(ref.named.some(x => x.endsWith('|named')), 'a named link stays a named link');

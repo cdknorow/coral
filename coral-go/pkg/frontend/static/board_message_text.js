@@ -220,7 +220,7 @@ export function linkArtifactRefsHtml(html) {
             a.setAttribute('rel', 'noopener noreferrer');
             a.className = 'mb-artifact-ref';
             a.textContent = `artifact ${hex.slice(0, 8)}`;
-            a.setAttribute('aria-label', `artifact ${hex.slice(0, 8)}: id ${hex}`);
+            // no aria-label: the name is the visible "artifact 81b837f8" (a screen reader reads 64 characters one by one, which helps nobody); the full reference is the tooltip
             a.title = `coral://artifacts/${hex}`;
             frag.append(a);
             at = start + 'coral://artifacts/'.length + 64;
