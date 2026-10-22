@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/subgentic/coral/internal/clihelp"
 )
@@ -59,7 +60,11 @@ func (e usageError) Error() string { return e.msg }
 
 // failUsage prints msg and the usage of cmd on stderr and exits 2. Nothing is written to stdout.
 func failUsage(msg, cmd string, rest []string) {
-	fmt.Fprintf(os.Stderr, "Error: %s\n%s\n", msg, commandUsage(cmd, rest))
+	usage := commandUsage(cmd, rest)
+	if cmd == "ui" {
+		usage = strings.SplitN(usage, string([]byte{10, 10}), 2)[0] // the one-line forms, not the paragraph on handing a panel to a subagent
+	}
+	fmt.Fprintf(os.Stderr, "Error: %s\n%s\n", msg, usage)
 	os.Exit(2)
 }
 

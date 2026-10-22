@@ -71,5 +71,8 @@ func TestAgentInputValidationIsAUsageError(t *testing.T) {
 	_, _, stderr = runAgent(t, srv.URL, "not-a-command")
 	assert.Contains(t, stderr, "Unknown command: not-a-command")
 	assert.NotContains(t, stderr, "Usage: coral-agent <command>", "a short message, not the whole help")
+	_, _, stderr = runAgent(t, srv.URL, "ui", "events")
+	assert.Contains(t, stderr, "events --id ID")
+	assert.NotContains(t, stderr, "subagent", "the usage on error is the short list, not the handoff paragraph")
 	assert.False(t, asked, "none of these reached Coral")
 }
