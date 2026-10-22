@@ -4,6 +4,7 @@ package ptymanager
 
 import (
 	"context"
+	"log/slog"
 	"strconv"
 	"strings"
 	"syscall"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/shirou/gopsutil/v4/process"
 
+	"github.com/subgentic/coral/internal/safego"
 	"github.com/subgentic/coral/internal/tmux"
 )
 
@@ -26,32 +28,38 @@ const tmuxTreeGrace = 3 * time.Second
 func beginTreeKill(paneOut string) (finish func()) {
 	pid, err := strconv.Atoi(strings.TrimSpace(paneOut))
 	if err != nil || pid <= 1 {
+		slog.Debug("[tmux] the pane's pid is not known: nothing of its tree is ended", "answer", strings.TrimSpace(paneOut))
 		return func() {}
 	}
 	p, err := process.NewProcess(int32(pid))
 	if err != nil {
+		slog.Debug("[tmux] the pane's process is gone before its kill: nothing of its tree is ended", "pid", pid, "error", err)
 		return func() {}
 	}
 	created, err := p.CreateTime()
 	if err != nil {
+		slog.Debug("[tmux] the pane's start time cannot be read: nothing of its tree is ended", "pid", pid, "error", err)
 		return func() {}
 	}
 	root := member{pid, created}
 	known := treeMembers(root, "") // found now, while they are still its descendants; signalled only after tmux's own kill, which would otherwise find its session already ended by a signal and fail
 	return func() {
-		signalTree(known, syscall.SIGHUP) // what closing the terminal does, then the polite stop
-		signalTree(known, syscall.SIGTERM)
-		deadline := time.Now().Add(tmuxTreeGrace)
-		for anyAlive(known) && time.Now().Before(deadline) {
-			time.Sleep(25 * time.Millisecond)
-		}
-		if !anyAlive(known) {
-			return
-		}
-		left := killTree(known, root, "")
-		for end := time.Now().Add(time.Second); anyAlive(left) && time.Now().Before(end); {
-			time.Sleep(10 * time.Millisecond)
-		}
+		// In the background: the person's Kill, sleep or Restart is answered at once and the tree ends while the dashboard shows the result, not after the grace.
+		safego.Go("ptymanager/tmux-tree", func() {
+			signalTree(known, syscall.SIGHUP) // what closing the terminal does, then the polite stop
+			signalTree(known, syscall.SIGTERM)
+			deadline := time.Now().Add(tmuxTreeGrace)
+			for anyAlive(known) && time.Now().Before(deadline) {
+				time.Sleep(25 * time.Millisecond)
+			}
+			if !anyAlive(known) {
+				return
+			}
+			left := killTree(known, root, "")
+			for end := time.Now().Add(time.Second); anyAlive(left) && time.Now().Before(end); {
+				time.Sleep(10 * time.Millisecond)
+			}
+		})
 	}
 }
 
