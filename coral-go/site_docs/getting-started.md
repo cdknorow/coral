@@ -11,7 +11,7 @@ Coral runs the agent CLIs you already use, each in its own terminal session, and
 
 | Requirement | Notes |
 |---|---|
-| **An agent CLI** | At least one of Claude Code (`claude`), Codex (`codex`), Antigravity (`agy`) or Pi (`pi`), installed **and signed in**. Coral does not install or authenticate these. Follow each vendor's own instructions: [Claude Code](https://code.claude.com/docs/en/overview), [Codex](https://github.com/openai/codex), [Antigravity](https://antigravity.google) (`curl -fsSL https://antigravity.google/cli/install.sh \| bash`; the installer puts `agy` in `~/.local/bin`, which Coral checks too, and which you add to your `PATH` to run `agy` in your own terminal), [Pi](https://pi.dev). |
+| **An agent CLI** | At least one of Claude Code (`claude`), Codex (`codex`), Antigravity (`agy`) or Pi (`pi`), installed **and signed in**. Coral does not install or authenticate these. Follow each vendor's own instructions: [Claude Code](https://code.claude.com/docs/en/overview), [Codex](https://github.com/openai/codex), [Antigravity](https://antigravity.google), [Pi](https://pi.dev). |
 | **git** | Needed for worktree, branch and diff features. |
 | **tmux** | Included in the macOS app. Linux needs your own tmux for the default backend. See [Platforms](#platforms). |
 
@@ -37,11 +37,31 @@ Download the [latest release](https://github.com/subgentic/coral/releases/latest
 /Applications/Coral.app/Contents/MacOS/install-cli.sh
 ```
 
-It links the tools into `~/.local/bin` by default. Use `--dir <path>` for another directory, and make sure that directory is on your `PATH`.
+It links the tools into `~/.local/bin` by default. Make them available in this terminal:
 
-**Windows.** Run the MSI, or extract the portable ZIP. Both are listed under [Platforms](#platforms).
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
 
-**Linux.** Extract the tarball and put the binaries somewhere on your `PATH`. There is no installer or service unit.
+Add that line to your shell's startup file (`~/.zshrc` for zsh, `~/.bashrc` for bash) for later terminals. Use `install-cli.sh --dir <path>` for another directory.
+
+**Windows.** Run the MSI, then open **Coral** from the Start menu. For the portable ZIP, extract it, open PowerShell in the extracted folder, and run:
+
+```powershell
+.\coral.exe --no-browser
+```
+
+Both downloads are listed under [Platforms](#platforms).
+
+**Linux.** In the folder containing your download, extract the tools and add them to your `PATH` (ARM64: replace `amd64` with `arm64`):
+
+```bash
+mkdir -p "$HOME/.local/share/coral"
+tar -xzf coral-linux-amd64.tar.gz -C "$HOME/.local/share/coral"
+export PATH="$HOME/.local/share/coral:$PATH"
+```
+
+Add that `PATH` line to your shell's startup file for later terminals. There is no installer or service unit.
 
 **Homebrew (macOS).** `brew install --cask cdknorow/coral/coral` installs the same signed app from the release; the release workflow updates the tap with each release's checksum. Then run `install-cli.sh` as above for the command-line tools.
 
@@ -49,13 +69,17 @@ It links the tools into `~/.local/bin` by default. Use `--dir <path>` for anothe
 
 ## Start Coral
 
-On macOS, open the app. From a terminal:
+Open Coral from Applications on macOS or the Start menu on Windows. From a terminal with the tools on your `PATH`:
 
 ```bash
 coral --no-browser
 ```
 
+On Linux without tmux, use `coral --backend pty --no-browser`. Keep the terminal open while the server runs. On first launch, review the Terms of Service and accept them if you agree.
+
 By default Coral stores data in `~/.coral`, uses port **8420**, and listens on this computer only (`127.0.0.1`). Open `http://localhost:8420`.
+
+Use the address printed at startup if it differs from the default. If the browser shows **Create a password**, enter and confirm a password, then choose **Create password and open Coral**. Later, sign in with that password. The desktop app can open a signed-in browser directly; `coral open` does the same from a terminal on the server. For a server on another computer, follow [Remote access](remote-access.md).
 
 | Flag | Meaning |
 |---|---|
@@ -63,18 +87,18 @@ By default Coral stores data in `~/.coral`, uses port **8420**, and listens on t
 | `--host <addr>` | Address to bind (also `CORAL_HOST`). Only honored for network addresses when [remote access](remote-access.md) is enabled. |
 | `--remote` | Allow remote access for this run without saving the setting (see [remote access](remote-access.md)). With no `--host`, Coral then listens on every interface. |
 | `--port <n>` | Port (default 8420; also `CORAL_PORT`) |
-| `--backend tmux\|pty` | Terminal backend. Default `tmux`. |
+| `--backend tmux\|pty` | Terminal backend. Default `tmux` on macOS/Linux; `pty` on Windows. |
 | `--no-browser` | Do not open a browser on startup |
 
 `coral --version` (or `coral -v`, or `coral version`) prints the version of the program you run. A running server's version is in its startup log and in `/api/system/status`.
 
 ## Your first agent
 
-1. In the dashboard click **+New**, choose a working directory and an agent type.
-2. The first time an agent CLI runs in a directory it may ask you to confirm that you trust the folder. If an agent seems idle, open its terminal in the dashboard and check for a prompt.
-3. Type a task in the composer.
+1. On Home, choose **Launch agent**. Enter an existing project folder on the computer running Coral under **Working Directory**, or use **Browse**. In other views, use **+ New > AI Agent**.
+2. To choose your installed CLI, open **More options > Agent**. Otherwise Coral uses your default. Choose **Launch** to open the agent.
+3. Open **Terminal** and answer any folder-trust or sign-in prompt from the CLI. Switch to **Chat**, type a task in the composer, and press Enter to send it.
 
-Launching successfully means the agent process was started. It does not prove the CLI is signed in or can reach its model. If an agent appears idle, look at its terminal.
+A successful launch means the agent process started; check its Terminal if it stays idle. For several agents sharing a board, choose **Launch team** on Home, give the team a name and project folder, add agents or choose a template, then choose **Launch Team**.
 
 ## Permission mode
 
@@ -120,7 +144,7 @@ Hover a message in an agent's Chat view (or a board message) and use its bookmar
 | A team's page (opened from the agent list, or its board) | The team's bookmarks: its board's messages and its agents' chats. |
 | Home, Chats, Workflows, Jobs, Analytics, Docs, Servers | Everything, in the Inbox. |
 
-A heading says which ("Saved: QA Engineer", "Saved: my-team", "Saved: all"), and the **Open** and **Done** numbers and the tab's number are of that page; the top bar's bookmark is always the Inbox's, everything's list and number. The toast's **View saved** opens the page's own Saved tab. Each item shows where the message was said, a short snippet, and when it was said and saved. Newest saved is first; you can search and sort them (see the next section).
+A heading says which ("Saved: QA Engineer", "Saved: my-team", "All saved"), and the **Open** and **Done** numbers and the tab's number are of that page; the top bar's bookmark is always the Inbox's, everything's list and number. The toast's **View saved** opens the page's own Saved tab. Each item shows where the message was said, a short snippet, and when it was said and saved. Newest saved is first; you can search and sort them (see the next section).
 
 On an item:
 
