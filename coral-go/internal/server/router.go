@@ -432,7 +432,7 @@ func (s *Server) registerCloud(r *chi.Mux) {
 	// Coral Hub's relaunch into a staged update (#5280): 404 until the feature is switched on and the updater exists.
 	// Where the owner routes read the owner's label recorded at enrolment (#5307).
 	routes.SetHubOwnerLabel(store.NewCloudStore(s.db, store.NewRemoteServerStore(s.db, s.cfg.CoralDir())).OwnerUser)
-	upd := routes.NewUpdateRelaunchHandler(store.NewSessionStore(s.db), s.cfg.CoralDir(), func() string { return routes.TerminalKind(s.terminal) }, routes.BuildRelaunchUpdater())
+	upd := routes.NewUpdateRelaunchHandler(store.NewSessionStore(s.db), s.cfg.CoralDir(), func() string { return routes.TerminalKind(s.terminal) }, routes.BuildRelaunchUpdater(s.cfg.CoralDir(), endThisServer))
 	r.Get("/api/system/update", upd.Status)
 	r.Post("/api/system/update/relaunch", upd.Relaunch)
 	r.Post("/api/cloud/redeem", s.cloudHandler.Redeem)

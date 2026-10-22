@@ -16,6 +16,7 @@ import (
 	"github.com/subgentic/coral/internal/config"
 	"github.com/subgentic/coral/internal/updater/runrecord"
 	"github.com/subgentic/coral/internal/updater/stage"
+	"github.com/subgentic/coral/internal/updater/status"
 	"github.com/subgentic/coral/internal/updater/verify"
 )
 
@@ -25,54 +26,13 @@ import (
 // can carry a home path, a hash or a URL) is NOT in it. The plain text, which is for the person at their own terminal, may show that stored text, as printable text of
 // bounded length.
 
-type statusOut struct {
-	Feature      string `json:"feature"`              // on or off
-	OffReason    string `json:"off_reason,omitempty"` // build_tier, no_version or env_switch
-	ApplyEnabled bool   `json:"apply_enabled"`        // the apply's off switch (#5325)
-	Installed    string `json:"installed,omitempty"`  // the version this program was built as
-	StateFile    string `json:"state_file"`           // present, missing or unreadable
-	Accepted     *struct {
-		Version  string `json:"version,omitempty"`
-		Sequence int64  `json:"sequence"`
-	} `json:"accepted,omitempty"` // the last version that came up and its promote sequence
-	Revoked     int          `json:"revoked"`
-	Staged      *statusStage `json:"staged,omitempty"`
-	LastCheck   string       `json:"last_check,omitempty"`
-	LastFailure *statusFail  `json:"last_failure,omitempty"`
-	Backoff     *statusBack  `json:"backoff,omitempty"`
-	LastApply   *statusApply `json:"last_apply,omitempty"`
-	LastRolled  *statusApply `json:"last_rollback,omitempty"`
-	RunRecord   string       `json:"run_record"` // present, missing or unreadable (Linux: how Coral is started again after an update)
-}
-
-type statusStage struct {
-	Version  string `json:"version"`
-	StagedAt string `json:"staged_at,omitempty"`
-}
-
-type statusFail struct {
-	Version string `json:"version,omitempty"`
-	Stage   string `json:"stage"`
-	Reason  string `json:"-"` // the stored text: plain output only, never the JSON
-	At      string `json:"at,omitempty"`
-}
-
-type statusBack struct {
-	Version  string `json:"version,omitempty"`
-	Until    string `json:"until"`
-	Waiting  bool   `json:"waiting"` // until is still in the future
-	Attempts int    `json:"attempts,omitempty"`
-	Kind     string `json:"kind,omitempty"` // network or verify
-}
-
-type statusApply struct {
-	At     string `json:"at"`
-	From   string `json:"from,omitempty"`
-	To     string `json:"to,omitempty"`
-	By     string `json:"by,omitempty"`
-	Result string `json:"result"`
-	Reason string `json:"reason,omitempty"`
-}
+type (
+	statusOut   = status.Out
+	statusStage = status.Stage
+	statusFail  = status.Fail
+	statusBack  = status.Back
+	statusApply = status.Apply
+)
 
 // maxStatusText bounds any text taken from the state.
 const maxStatusText = 200
@@ -159,10 +119,7 @@ func collectStatus(getenv func(string) string, dataDir string, now time.Time) st
 		out.StateFile = "unreadable" // a zero state follows: nothing below is claimed
 	}
 	if st.Version != "" || st.Sequence != 0 {
-		out.Accepted = &struct {
-			Version  string `json:"version,omitempty"`
-			Sequence int64  `json:"sequence"`
-		}{Version: st.Version, Sequence: st.Sequence}
+		out.Accepted = &status.Accepted{Version: st.Version, Sequence: st.Sequence}
 	}
 	out.Revoked = len(st.Revoked)
 	out.LastCheck = timeText(st.LastCheck)
@@ -208,7 +165,7 @@ func collectStatus(getenv func(string) string, dataDir string, now time.Time) st
 }
 
 // plain is the status in words.
-func (s statusOut) plain(w io.Writer) {
+func plainStatus(s statusOut, w io.Writer) {
 	p := func(format string, a ...any) { fmt.Fprintf(w, format+"\n", a...) }
 	if s.Feature == "on" {
 		p("Automatic updates: on")
@@ -223,6 +180,16 @@ func (s statusOut) plain(w io.Writer) {
 	}
 	if s.Installed != "" {
 		p("Installed version: %s", s.Installed)
+	}
+	if i := s.Install; i != nil {
+		switch {
+		case i.Unsupported != "":
+			p("This install (%s) is not updated by Coral: %s", i.Kind, i.Unsupported)
+		case !i.Writable:
+			p("This install (%s) is in a folder this user cannot write, so Coral cannot replace it", i.Kind)
+		default:
+			p("This install (%s) can be replaced by Coral", i.Kind)
+		}
 	}
 	switch s.StateFile {
 	case "missing":
@@ -298,12 +265,13 @@ func reasonText(r string) string {
 // runStatus answers "status" and "status --json"; the caller has checked the argv.
 func runStatus(args []string, getenv func(string) string, stdout io.Writer) int {
 	out := collectStatus(getenv, config.ResolveCoralDir(""), time.Now())
+	out.Install = probeInstall()
 	if len(args) == 2 {
 		enc := json.NewEncoder(stdout)
 		enc.SetIndent("", "  ")
 		_ = enc.Encode(out)
 		return 0
 	}
-	out.plain(stdout)
+	plainStatus(out, stdout)
 	return 0
 }

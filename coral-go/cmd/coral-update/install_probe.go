@@ -1,0 +1,41 @@
+package main
+
+import (
+	"path/filepath"
+	"strings"
+
+	"github.com/subgentic/coral/internal/updater/status"
+)
+
+// installer is the part of an apply platform the status needs: where this program is installed and why that install would not be replaced.
+type installer interface {
+	Install() (string, error)
+	Unsupported(install string) string
+}
+
+// describeInstall is what "coral-update status" says about the install (#5388): its kind, the apply's fixed word for an install it will not touch, and whether this user can replace it.
+// writable answers for the install's folder and the install itself. nil when this program is not in an install at all (a development build).
+func describeInstall(p installer, goos string, writable func(path string) bool) *status.Install {
+	install, err := p.Install()
+	if err != nil {
+		return nil
+	}
+	why := p.Unsupported(install)
+	w := writable(filepath.Dir(install)) && writable(install)
+	kind := "unwritable"
+	switch {
+	case why == "homebrew", why == "package_manager" && homebrewFolder(install):
+		kind = "homebrew"
+	case why == "" && w && goos == "darwin":
+		kind = "app"
+	case why == "" && w && goos == "linux":
+		kind = "tarball"
+	}
+	return &status.Install{Kind: kind, Unsupported: word(why), Writable: w}
+}
+
+// homebrewFolder: a folder Linuxbrew's default prefix owns. (The environment is not read here: coral-update takes no variable but CORAL_AUTO_UPDATE; a Linuxbrew in another prefix is
+// still refused by the apply, as a package manager's folder, and is called unwritable here.)
+func homebrewFolder(path string) bool {
+	return path == "/home/linuxbrew" || strings.HasPrefix(path, "/home/linuxbrew"+string(filepath.Separator))
+}
