@@ -75,7 +75,11 @@ func readPlain(path string, max int64) ([]byte, error) {
 // named by its record's version, and for a file that is missing, a link, or too large: the staging folder is user-writable and trusted as little
 // as anything else.
 func LoadStaged(dataDir string) (*Staged, error) {
-	root := filepath.Join(dataDir, UpdatesDir, StagingDir)
+	return loadStagedIn(filepath.Join(dataDir, UpdatesDir, StagingDir))
+}
+
+// loadStagedIn is LoadStaged for the one version folder under root (the staging folder, or the rollback folder: rollback.go).
+func loadStagedIn(root string) (*Staged, error) {
 	fi, err := os.Lstat(root)
 	if err != nil || !fi.IsDir() {
 		return nil, ErrNoStaged

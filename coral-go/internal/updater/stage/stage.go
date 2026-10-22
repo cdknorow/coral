@@ -76,6 +76,9 @@ type Config struct {
 	// MaxPackage is the hard size limit (DefaultMaxPackage); BytesPerSecond paces the download (0: unpaced).
 	MaxPackage     int64
 	BytesPerSecond int64
+	// Rollback asks the check to also keep the installed version's own package, verified, for the Windows rollback (#162 (b), rollback.go):
+	// set on a Windows MSI install, where a new version that doesn't come up is put back by reinstalling the previous MSI.
+	Rollback bool
 }
 
 func (c *Config) now() time.Time {
@@ -252,6 +255,7 @@ func (c *checker) run(ctx context.Context) Result {
 	if c.alreadyStaged(rec) {
 		c.st.Stage = &verify.StageState{Staged: rec.Version, StagedAt: stagedAtField(c.st)}
 		c.save()
+		c.keepRollbackIfAsked(ctx)
 		c.res.Result = ResultAlreadyStaged
 		return c.res
 	}
@@ -261,6 +265,7 @@ func (c *checker) run(ctx context.Context) Result {
 	c.st.LastFailure = nil
 	c.st.Stage = &verify.StageState{Staged: rec.Version, StagedAt: c.now.UTC().Format(time.RFC3339)}
 	c.save()
+	c.keepRollbackIfAsked(ctx)
 	c.res.Result = ResultStaged
 	return c.res
 }
@@ -319,7 +324,11 @@ func (h *hashWriter) Write(b []byte) (int, error) {
 // stage writes the files and the package into a partial folder, checks the package hash as it was written, and moves the folder into place in
 // one rename. Older staged versions and leftovers are removed only after that.
 func (c *checker) stage(ctx context.Context, base string, rec *verify.Record, cand verify.Candidate) error {
-	root := filepath.Join(c.dir, StagingDir)
+	return c.stageInto(ctx, filepath.Join(c.dir, StagingDir), base, rec, cand)
+}
+
+// stageInto is stage into root (the staging folder, or the rollback folder: rollback.go).
+func (c *checker) stageInto(ctx context.Context, root, base string, rec *verify.Record, cand verify.Candidate) error {
 	if err := verify.EnsureDir(root); err != nil {
 		return err
 	}

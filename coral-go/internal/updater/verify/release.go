@@ -120,6 +120,20 @@ func releaseSAN(repo, tag string) string {
 // The order is the point: the manifest and its signature first; the manifest's rules; the sums file only once its sha256 equals the manifest's;
 // then its bundle against the release signer for that exact tag, with the certificate's commit equal to the manifest's source_sha.
 func Release(v BundleVerifier, pins Pins, c Candidate, asset func(version string) string, st State, installed string, now time.Time) (*Record, error) {
+	return verifyRelease(v, pins, c, asset, now, func(m *Manifest) error { return CheckManifest(m, pins, st, installed, now) })
+}
+
+// ReleaseOf verifies the release of exactly version, for the Windows rollback (#162 (b)): the previous version's package, to put back when a
+// new one didn't come up. It is the same chain as Release, the manifest's signature, the sums file it names and its signature for that exact
+// tag and commit, and the package's entry, with the rules of a re-install instead of an update's (CheckManifestOf): the version is exactly
+// the one asked for, and it is not revoked; being newer than the installed version, a sequence above the last accepted and an unexpired
+// manifest are an update's rules and don't apply to the version Coral is running now.
+func ReleaseOf(v BundleVerifier, pins Pins, c Candidate, asset func(version string) string, version string, st State, now time.Time) (*Record, error) {
+	return verifyRelease(v, pins, c, asset, now, func(m *Manifest) error { return CheckManifestOf(m, pins, st, version, now) })
+}
+
+// verifyRelease is Release's chain, with the manifest's rules given.
+func verifyRelease(v BundleVerifier, pins Pins, c Candidate, asset func(version string) string, now time.Time, rules func(*Manifest) error) (*Record, error) {
 	// 2. The manifest's signature, against the promote workflow's identity.
 	if len(c.Manifest) == 0 || len(c.Manifest) > MaxManifestBytes {
 		return nil, fail(StageManifestDocument, "manifest size %d is outside 1..%d", len(c.Manifest), MaxManifestBytes)
@@ -132,7 +146,7 @@ func Release(v BundleVerifier, pins Pins, c Candidate, asset func(version string
 	if err != nil {
 		return nil, fail(StageManifestDocument, "%v", err)
 	}
-	if err := CheckManifest(m, pins, st, installed, now); err != nil {
+	if err := rules(m); err != nil {
 		return nil, err
 	}
 	// 4. The release: its sums file is the one the manifest names, before anything in it is read.
@@ -218,6 +232,33 @@ func CheckManifest(m *Manifest, pins Pins, st State, installed string, now time.
 	}
 	if !now.Before(m.until) {
 		return fail(StageManifestRules, "the manifest expired at %s", m.ExpiresAt)
+	}
+	if m.until.Sub(m.promoted) > pins.MaxManifestLifetime {
+		return fail(StageManifestRules, "the manifest's lifetime %s is longer than the %s allowed", m.until.Sub(m.promoted), pins.MaxManifestLifetime)
+	}
+	for _, r := range append(append([]string{}, m.Revoked...), st.Revoked...) {
+		if r == m.Version {
+			return fail(StageManifestRules, "version %s is revoked", m.Version)
+		}
+	}
+	return nil
+}
+
+// CheckManifestOf applies the rules of a re-install of exactly version (ReleaseOf): its repository, not a prerelease, exactly that version and
+// its tag "v"+version, not from the future, within the longest lifetime, and not revoked (by this manifest or any earlier one). A revoked
+// version is never put back.
+func CheckManifestOf(m *Manifest, pins Pins, st State, version string, now time.Time) error {
+	if m.Repo != pins.Repo {
+		return fail(StageManifestRules, "the manifest is for %q, not %q", m.Repo, pins.Repo)
+	}
+	if m.Prerelease {
+		return fail(StageManifestRules, "version %s is a prerelease", m.Version)
+	}
+	if m.Version != version || m.Tag != "v"+version {
+		return fail(StageManifestRules, "the manifest is for %s (%s), not %s", m.Version, m.Tag, version)
+	}
+	if m.promoted.After(now.Add(pins.MaxSkew)) {
+		return fail(StageManifestRules, "promoted_at %s is in the future", m.PromotedAt)
 	}
 	if m.until.Sub(m.promoted) > pins.MaxManifestLifetime {
 		return fail(StageManifestRules, "the manifest's lifetime %s is longer than the %s allowed", m.until.Sub(m.promoted), pins.MaxManifestLifetime)
