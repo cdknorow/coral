@@ -40,7 +40,7 @@ type inboundKind struct {
 }
 
 // inboundKinds are every kind this package knows, in the order the hub checks them.
-var inboundKinds = []*inboundKind{relayKind, signinKind}
+var inboundKinds = []*inboundKind{relayKind, signinKind, controlKind}
 
 // inboundReadDeadline bounds how long the hub waits for a request's header and body
 // (Security: enforced before any lookup).
@@ -57,6 +57,8 @@ func (c SessionConfig) inboundHook(k *inboundKind) inboundHook {
 				return c.OnRelay(ctx, s, RelayRequest{Path: path, Body: body})
 			}
 		}
+	case KindControl:
+		return c.localModeHook()
 	case KindSignin:
 		if c.OnSignin != nil {
 			return func(ctx context.Context, s *Session, path string, body []byte) RelayResponse {
@@ -159,6 +161,9 @@ func (s *Session) serveInbound(st io.ReadWriteCloser, setDeadline func(time.Time
 	inflight, limit := &s.inflight, s.cfg.MaxRelayInFlight
 	if k.kind == KindSignin {
 		inflight, limit = &s.signinInflight, s.cfg.MaxSigninInFlight
+	}
+	if k.kind == KindControl { // its own budget too: a relay burst must not make a mode change wait (and the hub already answers a faster one with 429)
+		inflight, limit = &s.controlInflight, 2
 	}
 	if int(inflight.Add(1)) > limit {
 		inflight.Add(-1)

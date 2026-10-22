@@ -27,6 +27,8 @@ import (
 // LocalHandler executes tunnel streams against the local Coral API on
 // loopback, enforcing the connector-side guards whatever the hub sends.
 type LocalHandler struct {
+	wsMu    sync.Mutex // guards openWSs: the websocket streams being forwarded (CloseAbove, #5918)
+	openWSs map[*openWS]struct{}
 	// BaseURL of the local API, e.g. http://127.0.0.1:8420. Must be loopback.
 	BaseURL string
 	// Authorize adds the connector's own local credentials to the outgoing

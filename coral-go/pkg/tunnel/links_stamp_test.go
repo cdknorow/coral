@@ -189,7 +189,7 @@ func TestRelayedMessagesFilesAndSnapshotsAreInteractTierAndTheModeIsReadPerReque
 func TestTheHubReadsThePeersHelloCapabilities(t *testing.T) {
 	hub := newHub(t, fastCfg())
 	sess, _ := connect(t, hub, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) }), nil)
-	assert.ElementsMatch(t, []string{CapCrossTeamAllowlist, CapCrossTeamLinks}, sess.PeerCapabilities())
+	assert.ElementsMatch(t, []string{CapCrossTeamAllowlist, CapCrossTeamLinks, CapabilityLocalMode}, sess.PeerCapabilities())
 	assert.True(t, sess.HasPeerCapability(CapCrossTeamLinks))
 	assert.True(t, sess.HasPeerCapability(CapCrossTeamAllowlist))
 	assert.False(t, sess.HasPeerCapability("cross_team_links/2"), "another version is another capability")

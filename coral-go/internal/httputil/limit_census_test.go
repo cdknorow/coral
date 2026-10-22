@@ -30,6 +30,7 @@ var tooManyRequestsSites = map[string]struct {
 	"internal/tracking/posthog.go":                      {2, "client side: retries the analytics service's 429 (and says so in a comment)"},
 	"cmd/coral/cloud_connect.go":                        {1, "client side: the CLI reads Coral Hub's 429"},
 	"cmd/coral-board/send.go":                           {1, "client side: coral-board reads a relayed send's 429 to suggest a retry (#3489)"},
+	"pkg/tunnel/control.go":                             {1, "relay protocol, not HTTP to the dashboard: the hub's one-a-second limit on the connector's local mode messages, answered to the connector, which falls back to a reconnect (#5918)"},
 	"pkg/tunnel/inbound.go":                             {1, "relay protocol, not HTTP to the dashboard: the hub's per-tunnel in-flight cap answer to a connector, which Coral passes on marked (#3489; moved from relay.go into the shared table of connector-opened kinds, #3966)"},
 	"cmd/coral-agent/main.go":                           {1, "client side: coral-agent reads Coral's 429 on an upload and surfaces its Retry-After (#4004)"},
 	"pkg/tunnel/limit.go":                               {1, "the connector's hub-wide in-flight cap (#3624): a load limit, not a per-action one, so it is marked X-Coral-Limit: connector and the dashboard backs off on it"},

@@ -74,7 +74,52 @@ func (l *LocalHandler) serveWS(ctx context.Context, s *Stream) {
 		// What a View stream sends to the hub is redacted (#3562); the setting is read per frame.
 		toHub = newWSRedact(ctx, down, l.redactor(), l.redactFor(viewerTier(h)), strings.HasPrefix(dec, "/ws/terminal/"))
 	}
+	// Registered while it is open, so that lowering this computer's mode can end the streams that were allowed more than the new mode (CloseAbove, #5918).
+	unregister := l.registerWS(viewerTier(h), func() {
+		up.Close(websocket.StatusPolicyViolation, "access mode lowered by this computer")
+		down.Close(websocket.StatusPolicyViolation, "access mode lowered by this computer")
+	})
+	defer unregister()
 	pumpWS(ctx, up, down, gate, toHub)
+}
+
+// openWS is a websocket stream the connector is forwarding: the viewer's tier (the hub user's, as the hub stamped it) and how to end it.
+type openWS struct {
+	viewer Tier
+	end    func()
+}
+
+func (l *LocalHandler) registerWS(viewer Tier, end func()) (unregister func()) {
+	e := &openWS{viewer: viewer, end: end}
+	l.wsMu.Lock()
+	if l.openWSs == nil {
+		l.openWSs = map[*openWS]struct{}{}
+	}
+	l.openWSs[e] = struct{}{}
+	l.wsMu.Unlock()
+	return func() {
+		l.wsMu.Lock()
+		delete(l.openWSs, e)
+		l.wsMu.Unlock()
+	}
+}
+
+// CloseAbove ends every open websocket stream whose viewer was allowed more than mode (its viewer tier is above it), with the policy-violation close the frame gate gives and the reason
+// "access mode lowered by this computer", and reports how many. Called when this computer's mode is lowered to mode, before the hub is told (#5918): without it such a stream, a terminal a
+// viewer of Interact could type into, stays open and streaming until the first frame above the new mode. A viewer who could only look (View) is not above any mode and is left alone.
+func (l *LocalHandler) CloseAbove(mode Mode) int {
+	l.wsMu.Lock()
+	var ending []*openWS
+	for e := range l.openWSs {
+		if e.viewer > mode {
+			ending = append(ending, e)
+		}
+	}
+	l.wsMu.Unlock()
+	for _, e := range ending {
+		e.end()
+	}
+	return len(ending)
 }
 
 type wsEnd interface {

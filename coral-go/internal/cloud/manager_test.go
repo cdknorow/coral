@@ -46,6 +46,7 @@ type fakeHub struct {
 	account   atomic.Value // string: the account the enrollment reply names (#3966); unset: none
 	ownerUser atomic.Value // string: the owner's hub-user label the enrollment reply names (#5280); unset: none
 	signin    atomic.Value // signinFunc: answers Hub sign-in (#3966); unset: not advertised
+	onMode    atomic.Value // func(tunnel.Mode): takes the local mode message (#5918); unset: local_mode/1 is not advertised
 	routeMu   sync.Mutex
 	routeSeen []string // the X-Coral-Route header of each /tunnel dial
 }
@@ -120,10 +121,20 @@ func newFakeHub(t *testing.T) *fakeHub {
 		}, tunnel.SessionConfig{
 			RouteKey: func(any) string { k, _ := h.routeKey.Load().(string); return k },
 			Capabilities: func(any) []string {
+				var caps []string
 				if _, ok := h.signin.Load().(signinFunc); ok {
-					return []string{tunnel.CapabilitySignin}
+					caps = append(caps, tunnel.CapabilitySignin)
 				}
-				return nil
+				if _, ok := h.onMode.Load().(func(tunnel.Mode)); ok {
+					caps = append(caps, tunnel.CapabilityLocalMode)
+				}
+				return caps
+			},
+			MinLocalModeGap: 100 * time.Millisecond, // the real hub's is a second; a test holds its own messages to 300 ms
+			OnLocalMode: func(_ context.Context, _ *tunnel.Session, mode tunnel.Mode) {
+				if f, ok := h.onMode.Load().(func(tunnel.Mode)); ok {
+					f(mode)
+				}
 			},
 			OnSignin: func(ctx context.Context, s *tunnel.Session, req tunnel.SigninRequest) tunnel.SigninResponse {
 				return h.signin.Load().(signinFunc)(req)

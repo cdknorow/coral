@@ -52,6 +52,10 @@ type SessionConfig struct {
 	// OnSignin handles a Hub sign-in request the connector opens (#3966, signin.go). Nil: the
 	// capability is never advertised.
 	OnSignin SigninFunc
+	// OnLocalMode handles the connector's local mode message (#5918, control.go). Nil: "local_mode/1" is never advertised.
+	OnLocalMode LocalModeFunc
+	// MinLocalModeGap is the least time between two local mode messages from one tunnel (default LocalModeMinGap, a second): a faster one is answered 429.
+	MinLocalModeGap time.Duration
 	// MaxSigninInFlight caps concurrent OnSignin calls per tunnel (default 2), on their own budget
 	// beside the relay's; more get 429.
 	MaxSigninInFlight int
@@ -146,17 +150,21 @@ type Session struct {
 	identity  any
 	version   int
 	coralVer  string
-	bootID    string    // the connector's Hello.BootID when well formed (#5855), else ""
-	startedAt time.Time // the connector process's Hello.StartedAt when it parses, else the zero time
-	localMode Mode
-	peerCaps  []string // the connector's Hello.Capabilities when the whole list is well formed, else nil
+	bootID    string       // the connector's Hello.BootID when well formed (#5855), else ""
+	startedAt time.Time    // the connector process's Hello.StartedAt when it parses, else the zero time
+	localMode atomic.Int32 // the connector's maximum mode (a Mode): its Hello, then each local_mode message
+	peerCaps  []string     // the connector's Hello.Capabilities when the whole list is well formed, else nil
 	active    atomic.Int32
 	closeOnce sync.Once
 	hooks     map[Kind]inboundHook // the connector-opened kinds advertised to this tunnel
 	inflight  atomic.Int32         // relay hook calls in progress
 	// signinInflight: sign-in hook calls in progress (their own budget, #3966).
 	signinInflight atomic.Int32
-	relaySlot      chan struct{} // connector-opened streams being handled (MaxRelayStreams)
+	// control requests (#5918): their own in-flight budget, and when the last local mode message was taken (at most one a second).
+	controlInflight atomic.Int32
+	controlMu       sync.Mutex
+	lastControl     time.Time
+	relaySlot       chan struct{} // connector-opened streams being handled (MaxRelayStreams)
 	// artifactHook is set only on a tunnel the hub advertised relay_artifact to; artifactInflight
 	// counts its calls in progress.
 	artifactHook     RelayArtifactFunc
@@ -252,8 +260,9 @@ func Accept(ctx context.Context, c *websocket.Conn, auth AuthFunc, cfg SessionCo
 		_ = nc.Close()
 		return nil, err
 	}
-	s := &Session{ys: ys, cfg: cfg, cancel: cancel, identity: identity, version: v, coralVer: hello.CoralVersion, localMode: parseLocalMode(hello.LocalMode), peerCaps: wellFormedCapabilities(hello.Capabilities),
+	s := &Session{ys: ys, cfg: cfg, cancel: cancel, identity: identity, version: v, coralVer: hello.CoralVersion, peerCaps: wellFormedCapabilities(hello.Capabilities),
 		hooks: hooks, artifactHook: artifactHook, relaySlot: make(chan struct{}, cfg.MaxRelayStreams)}
+	s.localMode.Store(int32(parseLocalMode(hello.LocalMode)))
 	s.bootID, s.startedAt = parsePeerBoot(hello.BootID, hello.StartedAt) // informational (#5855)
 	go func() { defer safego.Recover("tunnel/server:s.rejectInbound"); s.rejectInbound() }()
 	go func() { defer safego.Recover("tunnel/server:191"); <-ys.CloseChan(); s.Close() }()
@@ -314,7 +323,7 @@ func (s *Session) Version() int { return s.version }
 // LocalMode is the maximum access mode the connector reported. It is only a display
 // hint: an unknown or missing value is view, and the hub must never treat it as
 // permission (the connector enforces its own limit).
-func (s *Session) LocalMode() Mode { return s.localMode }
+func (s *Session) LocalMode() Mode { return Mode(s.localMode.Load()) }
 
 func parseLocalMode(v string) Mode {
 	if m, ok := ParseMode(v); ok {
