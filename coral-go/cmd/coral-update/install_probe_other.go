@@ -1,8 +1,8 @@
-//go:build !darwin && !linux
+//go:build !darwin && !linux && !windows
 
 package main
 
 import "github.com/subgentic/coral/internal/updater/status"
 
-// probeInstall: Windows has no apply yet, so there is nothing to say about the install.
+// probeInstall: no apply on this platform, so there is nothing to say about the install.
 func probeInstall() *status.Install { return nil }

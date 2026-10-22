@@ -97,7 +97,7 @@ func timeText(s string) string {
 }
 
 func collectStatus(getenv func(string) string, dataDir string, now time.Time) statusOut {
-	out := statusOut{Feature: "on", ApplyEnabled: applyEnabled, Installed: config.Version, Install: installFromSupport(installSupport())}
+	out := statusOut{Feature: "on", ApplyEnabled: applyEnabled, Installed: config.Version}
 	switch {
 	case !config.TierChecksForUpdates:
 		out.Feature, out.OffReason = "off", "build_tier"
@@ -268,7 +268,7 @@ func reasonText(r string) string {
 // runStatus answers "status" and "status --json"; the caller has checked the argv.
 func runStatus(args []string, getenv func(string) string, stdout io.Writer) int {
 	out := collectStatus(getenv, config.ResolveCoralDir(""), time.Now())
-	if i := probeInstall(); i != nil { // macOS and Linux; Windows has its own answer (installSupport), which collectStatus already put in
+	if i := probeInstall(); i != nil { // macOS, Linux and Windows; nil elsewhere
 		out.Install = i
 	}
 	if len(args) == 2 {

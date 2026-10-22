@@ -52,17 +52,3 @@ func windowsMSIConfig(dataDir string, trust root.TrustedMaterial, pins verify.Pi
 		},
 	}
 }
-
-// installSupport is what "coral-update status" says about this install: whether the apply can update it, for the server to ask before it quits for
-// an update (#5946). "supported" is a Coral registered per machine, under Program Files; otherwise the apply's own word for why not.
-func installSupport() string {
-	m := newWindowsMSI("")
-	install, err := m.Install()
-	if err != nil {
-		return "no_registered_product"
-	}
-	if why := m.Unsupported(install); why != "" {
-		return why
-	}
-	return "supported"
-}

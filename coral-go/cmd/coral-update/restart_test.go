@@ -180,11 +180,3 @@ func TestAnApplyThatStopsAtItsOffSwitchesStartsCoralAgain(t *testing.T) {
 		assert.Equal(t, []string{install}, *started)
 	})
 }
-
-// Where the question does not apply (not Windows) the status has no install field; the server asks on Windows only.
-func TestTheStatusHasNoInstallFieldOffWindows(t *testing.T) {
-	if installSupport() == "" {
-		out := collectStatus(func(string) string { return "" }, t.TempDir(), time.Now())
-		assert.Empty(t, out.Install)
-	}
-}
