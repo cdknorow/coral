@@ -46,7 +46,7 @@ func TestRunningServerToleratesOldAndMissingLockFiles(t *testing.T) {
 	pid, url = runningServer(p)
 	assert.Equal(t, 1234, pid)
 	assert.Empty(t, url)
-	assert.Contains(t, alreadyRunningError(dir, p).Error(), "(PID 1234)")
+	assert.Contains(t, alreadyRunningError(dir, p).Error(), ", PID 1234.")
 	require.NoError(t, os.WriteFile(p, []byte("1234\njavascript:evil\n"), 0o600))
 	_, url = runningServer(p)
 	assert.Empty(t, url, "only an http(s) address is shown")

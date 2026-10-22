@@ -12,6 +12,7 @@ func TestStartFailureTitle(t *testing.T) {
 		"cannot start Coral: another Coral server is already running for this data directory (stop the existing server or use a different data directory)": "Not started: another Coral server is already running for this data directory (stop…",
 		"can't listen on 127.0.0.1 port 8420 (in use?): listen tcp 127.0.0.1:8420: bind: address already in use":                                           "Not started: can't listen on 127.0.0.1 port 8420 (in use?): listen tcp 127.0.0.1:8…",
 		"failed to open database\nsecond line": "Not started: failed to open database",
+		"Coral is already running on this data folder (C:\\Users\\me\\.coral), at http://127.0.0.1:8450, PID 1234. Open it with 'coral open'.": "Not started: Coral is already running on this data folder (C:\\Users\\me\\.coral), at…", // #279: no "cannot start Coral:" lead before this one now
 	} {
 		got := statusTitle("Not started: ", in)
 		if got != want {
