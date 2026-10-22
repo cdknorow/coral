@@ -104,7 +104,7 @@ func newRelaunchEnv(t *testing.T) *relaunchEnv {
 	t.Cleanup(func() { relaunchNeedsLocalApproval = was })
 	e := &relaunchEnv{t: t, settings: map[string]string{MaxModeSetting: "launch"}, label: ownerA, on: true,
 		now:    time.Date(2026, 10, 20, 12, 0, 0, 0, time.UTC),
-		agents: []RestartAgent{{SessionID: "claude-1", Name: "Dev", Backend: "pty", State: "idle"}}}
+		agents: []RestartAgent{{SessionID: "claude-1", Name: "Dev", State: "idle"}}}
 	e.up = &stubUpdater{rec: UpdaterRecord{Enabled: true, Installed: "1.4.130", State: updStaged, Supported: true,
 		Staged: &StagedUpdate{Version: "1.4.131", StagedAt: e.now.Add(-48 * time.Hour), Verified: true},
 		Trust:  UpdateTrust{Issuer: "https://token.actions.githubusercontent.com", Signer: "signer", ManifestSequence: 42, PromotedAt: e.now.Add(-72 * time.Hour), ExpireAt: e.now.Add(24 * time.Hour)}}}
@@ -189,7 +189,7 @@ func TestRelaunchHappyPathAndStatusShape(t *testing.T) {
 	assert.Equal(t, "", rl["reason"])
 	assert.EqualValues(t, 60, rl["ack_expires_in"])
 	assert.Equal(t, false, rl["tmux_agents_restart"])
-	assert.Equal(t, []any{map[string]any{"session_id": "claude-1", "name": "Dev", "backend": "pty", "state": "idle"}}, rl["restarts"])
+	assert.Equal(t, []any{map[string]any{"session_id": "claude-1", "name": "Dev", "state": "idle"}}, rl["restarts"])
 
 	code, out := e.post(ack(rl["ack"].(string)), hubHdr(ownerA))
 	require.Equal(t, 202, code, "%v", out)
@@ -204,12 +204,12 @@ func TestRelaunchHappyPathAndStatusShape(t *testing.T) {
 
 func TestStatusNeverHoldsAPathURLHashOrLog(t *testing.T) {
 	e := newRelaunchEnv(t)
-	e.agents = []RestartAgent{{SessionID: "claude-1", Name: "Dev\x00\u202e" + strings.Repeat("x", 100), Backend: "tmux", State: "<script>"}}
+	e.agents = []RestartAgent{{SessionID: "claude-1", Name: "Dev\x00\u202e" + strings.Repeat("x", 100), State: "<script>"}}
 	_, st := e.status(hubHdr(ownerA))
 	b, _ := json.Marshal(st)
 	rl := st["relaunch"].(map[string]any)
 	row := rl["restarts"].([]any)[0].(map[string]any)
-	assert.Equal(t, "pty", row["backend"])
+	assert.NotContains(t, row, "backend", "a relaunch restarts only pty agents: the field said nothing")
 	assert.Equal(t, "working", row["state"], "a state outside the vocabulary is not sent")
 	assert.Len(t, []rune(row["name"].(string)), 64, "controls and bidi removed, 64 characters")
 	assert.NotContains(t, row["name"], "\u202e")
@@ -383,7 +383,7 @@ func TestNothingStagedUnverifiedAndUnsupported(t *testing.T) {
 func TestAStaleTokenGetsTheNewListAndANewToken(t *testing.T) {
 	for name, change := range map[string]func(e *relaunchEnv){
 		"an agent starts": func(e *relaunchEnv) {
-			e.agents = append(e.agents, RestartAgent{SessionID: "claude-2", Name: "QA", Backend: "pty", State: "working"})
+			e.agents = append(e.agents, RestartAgent{SessionID: "claude-2", Name: "QA", State: "working"})
 		},
 		"an agent's state changes": func(e *relaunchEnv) { e.agents[0].State = "working" },
 		"the version changes":      func(e *relaunchEnv) { e.up.rec.Staged.Version = "1.4.132" },

@@ -4,7 +4,7 @@
  * The status, as the server sends it:
  *   { enabled, installed, state: none|staged|applying|failed,
  *     staged: { version, staged_at, days_ready, verified },
- *     relaunch: { available, reason, hub_allowed, restarts: [{ session_id, name, backend, state, resumes? }], tmux_agents_restart, ack },
+ *     relaunch: { available, reason, hub_allowed, restarts: [{ session_id, name, state, resumes? }], tmux_agents_restart, ack },
  *     last_result: { at, from, to, result: relaunched|refused|failed_rolled_back, by },
  *     checked_at?, install_kind? (homebrew|unsupported), upgrade_command?, auto? }
  * The fields marked ? are not in the design yet; the UI treats each as absent when it is not sent. */
@@ -70,7 +70,7 @@ export function normalizeRelaunch(r) {
     return {
         available: r.available === true,
         reason: str(r.reason),
-        restarts: (Array.isArray(r.restarts) ? r.restarts : []).map((a) => ({ sessionId: str(a && a.session_id), name: str(a && a.name), backend: str(a && a.backend), state: str(a && a.state), resumes: a && typeof a.resumes === 'boolean' ? a.resumes : null })),
+        restarts: (Array.isArray(r.restarts) ? r.restarts : []).map((a) => ({ sessionId: str(a && a.session_id), name: str(a && a.name), state: str(a && a.state), resumes: a && typeof a.resumes === 'boolean' ? a.resumes : null })),
         tmuxRestart: r.tmux_agents_restart === true,
         ack: str(r.ack),
     };

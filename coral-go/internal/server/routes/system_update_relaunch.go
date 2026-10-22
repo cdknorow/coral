@@ -162,7 +162,7 @@ type UpdaterRecord struct {
 
 // RestartAgent is one pty agent a relaunch would restart.
 type RestartAgent struct {
-	SessionID, Name, Backend, State string
+	SessionID, Name, State string
 }
 
 // RelaunchAudit is one attempt, allowed or refused: no email or name, the hub user's pseudonym, ids and a count.
@@ -494,7 +494,7 @@ func (h *UpdateRelaunchHandler) view(ctx context.Context, id callerIdentity) (re
 func (h *UpdateRelaunchHandler) relaunchJSON(key []byte, id callerIdentity, v relaunchView) (map[string]any, error) {
 	restarts := make([]map[string]any, 0, len(v.agents))
 	for _, a := range v.agents {
-		restarts = append(restarts, map[string]any{"session_id": printable(a.SessionID, 64), "name": cleanName(a.Name), "backend": "pty", "state": cleanState(a.State)})
+		restarts = append(restarts, map[string]any{"session_id": printable(a.SessionID, 64), "name": cleanName(a.Name), "state": cleanState(a.State)})
 	}
 	out := map[string]any{
 		"available": v.reason == "", "reason": v.reason, "hub_allowed": v.reason != reasonSwitchOff && v.reason != reasonMaxMode,
