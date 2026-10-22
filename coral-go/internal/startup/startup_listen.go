@@ -63,7 +63,7 @@ func listenAll(cfg *config.Config) ([]net.Listener, int, error) {
 	port := cfg.Port
 	var lns []net.Listener
 	for _, h := range hosts {
-		ln, err := net.Listen("tcp", net.JoinHostPort(strings.Trim(h, "[]"), strconv.Itoa(port)))
+		ln, err := listenTCP(net.JoinHostPort(strings.Trim(h, "[]"), strconv.Itoa(port)))
 		if err != nil {
 			for _, open := range lns {
 				open.Close()
