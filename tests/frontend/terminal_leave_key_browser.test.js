@@ -43,12 +43,21 @@ const BASE = require('./test_base').BASE;
         const press = async (key, mods = {}) => {
             const modifiers = (mods.alt ? 1 : 0) | (mods.ctrl ? 2 : 0) | (mods.shift ? 8 : 0);
             const base = { key, code: key, windowsVirtualKeyCode: VK[key], nativeVirtualKeyCode: VK[key], modifiers };
-            await Input.dispatchKeyEvent({ type: 'rawKeyDown', ...base });
+            // A plain Esc is a keyDown carrying its text, as a real key press sends it (a rawKeyDown Escape reaches xterm as no input at all).
+            const plainEsc = key === 'Escape' && !modifiers;
+            await Input.dispatchKeyEvent(plainEsc ? { type: 'keyDown', ...base, text: '', unmodifiedText: '' } : { type: 'rawKeyDown', ...base });
             await Input.dispatchKeyEvent({ type: 'keyUp', ...base });
             await ev(`new Promise(r => setTimeout(r, 40))`); // sleep-ok: the typed-input batch is flushed on a short timer
         };
         const intoTerminal = async () => { await ev(`window.__term.focus(); window.__sent.length = 0; true`); assert.equal(await active(), 'terminal', 'the terminal has the focus'); };
-        const sent = () => ev(`window.__sent.filter(f => !/"type":"(resize|terminal_size|ping)"/.test(f)).join('|')`);
+        // What reached the agent: the data of the terminal_input frames, joined.
+        const sent = () => ev(`window.__sent.map(f => { try { const m = JSON.parse(f); return m.type === 'terminal_input' ? m.data : ''; } catch { return f; } }).join('')`);
+
+        // The isolated server opens its first-run "set a password" dialog, whose Esc handler takes the first Esc of the page: close
+        // it first, so the Escs below are the terminal's.
+        await ev(`document.activeElement && document.activeElement.blur(); true`);
+        if (await ev(`!!document.getElementById('set-password-modal')?.getClientRects().length`)) await press('Escape');
+        assert.equal(await ev(`!!document.getElementById('set-password-modal')?.getClientRects().length`), false, 'the first-run password dialog is closed');
 
         await intoTerminal();
         await press('F6');
@@ -64,7 +73,7 @@ const BASE = require('./test_base').BASE;
             await intoTerminal();
             await press(key, mods);
             assert.equal(await active(), 'terminal', `${label} keeps the focus in the terminal`);
-            assert.ok((await sent()).includes(JSON.parse(`"${frame}"`)), `${label} goes to the agent: ${JSON.stringify(await sent())}`);
+            assert.equal(await sent(), JSON.parse(`"${frame}"`), `${label} goes to the agent (sent ${JSON.stringify(await sent())}, focus ${await active()})`);
         }
         await intoTerminal();
         await press('Escape'); await press('Escape');
