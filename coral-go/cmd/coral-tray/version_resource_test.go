@@ -25,7 +25,7 @@ func TestUserFacingExesLinkVersionInfo(t *testing.T) {
 			continue
 		}
 		fields["ProductName"] = "Coral"
-		fields["CompanyName"] = "Coral"
+		fields["CompanyName"] = "Subgentic LLC"
 		fields["InternalName"] = cmd
 		for key, val := range fields {
 			if got, ok := versionString(syso, key); !ok || got != val {

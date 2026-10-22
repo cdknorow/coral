@@ -292,7 +292,18 @@ jobs:
           }
           echo "SIGNTOOL=$signtool" >> $env:GITHUB_ENV
 
+      # The package version, for the portable ZIP's name too (the MSI step below is skipped for the Dropbox tier).
+      - name: Resolve the Windows package version
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          $version = $env:REF_NAME -replace "^v", ""
+          if (-not ($version -match "^\d+\.\d+\.\d+")) { $version = "0.0.0" }
+          echo "VERSION=$version" >> $env:GITHUB_ENV
+
+      # The Coral For Dropbox tier ships no MSI (operator decision, 2026-10-21): only its portable ZIP. Every MSI step is skipped for it.
       - name: Install WiX and build MSI
+        if: ${{ !contains(format(',{0},', needs.resolve.outputs.build_tags), ',dropboxers,') }}
         env:
           # A tag name may hold $( ) and quotes: it reaches the script as data, never as script text.
           REF_NAME: ${{ github.ref_name }}
@@ -302,18 +313,16 @@ jobs:
           wix extension add WixToolset.UI.wixext/5.0.2
           $version = $env:REF_NAME -replace "^v", ""
           if (-not ($version -match "^\d+\.\d+\.\d+")) { $version = "0.0.0" }
-          # The name the installer and Apps & features show follows the build tier (CLAUDE.md).
-          $product = if (",$env:BUILD_TAGS," -like "*,dropboxers,*") { "Coral For Dropbox" } else { "Coral" }
           $binDir = (Resolve-Path "dist\windows\bin").Path
           $buildDir = (Resolve-Path "dist\windows").Path
           Copy-Item "tools\license.rtf" $buildDir
           $msiPath = Join-Path $buildDir "Coral-$version-x64.msi"
-          wix build tools\coral.wxs -ext WixToolset.UI.wixext -d "Version=$version" -d "BinDir=$binDir" -d "BuildDir=$buildDir" -d "ProductName=$product" -o $msiPath
+          wix build tools\coral.wxs -ext WixToolset.UI.wixext -d "Version=$version" -d "BinDir=$binDir" -d "BuildDir=$buildDir" -o $msiPath
           echo "MSI_PATH=$msiPath" >> $env:GITHUB_ENV
           echo "VERSION=$version" >> $env:GITHUB_ENV
 
       - name: Sign MSI
-        if: vars.WINDOWS_SIGNING == 'true'
+        if: ${{ vars.WINDOWS_SIGNING == 'true' && !contains(format(',{0},', needs.resolve.outputs.build_tags), ',dropboxers,') }}
         uses: ./.github/actions/windows-sign   # a local action: its nested actions/cache@v4 is resolved only when this step runs
         with:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -326,7 +335,7 @@ jobs:
           files-folder-filter: msi
 
       - name: Verify signed MSI
-        if: vars.WINDOWS_SIGNING == 'true'
+        if: ${{ vars.WINDOWS_SIGNING == 'true' && !contains(format(',{0},', needs.resolve.outputs.build_tags), ',dropboxers,') }}
         run: |
           & $env:SIGNTOOL verify /pa /v $env:MSI_PATH
           if ($LASTEXITCODE -ne 0) { throw "signtool verify failed: MSI" }
@@ -355,6 +364,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "smoke_windows.ps1 failed" }
 
       - name: Upload MSI artifact
+        if: ${{ !contains(format(',{0},', needs.resolve.outputs.build_tags), ',dropboxers,') }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coral-windows-msi
@@ -771,8 +781,15 @@ jobs:
       - name: Create release and upload assets
         env:
           GH_TOKEN: ${{ github.token }}
+          BUILD_TAGS: ${{ needs.resolve.outputs.build_tags }}
         run: |
           TAG="${GITHUB_REF_NAME}"
+          # The Coral For Dropbox tier ships no MSI (operator decision, 2026-10-21): its portable ZIP is kept, the MSI is neither
+          # required nor uploaded, copied or checksummed.
+          MSI=(artifacts/coral-windows-msi/*.msi)
+          MSI_SUM=(coral-windows-msi/*.msi)
+          MSI_STABLE=(Coral-x64.msi)
+          case ",$BUILD_TAGS," in *,dropboxers,*) MSI=(); MSI_SUM=(); MSI_STABLE=() ;; esac
           # A DRAFT until every file is attached and the last step publishes it (#5522): an immutable release (a
           # repository setting) takes no new asset and no deletion once published, so nothing is uploaded after that;
           # its notes, title and prerelease flag stay editable (tools/devops/finish-release.sh sets the body).
@@ -795,7 +812,7 @@ jobs:
           for f in artifacts/coral-linux-amd64/*.tar.gz \
                    artifacts/coral-linux-arm64/*.tar.gz \
                    artifacts/coral-macos-dmg/*.dmg \
-                   artifacts/coral-windows-msi/*.msi \
+                   "${MSI[@]}" \
                    artifacts/coral-windows-portable/*.zip; do
             if [ ! -f "$f" ]; then
               echo "::error::required release package missing: $f"
@@ -816,14 +833,14 @@ jobs:
           stable_copy artifacts/coral-linux-amd64/*.tar.gz coral-linux-amd64.tar.gz
           stable_copy artifacts/coral-linux-arm64/*.tar.gz coral-linux-arm64.tar.gz
           stable_copy artifacts/coral-macos-dmg/*.dmg Coral.dmg
-          stable_copy artifacts/coral-windows-msi/*.msi Coral-x64.msi
+          if [ "${#MSI[@]}" -gt 0 ]; then stable_copy "${MSI[0]}" Coral-x64.msi; fi
           stable_copy artifacts/coral-windows-portable/*.zip Coral-x64-portable.zip
           gh release upload "$TAG" "${STABLE[@]}" --clobber
           # Checksums for every published package, under both names. Linux has no OS-level code
           # signing, so users verify the tarball against this file.
           (cd artifacts && sha256sum coral-linux-amd64/*.tar.gz coral-linux-arm64/*.tar.gz coral-macos-dmg/*.dmg \
-            coral-windows-msi/*.msi coral-windows-portable/*.zip | sed 's#  [^ ]*/#  #') > SHA256SUMS.txt
-          (cd stable && sha256sum coral-linux-amd64.tar.gz coral-linux-arm64.tar.gz Coral.dmg Coral-x64.msi Coral-x64-portable.zip) >> SHA256SUMS.txt
+            "${MSI_SUM[@]}" coral-windows-portable/*.zip | sed 's#  [^ ]*/#  #') > SHA256SUMS.txt
+          (cd stable && sha256sum coral-linux-amd64.tar.gz coral-linux-arm64.tar.gz Coral.dmg "${MSI_STABLE[@]}" Coral-x64-portable.zip) >> SHA256SUMS.txt
           cat SHA256SUMS.txt
           gh release upload "$TAG" SHA256SUMS.txt --clobber
           # Keyless signatures (Sigstore bundles: certificate, signature and

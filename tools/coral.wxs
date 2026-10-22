@@ -8,10 +8,9 @@
     - Creates a Start Menu shortcut
     - Registers for clean uninstall
 
-  ProductName is the name shown in the installer and in Apps & features: "Coral", or the
-  build tier's name when the build passes one (-d "ProductName=Coral For Dropbox" for the
-  dropboxers tier, .github/workflows/release.yml). The install folders stay "Coral" in
-  every tier.
+  ProductName is the name shown in the installer and in Apps & features: "Coral". The Coral For Dropbox
+  tier ships no MSI (.github/workflows/release.yml skips every MSI step for it). Manufacturer is the
+  publisher, Subgentic LLC; the UpgradeCode is unchanged so upgrades keep working.
 -->
 
 <?ifndef ProductName ?>
@@ -23,7 +22,7 @@
 
   <Package
     Name="$(var.ProductName)"
-    Manufacturer="Coral"
+    Manufacturer="Subgentic LLC"
     Version="$(var.Version)"
     UpgradeCode="B8F2E3A1-7C4D-4E5F-9A1B-2C3D4E5F6A7B">
 
