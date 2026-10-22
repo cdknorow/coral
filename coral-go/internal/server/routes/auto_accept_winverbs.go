@@ -18,6 +18,7 @@ type winStage struct {
 	words []string
 	redir []string // targets of > and >>
 	sink  bool     // fed by a pipeline
+	cwd   string   // the folder an earlier cd moved to, as text (winVerbRisk sets it: relative paths of the stage are read from there)
 }
 
 // winStages splits a command into stages at ; && || | and newlines outside quotes, and each stage into words
@@ -199,7 +200,7 @@ var winSwitches = func() map[string]bool {
 var winPathParams = []struct {
 	name string
 	min  int
-}{{"path", 1}, {"literalpath", 1}, {"destination", 3}, {"filepath", 2}, {"outfile", 3}}
+}{{"path", 1}, {"literalpath", 1}, {"destination", 3}, {"destinationpath", 3}, {"filepath", 2}, {"outfile", 3}}
 
 // winPaths are the path arguments of a stage: values of the path parameters, and every word that is not a switch.
 func winPaths(args []string) []string { return winPathsMode(args, false) }
@@ -280,13 +281,16 @@ func winVerbRisk(command string, outside func(string) bool) string {
 		return "it calls .NET or COM, or a method that deletes, moves or starts something"
 	}
 	// A cd out of the working folder (or to a place that cannot be read) moves what every later relative path means: after it nothing is provably inside (#5690).
+	hookCwd := ""
 	for _, st := range winStages(body) {
+		st.cwd = hookCwd
 		if why := winStageRisk(st, outside); why != "" {
 			return why
 		}
 		if winMovesOutside(st, outside) {
 			outside = func(string) bool { return true }
 		}
+		hookCwd = cdTarget(hookCwd, splitGlued(st.words))
 	}
 	return ""
 }
@@ -312,7 +316,7 @@ func winMovesOutside(st winStage, outside func(string) bool) bool {
 }
 
 func winStageRisk(st winStage, outside func(string) bool) string {
-	for _, t := range st.redir {
+	for _, t := range underCwd(st.cwd, st.redir) {
 		if !isDiscard(t) && gitHookPath(t) {
 			return gitHookWhy(t) // a redirect into a hook or git's config (#186)
 		}
@@ -355,7 +359,7 @@ func winStageRisk(st winStage, outside func(string) bool) string {
 	}
 	name := cmdName(words[0])
 	args := words[1:]
-	if why := winHookWriteRisk(name, args, winPaths(args)); why != "" {
+	if why := winHookWriteRisk(name, args, winPaths(args), st.cwd); why != "" {
 		return why
 	}
 

