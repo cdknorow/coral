@@ -13,6 +13,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/subgentic/coral/internal/secfile/secfiletest"
+
 	"github.com/subgentic/coral/internal/updater/verify"
 )
 
@@ -163,6 +165,7 @@ func TestAStagedFileSwappedForALinkAtTheLastMomentIsRefused(t *testing.T) {
 
 func TestOpenPlainRefusesAFolderAndAFIFO(t *testing.T) {
 	dir := t.TempDir()
+	secfiletest.OwnerOnlyDir(t, dir) // as the data folder is: %TEMP%'s inherited access list can grant another account
 	_, err := OpenPlain(dir)
 	assert.Error(t, err, "a folder")
 	if runtime.GOOS != "windows" {

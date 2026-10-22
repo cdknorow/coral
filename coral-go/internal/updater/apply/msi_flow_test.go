@@ -16,6 +16,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/subgentic/coral/internal/secfile/secfiletest"
+
 	"github.com/subgentic/coral/internal/updater/stage"
 	"github.com/subgentic/coral/internal/updater/verify"
 )
@@ -201,6 +203,9 @@ type msiRig struct {
 func newMSIRig(t *testing.T) *msiRig {
 	t.Helper()
 	data := t.TempDir()
+	// Private, as Coral makes its data folder: a temp folder inherits %TEMP%'s access list, which can grant another account (an
+	// agent sandbox's identity), and the staged update in it is then refused, as it should be.
+	secfiletest.OwnerOnlyDir(t, data)
 	r := &msiRig{t: t, data: data, pkg: []byte("the msi bytes of 1.4.130"),
 		msi: &fakeMSI{install: filepath.Join(t.TempDir(), "Coral"), coralGone: true, product: newProduct, registered: oldProduct, regVersion: "1.4.125", signed: true}}
 	r.stageRelease("1.4.130", r.pkg)
@@ -437,7 +442,8 @@ func TestNoRollbackPackageLeavesTheNewVersionAndSaysSo(t *testing.T) {
 func TestAnInterruptedWindowsApplyIsFinishedByTheNext(t *testing.T) {
 	r := newMSIRig(t)
 	r.msi.registered, r.msi.regVersion = newProduct, "1.4.130"
-	st, _ := stage.LoadStaged(r.data)
+	st, err := stage.LoadStaged(r.data)
+	require.NoError(t, err, "the staged release")
 	j := msiJournal{Phase: "installed", From: "1.4.125", To: "1.4.130", Product: newProduct, Record: st.Record, StartedAt: msiTestNow.Add(-10 * time.Minute)}
 	require.NoError(t, writeMSIJournal(filepath.Join(r.data, stage.UpdatesDir), j))
 	res := r.run()
@@ -517,7 +523,8 @@ func TestAnOldJournalNeverRollsBackAVersionInstalledByHand(t *testing.T) {
 		r := newMSIRig(t)
 		r.msi.registered, r.msi.regVersion = newProduct, "1.4.130"
 		r.cfg.Installed = "1.4.130" // installed by hand: the Coral that runs coral-update now is that version
-		st, _ := stage.LoadStaged(r.data)
+		st, err := stage.LoadStaged(r.data)
+		require.NoError(t, err, "the staged release")
 		j := msiJournal{Phase: "installing", From: "1.4.125", To: "1.4.130", Product: newProduct, Record: st.Record, StartedAt: started}
 		require.NoError(t, writeMSIJournal(filepath.Join(r.data, stage.UpdatesDir), j))
 		r.msi.startErr = []error{errors.New("can't start"), errors.New("can't start")}
@@ -526,7 +533,7 @@ func TestAnOldJournalNeverRollsBackAVersionInstalledByHand(t *testing.T) {
 		assert.NotEqual(t, ResultRolledBack, res.Result, name)
 		assert.NotContains(t, strings.Join(r.msi.calls, " "), "msiexec", name)
 		assert.NotContains(t, r.msi.calls, "healthy", "%s: no recovery was attempted", name)
-		_, err := os.Stat(filepath.Join(r.data, stage.UpdatesDir, msiJournalFile))
+		_, err = os.Stat(filepath.Join(r.data, stage.UpdatesDir, msiJournalFile))
 		assert.True(t, os.IsNotExist(err), "%s: the journal is gone", name)
 	}
 }
