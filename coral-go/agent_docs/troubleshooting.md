@@ -262,8 +262,9 @@ On the built-in terminal, ending an agent (quitting Coral, Kill, Restart) ends e
 started, however it started it: a helper in a session of its own, and a background process the agent
 began on purpose (`nohup`, a dev server) end with it. Run something that must outlive the agent from
 your own terminal, or choose tmux. On macOS, a helper that had already detached from the agent before
-the terminal ended cannot be found (macOS does not let Coral read other processes' environments);
-whatever is still attached is ended. A Coral that is killed or crashes ends nothing itself: the
+the terminal ended is found by a mark in its environment, which macOS shows for ordinary programs but
+not for Apple's own (/usr/bin/perl, /bin/sleep, ...): such a helper is not found; whatever is still
+attached is ended, and on Linux both are found. A Coral that is killed or crashes ends nothing itself: the
 terminals are hung up by the system, which ends an agent that exits on hangup and may leave its helpers.
 Coral keeps one small helper process beside it for that case: in a process list (Activity Monitor, `ps`)
 it appears as "coral pty-guardian". It does nothing while Coral runs; when Coral is gone it ends the
