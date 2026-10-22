@@ -1,6 +1,6 @@
 // Comments in the docked preview pane (#5311): the artifacts tab's Preview opens a tab in the pane, not the viewer dialog, and the operator could not comment there. The pane now carries the viewer's own
 // comments component for the tab that is on show: beside the document when the pane is 720 px wide or more (maximised), a bottom sheet over it below that (a narrow dock, a phone), with a Comments button
-// in the toolbar then; highlights for the comments, the Comment button by a selection, a posted comment; none for a file, an image or no tab; torn down when the tab goes. Real server, the comments routes
+// in the toolbar in both layouts; highlights for the comments, the Comment button by a selection, a posted comment; none for a file, an image or no tab; torn down when the tab goes. Real server, the comments routes
 // stood in for (helpers/comments_scale.js STUB). 1280 (docked, then maximised in its column) and 390 px.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -35,6 +35,7 @@ const IMG = 'f'.repeat(64);
         await Emulation.setEmulatedMedia({ features: [{ name: 'prefers-color-scheme', value: theme }] });
         await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired(); await install();
         await ev(`window.__coralReady.then(() => true)`); await setTheme(ev, theme);
+        await ev(`(async()=>{(await import(${S} + 'safe_storage.js')).browserLocal.remove('coral-artifact-comments-open');})()`);
         await ev(STUB(FX));
         // a PNG for the image artifact, on top of the stub
         await ev(`(() => { const real = window.fetch; const png = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='), c => c.charCodeAt(0));
@@ -57,10 +58,10 @@ const IMG = 'f'.repeat(64);
             await waitFor(`!!document.querySelector('#preview-body .preview-pane-markdown') && document.querySelectorAll('#preview-main .ac-card').length > 0`, `${tag}: the document and its comments`, { timeout: 10000 });
             let s = await state();
             const sheet = s.w < 720;
-            check(`${tag}: the pane (${s.w} px wide) has the comments panel; ${sheet ? 'a sheet with a Comments button in the toolbar' : 'beside the document, no button'}`, sheet ? (s.toggle && /^Comments · 3$/.test(s.toggle) && s.panelPos === 'absolute' && s.panelInert && !s.sheetOpen) : (!s.toggle && s.panelPos !== 'absolute' && s.panelW >= 330 && !s.panelHidden), JSON.stringify(s).slice(0, 300));
+            check(`${tag}: the comments start open with a toolbar toggle counting two open threads`, s.toggle === 'Comments (2)' && s.sheetOpen && !s.panelInert && (sheet ? s.panelPos === 'absolute' : s.panelPos !== 'absolute'), JSON.stringify(s).slice(0,300));
             check(`${tag}: the two open comments are highlighted in the document and the document is a named region`, s.highlights === 2 && s.bodyRegion === 'region', JSON.stringify({ h: s.highlights, r: s.bodyRegion }));
             if (sheet) {
-                await ev(`document.querySelector('#preview-toolbar .ac-toggle').click(); true`); await settle(500);
+                await settle(500); // the count-based default has already opened it
                 s = await state();
                 check(`${tag}: the Comments button opens the sheet with its cards (and the document behind is out of reach)`, s.sheetOpen && !s.panelInert && s.cards === 2, JSON.stringify(s).slice(0, 240));
                 await shot(`preview-comments-sheet-${w}`);
@@ -79,12 +80,12 @@ const IMG = 'f'.repeat(64);
             check(`${tag}: it is posted with its quote and context`, posted && /audit log/.test(posted.quote) && posted.start_line > 0, JSON.stringify(posted));
             await waitFor(`[...document.querySelectorAll('#preview-main .ac-card .ac-body')].some(e => e.textContent === 'Mention the audit log retention.')`, `${tag}: its card`, { timeout: 8000 });
             if (!mobile) {
-                // a wide screen, the pane maximised in its column: 720 px or more, so the panel is beside the document and the button is gone
+                // a wide screen, the pane maximised in its column: 720 px or more, so the panel is beside the document and its toolbar button stays available
                 await Emulation.setDeviceMetricsOverride({ width: 1920, height: 1000, deviceScaleFactor: 1, mobile: false }); await settle(400);
                 await ev(`document.getElementById('preview-dock-btn').click(); true`); await settle(500);
                 await ev(`document.getElementById('preview-max-btn').click(); true`); await settle(900);
                 s = await state();
-                check(`${tag}: maximised on a 1920 screen (${s.w} px wide) the panel is beside the document, 340 px, with no Comments button`, s.w >= 720 && !s.toggle && s.panelPos !== 'absolute' && s.panelW >= 330 && !s.panelInert && !s.panelHidden && s.cards >= 2 && s.highlights >= 2, JSON.stringify(s).slice(0, 260));
+                check(`${tag}: maximised on a 1920 screen (${s.w} px wide) the panel is beside the document, 340 px, with its Comments button`, s.w >= 720 && !!s.toggle && s.panelPos !== 'absolute' && s.panelW >= 330 && !s.panelInert && !s.panelHidden && s.cards >= 2 && s.highlights >= 2, JSON.stringify(s).slice(0, 260));
                 await shot('preview-comments-beside-1920');
                 await ev(`document.getElementById('preview-max-btn').click(); true`); await settle(500);
                 await ev(`document.getElementById('preview-dock-btn').click(); true`); await settle(300);

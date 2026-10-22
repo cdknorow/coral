@@ -114,6 +114,9 @@
 /* The docked preview pane (#5311): the same panel and cards beside the document (the pane is wide: maximised, or a full-height column) or, narrower than 720 px, the bottom sheet the phone gets,
    over the document inside the pane. artifact_comments.js decides the same by the pane's own width (sheet()), so the two agree. */
 .preview-main > .ac-panel { flex: 0 0 340px; }
+@container pv (min-width: 720px) {
+    .preview-main > .ac-panel:not(.ac-sheet-open) { display: none; }
+}
 @container pv (max-width: 719px) {
     .preview-main > .ac-panel { position: absolute; left: 0; right: 0; bottom: 0; width: auto; flex: none; max-height: 70%; border-left: 0; border-top: 1px solid var(--border); border-radius: 12px 12px 0 0; transform: translateY(105%); z-index: 5; box-shadow: 0 -4px 16px rgba(var(--black-rgb), 0.25); }
     .preview-main > .ac-panel.ac-sheet-open { transform: none; }
@@ -123,7 +126,7 @@
     .preview-main > .ac-panel .ac-showresolved { order: 3; flex: 1 0 100%; text-align: left; min-height: 44px; }
     .preview-main > .ac-panel > .ac-composer { position: sticky; bottom: calc(-1 * var(--space-md)); background: var(--bg-secondary); padding: 6px 0 calc(var(--space-md)); margin-bottom: calc(-1 * var(--space-md)); z-index: 1; }
 }
-/* the Comments button sits in the pane's toolbar; artifact_comments.js hides it unless the panel is a sheet (beside the document it is always there) */
+/* The toolbar toggle remains available beside the document and above its sheet. */
 .preview-toolbar .ac-toggle:not([hidden]) { display: inline-flex; align-items: center; min-height: 28px; margin-left: auto; flex: 0 0 auto; }
 @media (max-width: 767px) { .preview-toolbar .ac-toggle:not([hidden]) { min-height: 44px; min-width: 44px; } } /* a touch target (the rule above is more specific than the phone's own) */
 
@@ -141,3 +144,7 @@
 .artifact-readers-body p { margin: 0; overflow-wrap: anywhere; }
 .artifact-readers-note { color: var(--text-secondary); }
 @media (pointer: coarse) { .artifact-readers > summary { min-height: var(--control-touch-height, 44px); } }
+
+@media (pointer: coarse) {
+    .artifact-viewer-header .ac-toggle:not([hidden]), .preview-toolbar .ac-toggle:not([hidden]) { min-height: var(--control-touch-height, 44px); min-width: var(--control-touch-height, 44px); }
+}
