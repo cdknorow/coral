@@ -201,3 +201,27 @@ func TestAChangeWhileOneIsInFlightWaitsForItAndOnlyTheLatestFollows(t *testing.T
 	assert.Equal(t, 1, maxInflight, "never two at once")
 	assert.Equal(t, tunnels, e.hub.tunnels.Load(), "no second send reached the hub inside its gap (a 429 would have reconnected)")
 }
+
+// The worker reconnects on the connection record as it is NOW (Security's low on #5918): a message that is never answered times out after the record was removed, and nothing is reconnected.
+func TestAFailedMessageDoesNotReconnectOnARecordThatIsGone(t *testing.T) {
+	e := newEnv(t)
+	release := make(chan struct{})
+	e.hub.onMode.Store(func(tunnel.Mode) { <-release })
+	t.Cleanup(func() { close(release) })
+	m := e.manager(e.hub.srv.URL)
+	m.modeGap = 0
+	start(t, m)
+	require.NoError(t, m.Connect(context.Background()))
+	waitState(t, m, StateConnected)
+	e.hub.session(t)
+	require.Eventually(t, func() bool { cs := m.session.Load(); return cs != nil && cs.CanSendLocalMode() }, 5*time.Second, 10*time.Millisecond)
+	tunnels := e.hub.tunnels.Load()
+	e.mode.Store(int32(tunnel.TierInteract))
+	m.ModeChanged(context.Background()) // the worker's message is in flight and will not be answered
+	time.Sleep(200 * time.Millisecond)
+	require.NoError(t, m.o.Store.Delete(context.Background()), "the enrollment is removed while the message is in flight")
+	require.Eventually(t, func() bool { m.modeMu.Lock(); defer m.modeMu.Unlock(); return !m.worker }, 15*time.Second, 50*time.Millisecond, "the message timed out and the worker ended")
+	time.Sleep(300 * time.Millisecond)
+	assert.Equal(t, tunnels, e.hub.tunnels.Load(), "no reconnect on a record that is gone")
+	assert.Equal(t, StateConnected, m.Status().State, "the tunnel was not restarted (a restart on the stale record would have left it connecting or in error)")
+}
