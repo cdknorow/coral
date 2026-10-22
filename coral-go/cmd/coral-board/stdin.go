@@ -80,6 +80,9 @@ func readFileText(path, what string) (string, error) {
 		return "", errUsage{fmt.Sprintf("cannot read the %s from %s: %v", what, path, err)}
 	}
 	defer f.Close()
+	if fi, serr := f.Stat(); serr == nil && fi.IsDir() {
+		return "", errUsage{fmt.Sprintf("%s is a folder; give the path of a UTF-8 text file", path)}
+	}
 	data, err := io.ReadAll(io.LimitReader(f, maxStdinMessage+1))
 	if err != nil {
 		return "", errUsage{fmt.Sprintf("cannot read the %s from %s: %v", what, path, err)}

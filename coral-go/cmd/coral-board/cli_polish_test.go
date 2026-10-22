@@ -278,3 +278,25 @@ func TestPostTreatsFlagsInTextAsText(t *testing.T) {
 	assert.Contains(t, res.stderr, "did you mean --to")
 	assert.Empty(t, srv.requests())
 }
+
+// An unknown command is a usage error (2); --file at a folder says so; a typo of a send option after the message is refused (QA's pass on #100).
+func TestUsageExitAndFileFolderAndSendTypo(t *testing.T) {
+	srv := newRecordingServer(t)
+	dir := subscribedDataDir(t, srv.URL)
+	res := runBoard(t, srv.URL, dir, "frobnicate")
+	assert.Equal(t, 2, res.code, res.stderr)
+	assert.Contains(t, res.stderr, "Unknown command")
+
+	res = runBoard(t, srv.URL, dir, "post", "--file", t.TempDir())
+	assert.Equal(t, 2, res.code)
+	assert.Contains(t, res.stderr, "is a folder")
+	assert.NotContains(t, res.stderr, "Incorrect function")
+
+	for _, args := range [][]string{{"send", "--board", "other", "hello", "--reply-too", "4"}, {"send", "--board", "other", "hello", "--boad", "x"}} {
+		res = runBoard(t, srv.URL, dir, args...)
+		assert.Equal(t, 2, res.code, "%v: %q", args, res.stderr)
+		assert.Contains(t, res.stderr, "did you mean")
+	}
+	res = runBoard(t, srv.URL, dir, "send", "--board", "other", "use", "--force", "here")
+	assert.NotContains(t, res.stderr, "unknown option", "other --words in a send message are text")
+}
