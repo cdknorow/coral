@@ -4,6 +4,8 @@ The Sessions API manages live agent sessions — launching, monitoring, controll
 
 All endpoints are prefixed with `/api/sessions`.
 
+New Codex launches default to `--sandbox workspace-write -a never` with tool networking enabled so Coral's hooks and commands can reach the local server. This keeps the file-write sandbox, which bypass did not; general outbound network is the known cost. A saved Settings permission mode takes precedence. To disable tool networking while keeping the autonomous workspace sandbox, pass `-c sandbox_workspace_write.network_access=false`.
+
 ---
 
 ## Session Listing & Discovery

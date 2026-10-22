@@ -90,7 +90,7 @@ const BASE = require('./test_base').BASE;
         await setType('claude');
         assert.equal(await ev(`${pm}.value`), 'auto', 'Claude: Auto, not a bypass of every prompt');
         await setType('codex');
-        assert.equal(await ev(`${pm}.value`), 'bypassPermissions', 'Codex keeps its own default while the mode is still the default');
+        assert.equal(await ev(`${pm}.value`), 'auto', 'Codex starts in its workspace sandbox while the mode is still the default');
         await setType('claude');
         assert.equal(await ev(`${pm}.value`), 'auto', 'and Claude again');
         await ev(`(() => { const m = ${pm}; m.value = 'plan'; m.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
