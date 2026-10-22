@@ -88,15 +88,17 @@ function _modal() {
     m.setAttribute('aria-labelledby', 'editions-title');
     m.style.display = 'none';
     document.body.appendChild(m);
+    // Escape is this screen's only while it is the topmost thing: a dialog opened over it (another .modal after it in the page, or an open <dialog>) has the Escape, as everywhere else
+    const topmost = () => ![...document.querySelectorAll('.modal')].some(o => o !== m && o.style.display !== 'none' && o.getClientRects().length > 0 && (m.compareDocumentPosition(o) & Node.DOCUMENT_POSITION_FOLLOWING)) && !document.querySelector('dialog[open]');
     m.addEventListener('keydown', e => {
-        if (e.key === 'Escape') { e.preventDefault(); _dismiss('skipped'); }
+        if (e.key === 'Escape' && topmost()) { e.preventDefault(); _dismiss('skipped'); }
         if (e.key === 'Tab') trapTab(m, e);
     });
     // Escape answers "Skip for now" wherever the focus is: while the screen is open, a page-level handler in the capture phase takes it before the generic modal close does
     // (that one closes any .modal without saving the answer, so the question came back at the next launch). The screen now opens after the connect flow has loaded, a little later
     // than other start-up steps that move the focus, so the focus is not always inside it when the key is pressed.
     document.addEventListener('keydown', e => {
-        if (e.key !== 'Escape' || m.style.display === 'none' || e.defaultPrevented) return;
+        if (e.key !== 'Escape' || m.style.display === 'none' || e.defaultPrevented || e.isComposing || !topmost()) return;
         e.preventDefault(); e.stopPropagation(); _dismiss('skipped');
     }, true);
     return m;
