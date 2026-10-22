@@ -53,6 +53,17 @@ const VIEW = 'View only through Coral Hub';
         console.log('6. the helper writes normally when no state holds');
         await ev(`window.__cp.setCommandPlaceholder(document.getElementById('command-input'), 'plain write'); true`);
         assert.equal((await box()).placeholder, 'plain write');
+        console.log('7. a sleeping agent keeps its sleeping words the same way: a write while asleep is what comes back on wake');
+        await readOnly(false);
+        const sv = `window.__sv`;
+        await ev(`(async () => { window.__sv = await import((window.__coralStatic || '/static/') + 'sleeping_view.js'); window.__cp.setCommandPlaceholder(document.getElementById('command-input'), 'awake text'); window.__sv.applySleepingView(true); return true; })()`);
+        const asleep = await box();
+        assert.equal(asleep.disabled, true); assert.match(asleep.placeholder, /sleeping/i);
+        await ev(`window.__cp.setCommandPlaceholder(document.getElementById('command-input'), 'text written while asleep'); true`);
+        assert.deepEqual(await box(), asleep, 'a live update while asleep does not take the sleeping words away');
+        await ev(`${sv}.applySleepingView(false); true`);
+        assert.deepEqual(await box(), { disabled: false, placeholder: 'text written while asleep' }, 'what was written while asleep is what comes back');
+
         console.log('PASS the view-only text survives the render and the live update');
     } finally { await client.close(); }
 })().catch(e => { console.error(e); process.exit(1); });
