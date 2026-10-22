@@ -257,13 +257,6 @@ export async function endLeftoverTmux() {
 // ── The built-in terminal became the default (#6064) ─────────────────────
 // One line, once, for an install that ran on the old tmux default; dismissing it is kept in the server's settings.
 
-export async function checkDefaultNotice() {
-    if (isCloud()) return;
-    let st;
-    try { st = await fetchStatus(); } catch { return; }
-    showDefaultNotice(st);
-}
-
 function showDefaultNotice(st) {
     const banner = $('default-notice-banner');
     if (banner) banner.hidden = !st.default_notice;
