@@ -11,6 +11,7 @@ import { messageAttachmentAttrs, messageAttachmentsHtml } from './board_attachme
 import { groupTaskQueueRuns, renderTaskQueueRun } from './board_system_lines.js';
 import { platform } from './platform/detect.js';
 import { BOARD_SAVE_BUTTON } from './saved_marks.js';
+import { messageTimeHtml } from './message_time.js';
 import { paintPauseButton } from './board_pause_button.js';
 import { pathId, keyLabel, noteBoardLabel, hasBoardLabel, onBoardLabelsChanged, splitKey, boardFetch, teamFetch, isCloud, inTeam } from './server_base.js';
 import { launchBlockedReason } from './hub_access.js';
@@ -343,7 +344,7 @@ function renderBoardItem(item, prev) {
                 ${checkbox}
                 <span class="mb-agent-name">${m.icon ? escapeHtml(m.icon) + ' ' : ''}${escapeHtml(agent)}</span>
                 ${externalMessageBadge(m)}${hubUserBadge(m)}
-                <span class="mb-message-time">${formatTime(m.created_at)}</span>
+                ${messageTimeHtml(m.created_at)}
                 ${BOARD_SAVE_BUTTON(currentProject || '', keyLabel(currentProject || ''), String(m.created_at || ''), String(m.job_title || m.subscriber_id || ''))}
                 <button class="mb-delete-msg-btn" data-on-click="mb-msg-delete" data-msg-id="${Number(m.id)}" title="Delete message" aria-label="${escapeAttr(deleteLabel)}">&times;</button>
             </div>

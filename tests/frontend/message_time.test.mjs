@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';
+import { installDom, importUi } from './helpers/jsdom_env.mjs';
+installDom({mode:'local'});
+const {messageTimeHtml}=await importUi('message_time');
+const now=new Date(2026,9,22,18,0),today=new Date(2026,9,22,17,30),old=new Date(2026,9,21,17,30);
+const time=value=>{const host=document.createElement('div');host.innerHTML=messageTimeHtml(value,now);return host.querySelector('time')};
+assert.equal(time(today.toISOString()).textContent,'17:30');
+assert.equal(time(old.toISOString()).textContent,new Intl.DateTimeFormat(undefined,{month:'short',day:'numeric'}).format(old)+', 17:30');
+assert.equal(time(old.toISOString()).dateTime,old.toISOString());
+assert.equal(time(old.toISOString()).title,new Intl.DateTimeFormat(undefined,{dateStyle:'full',timeStyle:'long'}).format(old));
+assert.equal(time(0).dateTime,'1970-01-01T00:00:00.000Z');
+for(const bad of [null,undefined,'','bad date','" onmouseover="alert(1)',{},true,NaN])assert.equal(messageTimeHtml(bad,now),'');
+console.log('PASS sent-time formatter: local today/older, full title, epoch, absent/invalid safe');
