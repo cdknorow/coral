@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/subgentic/coral/internal/agent"
@@ -48,10 +49,41 @@ func warnWritableTools(dir string) {
 		log.Printf("[tools] could not read who can change the tools folder %s: %v", logsafe.Path(dir), err)
 		return
 	}
+	who = mergeWriters(who)
 	agent.SetToolsFolderWriters(dir, who)
 	if len(who) > 0 {
 		log.Printf("[tools] WARNING: the tools folder %s can be changed by %s, not only by an administrator: "+
 			"a program running as that account could replace the hooks every agent runs. Install Coral with the "+
 			"installer (Program Files) to keep them where only an administrator can change them.", logsafe.Path(dir), strings.Join(who, ", "))
 	}
+}
+
+// mergeWriters gives each account once (#307's copy note): secfile.Writers lists an account once per way it can change the folder, so
+// the warning read "this user (the owner), this user, this user (the owner, through the parent folder)". The ways are kept, once each,
+// in one parenthesis: "this user (the owner, through the parent folder)". The order is the order the accounts first appear in.
+func mergeWriters(who []string) []string {
+	var names []string
+	ways := map[string][]string{}
+	for _, w := range who {
+		name, how, _ := strings.Cut(w, " (")
+		how = strings.TrimSuffix(how, ")")
+		if _, seen := ways[name]; !seen {
+			names = append(names, name)
+			ways[name] = nil
+		}
+		for _, h := range strings.Split(how, ", ") {
+			if h != "" && !slices.Contains(ways[name], h) {
+				ways[name] = append(ways[name], h)
+			}
+		}
+	}
+	out := make([]string, 0, len(names))
+	for _, n := range names {
+		if len(ways[n]) == 0 {
+			out = append(out, n)
+		} else {
+			out = append(out, n+" ("+strings.Join(ways[n], ", ")+")")
+		}
+	}
+	return out
 }
