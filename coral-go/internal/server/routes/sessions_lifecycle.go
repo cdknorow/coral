@@ -665,7 +665,7 @@ func (h *SessionsHandler) restartCommand(ctx context.Context, p *restartPlan) (s
 		CoralDir:        h.cfg.CoralDir(),
 		CoralHost:       h.cfg.AgentHost(),
 		CoralPort:       h.cfg.Port,
-		RunTag:          h.runTagFor(ctx, p.newSessionID, storedSessionID(p.stored)),
+		RunTag:          h.runTagFor(ctx, p.newSessionID, storedSessionID(p.stored), ""),
 	})
 	if err != nil {
 		return "", func(w http.ResponseWriter) { errInternalServer(w, fmt.Sprintf("launch command failed: %v", err)) }
@@ -1055,7 +1055,7 @@ func (h *SessionsHandler) resumeCommand(ctx context.Context, p *restartPlan, age
 		CoralDir:        h.cfg.CoralDir(),
 		CoralHost:       h.cfg.AgentHost(),
 		CoralPort:       h.cfg.Port,
-		RunTag:          h.runTagFor(ctx, p.newSessionID, storedSessionID(p.stored)),
+		RunTag:          h.runTagFor(ctx, p.newSessionID, storedSessionID(p.stored), ""),
 	})
 	if err != nil {
 		return "", func(w http.ResponseWriter) { errInternalServer(w, err.Error()) }

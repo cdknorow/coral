@@ -140,9 +140,9 @@ func TestATmuxAgentCarriesItsTagOnLaunchWakeAndRestart(t *testing.T) {
 func TestAPtyAgentIsNotGivenATmuxTag(t *testing.T) {
 	_, h, _, ss := setupSessionsTestServer(t)
 	h.backend = &ptymanager.PTYBackend{}
-	assert.Empty(t, h.runTagFor(context.Background(), "aaaaaaaa-6141-4000-8000-000000000001"))
+	assert.Empty(t, h.runTagFor(context.Background(), "aaaaaaaa-6141-4000-8000-000000000001", "", ""))
 	h.backend = &ptymanager.TmuxBackend{}
-	assert.Regexp(t, `^[0-9a-f]{32}$`, h.runTagFor(context.Background(), "aaaaaaaa-6141-4000-8000-000000000002"))
+	assert.Regexp(t, `^[0-9a-f]{32}$`, h.runTagFor(context.Background(), "aaaaaaaa-6141-4000-8000-000000000002", "", ""))
 	_ = ss
 }
 
@@ -199,4 +199,29 @@ func TestResumeCommandExportsTheTagOfTheSessionItContinues(t *testing.T) {
 	cmd, fail = h.resumeCommand(ctx, plan(), agent.GetAgent("claude"), old)
 	require.Nil(t, fail)
 	assert.NotContains(t, cmd, "CORAL_PTY_RUN", "the built-in terminal has a tag of its own")
+}
+
+// One Kill must never end another live agent's helpers: a tag is handed on only while no other live session holds it. A restart or resume of an agent keeps its tag (the old row is the one being replaced); a launch
+// that continues a conversation another LIVE agent is running gets a fresh one.
+func TestATagIsNotSharedBetweenTwoLiveAgents(t *testing.T) {
+	_, h, _, ss := setupSessionsTestServer(t)
+	h.backend = &ptymanager.TmuxBackend{}
+	ctx := context.Background()
+	const a, b, c, fresh = "dddddddd-6141-4000-8000-00000000000a", "dddddddd-6141-4000-8000-00000000000b", "dddddddd-6141-4000-8000-00000000000c", "dddddddd-6141-4000-8000-00000000000d"
+	for _, id := range []string{a, b} {
+		require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: id, AgentType: "claude", AgentName: "x", WorkingDir: "/tmp"}))
+	}
+	tagA := h.runTagFor(ctx, a, "", "")
+	require.NoError(t, ss.SetRunTagIfEmpty(ctx, a, tagA))
+	require.NotEmpty(t, tagA)
+
+	// resume or restart of A: A is the row being replaced: the new session carries A's tag
+	assert.Equal(t, tagA, h.runTagFor(ctx, c, a, ""), "restart or resume of an agent keeps its tag")
+	// a launch that continues A's conversation while A is still live and not being replaced: a fresh tag
+	other := h.runTagFor(ctx, fresh, "", a)
+	assert.NotEmpty(t, other)
+	assert.NotEqual(t, tagA, other, "two live agents never share a tag")
+	// the agent being replaced is not the only holder: another live row carries the same tag, so not even a restart shares it
+	require.NoError(t, ss.SetRunTagIfEmpty(ctx, b, tagA))
+	assert.NotEqual(t, tagA, h.runTagFor(ctx, c, a, ""), "another live agent holds it: a fresh tag")
 }
