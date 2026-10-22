@@ -212,3 +212,32 @@ func TestStripURLCredentials(t *testing.T) {
 		}
 	}
 }
+
+// #6144: the diff base of a repository with no commit is the empty tree, not HEAD (which does not exist); a repository with a commit keeps HEAD; a folder that is no repository keeps HEAD.
+func TestGetDiffBaseWithNoCommit(t *testing.T) {
+	if !Available() {
+		t.Skip("git not installed")
+	}
+	repo := t.TempDir()
+	if out, err := exec.Command("git", "-C", repo, "init", "-q", "-b", "main").CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v %s", err, out)
+	}
+	if got := GetDiffBase(context.Background(), repo, ""); got != emptyTreeSHA1 && got != emptyTreeSHA256 {
+		t.Fatalf("a repo with no commit diffs against the empty tree, got %q", got)
+	}
+	for _, mode := range []string{"previous_commit", "main_head", "branch_point"} {
+		if got := GetDiffBase(context.Background(), repo, mode); got != emptyTreeSHA1 && got != emptyTreeSHA256 {
+			t.Fatalf("mode %s: the empty tree, got %q", mode, got)
+		}
+	}
+	if got := GetDiffBase(context.Background(), t.TempDir(), ""); got != "HEAD" {
+		t.Fatalf("a folder that is no repository keeps HEAD, got %q", got)
+	}
+	cmd := exec.Command("git", "-C", repo, "-c", "user.name=t", "-c", "user.email=t@example.test", "commit", "-q", "--allow-empty", "-m", "first")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git commit: %v %s", err, out)
+	}
+	if got := GetDiffBase(context.Background(), repo, ""); got != "HEAD" {
+		t.Fatalf("a repo with a commit keeps HEAD, got %q", got)
+	}
+}
