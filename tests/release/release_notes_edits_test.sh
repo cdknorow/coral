@@ -14,6 +14,12 @@ in=$'- keep one\n- **Gone:** the text\n- keep two\n- Also gone too\n- **Gone not
 ok "the listed lines of the tag are dropped" "$(notes_drop_edited v1.4.142 <<<"$in")" "$(printf '%s\n' '- keep one' '- keep two' '- **Gone not at start:** x')"
 ok "another tag's rows do not apply" "$(notes_drop_edited v1.4.143 <<<"$in")" "$(printf '%s' "$in")"
 ok "a row of another tag does not drop here" "$(notes_drop_edited v1.4.142 <<<"- Other tag line")" "- Other tag line"
+# a three-column row replaces the line (the published body has the corrected line in the same place)
+printf 'v1.4.150\t- **Replace me:**\t- **Replace me:** the corrected text\nv1.4.150\t- Drop me\n' > "$T"
+export RELEASE_NOTES_EDITS_FILE="$T"
+in2=$'- keep\n- **Replace me:** the old text\n- Drop me too\n- keep last\n'
+ok "a replaced row swaps the line and a drop row drops it" "$(notes_drop_edited v1.4.150 <<<"$in2")" "$(printf '%s\n' '- keep' '- **Replace me:** the corrected text' '- keep last')"
+ok "a replaced row of another tag does not apply" "$(notes_drop_edited v1.4.151 <<<"$in2")" "$(printf '%s' "$in2")"
 export RELEASE_NOTES_EDITS_FILE=/nonexistent
 ok "no table: everything is kept" "$(notes_drop_edited v1.4.142 <<<"$in")" "$(printf '%s' "$in")"
 unset RELEASE_NOTES_EDITS_FILE

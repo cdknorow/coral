@@ -1,6 +1,7 @@
 # Lines deliberately REMOVED from a published release's body after it was published (the tag's RELEASE_NOTES.md cannot change: the tag is immutable).
 # tools/verify-release.sh compares the body with the tag's notes after dropping, for that tag, every line that starts with the text given here.
-# Format: TAG<TAB>start of the removed line. Add a row only for a claim that was wrong (a fix that never landed), with a comment above it.
+# Format: TAG<TAB>start of the removed line (the line is dropped), or TAG<TAB>start of the line<TAB>the line as the published body now has it (the line is
+# replaced). Add a row only for a claim that was wrong (a fix that never landed, a statement that is not true), with a comment above it.
 #
 # v1.4.142 claimed a fix of the Team settings tab strip (#5518) that was never landed; the line was removed from the published body.
 v1.4.142	- **The Team settings tab strip no longer changes after it appears:**
