@@ -121,7 +121,8 @@ func (h *SystemHandler) Status(w http.ResponseWriter, r *http.Request) {
 		// A data folder other people on this computer can read (Windows; #3637): shown on the
 		// dashboard's first page, not only in the log. "" when there is nothing to say.
 		"security_warning": securityWarning(dataDirWarning(h.cfg.CoralDir()), auth.PeerCheckWarning()),
-		// What Coral did at startup to make an open data folder private: told once, as a fix, never again as a warning (#295). "" when nothing was done.
+		// What Coral did at startup to make an open data folder private: a fix, never a warning (#295). It stays here until the dashboard has shown it and
+		// said so (POST /api/system/security-notice/ack), so a CLI or a second tab reading the status does not use it up. "" when nothing was done.
 		"security_notice": dataDirFixed(),
 		// A Windows Firewall rule for Coral's programs that allows more than it needs (Public profile, every port), found by the
 		// read-only startup check (#97): shown as its own warning with the commands that narrow or remove it. "" when none.
@@ -153,8 +154,17 @@ func securityWarning(warnings ...string) string {
 // folder with a broad access list).
 var dataDirWarning = config.DataDirWarning
 
-// dataDirFixed is config.TakeDataDirFixed (a variable so a test can stand in for a folder Coral made private).
-var dataDirFixed = config.TakeDataDirFixed
+// dataDirFixed is config.DataDirFixed, and ackDataDirFixed config.AckDataDirFixed (variables so a test can stand in for a folder Coral made private).
+var (
+	dataDirFixed    = config.DataDirFixed
+	ackDataDirFixed = config.AckDataDirFixed
+)
+
+// AckSecurityNotice: POST /api/system/security-notice/ack, the dashboard saying it has shown the "data folder made private" notice.
+func (h *SystemHandler) AckSecurityNotice(w http.ResponseWriter, r *http.Request) {
+	ackDataDirFixed()
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
 
 // tmuxInstallCommand is tmux.InstallCommand: the banner, the launch dialogs and a failed launch name the same one command.
 func tmuxInstallCommand() string { return tmux.InstallCommand() }

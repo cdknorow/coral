@@ -364,6 +364,7 @@ b POST /api/system/api-key/regenerate
 b POST /api/system/auto-wake/dismiss
 b POST /api/system/login-token
 b POST /api/system/restart
+b POST /api/system/security-notice/ack
 b POST /api/system/telemetry/acknowledge
 b POST /api/system/terminal-backend/end-leftover
 b POST /api/system/terminal-backend/notice-seen

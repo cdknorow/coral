@@ -59,12 +59,12 @@ const DATABASE = 'The sessions database is damaged (page 12 is corrupt). Stop Co
         await ev(`(async () => { const m = await import(${STATIC} + 'update_check.js'); await m.showFirewallWarning(${JSON.stringify(FIREWALL)}); return true; })()`);
         await waitFor(`!!document.getElementById('firewall-warning-toast')`, 'the firewall toast');
         const fw = await ev(`(() => { const t = document.getElementById('firewall-warning-toast'); const d = t.querySelector('details'); const b = t.getBoundingClientRect();
-            return { text: t.querySelector('.security-warning-text').textContent, open: d.open, copies: t.querySelectorAll('.firewall-copy').length, cmds: [...t.querySelectorAll('.firewall-cmd code')].map(c => c.textContent), h: b.height, role: t.getAttribute('role'), never: !![...t.querySelectorAll('button')].find(x => /Don.t show again/.test(x.textContent)) }; })()`);
+            return { text: t.querySelector('.security-warning-text').textContent, open: d.open, copies: t.querySelectorAll('.firewall-copy').length, cmds: [...t.querySelectorAll('.firewall-cmd code')].map(c => c.textContent), h: b.height, lh: parseFloat(getComputedStyle(t.querySelector('.security-warning-text')).lineHeight) || 20, role: t.getAttribute('role'), never: !![...t.querySelectorAll('button')].find(x => /Don.t show again/.test(x.textContent)) }; })()`);
         assert.ok(/more than it needs/.test(fw.text) && !/Set-NetFirewallRule/.test(fw.text), 'the toast says the problem in a sentence, not the commands: ' + fw.text);
         assert.equal(fw.open, false, 'the commands are behind a disclosure');
         assert.equal(fw.copies, 4, 'a Copy button for each of the four commands');
         assert.ok(fw.cmds.every(c => /^(Set|Remove)-NetFirewallRule -Name /.test(c)), 'each command is a command and nothing else: ' + JSON.stringify(fw.cmds));
-        assert.ok(fw.h < 200, 'the toast is short while the commands are closed: ' + fw.h);
+        assert.ok(fw.h <= fw.lh * 14, `the toast is short while the commands are closed (at most 14 lines, whatever the font): ${fw.h}px of ${fw.lh}px lines`);
         assert.equal(fw.role, null, "announced politely by the notices' own region, not by a role of its own (#6213)");
         assert.ok(fw.never, 'it can be dismissed for good');
         await ev(`[...document.querySelectorAll('#firewall-warning-toast button')].find(x => /Don.t show again/.test(x.textContent)).click(); true`);
@@ -88,6 +88,14 @@ const DATABASE = 'The sessions database is damaged (page 12 is corrupt). Stop Co
         assert.equal(notice.role, null, "announced politely by the notices' own region, not by a role of its own (#6213)");
         assert.equal(notice.warning, false, 'it is not the Security warning');
 
+        // The notice stays in the status until the page that showed it says so (a CLI or a second tab reading the status does not use it up): the page posts the
+        // acknowledgement once, when the notice is on the screen.
+        await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired(); await install();
+        await waitFor(`!!document.getElementById('agent-search-input')`, 'the page', 15000);
+        const acks = await ev(`(async () => { const m = await import(${STATIC} + 'update_check.js'); const seen = []; const saved = window.fetch; window.fetch = (u, o) => { if (String(u).includes('security-notice/ack')) { seen.push(o && o.method); return Promise.resolve(new Response('{}', { status: 200 })); } return saved(u, o); };
+            m.showSecurityNotice('Coral made its data folder private.'); m.showSecurityNotice('Coral made its data folder private.'); window.fetch = saved; return seen; })()`);
+        assert.deepEqual(acks, ['POST'], 'the notice is acknowledged once, by a POST, when it is shown');
+
         console.log('at 200% zoom the warnings are a strip, not the page (#295)');
         for (const [w, h] of [[640, 360], [1280, 800]]) {
             await Emulation.setDeviceMetricsOverride({ width: w, height: h, deviceScaleFactor: w === 640 ? 2 : 1, mobile: false });
@@ -96,6 +104,9 @@ const DATABASE = 'The sessions database is damaged (page 12 is corrupt). Stop Co
             await ev(`localStorage.removeItem('coral-firewall-warning-dismissed'); (async () => { const m = await import(${STATIC} + 'update_check.js'); m.showSecurityWarning(${JSON.stringify(SECURITY)}); await m.showFirewallWarning(${JSON.stringify(FIREWALL)}); m.showDatabaseWarning(${JSON.stringify(DATABASE)}); m.showSecurityNotice('Coral made its data folder private.'); return true; })()`);
             await waitFor(`document.querySelectorAll('.security-warning-toast').length === 4`, 'four toasts');
             const z = await ev(`(() => { const s = document.getElementById('warning-toasts').getBoundingClientRect(); return { h: s.height, vh: innerHeight, w: s.width, vw: innerWidth, r: s.right, b: s.bottom }; })()`);
+            const top = await ev(`(() => { const s = document.getElementById('warning-toasts'); const first = s.firstElementChild.querySelector('.update-toast-title').getBoundingClientRect(); const x = s.firstElementChild.querySelector('.update-toast-close').getBoundingClientRect(); const sr = s.getBoundingClientRect(); return { scrollTop: s.scrollTop, titleVisible: first.top >= sr.top - 1 && first.bottom <= sr.bottom + 1, closeVisible: x.top >= sr.top - 1 && x.bottom <= sr.bottom + 1 }; })()`);
+            assert.equal(top.scrollTop, 0, 'the strip opens at the top');
+            assert.ok(top.titleVisible && top.closeVisible, 'so the first view has a heading and its close button: ' + JSON.stringify(top));
             if (w === 640) assert.ok(z.h <= z.vh * 0.45, `at 200% the four toasts take at most 45% of the window height: ${z.h} of ${z.vh}`);
             assert.ok(z.r <= z.vw + 1 && z.b <= z.vh + 1, 'inside the window: ' + JSON.stringify(z));
         }

@@ -34,14 +34,16 @@ func TestSystemStatusCarriesTheDataFolderWarning(t *testing.T) {
 	assert.Equal(t, "", status()["security_warning"], "a private folder: nothing to show")
 }
 
-// A folder Coral made private is told once, as a notice, and is never a warning (#295: the "Security warning" came back on every page load).
-func TestSystemStatusTellsAFixedDataFolderOnce(t *testing.T) {
+// A folder Coral made private is a notice, never a warning (#295: the "Security warning" came back on every page load), and it stays in the status until the
+// dashboard has shown it and said so: a CLI or a second tab that reads the status does not use it up.
+func TestSystemStatusKeepsAFixedDataFolderNoticeUntilTheDashboardAcknowledgesIt(t *testing.T) {
 	h := newSystemHandlerForTest(t)
-	prevWarn, prevFixed := dataDirWarning, dataDirFixed
-	t.Cleanup(func() { dataDirWarning, dataDirFixed = prevWarn, prevFixed })
+	prevWarn, prevFixed, prevAck := dataDirWarning, dataDirFixed, ackDataDirFixed
+	t.Cleanup(func() { dataDirWarning, dataDirFixed, ackDataDirFixed = prevWarn, prevFixed, prevAck })
 	dataDirWarning = func(string) string { return "" }
 	pending := "Coral made its data folder D: coral private to this user: Users could use it."
-	dataDirFixed = func() string { s := pending; pending = ""; return s }
+	dataDirFixed = func() string { return pending }
+	ackDataDirFixed = func() { pending = "" }
 	status := func() map[string]any {
 		t.Helper()
 		rec := httptest.NewRecorder()
@@ -51,10 +53,15 @@ func TestSystemStatusTellsAFixedDataFolderOnce(t *testing.T) {
 		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &out))
 		return out
 	}
-	first := status()
-	assert.Contains(t, first["security_notice"], "made its data folder")
-	assert.Equal(t, "", first["security_warning"], "a fixed folder is not a warning")
-	second := status()
-	assert.Equal(t, "", second["security_notice"], "told once")
-	assert.Equal(t, "", second["security_warning"])
+	for i := 0; i < 3; i++ { // any number of other readers
+		got := status()
+		assert.Contains(t, got["security_notice"], "made its data folder", "read %d", i)
+		assert.Equal(t, "", got["security_warning"], "a fixed folder is not a warning")
+	}
+	rec := httptest.NewRecorder()
+	h.AckSecurityNotice(rec, httptest.NewRequest(http.MethodPost, "/api/system/security-notice/ack", nil))
+	require.Equal(t, http.StatusOK, rec.Code)
+	got := status()
+	assert.Equal(t, "", got["security_notice"], "after the dashboard says it has shown it")
+	assert.Equal(t, "", got["security_warning"])
 }

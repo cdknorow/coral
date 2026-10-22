@@ -467,6 +467,7 @@ func (s *Server) registerSystem(r *chi.Mux, h *routeHandlers) {
 	r.Put("/api/custom-models", sysHandler.PutCustomModels)
 	r.Put("/api/settings/git-diff-mode", sysHandler.PutGitDiffMode)
 	r.Get("/api/system/privacy", sysHandler.GetPrivacyStatus)
+	r.Post("/api/system/security-notice/ack", sysHandler.AckSecurityNotice)
 	// The models each agent CLI offers (#4065): the cached list, and the Operator's Refresh.
 	r.Get("/api/agents/models", sysHandler.GetAgentCLIModels)
 	r.Post("/api/agents/models/refresh", sysHandler.RefreshAgentCLIModels)

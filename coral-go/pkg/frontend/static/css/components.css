@@ -1432,7 +1432,7 @@ button.subscriber-history-link {
 /* The warnings share one column (security, firewall, database), so two at once do not sit on each other (#5737). */
 #warning-toasts {
     display: flex;
-    flex-direction: column-reverse;
+    flex-direction: column; /* not column-reverse: a strip that scrolls opens at its first heading, not at its end (#125) */
     gap: 10px;
     width: min(440px, calc(100vw - 40px));
     max-height: calc(100vh - 40px);

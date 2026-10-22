@@ -64,12 +64,14 @@ func TestExistingDataFolderOthersCanReadIsTightened(t *testing.T) {
 	assert.Empty(t, readersOf(t, filepath.Join(dir, "new.db")))
 	// What was done is told once, as a fix; the folder is private now, so it is no longer a warning (#295).
 	assert.Empty(t, DataDirWarning(dir), "a fixed folder is not a warning")
-	w := TakeDataDirFixed()
+	w := DataDirFixed()
 	assert.Contains(t, w, "made its data folder")
 	assert.Contains(t, w, "Users")
 	assert.NotContains(t, w, "WARNING")
-	assert.Empty(t, TakeDataDirFixed(), "told once")
-	assert.Empty(t, DataDirWarning(dir), "and not again")
+	assert.Equal(t, w, DataDirFixed(), "reading it does not use it up")
+	AckDataDirFixed()
+	assert.Empty(t, DataDirFixed(), "told until the dashboard has shown it")
+	assert.Empty(t, DataDirWarning(dir), "and never as a warning")
 	// A second start finds nothing to do and keeps saying what happened.
 	require.NoError(t, EnsureDataDir(dir))
 	assert.Empty(t, readersOf(t, dir))
@@ -139,7 +141,7 @@ func TestDataFolderLinksAreNeverFollowed(t *testing.T) {
 	assert.NotEmpty(t, readersOf(t, outside), "the folder the junction points to is not touched")
 	assert.NotEmpty(t, readersOf(t, secret), "nor what is in it")
 	assert.Empty(t, DataDirWarning(dir))
-	assert.Contains(t, TakeDataDirFixed(), "links were left alone")
+	assert.Contains(t, DataDirFixed(), "links were left alone")
 
 	// The data folder is itself a junction to a shared folder: refused, not changed.
 	link := filepath.Join(root, "datalink")
@@ -173,7 +175,7 @@ func TestExistingDataFolderGrantingOtherAccountsIsTightened(t *testing.T) {
 
 	assert.Empty(t, readersOf(t, dir))
 	assert.Empty(t, readersOf(t, old), "the explicit entry on the old file did not survive")
-	assert.Contains(t, TakeDataDirFixed(), "Guest")
+	assert.Contains(t, DataDirFixed(), "Guest")
 }
 
 // A data folder whose only extra entries are Administrators, SYSTEM and this user is already private: nothing is done.
