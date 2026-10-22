@@ -200,8 +200,8 @@ func Timeout(def time.Duration) time.Duration {
 
 var warnOnce sync.Once
 
-// Describe is the words for a failed request in one line: the transport error if there was one (CannotReach's text), else "Coral answered HTTP <status>"
-// and the server's own message (its message or error field, else the body trimmed). It never prints "<nil>" for a request that got an answer.
+// Describe is the words for a failed request in one line: the transport error if there was one (CannotReach's text), else "Coral says: <its message> (HTTP <status>)"
+// (its message or error field, else the body trimmed). It never prints "<nil>" for a request that got an answer.
 func Describe(err error, status int, body []byte) string {
 	if err != nil {
 		return err.Error()
@@ -222,7 +222,7 @@ func Describe(err error, status int, body []byte) string {
 		text = text[:300] + "..."
 	}
 	if text == "" {
-		return fmt.Sprintf("Coral answered HTTP %d", status)
+		return fmt.Sprintf("Coral returned an error (HTTP %d)", status)
 	}
-	return fmt.Sprintf("Coral answered HTTP %d: %s", status, text)
+	return fmt.Sprintf("Coral says: %s (HTTP %d)", text, status)
 }

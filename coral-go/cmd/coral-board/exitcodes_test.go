@@ -76,7 +76,7 @@ func TestReviewVerbsExitCodes(t *testing.T) {
 	for _, verb := range []string{"approve", "reject"} {
 		res := runBoard(t, srv.URL, dir, "task", verb, "999", "--note", "x")
 		assert.Equal(t, 6, res.code, "%s: %q", verb, res.stderr)
-		assert.Contains(t, res.stderr, "Coral answered HTTP 404: Task not found", verb)
+		assert.Contains(t, res.stderr, "Coral says: Task not found (HTTP 404)", verb)
 		assert.NotContains(t, res.stderr, "<nil>", verb)
 	}
 	status = 403
