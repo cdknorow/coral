@@ -117,6 +117,11 @@ func main() {
 	// Check if already running
 	pid := readPID(dataDir)
 	if pid > 0 {
+		// The Start Menu starts this (not --foreground) on Windows: opening Coral again shows the running tray's window (#184).
+		if runtime.GOOS == "windows" && !*noBrowser && handOver(pid, askTrayToShowWindow) {
+			fmt.Printf("Coral is already running (PID %d).\n", pid)
+			return
+		}
 		fmt.Printf("Coral tray is already running (PID %d). Use --stop to stop it.\n", pid)
 		return
 	}
