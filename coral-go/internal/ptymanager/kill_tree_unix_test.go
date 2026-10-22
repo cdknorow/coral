@@ -45,14 +45,19 @@ func pidFrom(t *testing.T, path string) int {
 	}
 	// only this recorded process, and only while it is still the one that reported itself (its start time, as the kill's own identity check): a failed run cannot leave a helper behind, and a pid that was
 	// reused since is never signalled
+	registered := false
 	if p, err := process.NewProcess(int32(pid)); err == nil {
 		if created, err := p.CreateTime(); err == nil {
+			registered = true
 			t.Cleanup(func() {
 				if (member{pid, created}).current() {
 					syscall.Kill(pid, syscall.SIGKILL)
 				}
 			})
 		}
+	}
+	if !registered {
+		t.Logf("helper %d: its start time could not be read, so nothing will clean it up if this test fails", pid) // Security's LOW on 33b7788fd
 	}
 	return pid
 }
