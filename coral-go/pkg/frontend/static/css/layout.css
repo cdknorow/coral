@@ -265,7 +265,8 @@ body.panel-dragging .sidebar {
     font-size: 0.8125rem;
 }
 
-.sidebar-search-input:focus { outline: none; border-color: var(--accent); }
+.sidebar-search-input:focus { border-color: var(--accent); }
+.sidebar-search-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; } /* a ring as well as the border colour (#6094) */
 
 .sidebar-header {
     display: flex;
