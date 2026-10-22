@@ -62,7 +62,7 @@ func (s *RemoteBoardStore) RemoveRemoteSubs(ctx context.Context, sessionID strin
 func (s *RemoteBoardStore) ListAllRemoteSubs(ctx context.Context) ([]RemoteBoardSub, error) {
 	var subs []RemoteBoardSub
 	err := s.db.SelectContext(ctx, &subs,
-		"SELECT * FROM remote_board_subscriptions ORDER BY created_at")
+		"SELECT * FROM remote_board_subscriptions ORDER BY created_at, id")
 	if err != nil {
 		return nil, err
 	}

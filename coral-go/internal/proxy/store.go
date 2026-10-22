@@ -162,7 +162,7 @@ func (s *Store) ListRequests(ctx context.Context, sessionID string, limit, offse
 		FROM proxy_requests pr
 		LEFT JOIN live_sessions ls ON ls.session_id = pr.session_id
 		LEFT JOIN session_meta sm ON sm.session_id = pr.session_id
-		WHERE ` + where + ` ORDER BY pr.started_at DESC LIMIT ? OFFSET ?`
+		WHERE ` + where + ` ORDER BY pr.started_at DESC, pr.id DESC LIMIT ? OFFSET ?`
 	args = append(args, limit, offset)
 	var rows []ProxyRequest
 	err = s.db.SelectContext(ctx, &rows, query, args...)

@@ -157,3 +157,82 @@ func TestNoSQLOrdersByATimeStoredAsRFC3339Nano(t *testing.T) {
 	sort.Strings(bad)
 	assert.Empty(t, bad, "these order by, or take the MAX or MIN of, a time stored as RFC3339Nano text, which does not sort as a time within a second: order by id (or rowid), or store a fixed-width stamp")
 }
+
+// A list ordered by a time and nothing else comes back in an arbitrary order for rows with the same time (the board's times are to the second, the store's to the microsecond): two runs can
+// differ. The first key being a time, a later key must be id or rowid, which no two rows share.
+var timeKeyRE = regexp.MustCompile(`(?i)\w*(?:_at|timestamp)\b`)
+var uniqueKeyRE = regexp.MustCompile(`(?i)^(?:\w+\.)?(?:id|rowid)\b`)
+
+// timeOrderAllowed: file: the ORDER BY clause, and why it needs no tie-break.
+var timeOrderAllowed = map[string]string{
+	"board/store_groups_projects.go: last_message_at": "p.project follows: the derived table lists each project once, and a project is its own key",
+	"store/token_usage.go: MAX(t.recorded_at)":        "t.session_id follows: the rows are grouped by it, so each is one row's key",
+	"store/call_metrics.go: created_at":               "the prune of the oldest rows below a cutoff: which of two rows in one second goes in this batch changes nothing that is pruned",
+	"store/agent_event_query.go: created_at ":         "the id key follows in the next piece of the statement (dir is the same for both)",
+}
+
+// orderKeys splits an ORDER BY clause (the text after the words) into its keys at the commas outside brackets, up to a LIMIT, the end of a sub-select or the end of the text.
+func orderKeys(s string) []string {
+	var keys []string
+	depth, start := 0, 0
+	end := len(s)
+scan:
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case '(':
+			depth++
+		case ')':
+			if depth == 0 {
+				end = i
+				break scan
+			}
+			depth--
+		case ',':
+			if depth == 0 {
+				keys = append(keys, strings.TrimSpace(s[start:i]))
+				start = i + 1
+			}
+		case ';':
+			end = i
+			break scan
+		}
+		if depth == 0 && i+5 <= len(s) && strings.EqualFold(s[i:i+5], "LIMIT") && (i == 0 || s[i-1] == ' ' || s[i-1] == '\n' || s[i-1] == '\t') {
+			end = i
+			break
+		}
+	}
+	return append(keys, strings.TrimSpace(s[start:end]))
+}
+
+func TestEveryOrderByATimeHasAUniqueTieBreak(t *testing.T) {
+	orderRE := regexp.MustCompile(`(?i)\bORDER BY\s`)
+	var bad []string
+	for name, f := range goFilesUnderInternal(t) {
+		for _, l := range stringLiterals(f) {
+			for _, at := range orderRE.FindAllStringIndex(l, -1) {
+				keys := orderKeys(l[at[1]:])
+				if !timeKeyRE.MatchString(keys[0]) {
+					continue
+				}
+				unique := false
+				for _, k := range keys[1:] {
+					if uniqueKeyRE.MatchString(k) {
+						unique = true
+					}
+				}
+				first := strings.Join(strings.Fields(keys[0]), " ")
+				allowed := false
+				for key := range timeOrderAllowed {
+					if file, clause, ok := strings.Cut(key, ": "); ok && file == name && strings.HasPrefix(first, strings.TrimSpace(clause)) {
+						allowed = true
+					}
+				}
+				if !unique && !allowed {
+					bad = append(bad, name+": ORDER BY "+strings.Join(strings.Fields(strings.Join(keys, ", ")), " "))
+				}
+			}
+		}
+	}
+	sort.Strings(bad)
+	assert.Empty(t, bad, "these order by a time with no id or rowid after it: rows with the same time come back in an arbitrary order. Add ', id' (or rowid)")
+}

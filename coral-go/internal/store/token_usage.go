@@ -459,7 +459,7 @@ func (s *TokenUsageStore) ListUsage(ctx context.Context, f UsageFilter) ([]Token
 		args = append(args, f.Since)
 	}
 
-	query += ` GROUP BY t.session_id ORDER BY MAX(t.recorded_at) DESC`
+	query += ` GROUP BY t.session_id ORDER BY MAX(t.recorded_at) DESC, t.session_id`
 
 	var results []TokenUsage
 	err := s.db.Reader().SelectContext(ctx, &results, query, args...)
@@ -546,7 +546,7 @@ func (s *TokenUsageStore) GetSessionTurns(ctx context.Context, sessionID string)
 	err := s.db.Reader().SelectContext(ctx, &turns,
 		`SELECT cost_usd, recorded_at FROM token_usage_all
 		 WHERE session_id = ? AND `+sourceDedup+`
-		 ORDER BY recorded_at ASC`, sessionID)
+		 ORDER BY recorded_at ASC, id ASC`, sessionID)
 	return turns, err
 }
 

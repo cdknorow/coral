@@ -403,7 +403,7 @@ func (s *SessionStore) GetRecentStoppedSessions(ctx context.Context, since strin
 		query += " AND stopped_at >= ?"
 		args = append(args, since)
 	}
-	query += " ORDER BY stopped_at DESC LIMIT ?"
+	query += " ORDER BY stopped_at DESC, rowid DESC LIMIT ?"
 	args = append(args, limit)
 	err := s.reader().SelectContext(ctx, &sessions, query, args...)
 	return sessions, err

@@ -134,12 +134,12 @@ func (s *GitStore) GetRecentGitSnapshots(ctx context.Context, since string, limi
 		err = s.db.SelectContext(ctx, &snaps,
 			`SELECT `+gitSnapshotCols+`
 			 FROM git_snapshots WHERE recorded_at >= ?
-			 ORDER BY recorded_at DESC LIMIT ?`,
+			 ORDER BY recorded_at DESC, id DESC LIMIT ?`,
 			since, limit)
 	} else {
 		err = s.db.SelectContext(ctx, &snaps,
 			`SELECT `+gitSnapshotCols+`
-			 FROM git_snapshots ORDER BY recorded_at DESC LIMIT ?`,
+			 FROM git_snapshots ORDER BY recorded_at DESC, id DESC LIMIT ?`,
 			limit)
 	}
 	return snaps, err
@@ -151,7 +151,7 @@ func (s *GitStore) GetGitSnapshots(ctx context.Context, agentName string, limit 
 	err := s.db.SelectContext(ctx, &snaps,
 		`SELECT `+gitSnapshotCols+`
 		 FROM git_snapshots WHERE agent_name = ?
-		 ORDER BY recorded_at DESC LIMIT ?`,
+		 ORDER BY recorded_at DESC, id DESC LIMIT ?`,
 		agentName, limit)
 	return snaps, err
 }
@@ -162,7 +162,7 @@ func (s *GitStore) GetLatestGitState(ctx context.Context, agentName string) (*Gi
 	err := s.db.GetContext(ctx, &snap,
 		`SELECT `+gitSnapshotCols+`
 		 FROM git_snapshots WHERE agent_name = ?
-		 ORDER BY recorded_at DESC LIMIT 1`,
+		 ORDER BY recorded_at DESC, id DESC LIMIT 1`,
 		agentName)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -176,7 +176,7 @@ func (s *GitStore) GetLatestGitStateBySession(ctx context.Context, sessionID str
 	err := s.db.GetContext(ctx, &snap,
 		`SELECT `+gitSnapshotCols+`
 		 FROM git_snapshots WHERE session_id = ?
-		 ORDER BY recorded_at DESC LIMIT 1`,
+		 ORDER BY recorded_at DESC, id DESC LIMIT 1`,
 		sessionID)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -221,7 +221,7 @@ func (s *GitStore) GetGitSnapshotsForSession(ctx context.Context, sessionID stri
 	err := s.db.SelectContext(ctx, &snaps,
 		`SELECT `+gitSnapshotCols+`
 		 FROM git_snapshots WHERE session_id = ?
-		 ORDER BY commit_timestamp ASC LIMIT ?`,
+		 ORDER BY commit_timestamp ASC, id ASC LIMIT ?`,
 		sessionID, limit)
 	if err != nil {
 		return nil, err
@@ -246,7 +246,7 @@ func (s *GitStore) GetGitSnapshotsForSession(ctx context.Context, sessionID stri
 		`SELECT `+gitSnapshotCols+`
 		 FROM git_snapshots
 		 WHERE commit_timestamp >= ? AND commit_timestamp <= ?
-		 ORDER BY commit_timestamp ASC LIMIT ?`,
+		 ORDER BY commit_timestamp ASC, id ASC LIMIT ?`,
 		*idx.FirstTS, *idx.LastTS, limit)
 	return snaps, err
 }

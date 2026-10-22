@@ -236,7 +236,7 @@ func (s *WorkflowStore) ListWorkflows(ctx context.Context) ([]Workflow, error) {
 		     WHERE wr1.id = (
 		         SELECT id FROM workflow_runs wr2
 		         WHERE wr2.workflow_id = wr1.workflow_id
-		         ORDER BY created_at DESC LIMIT 1
+		         ORDER BY created_at DESC, id DESC LIMIT 1
 		     )
 		 ) lr ON lr.workflow_id = w.id
 		 ORDER BY w.name`)
@@ -345,7 +345,7 @@ func (s *WorkflowStore) ListRunsForWorkflow(ctx context.Context, workflowID int6
 		query += " AND status = ?"
 		args = append(args, *status)
 	}
-	query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+	query += " ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?"
 	args = append(args, limit, offset)
 	err := s.db.SelectContext(ctx, &runs, query, args...)
 	if err != nil {
@@ -365,7 +365,7 @@ func (s *WorkflowStore) ListRecentRuns(ctx context.Context, limit, offset int, s
 		query += " WHERE r.status = ?"
 		args = append(args, *status)
 	}
-	query += " ORDER BY r.created_at DESC LIMIT ? OFFSET ?"
+	query += " ORDER BY r.created_at DESC, r.id DESC LIMIT ? OFFSET ?"
 	args = append(args, limit, offset)
 	err := s.db.SelectContext(ctx, &runs, query, args...)
 	if err != nil {
@@ -408,7 +408,7 @@ func (s *WorkflowStore) GetActiveRunsForWorkflow(ctx context.Context, workflowID
 	err := s.db.SelectContext(ctx, &runs,
 		`SELECT * FROM workflow_runs
 		 WHERE workflow_id = ? AND status IN ('pending', 'running')
-		 ORDER BY created_at DESC`, workflowID)
+		 ORDER BY created_at DESC, id DESC`, workflowID)
 	return runs, err
 }
 
