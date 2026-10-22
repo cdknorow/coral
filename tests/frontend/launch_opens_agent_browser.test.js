@@ -22,7 +22,7 @@ const BASE = require('./test_base').BASE;
         console.log('1. a launch opens the new session');
         await ev(`(async () => { await window.showLaunchModal(); window._selectLaunchType('terminal'); return true; })()`);
         await waitFor(`getComputedStyle(document.getElementById('launch-step-terminal')).display !== 'none'`, 'the terminal step');
-        await ev(`document.getElementById('launch-terminal-dir').value = '/tmp'; window.launchSession(); true`);
+        await ev(`document.getElementById('launch-terminal-dir').value = ${JSON.stringify(require('node:os').tmpdir())}; window.launchSession(); true`);
         await waitFor(`!!window.__launchBody && !!window.__launchBody.session_name`, 'the launch answer', 15000);
         launched = await ev(`window.__launchBody`);
         await waitFor(`import((window.__coralStatic || '/static/') + 'state.js').then(m => !!m.state.currentSession && m.state.currentSession.name === ${JSON.stringify(launched.session_name)})`, 'the new session opened', 15000);

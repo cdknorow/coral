@@ -198,7 +198,7 @@ const BASE = require('./test_base').BASE;
         // Crucial requirement: Coral history session ID preserved in state.currentSession.name
         assert.equal(codexModalData.currentSessionName, '14c7245b-9fb4-67de-871c-a03f6186ed30');
 
-        fs.writeFileSync('/tmp/history-resume-modal-codex.png', Buffer.from((await Page.captureScreenshot()).data, 'base64'));
+        fs.writeFileSync(require('node:os').tmpdir() + '/history-resume-modal-codex.png', Buffer.from((await Page.captureScreenshot()).data, 'base64'));
 
         // Click Resume launch
         await ev(`window.testModals.resumeLaunchNew()`);
@@ -213,7 +213,7 @@ const BASE = require('./test_base').BASE;
         assert.equal(codexLaunch.body.display_name, 'Historical Codex Agent');
         assert.equal(await ev(`window.testState.currentSession.name`), '14c7245b-9fb4-67de-871c-a03f6186ed30');
 
-        fs.writeFileSync('/tmp/history-resume-codex.png', Buffer.from((await Page.captureScreenshot()).data, 'base64'));
+        fs.writeFileSync(require('node:os').tmpdir() + '/history-resume-codex.png', Buffer.from((await Page.captureScreenshot()).data, 'base64'));
 
         // ---------------------------------------------------------------------
         // Test 2: Antigravity Historical Session
@@ -260,7 +260,7 @@ const BASE = require('./test_base').BASE;
         assert.equal(agyLaunch.body.resume_session_id, 'c1d2e3f4-native-conv-uuid-5678');
         assert.equal(agyLaunch.body.working_dir, '/repo/agy-project');
 
-        fs.writeFileSync('/tmp/history-resume-agy.png', Buffer.from((await Page.captureScreenshot()).data, 'base64'));
+        fs.writeFileSync(require('node:os').tmpdir() + '/history-resume-agy.png', Buffer.from((await Page.captureScreenshot()).data, 'base64'));
 
         // ---------------------------------------------------------------------
         // Test 3: Claude Historical Session (Unchanged behavior)

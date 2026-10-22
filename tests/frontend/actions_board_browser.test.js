@@ -40,7 +40,7 @@ const { removeBoards, removeTeams } = require('./helpers/board_cleanup');
         await coralReady();
 
         agent = await ev(`fetch('/api/sessions/launch-team', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ board_name: 'board-3645', working_dir: '/tmp', agent_type: 'terminal', agents: [{ name: 'Board QA', prompt: 'x' }] }) })
+            body: JSON.stringify({ board_name: 'board-3645', working_dir: ${JSON.stringify(require('node:os').tmpdir())}, agent_type: 'terminal', agents: [{ name: 'Board QA', prompt: 'x' }] }) })
             .then(r => r.json()).then(j => ({ ...j.agents[0], board: j.board, label: j.board_label }))`);
 
         // ── Open the board from the list ───────────────────────────────────

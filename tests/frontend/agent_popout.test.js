@@ -280,7 +280,7 @@ async function run() {
 
     // ── B. Real isolated terminal session ─────────────────────────────────
     console.log('\n── B. real session');
-    const launch = await httpJson('POST', '/api/sessions/launch', { working_dir: '/tmp', agent_type: 'terminal', display_name: 'Popout QA' });
+    const launch = await httpJson('POST', '/api/sessions/launch', { working_dir: require('node:os').tmpdir(), agent_type: 'terminal', display_name: 'Popout QA' });
     const sid = launch.data && launch.data.session_id; const sname = launch.data && launch.data.session_name;
     check('B launch isolated terminal session', !!sid && UUID_RE.test(sid), JSON.stringify({ sid, sname, status: launch.status }));
     if (!sid) throw new Error('cannot launch a terminal session on the isolated server');

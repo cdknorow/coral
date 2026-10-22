@@ -52,7 +52,7 @@ const BASE = require('./test_base').BASE;
     // No agent is selected, and another pane starts active. Opening Team view selects the team: Team View tab active, group chat in the center.
     await ev(`window.switchAgenticTab('files','top'); window.renderLiveSessions([{session_id:'alpha-1',name:'Alpha agent',agent_type:'codex',board_project:'alpha',working_directory:'/tmp/alpha'}]); document.querySelector('.group-kebab-btn').click(); [...document.querySelectorAll('.group-kebab .overflow-menu-item')].find(x => x.textContent.includes('Team view')).click(); true`);
     await teamShown('alpha');
-    fs.writeFileSync('/tmp/coral-1314-team-alpha.png', Buffer.from((await Page.captureScreenshot()).data, 'base64'));
+    fs.writeFileSync(require('node:os').tmpdir() + '/coral-1314-team-alpha.png', Buffer.from((await Page.captureScreenshot()).data, 'base64'));
     const alpha = await ev(`(() => ({route:location.pathname+location.hash,title:document.querySelector('#team-availability-workspace h2')?.textContent,team:document.querySelector('#team-availability-workspace header p')?.textContent,active:document.querySelector('#agentic-tab-team-view')?.classList.contains('active'),boardVisible:document.querySelector('#agentic-panel-team-view')?.classList.contains('active'),teamContext:document.getElementById('agentic-state').classList.contains('team-context'),chatInCenter:document.getElementById('agentic-panel-board')?.parentElement?.id,agents:[...document.querySelectorAll('#team-availability-workspace .availability-agent strong')].map(x=>x.textContent)}))()`);
     assert.equal(alpha.route, '/team/alpha');
     assert.equal(alpha.title, 'Team view');
@@ -67,7 +67,7 @@ const BASE = require('./test_base').BASE;
     // Selecting another team replaces both route and rendered content.
     await ev(`window.renderLiveSessions([{session_id:'beta-1',name:'Beta agent',agent_type:'codex',board_project:'beta',working_directory:'/tmp/beta'}]); document.querySelector('.group-kebab-btn').click(); [...document.querySelectorAll('.group-kebab .overflow-menu-item')].find(x => x.textContent.includes('Team view')).click(); true`);
     await teamShown('beta');
-    fs.writeFileSync('/tmp/coral-1314-team-beta.png', Buffer.from((await Page.captureScreenshot()).data, 'base64'));
+    fs.writeFileSync(require('node:os').tmpdir() + '/coral-1314-team-beta.png', Buffer.from((await Page.captureScreenshot()).data, 'base64'));
     const beta = await ev(`(() => ({route:location.pathname+location.hash,team:document.querySelector('#team-availability-workspace header p')?.textContent,agents:[...document.querySelectorAll('#team-availability-workspace .availability-agent strong')].map(x=>x.textContent),task:document.querySelector('#team-availability-workspace')?.textContent.includes('Beta task')}))()`);
     assert.equal(beta.route, '/team/beta');
     assert.equal(beta.team, 'beta');

@@ -19,7 +19,7 @@ const BASE = require('./test_base').BASE;
     await Emulation.setDeviceMetricsOverride({width:390,height:520,deviceScaleFactor:1,mobile:true});
     await ev(`document.getElementById('task-complete-message').value='verified on mobile'; true`);
     const mobile = await ev(`(()=>{const m=document.getElementById('task-detail-modal'),b=m.querySelector('.modal-body'),f=document.getElementById('task-detail-modal-footer'),c=f.querySelector('.btn-success'); return {bodyScroll:b.scrollHeight,bodyClient:b.clientHeight,footerBottom:f.getBoundingClientRect().bottom,viewport:innerHeight,completeVisible:!!c&&c.getBoundingClientRect().bottom<=innerHeight,nameWidth:document.getElementById('task-detail-modal-title').getBoundingClientRect().width}})()`);
-    fs.writeFileSync('/tmp/coral-1464-completion-mobile.png', Buffer.from((await Page.captureScreenshot()).data, 'base64'));
+    fs.writeFileSync(require('node:os').tmpdir() + '/coral-1464-completion-mobile.png', Buffer.from((await Page.captureScreenshot()).data, 'base64'));
     assert.ok(mobile.bodyScroll > mobile.bodyClient, JSON.stringify(mobile)); assert.equal(mobile.completeVisible,true);
     await ev(`testTasks._doCompleteTask(1464); new Promise(r=>setTimeout(r,100))`);
     assert.ok(await ev(`document.body.textContent.includes('Required outputs missing')`), 'required output validation should reject incomplete evidence');

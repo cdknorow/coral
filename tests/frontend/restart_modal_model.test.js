@@ -159,7 +159,7 @@ const BASE = require('./test_base').BASE;
     const s4Req = (await ev(`window.__restartRequests`))[3];
     assert.equal(s4Req.model, '', 'whitespace model input must trim to empty string');
 
-    fs.writeFileSync('/tmp/coral-restart-modal-model.png', Buffer.from((await Page.captureScreenshot()).data, 'base64'));
+    fs.writeFileSync(require('node:os').tmpdir() + '/coral-restart-modal-model.png', Buffer.from((await Page.captureScreenshot()).data, 'base64'));
     console.log(JSON.stringify({ s1Req, s2Req, s3Req, s4Req }));
     console.log('All restart modal model frontend tests passed!');
   } finally {

@@ -126,7 +126,7 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
         check('Back shows hooks again', (await ev(activeDoc)) === hooks.title, await ev(activeDoc));
 
         console.log('7. An agent: its page, its sub-tab (a replace), a reload, Back to the list, an old #chat link');
-        const launch = await api('POST', '/api/sessions/launch', { working_dir: '/tmp', agent_type: 'terminal', display_name: 'Routes QA' });
+        const launch = await api('POST', '/api/sessions/launch', { working_dir: require('node:os').tmpdir(), agent_type: 'terminal', display_name: 'Routes QA' });
         sid = launch.data && launch.data.session_id;
         name = launch.data && (launch.data.session_name || launch.data.name);
         check('a terminal launches', launch.status === 200 && !!sid, JSON.stringify(launch.data).slice(0, 160));

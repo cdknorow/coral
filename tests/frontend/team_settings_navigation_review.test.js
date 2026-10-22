@@ -9,7 +9,7 @@ const watchdog=setTimeout(()=>{console.error('Review timeout');process.exit(1)},
  const ev = async expression => {const r=await Runtime.evaluate({expression,returnByValue:true,awaitPromise:true});if(r.exceptionDetails)throw new Error(JSON.stringify(r.exceptionDetails));return r.result.value;};
  const {waitFor}=require('./helpers/wait').bind(ev);
  const results=[];
- const shot=async name=>fs.writeFileSync(`/tmp/coral-1273-${name}.png`,Buffer.from((await Page.captureScreenshot()).data,'base64'));
+ const shot=async name=>fs.writeFileSync(`${require('node:os').tmpdir()}/coral-1273-${name}.png`,Buffer.from((await Page.captureScreenshot()).data,'base64'));
  const geometry=()=>ev(`(() => {
   const d=document.querySelector('#team-working-mode-dialog');
   const visible=selector=>{const e=d.querySelector(selector),r=e.getBoundingClientRect();return {visible:!!r.width&&!!r.height&&r.top>=0&&r.bottom<=innerHeight,top:r.top,bottom:r.bottom};};
@@ -79,12 +79,12 @@ const watchdog=setTimeout(()=>{console.error('Review timeout');process.exit(1)},
    results.push({name,stage:'escape',closed:!await ev(`document.querySelector('#team-working-mode-dialog')?.open || false`)});
    await ev(`document.querySelector('#team-working-mode-dialog header .modal-close-btn')?.click()`);
   }
-  fs.writeFileSync('/tmp/coral-1273-geometry.json',JSON.stringify(results,null,2));
+  fs.writeFileSync(require('node:os').tmpdir() + '/coral-1273-geometry.json',JSON.stringify(results,null,2));
   console.log(JSON.stringify(results,null,2));
   for(const row of results.filter(x=>x.header)) {
    for(const control of ['header','tabs','save','close']) assert.equal(row[control].visible, control !== 'save' || !row.stage.startsWith('prompts-'),`${row.name}/${row.stage}/${control}`);
    assert.equal(row.horizontalOverflow,false);
   }
   console.log('PASS: controls reachable, prompt disclosure, keyboard tabs, no Global tab (#5128), failed-save feedback and edit preservation. Escape status recorded separately.');
- } finally {fs.writeFileSync('/tmp/coral-1273-geometry.json',JSON.stringify(results,null,2));await guard.restore().catch(e => console.error('settings restore: ' + (e && e.message))); await client.close();}
+ } finally {fs.writeFileSync(require('node:os').tmpdir() + '/coral-1273-geometry.json',JSON.stringify(results,null,2));await guard.restore().catch(e => console.error('settings restore: ' + (e && e.message))); await client.close();}
 })().catch(e=>{console.error(e);process.exit(1)});

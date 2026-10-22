@@ -44,7 +44,7 @@ const { removeBoards, removeTeams } = require('./helpers/board_cleanup');
         await coralReady();
 
         agent = await ev(`fetch('/api/sessions/launch-team', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ board_name: 'hdr-team-3653-' + Math.random().toString(36).slice(2, 8), working_dir: '/tmp', agent_type: 'terminal', agents: [{ name: 'Header QA', prompt: 'x' }] }) })
+            body: JSON.stringify({ board_name: 'hdr-team-3653-' + Math.random().toString(36).slice(2, 8), working_dir: ${JSON.stringify(require('node:os').tmpdir())}, agent_type: 'terminal', agents: [{ name: 'Header QA', prompt: 'x' }] }) })
             .then(async r => { const j = await r.json(); if (!j.agents || !j.agents[0]) throw new Error('launch-team ' + r.status + ': ' + JSON.stringify(j).slice(0, 300));
                 return { ...j.agents[0], board: j.board, label: j.board_label }; })`); // a new board each run: a stress run repeats on one server
         const LIVE = `import(${MOD} + 'state.js').then(({ state }) => (state.liveSessions || []).find(s => s.session_id === ${JSON.stringify(agent.session_id)}) || null)`;
