@@ -136,7 +136,10 @@ func (c *tokenOwnerCache) invalidate() {
 
 // InvalidateSessionTokens drops every cached token owner. A write that changes a token calls it
 // after the write commits.
-func (db *DB) InvalidateSessionTokens() { db.tokenOwners.invalidate() }
+func (db *DB) InvalidateSessionTokens() {
+	db.tokenOwners.invalidate()
+	db.proofKeys.invalidate()
+}
 
 // SessionTokenCacheStats is how many owner lookups were asked for and how many the cache answered.
 func (db *DB) SessionTokenCacheStats() (lookups, hits int64) {
@@ -149,18 +152,74 @@ func (db *DB) SessionTokenCacheStats() (lookups, hits int64) {
 // The key is derived one way from the token (serverproof.DeriveKey), so it cannot be turned back into the token: a copy of this database does not let anyone act as the agent. What it does let a
 // program do is answer the proof for this session, that is pass as Coral to that agent's own tools while the session lives; so it is dropped when the session's token is revoked (a restart, an
 // end), and the proof route answers only this computer's own processes.
+//
+// It is answered from an in-memory set of the live sessions' keys (proofKeySet), so a flood of challenges for hashes Coral does not know reads nothing from the database.
 func (db *DB) SessionProofKey(ctx context.Context, tokenHash string) (key []byte, ok bool) {
-	var k sql.NullString
-	err := db.Reader().GetContext(ctx, &k, `SELECT proof_key FROM session_tokens WHERE token_hash = ? AND revoked_at IS NULL`, tokenHash)
-	if err != nil || !k.Valid || k.String == "" {
-		return nil, false
+	if keys, ok := db.proofKeys.get(); ok {
+		k, found := keys[tokenHash]
+		return k, found
 	}
-	b, err := hex.DecodeString(k.String)
-	if err != nil || len(b) == 0 {
-		return nil, false
+	gen := db.proofKeys.gen.Load()
+	var rows []struct {
+		Hash string `db:"token_hash"`
+		Key  string `db:"proof_key"`
 	}
-	return b, true
+	if err := db.Reader().SelectContext(ctx, &rows, `SELECT token_hash, proof_key FROM session_tokens WHERE revoked_at IS NULL AND proof_key IS NOT NULL AND proof_key != ''`); err != nil {
+		return nil, false // an error is never kept: the next challenge reads again
+	}
+	db.proofKeys.loads.Add(1)
+	keys := make(map[string][]byte, len(rows))
+	for _, r := range rows {
+		if b, err := hex.DecodeString(r.Key); err == nil && len(b) > 0 {
+			keys[r.Hash] = b
+		}
+	}
+	db.proofKeys.put(keys, gen)
+	k, found := keys[tokenHash]
+	return k, found
 }
+
+// proofKeyTTL is the longest the set is trusted without a write of this process invalidating it: the backstop for a change this process did not see (another process on the same database file).
+const proofKeyTTL = 10 * time.Second
+
+// proofKeySet is the proof keys of the live session tokens, by token hash: everything the proof route can answer for. It is read from the database once, and again after a write that changes a token
+// (InvalidateSessionTokens, after the commit, as for tokenOwnerCache: a lookup that began before an invalidation never stores its set) or after proofKeyTTL. Its size is the number of live sessions.
+type proofKeySet struct {
+	mu    sync.Mutex
+	keys  map[string][]byte
+	until time.Time
+	gen   atomic.Uint64
+
+	loads atomic.Int64 // database reads, for tests
+}
+
+func (s *proofKeySet) get() (map[string][]byte, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.keys == nil || time.Now().After(s.until) {
+		return nil, false
+	}
+	return s.keys, true
+}
+
+func (s *proofKeySet) put(keys map[string][]byte, gen uint64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.gen.Load() != gen {
+		return
+	}
+	s.keys, s.until = keys, time.Now().Add(proofKeyTTL)
+}
+
+func (s *proofKeySet) invalidate() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.gen.Add(1)
+	s.keys = nil
+}
+
+// ProofKeyLoads is how many times the live proof keys were read from the database, for tests.
+func (db *DB) ProofKeyLoads() int64 { return db.proofKeys.loads.Load() }
 
 // SessionTokenOwnerOf returns the session a live (unrevoked) token belongs to. The answer is
 // cached (tokenOwnerCache); a miss reads the read pool, not the write connection.

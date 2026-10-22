@@ -31,6 +31,7 @@ type DB struct {
 
 	// tokenOwners caches SessionTokenOwnerOf (#4303); see session_tokens.go.
 	tokenOwners tokenOwnerCache
+	proofKeys   proofKeySet
 }
 
 // Reader returns the read-only connection pool, or the primary connection
