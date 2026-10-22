@@ -49,6 +49,7 @@ const FX = {
             if (p === '/api/settings' && m === 'GET') return json({ settings: { board_health_monitor: 'true' } });
             return R0(u, o); }; return true; })()`);
     const openPreview = async () => {
+        await ev(`(async()=>{(await import(${S} + 'safe_storage.js')).browserLocal.set('coral-artifact-comments-open','closed');})()`); // arrange the closed state for this keyboard test
         await ev(COMMENTS_STUB(FX));
         await ev(`(async () => { const st = ${S}; const { state } = await import(st + 'state.js'); window.PP = await import(st + 'preview_pane.js'); const { showView } = await import(st + 'utils.js');
             state.currentSession = { type: 'live', name: 'boss', session_id: 'boss-sid', agent_type: 'claude' }; showView('live-session-view'); window.PP.setPreviewSession('boss-sid');

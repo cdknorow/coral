@@ -2,7 +2,7 @@
 // in the stack's own suites). Desktop and a 390 px phone: the panel lists threads with their quote, author, time, lines and state; the highlights are drawn for quotes that are found and an
 // orphaned one says "text changed"; a selection shows a Comment button, the composer shows the quote and posts it with its context; reply, edit your own, resolve and reopen, delete your own (after a
 // confirmation), nobody sees Delete on a comment of someone else; Open | Resolved | All; clicking a highlight or a card makes the other current; a read-only viewer (a Coral Hub view tier) gets the reason and
-// no controls; a locked artifact is read only with a banner and the owner's Unlock; comments show as text, never markup; with no comments routes the viewer is as it was. The phone has a "Comments · N"
+// no controls; a locked artifact is read only with a banner and the owner's Unlock; comments show as text, never markup; with no comments routes the viewer is as it was. The phone has a "Comments (N)"
 // button and a bottom sheet with 44 px actions, nothing scrolls sideways. Drives Chrome over CDP through agent_view_harness.js.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -83,15 +83,16 @@ const MD = ['# Migration plan', '', '## Steps', '', '1. Add the new columns behi
             await open();
             await waitFor(`document.querySelectorAll('.ac-card').length >= 3`, 'the threads', 5000);
             const at = `desktop, ${theme}`;
-            // Closed until asked for, at 4 comments as at none: the document has the full width; the header's Comments (4) button says how many and opens it (aria-expanded).
+            // Three open threads start shown; resolved threads and replies do not count. The header toggle opens and closes the side column.
             const shut = await ev(`(() => { const t = document.querySelector('.ac-toggle'), p = document.querySelector('.ac-panel'), v = document.getElementById('artifact-viewer'); return { toggle: t && !t.hidden && t.getClientRects().length > 0, text: t && t.textContent, name: t && t.getAttribute('aria-label'), expanded: t && t.getAttribute('aria-expanded'), panelShown: p.getClientRects().length > 0, wide: v.classList.contains('ac-on'), width: Math.round(v.querySelector('.artifact-viewer-content').getBoundingClientRect().width) }; })()`);
             check(`${at}: the button names the panel it opens (aria-controls)`, await ev(`(() => { const t = document.querySelector('.ac-toggle'), id = t.getAttribute('aria-controls'); return !!id && document.getElementById(id) === document.querySelector('.ac-panel'); })()`));
-            check(`${at}: closed by default with 4 comments: a "Comments (4)" button (aria-expanded false), no panel, the viewer not widened`, shut.toggle && shut.text === 'Comments (4)' && shut.name === 'Comments (4)' && shut.expanded === 'false' && !shut.panelShown && !shut.wide, JSON.stringify(shut));
+            check(`${at}: open by default with 3 open threads: a "Comments (3)" button (aria-expanded true), panel shown and viewer widened`, shut.toggle && shut.text === 'Comments (3)' && shut.name === 'Comments (3)' && shut.expanded === 'true' && shut.panelShown && shut.wide, JSON.stringify(shut));
+            await click('.ac-toggle');
             await shot(`comments-desktop-closed-${theme}`);
             await click('.ac-toggle');
             await waitFor(`document.querySelector('.ac-panel').getClientRects().length > 0`, 'the panel opening', 3000);
             await shot(`comments-desktop-open-${theme}`);
-            check(`${at}: the button opens it (aria-expanded true, the count stays), the viewer widens for the column`, (await ev(`(() => { const t = document.querySelector('.ac-toggle'); return t.getAttribute('aria-expanded') === 'true' && t.textContent === 'Comments (4)' && document.getElementById('artifact-viewer').classList.contains('ac-on'); })()`)));
+            check(`${at}: the button opens it (aria-expanded true, the count stays), the viewer widens for the column`, (await ev(`(() => { const t = document.querySelector('.ac-toggle'); return t.getAttribute('aria-expanded') === 'true' && t.textContent === 'Comments (3)' && document.getElementById('artifact-viewer').classList.contains('ac-on'); })()`)));
             // Remembered per viewer: the person closes the viewer and opens it again, the panel is as it was left; closed again, it stays closed.
             await ev(`document.getElementById('artifact-viewer').querySelector('.artifact-viewer-close, [data-action="close"], .modal-close, button[aria-label^="Close"]')?.click(); true`);
             await waitFor(`document.getElementById('artifact-viewer').hidden`, 'the viewer closing', 3000);
@@ -247,12 +248,12 @@ const MD = ['# Migration plan', '', '## Steps', '', '1. Add the new columns behi
         const gone = await ev(`({ hidden: document.querySelector('.ac-panel').hidden, doc: !!document.querySelector('#artifact-viewer .artifact-viewer-markdown'), wide: document.querySelector('#artifact-viewer').classList.contains('ac-on') })`);
         check('with no comments routes the panel stays out and the document is shown', gone.hidden && gone.doc && !gone.wide, JSON.stringify(gone));
 
-        // Closed with no comments at all: the document keeps the whole width; the button still says Comments (0) and opens the panel (its Lock and "Comment on the whole document" are inside it).
+        // Closed with no comments at all: the document keeps the whole width; the button still says Comments and opens the panel (its Lock and "Comment on the whole document" are inside it).
         await load(1280, 800, false, 'dark');
         await open(`window.__cs.length = 0; true`);
         await waitFor(`!!document.querySelector('.ac-toggle') && !document.querySelector('.ac-toggle').hidden`, 'the Comments button with no comments', 5000);
         const zero = await ev(`(() => { const t = document.querySelector('.ac-toggle'), p = document.querySelector('.ac-panel'), v = document.getElementById('artifact-viewer'); return { text: t.textContent, expanded: t.getAttribute('aria-expanded'), panelShown: p.getClientRects().length > 0, wide: v.classList.contains('ac-on'), body: Math.round(v.querySelector('.artifact-viewer-body').getBoundingClientRect().width), content: Math.round(v.querySelector('.artifact-viewer-content').getBoundingClientRect().width) }; })()`);
-        check('no comments: closed, "Comments (0)", the document has the whole width', zero.text === 'Comments (0)' && zero.expanded === 'false' && !zero.panelShown && !zero.wide && zero.body >= zero.content - 4, JSON.stringify(zero));
+        check('no comments: closed, "Comments", the document has the whole width', zero.text === 'Comments' && zero.expanded === 'false' && !zero.panelShown && !zero.wide && zero.body >= zero.content - 4, JSON.stringify(zero));
         await click('.ac-toggle');
         await waitFor(`document.querySelector('.ac-panel').getClientRects().length > 0`, 'the panel opening with no comments', 3000);
         check('no comments: opened by the button, "Comment on the whole document" is in the panel', await ev(`!!document.querySelector('.ac-panel .ac-whole')`));
@@ -264,7 +265,8 @@ const MD = ['# Migration plan', '', '## Steps', '', '1. Add the new columns behi
             await waitFor(`!document.querySelector('.ac-toggle').hidden`, 'the Comments button', 5000);
             const at = `390 px, ${theme}`;
             const tg = await rect('.ac-toggle');
-            check(`${at}: a "Comments (4)" button of 44 px is in the header`, tg && tg.h >= 44 && /Comments \(4\)/.test(await ev(`document.querySelector('.ac-toggle').textContent`)), JSON.stringify(tg));
+            check(`${at}: a "Comments (3)" button of 44 px is in the header`, tg && tg.h >= 44 && /Comments \(3\)/.test(await ev(`document.querySelector('.ac-toggle').textContent`)), JSON.stringify(tg));
+            await click('.ac-toggle'); // open threads start shown; exercise hiding too
             await shot(`comments-390-closed-${theme}`);
             const p0 = await rect('.ac-panel');
             check(`${at}: the sheet starts shut, below the screen (top ${p0.t} >= 844)`, p0.t >= 844);

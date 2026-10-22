@@ -12,7 +12,7 @@ import { boardOfPage } from './dock_page.js';
 import { boardKeyName, sessionTeamKey } from './server_base.js';
 import { browserLocal } from './safe_storage.js';
 
-const OPEN_KEY = 'coral-artifact-comments-open'; // the viewer's panel stays closed unless asked for; a desktop remembers what its person last chose (per viewer, guarded)
+const OPEN_KEY = 'coral-artifact-comments-open'; // explicit choice shared by the viewer and docked preview, at every width
 
 /** The team the artifact is opened from, as the bare board name the comments routes take: the team's page, the board page, or the open agent's own team; none otherwise (#5182). The viewer and the docked preview pane (#5311) both ask. */
 export function commentBoard(opts) {
@@ -62,7 +62,7 @@ export function attachComments(dialog, body, host, opts = {}) {
     panel.id = `ac-panel-${++panelSeq}`; // the toggle names it (aria-controls): where the opened comments are
     const toggle = btn('ac-toggle', 'Comments', 'Comments: show the comments'); toggle.hidden = true; toggle.setAttribute('aria-expanded', 'false');
     toggle.setAttribute('aria-controls', panel.id);
-    const selBtn = btn('ac-selbtn', 'Comment', 'Comment on the selected text'); selBtn.hidden = true;
+    const selBtn = btn('ac-selbtn', 'Add comment', 'Add comment on the selected text'); selBtn.hidden = true;
     host.append(panel); if (!opts.toggleHost) dialog.querySelector('.artifact-viewer-header')?.insertBefore(toggle, dialog.querySelector('.artifact-viewer-download'));
     dialog.append(selBtn);
     // A live region for what the panel does (a comment posted, resolved, the one stepped to): outside the panel, which is out of the accessibility tree while the phone's sheet is shut.
@@ -74,16 +74,14 @@ export function attachComments(dialog, body, host, opts = {}) {
     const region = (on) => { if (on) { body.tabIndex = 0; body.setAttribute('role', 'region'); body.setAttribute('aria-label', 'Document'); body.setAttribute('aria-keyshortcuts', '] ['); } else { for (const a of ['tabindex', 'role', 'aria-label', 'aria-keyshortcuts']) body.removeAttribute(a); } };
     const phone = window.matchMedia('(max-width: 767px)');
     const sheet = opts.sheet || (() => phone.matches); // the panel is a bottom sheet over the document
-    // The viewer's dialog (no opts.sheet): the panel is CLOSED until it is asked for, at every width. A phone opens it as a sheet over the document, a desktop as a column beside it (the document has the full
-    // width while it is shut); the Comments (N) button in the header opens and closes it. The docked pane (opts.sheet) keeps its own layout rule.
-    const closable = !opts.sheet;
     const isOpen = () => panel.classList.contains('ac-sheet-open');
-    const remember = (open) => { if (closable && !phone.matches) { try { browserLocal.set(OPEN_KEY, open ? 'open' : 'closed'); } catch { /* per-viewer only */ } } };
-    const remembered = () => { try { return browserLocal.get(OPEN_KEY) === 'open'; } catch { return false; } };
-    const syncOn = () => dialog.classList.toggle('ac-on', !!st.shownNow && (!closable || phone.matches || isOpen())); // the viewer widens for the column only while it is open
+    const remember = (open) => browserLocal.set(OPEN_KEY, open ? 'open' : 'closed');
+    const remembered = () => { const choice = browserLocal.get(OPEN_KEY); return choice === 'open' ? true : choice === 'closed' ? false : null; };
+    const syncOn = () => dialog.classList.toggle('ac-on', !!st.shownNow && (phone.matches || isOpen()));
     const shown = opts.shown || (() => !dialog.hidden);
-    // The Comments button exists while there are comments to show, and (in the pane, whose own width decides) only while the panel is a sheet: beside the document there is nothing to open.
-    const syncToggle = () => { toggle.hidden = !st.shownNow || (!!opts.sheet && !opts.sheet()); };
+    // Available on both the side column and the bottom sheet; never reserve a
+    // column the person cannot hide.
+    const syncToggle = () => { toggle.hidden = !st.shownNow; };
     // The drawn text changes after the comments were placed (a code block coloured once highlight.js has loaded): their ranges follow it, a moment after it settles (#5311).
     let relocateTimer = 0;
     new MutationObserver(() => { clearTimeout(relocateTimer); relocateTimer = setTimeout(() => { if (st.data && st.text) paint(true); }, 150); }).observe(body, { childList: true, subtree: true, characterData: true });
@@ -95,6 +93,7 @@ export function attachComments(dialog, body, host, opts = {}) {
         for (const c of all) if (c.parentId != null && !c.deleted) { if (!replies.has(c.parentId)) replies.set(c.parentId, []); replies.get(c.parentId).push(c); }
         return all.filter(c => c.parentId == null && (!c.deleted || replies.has(c.id))).map(c => ({ c, replies: replies.get(c.id) || [] }));
     };
+    const openCount = () => threads().filter(t => !t.c.deleted && !t.c.resolved).length;
     async function refresh() {
         if (!st.hex || !st.text) return;
         const hex = st.hex;
@@ -102,6 +101,10 @@ export function attachComments(dialog, body, host, opts = {}) {
             const data = await api.listComments(hex, st.server, st.board);
             if (hex !== st.hex) return;
             st.data = data; st.gone = false;
+            if (!st.visibilitySet) {
+                st.visibilitySet = true;
+                setSheet(remembered() ?? openCount() > 0);
+            }
         } catch (e) {
             if (hex !== st.hex) return;
             st.gone = true; st.data = null; // no comments routes here (an older Coral, a hub that does not carry them): the viewer is as it was
@@ -187,7 +190,7 @@ export function attachComments(dialog, body, host, opts = {}) {
         if (!show) return;
         const list = threads();
         const head = el('div', 'ac-head');
-        const h = el('h3', 'ac-title', 'Comments'); h.append(el('span', 'ac-count', String(list.filter(t => !t.c.deleted).length)));
+        const h = el('h3', 'ac-title', 'Comments'); h.append(el('span', 'ac-count', String(openCount())));
         head.append(h);
         // Resolved threads are out of the way, as in Docs: one toggle brings them back (and only while there are any).
         const nResolved = list.filter(t => t.c.resolved && !t.c.deleted).length;
@@ -340,11 +343,11 @@ export function attachComments(dialog, body, host, opts = {}) {
         if (e.target !== body || e.ctrlKey || e.metaKey || e.altKey || !st.data) return;
         if (e.key === ']') { e.preventDefault(); step(1); } else if (e.key === '[') { e.preventDefault(); step(-1); }
     });
-    // A shut sheet on a phone, and the document behind an open one, are out of reach: no Tab, no screen reader.
+    // A hidden panel is out of reach at every width; an open sheet also removes the document behind it from Tab and screen readers.
     function syncInert() {
         const open = panel.classList.contains('ac-sheet-open');
-        panel.inert = sheet() && !open;
-        body.inert = sheet() && open;
+        panel.inert = !st.shownNow || !open;
+        body.inert = !!st.shownNow && sheet() && open;
     }
     phone.addEventListener('change', () => { syncInert(); syncOn(); });
     if (opts.observe && typeof ResizeObserver === 'function') new ResizeObserver(() => { syncInert(); syncToggle(); paintToggle(); }).observe(opts.observe); // the pane's width decides whether the panel is a sheet
@@ -368,7 +371,7 @@ export function attachComments(dialog, body, host, opts = {}) {
     body.addEventListener('click', (e) => {
         if (!st.data || !st.ranges.size) return;
         const id = rangeIdAt(e.clientX, e.clientY);
-        if (id != null && window.getSelection().isCollapsed) { st.active = id; st.scrollCard = true; paint(false); if (sheet() || closable) userSet(true); } // a commented passage opens the panel at its thread
+        if (id != null && window.getSelection().isCollapsed) { st.active = id; st.scrollCard = true; paint(false); userSet(true); } // a commented passage opens the panel at its thread
     });
     let hoverFrame = 0;
     body.addEventListener('mousemove', (e) => {
@@ -421,12 +424,11 @@ export function attachComments(dialog, body, host, opts = {}) {
     function paintToggle() {
         const open = panel.classList.contains('ac-sheet-open');
         toggle.setAttribute('aria-expanded', String(open));
-        const n = st.data ? threads().filter(t => !t.c.deleted).length : 0;
-        if (closable) { toggle.textContent = `Comments (${n})`; toggle.setAttribute('aria-label', toggle.textContent); return; } // one name, aria-expanded says the rest; the count stays when it is shut
-        toggle.textContent = open ? 'Document' : `Comments · ${n}`;
-        toggle.setAttribute('aria-label', `${toggle.textContent}: ${open ? 'show the document' : 'show the comments'}`); // the visible words first (label in name, #5371)
+        const n = openCount();
+        toggle.textContent = n ? `Comments (${n})` : 'Comments';
+        toggle.setAttribute('aria-label', toggle.textContent);
     }
-    // A choice the person made (the button, the close button, a selection, a commented passage): it is remembered on a desktop.
+    // Remember explicit actions; the count-based initial default never writes a preference.
     function userSet(open) { setSheet(open); remember(open); }
     toggle.addEventListener('click', () => userSet(!isOpen()));
     // Escape closes the docked pane's open sheet and puts focus back on its toggle (#5371); the composer's own Escape (cancel) stops the key before it gets here, and the viewer's dialog keeps Escape for itself.
@@ -436,10 +438,10 @@ export function attachComments(dialog, body, host, opts = {}) {
     });
 
     return {
-        /** The Comments button of the sheet layout: the owner puts it in place when the attach was given toggleHost. */
+        /** The Comments button in either layout: the owner places it when toggleHost was given. */
         toggle,
         /** A new artifact is on show. */
-        open(hex, server, board) { region(false); { const hl = window.CSS && CSS.highlights; if (hl) { hl.delete('ac-comment'); hl.delete('ac-active'); } } docIx = null; st.hex = hex; st.server = server; st.board = board; st.data = null; st.active = null; st.composing = null; st.error = ''; st.text = false; st.gone = false; st.filter = 'open'; render(); setSheet(closable && !phone.matches && remembered()); },
+        open(hex, server, board) { region(false); { const hl = window.CSS && CSS.highlights; if (hl) { hl.delete('ac-comment'); hl.delete('ac-active'); } } docIx = null; st.hex = hex; st.server = server; st.board = board; st.data = null; st.active = null; st.composing = null; st.error = ''; st.text = false; st.gone = false; st.filter = 'open'; st.visibilitySet = false; render(); setSheet(false); },
         /** The document was drawn: `text` says whether it is text the comments apply to. */
         docRendered(source, text) { st.source = source || ''; st.text = !!text; if (!st.text) { render(); return; } region(true); refresh(); },
         close() { hover(null); setSheet(false); region(false); docIx = null; st.ranges.clear(); st.hex = null; st.data = null; clearTimeout(selTimer); selBtn.hidden = true; const hl = window.CSS && CSS.highlights; if (hl) { hl.delete('ac-comment'); hl.delete('ac-active'); } render(); },
