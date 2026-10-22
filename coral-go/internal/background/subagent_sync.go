@@ -47,6 +47,10 @@ func syncSubagentSpend(ctx context.Context, st *store.SubagentStore, sessionID, 
 }
 
 func syncOneSubagent(ctx context.Context, st *store.SubagentStore, sessionID string, f subagent.Files) error {
+	// Discover only returns plain ids; a Files from anywhere else with no usable one is not stored.
+	if !subagent.ValidID(f.SubagentID) {
+		return fmt.Errorf("subagent has no plain id")
+	}
 	t, err := subagent.ParseTranscript(f.TranscriptPath)
 	if err != nil {
 		return err
