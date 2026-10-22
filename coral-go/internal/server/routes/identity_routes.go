@@ -83,6 +83,7 @@ var operatorOnlyRoutes = map[string]string{
 	// #5280: relaunching into a staged update (Coral Hub's owner), and what is staged.
 	"GET /api/system/update":                 "see the staged update",
 	"POST /api/system/update/relaunch":       "relaunch Coral into the staged update",
+	"POST /api/system/update/install":        "install the staged update (Windows)",
 	"POST /api/system/update/relaunch-local": "relaunch Coral into the staged update from this computer",
 	"POST /api/system/update/check":          "check for an update now",
 	"PUT /api/system/update/settings":        "change whether Coral checks for updates automatically",
