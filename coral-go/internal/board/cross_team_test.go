@@ -20,8 +20,8 @@ func TestBoardSettingsDefaultOnAndUpdate(t *testing.T) {
 	require.True(t, got.CrossTeamArtifacts, "files too")
 	assert.False(t, got.MessagingStored)
 	assert.False(t, got.ArtifactsStored)
-	assert.False(t, got.LocalMessagingOn(), "two teams of one computer are not opened to each other by a default")
-	assert.False(t, got.LocalFilesOn())
+	assert.False(t, got.ExplicitMessagingOn(), "two teams of one computer are not opened to each other by a default")
+	assert.False(t, got.ExplicitFilesOn())
 	assert.Empty(t, got.CrossTeamServers, "and no list: nothing is admitted by the old door")
 
 	on, off := true, false
@@ -42,8 +42,8 @@ func TestBoardSettingsDefaultOnAndUpdate(t *testing.T) {
 	got, err = s.UpdateBoardSettings(ctx, "alpha", BoardSettingsUpdate{CrossTeamMessaging: &on, CrossTeamArtifacts: &on})
 	require.NoError(t, err)
 	require.True(t, got.CrossTeamMessaging)
-	assert.True(t, got.LocalMessagingOn(), "an explicit on opens the same-Coral door")
-	assert.True(t, got.LocalFilesOn())
+	assert.True(t, got.ExplicitMessagingOn(), "an explicit on opens the same-Coral door")
+	assert.True(t, got.ExplicitFilesOn())
 }
 
 func TestTargetOrchestrators(t *testing.T) {

@@ -105,7 +105,7 @@ func (h *BoardHandler) relayedDoor(ctx context.Context, target, src, to string) 
 		return nil, settings, false, err
 	}
 	step("list")
-	linked := settings.CrossTeamMessaging && settings.AllowsServer(src)
+	linked := settings.ExplicitMessagingOn() && settings.AllowsServer(src) // the old door needs the owner's own on: the default does not widen it (#5916)
 	step("recipients")
 	recipients, rerr := h.bs.TargetOrchestrators(ctx, target, to)
 	return recipients, settings, exists && linked && rerr == nil, nil
@@ -211,7 +211,7 @@ func (h *BoardHandler) crossTeamAdmit(ctx context.Context, m *externalMessage, r
 	}
 	if own, err := h.bs.GetBoardSettings(ctx, m.FromBoard); err != nil {
 		return nil, false, func(w http.ResponseWriter) { errInternalServer(w, err.Error()) }
-	} else if !own.LocalMessagingOn() {
+	} else if !own.ExplicitMessagingOn() {
 		return nil, false, func(w http.ResponseWriter) {
 			errForbidden(w, textCrossTeamOff([]string{strconv.Quote(m.FromBoard)}))
 		}
@@ -392,7 +392,10 @@ func (h *BoardHandler) GetCrossTeamState(w http.ResponseWriter, r *http.Request)
 		"can_change": true, "owner_path_live": true, "hub_may_change": h.hubMayChange(ctx), "last_changed": lastChanged,
 		"enforced": h.allowlistOn(ctx), "allowed": entries, "max_entries": board.MaxAllowedSenders, "self_cross_team_id": self,
 		"was_open": settings.CrossTeamMessaging && len(settings.CrossTeamAllowed) == 0, "suggestions": suggestions,
-		"status":    statusFor(linkable, settings.CrossTeamMessaging, len(links), stale, heard),
+		"status": statusFor(linkable, settings.CrossTeamMessaging, len(links), stale, heard),
+		// The two reaches of the messaging switch, shown apart (#5916): teams on other computers (on unless the owner turned it off; they also need a Coral Hub link) and teams on this
+		// computer (an explicit on only).
+		"messaging_elsewhere": settings.CrossTeamMessaging, "messaging_here": settings.ExplicitMessagingOn(),
 		"links":     links,
 		"links_out": linksOut,
 		"linkable":  linkable,
