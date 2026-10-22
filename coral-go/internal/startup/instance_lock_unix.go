@@ -38,6 +38,7 @@ func (l *instanceLock) close(path string) {
 	if l == nil || l.file == nil {
 		return
 	}
+	l.forgetAddress()
 	_ = syscall.Flock(int(l.file.Fd()), syscall.LOCK_UN)
 	_ = l.file.Close()
 	// The file stays, as on Windows: the next server reuses it (#4151). Removing it after the

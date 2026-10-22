@@ -52,6 +52,7 @@ func (l *instanceLock) close(path string) {
 	if l == nil || l.file == nil {
 		return
 	}
+	l.forgetAddress()
 	ol := &windows.Overlapped{OffsetHigh: lockOffsetHigh}
 	_ = windows.UnlockFileEx(windows.Handle(l.file.Fd()), 0, 1, 0, ol)
 	_ = l.file.Close()

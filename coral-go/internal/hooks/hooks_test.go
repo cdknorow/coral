@@ -1,6 +1,11 @@
 package hooks
 
-import "testing"
+import (
+	"strconv"
+	"testing"
+
+	"github.com/subgentic/coral/internal/config"
+)
 
 func TestSessionIDFromName(t *testing.T) {
 	cases := map[string]string{
@@ -34,5 +39,14 @@ func TestResolveSessionID_FallsBackToPayload(t *testing.T) {
 	t.Setenv("CORAL_SESSION_NAME", "")
 	if got := ResolveSessionID("payload-id"); got != "payload-id" {
 		t.Fatalf("got %q", got)
+	}
+}
+
+// #235: with neither CORAL_URL nor CORAL_PORT, a command reaches this platform's default port (8450 on Windows), not 8420.
+func TestCoralBaseDefaultsToThisPlatformsPort(t *testing.T) {
+	t.Setenv("CORAL_URL", "")
+	t.Setenv("CORAL_PORT", "")
+	if got, want := CoralBase(), "http://localhost:"+strconv.Itoa(config.DefaultPort); got != want {
+		t.Fatalf("CoralBase() = %q, want %q", got, want)
 	}
 }

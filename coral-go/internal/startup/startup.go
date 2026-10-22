@@ -202,7 +202,7 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 	if err := prepareDataDirs(cfg, coralDir); err != nil {
 		return nil, err
 	}
-	lockPath := filepath.Join(coralDir, "coral-server.lock")
+	lockPath := filepath.Join(coralDir, config.ServerLockFile)
 	instance, err := acquireInstanceLock(lockPath)
 	if err != nil {
 		return nil, fmt.Errorf("cannot start Coral: %w (stop the existing server or use a different data directory)", err)
@@ -250,6 +250,12 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 	if err != nil {
 		return closeDB(err)
 	}
+	// Where this server can be reached, recorded next to its PID: a command finds it there, on whatever port it took (#235).
+	scheme := "http"
+	if tlsConfig != nil {
+		scheme = "https"
+	}
+	instance.recordAddress(fmt.Sprintf("%s://localhost:%d", scheme, boundPort))
 	// The DNS-rebinding check accepts exactly the names Coral listens on (#3594).
 	auth.SetListenHosts(cfg.ListenHosts())
 	// The re-checks end with the server (Shutdown, or a Start that fails later), not only with the caller's ctx: a caller may pass

@@ -35,6 +35,7 @@ func runAutoAccept(args []string, stdout, stderr io.Writer) int {
 	if err := fs.Parse(args[1:]); err != nil || !*all || fs.NArg() > 0 {
 		return usage()
 	}
+	*base = runningServerURL(fs, *base, "")
 	url := strings.TrimRight(*base, "/") + "/api/auto-accept/disable-all"
 	send := func(client *http.Client) (*http.Response, error) {
 		req, err := http.NewRequest(http.MethodPost, url, strings.NewReader("{}"))

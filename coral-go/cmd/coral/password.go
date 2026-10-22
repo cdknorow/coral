@@ -75,6 +75,7 @@ func runSetPassword(args []string, stdin io.Reader, stdout, stderr io.Writer) in
 		fmt.Fprintln(stderr, "usage: coral set-password [--stdin] [--url http://localhost:8420] [--home DIR]")
 		return 2
 	}
+	*base = runningServerURL(fs, *base, *home)
 	c, code := newCloudClient(*base, *home, "set-password", stderr)
 	if c == nil {
 		return code
@@ -108,6 +109,7 @@ func runResetPassword(args []string, stdin io.Reader, stdout, stderr io.Writer) 
 		fmt.Fprintln(stderr, "usage: coral reset-password [--clear | --stdin] [--url http://localhost:8420] [--home DIR]")
 		return 2
 	}
+	*base = runningServerURL(fs, *base, *home)
 	pw := ""
 	if !*clearIt {
 		var err error
@@ -200,6 +202,7 @@ func runSetupCode(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "usage: coral setup-code [--url http://localhost:8420] [--home DIR]")
 		return 2
 	}
+	*base = runningServerURL(fs, *base, *home)
 	c, code := newCloudClient(*base, *home, "setup-code", stderr)
 	if c == nil {
 		return code

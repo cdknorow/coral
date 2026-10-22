@@ -49,6 +49,7 @@ func runArtifacts(args []string, stdin io.Reader, stdout, stderr io.Writer) int 
 	if err := fs.Parse(args[1:]); err != nil || fs.NArg() > 0 {
 		return usage()
 	}
+	*base = runningServerURL(fs, *base, *home)
 	age, err := parseAge(*olderThan)
 	if err != nil {
 		fmt.Fprintf(stderr, "coral artifacts prune: --older-than: %v\n", err)
