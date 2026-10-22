@@ -53,11 +53,13 @@ const exitCodes = `Exit codes: what each one means and what to do
   0  ok
   1  any other failure: read the message on stderr.
   2  usage: an option or value the command does not take. Nothing was sent. Run: TOOL <command> --help
-  3  cannot reach the server: is Coral running (the tray icon)? Is CORAL_URL (or CORAL_PORT) the
-     address Coral listens on?ADDR3
+  3  cannot reach Coral: is it running (the tray icon)? Is CORAL_URL (or CORAL_PORT) the address
+     Coral listens on?ADDR3
   4  no answer in time: Coral may be busy. Try again, or set CORAL_TIMEOUT (TOOL help timeouts).
   5  refused (HTTP 401 or 403): your role or session may not do this. Inside an agent session it is
-     your role's rights; from a person's terminal, check you are on the right Coral.
+     your role's rights; from a person's terminal, check you are on the right Coral. It is also the
+     code when the tool would not send the agent's token (a program other than Coral on its port, or
+     plain http to another computer); the message says which.
   6  not found (HTTP 404): the board, task or message does not exist. Check the id.
 
 Reading the code:
