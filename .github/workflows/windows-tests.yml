@@ -146,3 +146,84 @@ jobs:
           echo "routes tests matched: $n"
           if [ "$n" -lt 40 ]; then echo "::error::only $n routes tests match the Windows filter (expected at least 40)"; exit 1; fi
           go test -count=1 -timeout 30m -tags fts5 -run "$ROUTES_RUN" ./internal/server/routes
+
+  # The Windows-only code the go test shards above can not run (#5804): the native GUI programs (coral-app and its webview, coral-tray) need cgo and
+  # the webview tag, and CGO_ENABLED=0 above never compiles them; the packaged exes (what release.yml builds on a tag) were first started on the tag
+  # itself. This job builds the package the way release.yml's build-windows does (same commands, same tags: tests/release/commands.txt and
+  # gui_commands.txt, fts5, the resources, the portable zip), vets and tests the two GUI programs with cgo, checks the bundle, and runs the release's own
+  # smoke test (tests/release/smoke_windows.ps1) on the zip: the shipped exes start under strict local auth, the command-line tools work, a stand-in
+  # agent is launched through ConPTY and stopped, nothing is left running. The MSI is not built here (WiX takes minutes): it is checked on the tag.
+  # Keep the build lines in step with release.yml's "Build Windows binaries".
+  package:
+    name: package and smoke (windows-latest, the built exes)
+    runs-on: windows-latest
+    timeout-minutes: 40
+    env:
+      CORAL_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: coral-go/go.mod
+          cache-dependency-path: coral-go/go.sum
+      - name: Native GUI compiler (gcc; the image has one, else MinGW is installed as release.yml does)
+        shell: pwsh
+        run: |
+          if (-not (Get-Command gcc -ErrorAction SilentlyContinue)) { choco install mingw -y; if ($LASTEXITCODE -ne 0) { throw "choco install mingw failed" } }
+          gcc --version
+      - name: Sync agent docs
+        shell: bash
+        run: bash tools/sync-agent-docs.sh
+      - name: vet and test the GUI programs with cgo (coral-app with the webview tag, coral-tray)
+        shell: pwsh
+        working-directory: coral-go
+        env:
+          CGO_ENABLED: "1"
+          CC: gcc
+        run: |
+          go vet -tags "webview,fts5" ./cmd/coral-app ./cmd/coral-tray
+          if ($LASTEXITCODE -ne 0) { throw "go vet of the GUI programs failed" }
+          go test -count=1 -timeout 15m -tags "webview,fts5" ./cmd/coral-app ./cmd/coral-tray
+          if ($LASTEXITCODE -ne 0) { throw "go test of the GUI programs failed" }
+      - name: Build the package (as release.yml's build-windows does)
+        shell: pwsh
+        working-directory: coral-go
+        run: |
+          $env:GOOS = "windows"
+          $env:GOARCH = "amd64"
+          $version = "0.0.0-ci"
+          $buildTags = "fts5"
+          $ldflags = "-s -w -X github.com/subgentic/coral/internal/config.Version=$version"
+          bash ../tools/gen_windows_resources.sh $version Coral
+          if ($LASTEXITCODE -ne 0) { throw "gen_windows_resources.sh failed" }
+          New-Item -ItemType Directory -Force -Path ..\dist\windows\bin | Out-Null
+          $gui = @("coral-tray", "coral-app")
+          $commands = Get-Content ..\tests\release\commands.txt | Where-Object { $_ -notmatch '^\s*(#|$)' } | ForEach-Object { $_.Trim() }
+          $env:CGO_ENABLED = "0"
+          foreach ($cmd in $commands) {
+            if ($gui -contains $cmd) { continue }
+            go build -tags $buildTags -ldflags "$ldflags" -o "..\dist\windows\bin\$cmd.exe" "./cmd/$cmd/"
+            if ($LASTEXITCODE -ne 0) { throw "go build $cmd failed" }
+          }
+          $env:CGO_ENABLED = "1"
+          $env:CC = "gcc"
+          go build -tags $buildTags -ldflags "-H windowsgui $ldflags" -o "..\dist\windows\bin\coral-tray.exe" "./cmd/coral-tray/"
+          if ($LASTEXITCODE -ne 0) { throw "go build coral-tray failed" }
+          go build -tags "webview,$buildTags" -ldflags "-H windowsgui $ldflags" -o "..\dist\windows\bin\coral-app.exe" "./cmd/coral-app/"
+          if ($LASTEXITCODE -ne 0) { throw "go build coral-app failed" }
+          powershell -ExecutionPolicy Bypass -File ..\tests\release\verify_standard_bundle.ps1 -PackageDir ..\dist\windows\bin
+          if ($LASTEXITCODE -ne 0) { throw "verify_standard_bundle.ps1 failed" }
+          Compress-Archive -Path "..\dist\windows\bin\*" -DestinationPath "..\dist\windows\Coral-$version-x64-portable.zip"
+      - name: Smoke test the portable package (the release's own script, with a stand-in agent)
+        shell: pwsh
+        run: |
+          Push-Location coral-go
+          $env:CGO_ENABLED = "0"
+          $standin = Join-Path $env:RUNNER_TEMP 'standin\claude.exe'
+          go build -tags fts5 -o $standin ./cmd/mock-agent
+          if ($LASTEXITCODE -ne 0) { throw "go build ./cmd/mock-agent failed" }
+          Pop-Location
+          ./tests/release/smoke_windows.ps1 -Zip (Resolve-Path "dist\windows\Coral-0.0.0-ci-x64-portable.zip").Path -Version 0.0.0-ci -StandIn $standin
+          if ($LASTEXITCODE -ne 0) { throw "smoke_windows.ps1 failed" }
