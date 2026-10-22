@@ -31,7 +31,7 @@ const { connect } = require('./agent_view_harness');
 
         console.log('A. never chosen: "Not chosen yet", a choice saves and replaces it');
         let b = await sel();
-        assert.equal(b.shown, 'Not chosen yet (View until you connect)'); assert.equal(b.value, ''); assert.match(b.desc, /You choose this when you connect/);
+        assert.equal(b.shown, 'Not chosen yet (View until you connect)'); assert.equal(b.value, ''); assert.match(b.desc, /Chosen when you connect/);
         assert.deepEqual(b.options.slice(1), ['View', 'Interact', 'Launch']);
         await showHub(); await shot('hub-settings-unchosen');
         await ev(`(() => { const s = document.getElementById('settings-cloud-max-mode'); s.value = ''; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);

@@ -86,6 +86,36 @@ function buildInfoButtons(root) {
     }
 }
 
+/** The Hub rows nested in the Coral Hub row (Hub access, the switches under it): the same (i) after the label, the explanation closed under it (#5985). */
+function buildCloudInfoButtons(root) {
+    const rows = [
+        ...[...root.querySelectorAll('.settings-cloud-switch-row')].map(r => ({ row: r, label: r.querySelector('.settings-cloud-switch-label'), texts: [r.querySelector('.settings-cloud-switch-text > .settings-hint')] })),
+        ...[...root.querySelectorAll('.settings-cloud-mode')].map(r => ({ row: r, label: r.querySelector(':scope > label'), texts: [r.querySelector('[data-cloud="mode-full"]')] })),
+    ];
+    for (const { row, label, texts } of rows) {
+        const list = texts.filter(Boolean);
+        if (!label || !list.length || label.parentElement.classList.contains('settings-cloud-head')) continue; // (the mode row holds the switch rows: look at its own label only)
+        const box = document.createElement('div');
+        box.className = 'settings-info-text';
+        box.id = `settings-info-${++infoSeq}`;
+        box.hidden = true;
+        for (const t of list) box.append(t); // the switch stays described by it (aria-describedby points at its id); a closed box still counts
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'settings-info-btn';
+        btn.setAttribute('aria-expanded', 'false');
+        btn.setAttribute('aria-controls', box.id);
+        btn.setAttribute('aria-label', `About ${(label.textContent || '').trim()}`);
+        btn.innerHTML = '<span class="material-icons" aria-hidden="true">info</span>';
+        btn.addEventListener('click', () => { const open = box.hidden; box.hidden = !open; btn.setAttribute('aria-expanded', String(open)); });
+        const head = document.createElement('div'); // the label and its (i) on one line
+        head.className = 'settings-cloud-head';
+        const host = label.parentElement;
+        label.replaceWith(head); head.append(label, btn);
+        host.append(box);
+    }
+}
+
 function buildTabs(modal) {
     const tabs = modal.querySelector('#settings-tabs');
     const pick = modal.querySelector('#settings-group-select');
@@ -115,5 +145,5 @@ function buildTabs(modal) {
 
 onBuilt('settings-modal', modal => {
     if (!updatesUiOn()) modal.querySelectorAll('[data-flag="updates"]').forEach(e => e.remove()); // behind the flag: no tab, no pane (#5275)
-    buildTabs(modal); buildInfoButtons(modal);
+    buildTabs(modal); buildInfoButtons(modal); buildCloudInfoButtons(modal);
 });

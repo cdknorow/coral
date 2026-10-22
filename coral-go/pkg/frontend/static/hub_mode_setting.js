@@ -32,7 +32,7 @@ function render(st, error = '') {
         text = (st.saved ? 'Saved: this Coral becomes a hub' : 'Saved: this Coral stops being a hub') +
             (st.can_restart ? ' when it restarts.' : ' when it restarts. Quit Coral and start it again to apply.');
     } else {
-        text = st.running ? 'On: this Coral is a hub (the Servers tab).' : 'Off.';
+        text = st.running ? 'On: this Coral is a hub (the Servers tab).' : '';
     }
     status.textContent = error ? error + ' ' + text : text;
     restart.hidden = !(st.restart_required && st.can_restart && !st.forced);

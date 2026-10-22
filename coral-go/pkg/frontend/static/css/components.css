@@ -4334,6 +4334,11 @@ a.ibx-open, a.ibx-open:visited { color: var(--link-text); }
 .settings-info-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
 .settings-info-btn[aria-expanded="true"] { background: var(--accent-dim); border-color: var(--accent-dim); color: var(--text-on-accent); }
 .settings-info-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* the (i) after a Hub row's label (#5985): the label and the button share one line; the mode row keeps the width its paragraphs used to give it */
+.settings-cloud-head { display: flex; align-items: center; gap: .4rem; }
+.settings-cloud-head > label { flex: 0 1 auto; min-width: 0; }
+.settings-cloud-mode { width: 100%; }
+.settings-cloud-switch-text > .settings-info-text, .settings-cloud-mode > .settings-info-text { margin-top: .4rem; }
 .settings-info-text { grid-column: 1 / -1; background: var(--bg-elevated, var(--bg-tertiary)); border: 1px solid var(--border); border-radius: var(--radius-md); padding: .6rem .8rem; color: var(--text-secondary); font-size: .8125rem; line-height: 1.5; max-width: 46rem; }
 .settings-info-text[hidden] { display: none; }
 .settings-info-text > * + * { margin-top: .4rem; }
@@ -4552,3 +4557,18 @@ a.ibx-open, a.ibx-open:visited { color: var(--link-text); }
 /* The Not Found dialog's Check again answer (#5835): a live region that is always there and only gets its text, so it is announced; empty, it takes no room. */
 .cli-recheck-status { color: var(--text-secondary); font-size: 0.8125rem; line-height: 1.5; margin: 0; }
 .cli-recheck-status:not(:empty) { margin-top: 10px; }
+
+/* Network and Hub layout nits (#5985): a status line that is empty takes no room; "Run as a hub" is label left, switch right like every other row; Disconnect aligns with the row's left edge. */
+#settings-remote-access-status:empty, #settings-hub-mode-status:empty { display: none; }
+.settings-row-hub { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .4rem 1.5rem; align-items: center; padding: .7rem 0; border-top: 1px solid var(--border); }
+.settings-row-hub > dt { grid-column: 1; grid-row: 1; }
+.settings-row-hub > dd { display: contents; }
+.settings-row-hub .settings-hub-mode-toggle { grid-column: 2; grid-row: 1; justify-self: end; align-self: center; margin: 0; }
+.settings-row-hub #settings-hub-mode-desc, .settings-row-hub #settings-hub-mode-status, .settings-row-hub #settings-hub-mode-restart { grid-column: 1 / -1; justify-self: start; }
+#settings-cloud .settings-cloud-actions { margin: 6px 0; padding: 0; justify-content: flex-start; }
+#settings-cloud .settings-cloud-actions .btn { margin-left: 0; }
+.settings-row-hub .settings-info-text { grid-column: 1 / -1; }
+.info-grid.settings-grid .settings-row-hub > dt { align-self: center; padding-top: 0; }
+.settings-row-hub .settings-hub-mode-toggle { display: flex; align-items: center; min-height: var(--control-touch-height, 44px); }
+#settings-modal .settings-row-hub .settings-hub-mode-toggle > input[type="checkbox"] { align-self: center; position: relative; top: 0; }
+.settings-row-hub .settings-hub-mode-toggle { justify-content: center; min-width: var(--control-touch-height, 44px); }
