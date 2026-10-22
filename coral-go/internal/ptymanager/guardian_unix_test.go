@@ -41,7 +41,10 @@ func TestGuardParentHelper(t *testing.T) {
 		b.Close()
 		return // exits normally: the pipe to the guardian closes with the process
 	}
-	time.Sleep(time.Minute)
+	for end := time.Now().Add(time.Minute); time.Now().Before(end); time.Sleep(50 * time.Millisecond) {
+		gp, _ := guardian.pid()
+		os.WriteFile(filepath.Join(dir, "gnow"), []byte(strconv.Itoa(gp)), 0o644) // what the test reads to see the guardian replaced
+	}
 }
 
 func runGuardParent(t *testing.T, quit bool) (child, guardianPID int, parent *exec.Cmd, dir string) {
@@ -108,21 +111,13 @@ func TestAGuardianThatDiesIsReplacedAndToldAgain(t *testing.T) {
 		t.Fatalf("a guardian should be running with the terminal registered (%d, %d)", first, regs)
 	}
 	syscall.Kill(first, syscall.SIGKILL)
-	for end := time.Now().Add(3 * time.Second); time.Now().Before(end); time.Sleep(20 * time.Millisecond) {
-		if p, _ := guardian.pid(); p == 0 { // noticed (and reaped) by the client
-			break
-		}
-	}
-	if p, _ := guardian.pid(); p != 0 {
-		t.Fatalf("the client did not notice that its guardian died (%d)", p)
+	second := waitNewGuardian(t, first) // with no terminal started or ended meanwhile: Coral waits on the guardian and replaces it as soon as it exits
+	if _, regs2 := guardian.pid(); regs2 < regs {
+		t.Fatalf("the replacement is told every terminal (%d registered)", regs2)
 	}
 	spawn("1")
-	second, regs2 := guardian.pid()
-	if second <= 1 || second == first {
-		t.Fatalf("a new guardian should be running (%d after %d)", second, first)
-	}
-	if regs2 < regs+1 {
-		t.Fatalf("the replacement is told every terminal (%d registered)", regs2)
+	if p, regs3 := guardian.pid(); p != second || regs3 < regs+1 {
+		t.Fatalf("a new terminal is registered with the replacement (%d, %d registered)", p, regs3)
 	}
 }
 
@@ -246,22 +241,14 @@ func TestSIGTERMEndsTheGuardianButLeavesTheTerminalsRunning(t *testing.T) {
 	if err := syscall.Kill(g1, syscall.SIGTERM); err != nil {
 		t.Fatal(err)
 	}
-	for end := time.Now().Add(3 * time.Second); time.Now().Before(end); time.Sleep(20 * time.Millisecond) {
-		if p, _ := guardian.pid(); p == 0 {
-			break
-		}
-	}
-	if p, _ := guardian.pid(); p != 0 {
-		t.Fatalf("SIGTERM should end the guardian (still %d)", p)
-	}
-	time.Sleep(300 * time.Millisecond) // time enough for it to have killed something, if it did
+	g2 := waitNewGuardian(t, g1)       // SIGTERM ended it, and Coral replaced it
+	time.Sleep(300 * time.Millisecond) // time enough for the old one to have killed something, if it did
 	if !b.IsRunning(first) {
 		t.Fatal("SIGTERM to the guardian ended a terminal's tree: only EOF may")
 	}
 	second := spawn("1")
-	g2, regs := guardian.pid()
-	if g2 <= 1 || g2 == g1 || regs < 2 {
-		t.Fatalf("Coral should have started a new guardian, told both terminals (pid %d after %d, %d registered)", g2, g1, regs)
+	if p, regs := guardian.pid(); p != g2 || regs < 2 {
+		t.Fatalf("the replacement guardian is told both terminals (pid %d, %d registered)", p, regs)
 	}
 	if !b.IsRunning(first) || !b.IsRunning(second) {
 		t.Fatal("both terminals run")
@@ -291,5 +278,62 @@ func TestTheGuardianIsNamedInTheProcessList(t *testing.T) {
 	}
 	if !strings.Contains(cmdline, guardianName) {
 		t.Fatalf("the process list should say what it is (%q): %q", guardianName, cmdline)
+	}
+}
+
+// waitNewGuardian waits for the client to have a running guardian other than old (it replaces a dead one by itself) and returns its pid.
+func waitNewGuardian(t *testing.T, old int) int {
+	t.Helper()
+	for end := time.Now().Add(6 * time.Second); time.Now().Before(end); time.Sleep(20 * time.Millisecond) {
+		if p, _ := guardian.pid(); p > 1 && p != old {
+			return p
+		}
+	}
+	t.Fatalf("no replacement for guardian %d was started", old)
+	return 0
+}
+
+// The guardian is killed, Coral replaces it with no terminal started or ended, and then Coral is killed: the replacement, which was told the terminal, still ends its tree.
+func TestAGuardianKilledAndThenCoralKilledStillEndsTheTree(t *testing.T) {
+	child, g1, parent, dir := runGuardParent(t, false)
+	if err := syscall.Kill(g1, syscall.SIGKILL); err != nil {
+		t.Fatal(err)
+	}
+	var g2 int
+	for end := time.Now().Add(8 * time.Second); time.Now().Before(end) && g2 == 0; time.Sleep(50 * time.Millisecond) {
+		b, _ := os.ReadFile(filepath.Join(dir, "gnow"))
+		if n, err := strconv.Atoi(strings.TrimSpace(string(b))); err == nil && n > 1 && n != g1 {
+			g2 = n
+		}
+	}
+	if g2 == 0 {
+		t.Fatal("Coral did not start a replacement guardian by itself")
+	}
+	t.Cleanup(func() { syscall.Kill(g2, syscall.SIGKILL) })
+	time.Sleep(guardianSample + 500*time.Millisecond)
+	if err := syscall.Kill(parent.Process.Pid, syscall.SIGKILL); err != nil {
+		t.Fatal(err)
+	}
+	parent.Wait()
+	waitGone(t, child, 10*time.Second)
+	waitGone(t, g2, 10*time.Second)
+}
+
+// A guardian that dies at once cannot make Coral spin: the wait before each replacement doubles up to a maximum, and starts again after a guardian that lived.
+func TestTheRestartDelayBacksOffAndResets(t *testing.T) {
+	d := time.Duration(0)
+	var got []time.Duration
+	for i := 0; i < 9; i++ {
+		d = nextRestartDelay(d, 10*time.Millisecond) // each one died almost at once
+		got = append(got, d)
+	}
+	want := []time.Duration{100, 200, 400, 800, 1600, 3200, 5000, 5000, 5000}
+	for i := range want {
+		if got[i] != want[i]*time.Millisecond {
+			t.Fatalf("delay %d = %v, want %v (all: %v)", i, got[i], want[i]*time.Millisecond, got)
+		}
+	}
+	if d := nextRestartDelay(5*time.Second, guardianLives); d != guardianRestartMin {
+		t.Fatalf("a guardian that lived long enough starts the delay again, got %v", d)
 	}
 }
