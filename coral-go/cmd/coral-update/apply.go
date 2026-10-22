@@ -59,12 +59,18 @@ const (
 	resultRequestInvalid = "request_invalid"
 )
 
+// clickedVersion is the staged version the person saw when they clicked Install update (the marker's), set by a good installRequest: the Windows apply compares it with the
+// version it is about to install and refuses a stale click before any prompt (#82, #80's ClickedVersion).
+var clickedVersion string
+
 // installRequest consumes the dashboard's one-time install marker and returns "" when there was a good one, else the result word to print. The marker is deleted
 // whatever it held, so a second run finds none.
 func installRequest(dataDir string, now time.Time) string {
-	_, err := trigger.Consume(dataDir, now)
+	clickedVersion = ""
+	m, err := trigger.Consume(dataDir, now)
 	switch {
 	case err == nil:
+		clickedVersion = m.Version
 		return ""
 	case errors.Is(err, trigger.ErrNoMarker):
 		return resultNotRequested
