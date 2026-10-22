@@ -8,4 +8,4 @@ package routes
 const updateRelaunchFeature = true
 
 // BuildRelaunchUpdater is the fixture updater (relaunch_fixture.go).
-func BuildRelaunchUpdater() RelaunchUpdater { return &fixtureUpdater{} }
+func BuildRelaunchUpdater(string, func()) RelaunchUpdater { return &fixtureUpdater{} }

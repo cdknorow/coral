@@ -1,0 +1,300 @@
+//go:build !windows
+
+package routes
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/subgentic/coral/internal/updater/status"
+)
+
+// Step 3 A: the real updater behind the relaunch routes. It reads "coral-update status --json", starts "coral-update apply" and ends the server; the routes still answer 404 until the
+// feature constant is switched on.
+
+type fakeProgram struct {
+	out        status.Out
+	statusErr  error
+	startErr   error
+	statusRuns atomic.Int32
+	starts     atomic.Int32
+}
+
+func (f *fakeProgram) Status(context.Context) ([]byte, error) {
+	f.statusRuns.Add(1)
+	if f.statusErr != nil {
+		return nil, f.statusErr
+	}
+	return json.Marshal(f.out)
+}
+
+func (f *fakeProgram) StartApply() error { f.starts.Add(1); return f.startErr }
+
+func readyStatus() status.Out {
+	return status.Out{
+		Feature: "on", ApplyEnabled: true, Installed: "1.4.150", StateFile: "present", LastCheck: "2026-10-22T05:00:00Z",
+		Accepted: &status.Accepted{Version: "1.4.150", Sequence: 7},
+		Staged:   &status.Stage{Version: "1.4.155", StagedAt: "2026-10-22T05:01:00Z"},
+		Install:  &status.Install{Kind: "app", Writable: true},
+	}
+}
+
+func newRealUpdater(t *testing.T, f *fakeProgram, quit func()) *realUpdater {
+	t.Helper()
+	now := time.Date(2026, 10, 22, 6, 0, 0, 0, time.UTC)
+	return &realUpdater{dir: updatesDir{filepath.Join(t.TempDir(), "updates")}, prog: f, quit: quit, quitDelay: time.Millisecond, now: func() time.Time { now = now.Add(time.Minute); return now }}
+}
+
+func TestTheRecordSaysWhatTheUpdaterSaysInTheRoutesWords(t *testing.T) {
+	now := time.Date(2026, 10, 22, 6, 0, 0, 0, time.UTC)
+	for name, tc := range map[string]struct {
+		mod       func(*status.Out)
+		state     relaunchState
+		wantState string
+		notReady  string
+		supported bool
+		enabled   bool
+	}{
+		"a verified staged update": {func(o *status.Out) {}, relaunchState{}, updStaged, "", true, true},
+		"a Homebrew install": {func(o *status.Out) {
+			o.Staged = nil
+			o.Install = &status.Install{Kind: "homebrew", Unsupported: "homebrew", Writable: true}
+		}, relaunchState{}, updNone, "unsupported_install", false, true},
+		"a folder the user cannot write": {func(o *status.Out) { o.Staged = nil; o.Install = &status.Install{Kind: "unwritable", Writable: false} }, relaunchState{}, updNone, "unsupported_install", false, true},
+		"never checked":                  {func(o *status.Out) { o.Staged = nil; o.StateFile = "missing"; o.LastCheck = "" }, relaunchState{}, updNone, "not_checked", true, true},
+		"waiting after a failed try": {func(o *status.Out) {
+			o.Staged = nil
+			o.Backoff = &status.Back{Waiting: true, Until: "2026-10-22T07:00:00Z"}
+		}, relaunchState{}, updNone, "backoff", true, true},
+		"the last check failed":          {func(o *status.Out) { o.Staged = nil; o.LastFailure = &status.Fail{Stage: "verify"} }, relaunchState{}, updNone, "check_failed", true, true},
+		"up to date":                     {func(o *status.Out) { o.Staged = nil }, relaunchState{}, updNone, "up_to_date", true, true},
+		"the apply switch is off":        {func(o *status.Out) { o.Staged = nil; o.ApplyEnabled = false }, relaunchState{}, updNone, "switch_off", true, false},
+		"the feature is off":             {func(o *status.Out) { o.Feature = "off"; o.OffReason = "build_tier" }, relaunchState{}, updStaged, "", true, false},
+		"a relaunch in flight":           {func(o *status.Out) {}, relaunchState{StartedAt: now.Add(-time.Minute), From: "1.4.150"}, updApplying, "applying", true, true},
+		"an old relaunch with no result": {func(o *status.Out) {}, relaunchState{StartedAt: now.Add(-applyingFor - time.Minute), From: "1.4.150"}, updStaged, "", true, true},
+		"a relaunch the updater has a result for": {func(o *status.Out) {
+			o.LastApply = &status.Apply{At: "2026-10-22T05:59:30Z", Result: "failed_rolled_back"}
+		}, relaunchState{StartedAt: now.Add(-time.Minute - 45*time.Second), From: "1.4.150"}, updStaged, "", true, true},
+		"a relaunch into another version already ran": {func(o *status.Out) { o.Installed = "1.4.155" }, relaunchState{StartedAt: now.Add(-time.Minute), From: "1.4.150"}, updStaged, "", true, true},
+	} {
+		out := readyStatus()
+		tc.mod(&out)
+		rec := recordFrom(out, tc.state, now)
+		assert.Equal(t, tc.wantState, rec.State, name)
+		assert.Equal(t, tc.notReady, rec.NotReady, name)
+		assert.Equal(t, tc.supported, rec.Supported, name)
+		assert.Equal(t, tc.enabled, rec.Enabled, name)
+	}
+
+	rec := recordFrom(readyStatus(), relaunchState{HubRelaunched: "1.4.155", LastHubRelaunch: now}, now)
+	require.NotNil(t, rec.Staged)
+	assert.True(t, rec.Staged.Verified)
+	assert.Equal(t, "1.4.155", rec.Staged.Version)
+	assert.Equal(t, "app", rec.InstallKind)
+	assert.EqualValues(t, 7, rec.Trust.ManifestSequence)
+	assert.Equal(t, "1.4.155", rec.HubRelaunched)
+
+	// a hand-made version in the staged record is not taken
+	out := readyStatus()
+	out.Staged.Version = "../../etc"
+	assert.Nil(t, recordFrom(out, relaunchState{}, now).Staged)
+}
+
+func TestTheLastApplyAndRollbackAreInTheRoutesVocabulary(t *testing.T) {
+	out := readyStatus()
+	out.Staged = nil
+	out.LastApply = &status.Apply{At: "2026-10-22T05:30:00Z", From: "1.4.149", To: "1.4.150", By: "local", Result: "relaunched"}
+	rec := recordFrom(out, relaunchState{}, time.Now())
+	require.NotNil(t, rec.LastResult)
+	assert.Equal(t, resultRelaunched, rec.LastResult.Result)
+
+	out.LastApply = &status.Apply{At: "2026-10-22T05:30:00Z", Result: "restart_failed"}
+	out.LastRolled = &status.Apply{At: "2026-10-22T05:30:00Z", From: "1.4.150", To: "1.4.151", Result: "restart_failed", Reason: "did_not_start"}
+	rec = recordFrom(out, relaunchState{}, time.Now())
+	assert.Equal(t, resultRolledBack, rec.LastResult.Result)
+	assert.Equal(t, updFailed, rec.State)
+	require.NotNil(t, rec.LastRollback)
+	assert.True(t, rec.LastRollback.RestartFailed)
+	assert.Equal(t, "did_not_start", rec.LastRollback.Reason)
+
+	out.LastRolled.Reason = "some free text"
+	assert.Equal(t, rollbackOtherTag, recordFrom(out, relaunchState{}, time.Now()).LastRollback.Reason, "a reason that is not a fixed word is 'other'")
+	out.LastApply.Result = "coral_running"
+	assert.Equal(t, resultRefused, recordFrom(out, relaunchState{}, time.Now()).LastResult.Result)
+}
+
+func TestApplyRecordsStartsTheUpdaterAndEndsTheServer(t *testing.T) {
+	f := &fakeProgram{out: readyStatus()}
+	quit := make(chan struct{}, 1)
+	u := newRealUpdater(t, f, func() { quit <- struct{}{} })
+
+	op, err := u.Apply(t.Context(), "hub:hub-user-0a1b2c3d")
+	require.NoError(t, err)
+	assert.Regexp(t, `^[0-9a-f]{16}$`, op)
+	assert.EqualValues(t, 1, f.starts.Load())
+	select {
+	case <-quit:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the server was not ended after the relaunch started")
+	}
+	st, err := u.loadState()
+	require.NoError(t, err)
+	assert.Equal(t, "1.4.155", st.HubRelaunched, "once per version: the version is recorded")
+	assert.Equal(t, "1.4.150", st.From)
+	assert.Equal(t, op, st.Operation)
+	assert.Equal(t, "hub:hub-user-0a1b2c3d", st.By)
+
+	// the record now says a relaunch is running, and a second Apply starts nothing
+	rec, err := u.Record(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, updApplying, rec.State)
+	_, err = u.Apply(t.Context(), "local")
+	assert.Error(t, err)
+	assert.EqualValues(t, 1, f.starts.Load())
+}
+
+func TestApplyStartsNothingWhenTheUpdaterCannotApply(t *testing.T) {
+	for name, mod := range map[string]func(*status.Out){
+		"the apply switch is off": func(o *status.Out) { o.ApplyEnabled = false },
+		"an install it cannot update": func(o *status.Out) {
+			o.Install = &status.Install{Kind: "homebrew", Unsupported: "homebrew", Writable: true}
+		},
+		"nothing staged": func(o *status.Out) { o.Staged = nil },
+	} {
+		f := &fakeProgram{out: readyStatus()}
+		mod(&f.out)
+		var quit atomic.Int32
+		u := newRealUpdater(t, f, func() { quit.Add(1) })
+		_, err := u.Apply(t.Context(), "local")
+		assert.Error(t, err, name)
+		assert.Zero(t, f.starts.Load(), name)
+		_, serr := os.Stat(filepath.Join(u.dir.Dir, relaunchStateFile))
+		assert.True(t, os.IsNotExist(serr), name+": nothing recorded")
+	}
+
+	f := &fakeProgram{out: readyStatus(), statusErr: errors.New("no updater")}
+	_, err := newRealUpdater(t, f, nil).Apply(t.Context(), "local")
+	assert.Error(t, err, "an updater that does not answer starts nothing")
+	assert.Zero(t, f.starts.Load())
+}
+
+func TestAnUpdaterThatDoesNotStartLeavesTheVersionToBeTriedAgain(t *testing.T) {
+	f := &fakeProgram{out: readyStatus(), startErr: errors.New("exec format error")}
+	var quit atomic.Int32
+	u := newRealUpdater(t, f, func() { quit.Add(1) })
+	_, err := u.Apply(t.Context(), "local")
+	require.Error(t, err)
+	time.Sleep(50 * time.Millisecond) // sleep-ok: the quit is scheduled only on success, so the absence of it needs a moment to mean something
+	assert.Zero(t, quit.Load(), "the server is not ended for an update that did not start")
+	st, err := u.loadState()
+	require.NoError(t, err)
+	assert.Empty(t, st.HubRelaunched, "the version was not spent")
+	assert.True(t, st.StartedAt.IsZero(), "and nothing is in flight")
+}
+
+func TestRecordIsAnsweredFromTheLastAnswerForAMoment(t *testing.T) {
+	f := &fakeProgram{out: readyStatus()}
+	clock := time.Date(2026, 10, 22, 6, 0, 0, 0, time.UTC)
+	u := newRealUpdater(t, f, nil)
+	u.now = func() time.Time { return clock }
+	for i := 0; i < 5; i++ {
+		clock = clock.Add(100 * time.Millisecond)
+		_, err := u.Record(t.Context())
+		require.NoError(t, err)
+	}
+	assert.EqualValues(t, 1, f.statusRuns.Load(), "five calls inside the moment start the program once")
+	clock = clock.Add(recordCacheFor + time.Second)
+	_, err := u.Record(t.Context())
+	require.NoError(t, err)
+	assert.EqualValues(t, 2, f.statusRuns.Load())
+}
+
+func TestAuditKeepsTheLastFiftyAttemptsAndSurvivesADamagedFile(t *testing.T) {
+	u := newRealUpdater(t, &fakeProgram{out: readyStatus()}, nil)
+	for i := 0; i < maxAuditRows+10; i++ {
+		require.NoError(t, u.Audit(t.Context(), RelaunchAudit{At: time.Unix(int64(i), 0).UTC(), Code: fmt.Sprintf("c%d", i)}))
+	}
+	b, err := u.dir.read(relaunchAuditFile, maxStateBytes)
+	require.NoError(t, err)
+	var rows []RelaunchAudit
+	require.NoError(t, json.Unmarshal(b, &rows))
+	require.Len(t, rows, maxAuditRows)
+	assert.Equal(t, "c10", rows[0].Code)
+	assert.Equal(t, fmt.Sprintf("c%d", maxAuditRows+9), rows[len(rows)-1].Code)
+
+	require.NoError(t, u.dir.write(relaunchAuditFile, []byte("{not json")))
+	require.NoError(t, u.Audit(t.Context(), RelaunchAudit{Code: "after"}))
+	b, _ = u.dir.read(relaunchAuditFile, maxStateBytes)
+	require.NoError(t, json.Unmarshal(b, &rows))
+	require.Len(t, rows, 1)
+	assert.Equal(t, "after", rows[0].Code)
+}
+
+// The program the real updater runs: a fixed argv, the allowlisted environment only, output bounded; and the apply is started with no argument but "apply".
+func TestTheUpdaterProgramIsRunWithAFixedArgvAndOnlyTheAllowlistedEnvironment(t *testing.T) {
+	dir := t.TempDir()
+	argsFile, envFile := filepath.Join(dir, "args"), filepath.Join(dir, "env")
+	prog := filepath.Join(dir, "coral-update")
+	script := "#!/bin/sh\necho \"$@\" >> " + argsFile + "\nenv > " + envFile + "\nif [ \"$1\" = status ]; then echo '{\"feature\":\"on\"}'; fi\n"
+	require.NoError(t, os.WriteFile(prog, []byte(script), 0o755))
+	t.Setenv("CORAL_DATA_DIR", "/tmp/somewhere")
+	t.Setenv("ANTHROPIC_API_KEY", "sk-should-not-reach-it")
+	t.Setenv("GITHUB_TOKEN", "ghp_should_not_reach_it")
+	e := execProgram{path: prog}
+
+	out, err := e.Status(t.Context())
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"feature":"on"}`, string(out))
+	require.NoError(t, e.StartApply())
+	require.Eventually(t, func() bool {
+		b, _ := os.ReadFile(argsFile)
+		return strings.Count(string(b), "\n") == 2
+	}, 5*time.Second, 20*time.Millisecond)
+	b, _ := os.ReadFile(argsFile)
+	assert.Equal(t, "status --json\napply\n", string(b), "the argv is fixed")
+	env, _ := os.ReadFile(envFile)
+	assert.Contains(t, string(env), "CORAL_DATA_DIR=/tmp/somewhere")
+	assert.NotContains(t, string(env), "sk-should-not-reach-it", "an agent's key is not the updater's")
+	assert.NotContains(t, string(env), "ghp_should_not_reach_it")
+}
+
+func TestTheUpdaterProgramsAnswerIsBoundedAndItsFailureIsAnError(t *testing.T) {
+	dir := t.TempDir()
+	big := filepath.Join(dir, "big")
+	require.NoError(t, os.WriteFile(big, []byte("#!/bin/sh\nyes '0123456789012345678901234567890123456789' | head -c 200000\n"), 0o755))
+	_, err := execProgram{path: big}.Status(t.Context())
+	assert.Error(t, err, "more than the bound is refused, not truncated into something that parses")
+
+	bad := filepath.Join(dir, "bad")
+	require.NoError(t, os.WriteFile(bad, []byte("#!/bin/sh\nexit 3\n"), 0o755))
+	_, err = execProgram{path: bad}.Status(t.Context())
+	assert.Error(t, err)
+
+	_, err = execProgram{path: filepath.Join(dir, "missing")}.Status(t.Context())
+	assert.Error(t, err)
+
+	slow := filepath.Join(dir, "slow")
+	require.NoError(t, os.WriteFile(slow, []byte("#!/bin/sh\nsleep 30\n"), 0o755))
+	ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	_, err = execProgram{path: slow}.Status(ctx)
+	assert.Error(t, err)
+	assert.Less(t, time.Since(start), 10*time.Second, "a hung program does not hang the request")
+}
+
+func TestTheProgramBesideThisOneIsAPlainFileOrNothing(t *testing.T) {
+	_, err := programPath() // the test binary has no coral-update beside it
+	assert.Error(t, err)
+}
