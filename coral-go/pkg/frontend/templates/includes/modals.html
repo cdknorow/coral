@@ -613,7 +613,6 @@
                     <div class="settings-panes">
                     <section class="settings-pane" id="settings-pane-general" data-group="general" data-icon="tune" data-title="General" role="tabpanel" aria-labelledby="settings-tab-general" tabindex="-1">
                         <h4 class="settings-pane-title">General</h4>
-                        <p class="settings-pane-sub">Look and feel, and what the sidebar shows.</p>
                         <dl class="info-grid settings-grid">
                 <div class="settings-row">
                 <dt id="settings-theme-label">Theme</dt>
@@ -642,10 +641,10 @@
                     </select>
                 </dd>
                 </div>
-                {{ template "includes/toggle_row" (toggle "settings-group-by-team" "Group agents by board or team" "A heading in the sidebar for each board or team." "data-on-change=\"m-toggle-group-by-team\"") }}
-                {{ template "includes/toggle_row" (toggle "settings-show-summary" "Show a summary under each agent" "The goal line beneath an agent's name in the sidebar (off by default)" "data-on-change=\"m-toggle-session-summary\"") }}
-                {{ template "includes/toggle_row" (toggle "settings-show-scrollbars" "Show scrollbars" "In the terminal and chat views. Turn off to hide them." "checked") }}
-                {{ template "includes/toggle_row" (toggle "settings-check-updates" "Check for updates" "Notify when a new version of Coral is available") }}
+                {{ template "includes/toggle_row" (toggle "settings-group-by-team" "Group agents by board or team" "" "data-on-change=\"m-toggle-group-by-team\"") }}
+                {{ template "includes/toggle_row" (toggle "settings-show-summary" "Summary under each agent" "The agent's goal, in one line." "data-on-change=\"m-toggle-session-summary\"") }}
+                {{ template "includes/toggle_row" (toggle "settings-show-scrollbars" "Show scrollbars" "Terminal and chat views." "checked") }}
+                {{ template "includes/toggle_row" (toggle "settings-check-updates" "Check for updates" "") }}
                         </dl>
                         <button class="btn settings-theme-btn" data-on-click="m-hide-settings-modal-then-show-theme-configurator">
                             <span class="material-icons icon-inline" aria-hidden="true">palette</span>
@@ -1515,9 +1514,9 @@
 {{ define "includes/toggle_row" }}<div class="settings-row">
                 <dt class="toggle-dt">
                     <label for="{{ .ID }}">{{ .Label }}</label>
-                    <span class="toggle-desc" id="{{ .ID }}-desc">{{ .Desc }}</span>
+                    {{ if .Desc }}<span class="toggle-desc" id="{{ .ID }}-desc">{{ .Desc }}</span>{{ end }}
                 </dt>
-                <dd><label class="check-hit"><input type="checkbox" id="{{ .ID }}" aria-describedby="{{ .ID }}-desc"{{ .Attrs }}></label></dd>
+                <dd><label class="check-hit"><input type="checkbox" id="{{ .ID }}"{{ if .Desc }} aria-describedby="{{ .ID }}-desc"{{ end }}{{ .Attrs }}></label></dd>
                 </div>{{ end }}
 
 {{/* One Coral Hub switch in Settings: the label names it, the description (its own id) is tied to it by aria-describedby in inputAttrs. */}}

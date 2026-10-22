@@ -116,7 +116,7 @@ export function healthCard(h, { title = 'Machine health', online = false } = {})
         const note = document.createElement('p');
         note.className = 'machine-health-note';
         // An online machine has not relayed a reading yet: say so; "not connected" is for one that is not (the card's status must agree with the row's).
-        note.textContent = online ? 'Waiting for a health reading from this computer.' : 'No health reading right now (the machine is not connected).';
+        note.textContent = online ? 'Waiting for a health reading from this computer.' : 'No health reading: not connected.';
         card.appendChild(note);
         return card;
     }
