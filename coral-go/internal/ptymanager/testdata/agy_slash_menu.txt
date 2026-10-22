@@ -1,0 +1,9 @@
+> Coral's docs for agents: run `coral-agent docs` to list the topics.
+
+─────────────────────────────────────────────────────────────────────────────────────────
+> /help
+─────────────────────────────────────────────────────────────────────────────────────────
+> /help  Show available commands and keybindings
+
+  ↑/↓ Navigate · enter Select · tab Complete
+esc to cancel                                                     plan · Gemini 3.8 Flash · high
