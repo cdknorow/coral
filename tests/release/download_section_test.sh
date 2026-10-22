@@ -35,4 +35,10 @@ for bad in 'v1.9.0)[x](http://evil.example/a' 'v1.4.200 x' 'v1.4.200-$(id)' 'v1.
   ok "a version that is not a version is refused ($(printf %q "$bad"))" "$rc:$out" "1:"
 done
 ok "a suffix is still a version" "$(bash "$root/tools/devops/download-section.sh" v1.4.200-rc1 | grep -c 'download/v1.4.200-rc1/Coral.dmg')" 1
+# The Coral For Dropbox tier ships no MSI: its notes link no installer, and the other four links stay
+d=$(bash "$root/tools/devops/download-section.sh" v1.4.200-forDropbox)
+ok "a forDropbox release links no MSI" "$(echo "$d" | grep -c 'msi')" 0
+ok "a forDropbox release still links the portable zip" "$(echo "$d" | grep -c 'Coral-x64-portable.zip')" 1
+ok "a forDropbox release keeps the dmg link first, then the zip" "$(echo "$d" | sed -n 3p | grep -c '^\[\*\*macOS (.dmg)\*\*\](.*Coral.dmg) &bull; \[Windows portable')" 1
+ok "a prod release still links the MSI" "$(bash "$root/tools/devops/download-section.sh" v1.4.200 | grep -c 'Coral-x64.msi')" 1
 exit "$fail"
