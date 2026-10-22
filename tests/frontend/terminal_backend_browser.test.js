@@ -76,13 +76,18 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
         await ev(`window.__tbFake = { status: () => ({ saved: 'tmux', running: 'tmux', next: 'tmux', forced: false, choice: true, restart_required: false, can_restart: false, running_agents: 0, leftover_tmux_agents: 0 }) }; window.showSettingsModal(); true`);
         await until(`document.getElementById('settings-terminal-backend')?.hidden === false`, 'the backend row');
         let r = await row();
-        check('Settings shows the backend row: running tmux, tmux picked, both options', !r.hidden && r.now === 'Running now: tmux' && r.choice && !r.fixed && r.checked === 'tmux'
+        // Coral on Windows has no tmux: the real server shows pty as the only backend, with no choice (the tmux row is covered below with a stand-in answer).
+        const WIN = process.platform === 'win32';
+        if (WIN) check('Settings shows the backend row: running pty, fixed, no choice', !r.hidden && r.now === 'Running now: pty' && !r.choice && r.fixed, JSON.stringify(r));
+        else check('Settings shows the backend row: running tmux, tmux picked, both options', !r.hidden && r.now === 'Running now: tmux' && r.choice && !r.fixed && r.checked === 'tmux'
             && r.texts[0] === 'tmux: agents keep running' && r.texts[1] === 'pty: agents stop when you quit Coral (default)', JSON.stringify(r));
         check("the pty text has Security's crash wording", /puts them to sleep first when it stops cleanly, and marks them asleep at the next start after a crash/.test(r.ptyText), r.ptyText);
         check('nothing pending to start with', r.pending === '', r.pending);
-        await pick('pty');
-        r = await row();
-        check('picking pty says it switches when Coral restarts', r.pending === 'Switches to pty when Coral restarts. Apply asks first.', r.pending);
+        if (!WIN) {
+            await pick('pty');
+            r = await row();
+            check('picking pty says it switches when Coral restarts', r.pending === 'Switches to pty when Coral restarts. Apply asks first.', r.pending);
+        }
 
         // ── Apply, then Cancel: nothing saved, Settings stays open ──────────
         await ev(`window.__tbFake = { status: () => ({ saved: 'tmux', running: 'tmux', next: 'tmux', forced: false, choice: true, restart_required: false, can_restart: true, running_agents: 2, leftover_tmux_agents: 0 }) }; true`);

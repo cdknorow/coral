@@ -472,7 +472,7 @@ async function run() {
     const wsBefore = t1.wsCreated.filter(u => /\/ws\/terminal\//.test(u)).length;
     const kill = await httpJson('POST', `/api/sessions/live/${encodeURIComponent(aname)}/kill`, { agent_type: 'terminal', session_id: sid });
     check('B kill request accepted', kill.status === 200 && kill.data && kill.data.ok === true, `status=${kill.status}`);
-    const ended = await t1.waitFor(`(() => { const e = document.getElementById('popout-ended'); const p = document.getElementById('terminal-state-pill'); return e && getComputedStyle(e).display !== 'none' && p && p.getAttribute('data-state') === 'ended'; })()`, 12000);
+    const ended = await t1.waitFor(`(() => { const e = document.getElementById('popout-ended'); const o = document.getElementById('session-ended-overlay'); const p = document.getElementById('terminal-state-pill'); return e && getComputedStyle(e).display !== 'none' && o && getComputedStyle(o).display !== 'none' && p && p.getAttribute('data-state') === 'ended'; })()`, 12000); // (the card is inside the overlay, which comes back with the terminal socket's closing frame: the card's own display is not enough)
     s1 = await t1.ev(SHELL_PROBE);
     check('21 kill from outside -> Ended state within a tick (overlay + pill)', ended, JSON.stringify({ ended: s1.overlays.ended, pill: s1.pill }));
     check('21 input disabled and title marks ended', s1.inputDisabled && /^✕ /.test(s1.title) && !s1.title.includes(sid), JSON.stringify({ disabled: s1.inputDisabled, title: s1.title }));

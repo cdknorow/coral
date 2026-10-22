@@ -20,8 +20,10 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
 
 (async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pin3630-'));
-    const pinDir = fs.realpathSync(fs.mkdirSync(path.join(tmp, 'qa-pinned'), { recursive: true }) || path.join(tmp, 'qa-pinned'));
-    const busyDir = fs.realpathSync(fs.mkdirSync(path.join(tmp, 'qa-busy'), { recursive: true }) || path.join(tmp, 'qa-busy'));
+    fs.mkdirSync(path.join(tmp, 'qa-pinned'), { recursive: true }); // (its return value is the first folder made, which Node on Windows reports as 'C:')
+    const pinDir = fs.realpathSync(path.join(tmp, 'qa-pinned'));
+    fs.mkdirSync(path.join(tmp, 'qa-busy'), { recursive: true });
+    const busyDir = fs.realpathSync(path.join(tmp, 'qa-busy'));
     const client = await CDP({ port: Number(process.env.CDP_PORT || 9222) });
     const { Page, Runtime, Emulation, Input } = client;
     const ev = async expression => {

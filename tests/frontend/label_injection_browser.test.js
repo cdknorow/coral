@@ -100,8 +100,11 @@ const HOOK = `(() => {
     const fs = require('fs'), path = require('path'), os = require('os'), cp = require('./helpers/child_process.js');
     // A working folder an agent could have made: a file, a folder and a branch named with markup (a name may hold < > " ' and =, not a slash or a
     // space: the tag is written as <img/data-pwn=.../src=x>), a commit message and a markdown file with the payload in it.
-    const T = f => `<img data-pwn="${f}" src=x>`;                // a file or folder name may hold a space
-    const TB = f => `<img/data-pwn="${f}"/src=x>`;               // a branch name may not: its slashes are ref levels, and HTML reads / like a space
+    // Windows cannot hold < > " in a file, folder or branch name (a branch is a file under .git), so there the names carry the same payload as far as
+    // the platform allows: a single-quoted attribute written into the name, which is what breaks out of a '-quoted attribute.
+    const WIN = process.platform === 'win32';
+    const T = WIN ? f => `x' data-pwn='${f}' y='z` : f => `<img data-pwn="${f}" src=x>`;     // a file or folder name may hold a space
+    const TB = WIN ? f => `x'/data-pwn='${f}'/y='z` : f => `<img/data-pwn="${f}"/src=x>`;   // a branch name may not: its slashes are ref levels, and HTML reads / like a space
     const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'pwn-repo-'));
     const git = (...a) => cp.execFileSync('git', ['-C', repo, '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', ...a], { stdio: 'pipe' });
     cp.execFileSync('git', ['init', '-q', repo]);
@@ -110,7 +113,7 @@ const HOOK = `(() => {
     fs.mkdirSync(path.join(repo, 'd' + T('dir-name')));
     fs.writeFileSync(path.join(repo, 'd' + T('dir-name'), 'inner.txt'), 'x\n');
     git('add', '-A'); git('commit', '-q', '-m', 'first ' + P('commit-msg'));
-    git('checkout', '-q', '-b', 'feat"' + TB('branch-name'));
+    git('checkout', '-q', '-b', (WIN ? "feat'" : 'feat"') + TB('branch-name'));
     fs.writeFileSync(path.join(repo, 'tracked' + T('file-name-tracked') + '.txt'), 'two\n');          // modified
     fs.writeFileSync(path.join(repo, 'untracked' + T('file-name-untracked') + '.txt'), 'new\n');       // untracked
     try {
