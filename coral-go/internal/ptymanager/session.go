@@ -351,13 +351,20 @@ func (s *session) killWithin(grace time.Duration) error {
 	s.proc.Terminate()
 
 	// Wait for graceful exit
+	started := time.Now()
 	select {
 	case <-s.proc.Done():
-		// Clean exit
+		// The shell is gone; what it started may not be (an agent in a group of its own, its helpers): they get the rest of the grace, then SIGKILL (#6125).
+		if r, ok := s.proc.(interface{ reapTree(time.Duration) }); ok {
+			r.reapTree(max(grace-time.Since(started), 0))
+		}
 	case <-time.After(grace):
 		// Force kill
 		s.proc.ForceKill()
 		<-s.proc.Done()
+		if r, ok := s.proc.(interface{ reapTree(time.Duration) }); ok {
+			r.reapTree(0)
+		}
 	}
 
 	// Close PTY handle

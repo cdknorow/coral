@@ -17,6 +17,8 @@ type unixPTY struct {
 	cmd     *exec.Cmd
 	ptyFile *os.File
 	done    chan struct{}
+	seen    seen   // the tree as Terminate found it
+	tag     string // CORAL_PTY_RUN in the environment of everything this terminal runs: how its whole tree is found (proc_tree_unix.go)
 }
 
 // Pid is the process started in the terminal.
@@ -33,7 +35,8 @@ const terminateTypesCtrlC = false
 func startPTYProcess(name string, args []string, dir string, env []string, cols, rows uint16) (ptyProcess, error) {
 	cmd := exec.Command(name, args...)
 	cmd.Dir = dir
-	cmd.Env = env
+	tag := newRunTag()
+	cmd.Env = append(env[:len(env):len(env)], runTagEnv+"="+tag)
 	// No Setpgid: pty.StartWithSize makes the child a session leader (Setsid + Setctty),
 	// which is already the leader of its own process group, and setpgid on a session
 	// leader fails with EPERM, so no PTY could be spawned on macOS (#3229).
@@ -51,6 +54,7 @@ func startPTYProcess(name string, args []string, dir string, env []string, cols,
 		cmd:     cmd,
 		ptyFile: ptmx,
 		done:    make(chan struct{}),
+		tag:     tag,
 	}
 
 	go func() {
@@ -78,19 +82,26 @@ func (p *unixPTY) Terminate() error {
 	if p.cmd.Process == nil {
 		return nil
 	}
+	tree := treeMembers(p.Pid(), p.tag) // before the shell goes: what descends from it, and what is tagged, is found while it is still the parent (#6125)
+	p.seen.add(tree)
 	pgid, err := syscall.Getpgid(p.cmd.Process.Pid)
 	if err == nil && pgid > 0 {
 		_ = syscall.Kill(-pgid, syscall.SIGHUP)
-		return syscall.Kill(-pgid, syscall.SIGTERM)
+		err = syscall.Kill(-pgid, syscall.SIGTERM)
+	} else {
+		_ = p.cmd.Process.Signal(syscall.SIGHUP)
+		err = p.cmd.Process.Signal(syscall.SIGTERM)
 	}
-	_ = p.cmd.Process.Signal(syscall.SIGHUP)
-	return p.cmd.Process.Signal(syscall.SIGTERM)
+	signalTree(tree, syscall.SIGHUP)
+	signalTree(tree, syscall.SIGTERM)
+	return err
 }
 
 func (p *unixPTY) ForceKill() error {
 	if p.cmd.Process == nil {
 		return nil
 	}
+	signalTree(unionOf(p.seen.all(), treeMembers(p.Pid(), p.tag)), syscall.SIGKILL) // the whole tree, not only the shell's group (#6125)
 	pgid, err := syscall.Getpgid(p.cmd.Process.Pid)
 	if err == nil && pgid > 0 {
 		return syscall.Kill(-pgid, syscall.SIGKILL)
