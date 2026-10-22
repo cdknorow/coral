@@ -6,12 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"github.com/subgentic/coral/internal/clitext"
+	"github.com/subgentic/coral/internal/config"
 	"github.com/subgentic/coral/internal/hooks"
 	"io"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -42,7 +44,7 @@ func endpointFromEnv(explicitURL, host, port string) string {
 	}
 	port = strings.TrimSpace(port)
 	if port == "" {
-		port = "8420"
+		port = strconv.Itoa(config.DefaultPort) // 8450 on Windows, 8420 elsewhere
 	}
 	return "http://" + net.JoinHostPort(host, port)
 }

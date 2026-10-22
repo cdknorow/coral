@@ -16,7 +16,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -30,9 +29,9 @@ func CoralBase() string {
 	}
 	port := os.Getenv("CORAL_PORT")
 	if port == "" {
-		// The platform's own default (8450 on Windows, 8420 elsewhere): 8420 on Windows sent a command typed in a plain terminal
-		// to the wrong port, where this platform's Coral never listens (#235).
-		port = strconv.Itoa(config.DefaultPort)
+		// Nothing says where Coral is: the address the running server recorded in its lock file, else the platform's own default (8450 on Windows,
+		// 8420 elsewhere): 8420 on Windows sent a command typed in a plain terminal to the wrong port, where this platform's Coral never listens (#235).
+		return config.LocalServerURL()
 	}
 	return "http://localhost:" + port
 }
