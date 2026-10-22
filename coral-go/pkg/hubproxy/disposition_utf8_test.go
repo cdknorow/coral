@@ -29,18 +29,18 @@ func TestDispositionCarriesAUTF8Name(t *testing.T) {
 	assert.Equal(t, "ü.txt", params["filename"], "only the base name")
 }
 
-// The UTF-8 name never carries what reorders or hides text: an override that would show "report.pdf" for "report‮fdp.exe"
+// The UTF-8 name never carries what reorders or hides text: an override that would show "report.pdf" for "reportU+202Efdp.exe"
 // becomes '_', and so do controls, spaces and quotes. A name with no letter or digit has no filename*.
 func TestDispositionUTF8NameHasNoReorderingOrControls(t *testing.T) {
-	for _, in := range []string{"report‮fdp.exe", "a​b⁦c.txt", "x\x07y\r\nz.txt", `"quoted" name;.txt`} {
+	for _, in := range []string{"report\u202efdp.exe", "a\u200bb\u2066c.txt", "x\x07y\r\nz.txt", `"quoted" name;.txt`} {
 		got := Disposition("attachment", in)
 		_, params, err := mime.ParseMediaType(got)
 		require.NoError(t, err, got)
-		for _, bad := range []string{"‮", "​", "⁦", "\x07", "\r", "\n", `"`, ";", " "} {
+		for _, bad := range []string{"\u202e", "\u200b", "\u2066", "\x07", "\r", "\n", `"`, ";", " "} {
 			assert.NotContains(t, params["filename"], bad, "%q -> %q", in, got)
 		}
 	}
-	assert.Equal(t, "attachment; filename=___", Disposition("attachment", "‮‮‮"), "nothing to keep: no filename*")
+	assert.Equal(t, "attachment; filename=___", Disposition("attachment", "\u202e\u202e\u202e"), "nothing to keep: no filename*")
 }
 
 // Through Coral Hub the relayed header is rebuilt the same way: filename= in ASCII and the UTF-8 name in filename*.

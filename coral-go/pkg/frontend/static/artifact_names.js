@@ -7,12 +7,18 @@ const names = new Map(); // hex -> the stored name ('' when it has none or can't
 const asked = new Set();
 const MAX_NAME = 80;
 
-// C0/C1 controls, DEL, and the format characters that reorder or hide text (bidi embeddings and isolates, zero-width marks).
-const UNSAFE = /[\u0000-\u001f\u007f-\u009f؜​-‏‪-‮⁠-⁩﻿]/g;
+// C0/C1 controls, DEL, the soft hyphen, the format characters that reorder or hide text (bidi embeddings and isolates,
+// zero-width marks), and the invisible tag characters (U+E0000-E007F, Security on #128). Written as escapes: never the characters.
+const UNSAFE = /[\u0000-\u001f\u007f-\u009f\u00ad\u061c\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff\u{E0000}-\u{E007F}]/gu;
+// A name that reads as an address (https://bank.example/login, www.example.com) shows as the short id instead, so a link's
+// text never looks like another site: it only ever opens the artifact (Security on #128).
+const LOOKS_LIKE_ADDRESS = /:\/\/|^www\./i;
 
-/** name as a link may show it: no controls or reordering characters, spaces collapsed, at most MAX_NAME characters. */
+/** name as a link may show it: no controls or reordering characters, spaces collapsed, at most MAX_NAME characters; '' (the
+ *  short id is shown) for a name that reads as an address. */
 export function cleanArtifactName(name) {
     const n = String(name == null ? '' : name).replace(UNSAFE, '').replace(/\s+/g, ' ').trim();
+    if (LOOKS_LIKE_ADDRESS.test(n)) return '';
     const chars = [...n];
     return chars.length > MAX_NAME ? chars.slice(0, MAX_NAME - 1).join('') + '…' : n;
 }

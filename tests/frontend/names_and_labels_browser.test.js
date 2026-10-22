@@ -57,6 +57,10 @@ const { connect } = require('./agent_view_harness');
         assert.equal(await ev(`document.querySelectorAll('#qa-board-body img').length`), 0);
         assert.equal(links[2].text, 'artifact c3c3c3c3', 'no stored name: the short id');
         assert.equal(links[0].title, 'coral://artifacts/' + '${HEX}'.replace('${HEX}', 'a1'.repeat(32)), 'the full reference is the tooltip');
+        // Security on #128: a name that reads as an address shows the short id; soft hyphens and tag characters are removed.
+        const clean = await ev(`(async () => { const n = await import(${S} + 'artifact_names.js');
+            return ['https://bank.example/login', 'www.example.com', 'WWW.Example.org', 'Security update: open http://x', 're\\u00adport\\u{E0041}\\u{E0042}.md', 'notes 2.txt'].map(v => n.cleanArtifactName(v)); })()`);
+        assert.deepEqual(clean, ['', '', '', '', 'report.md', 'notes 2.txt'], JSON.stringify(clean));
         // a later render of the same body uses the name at once
         assert.match(await ev(`(async () => (await import(${S} + 'board_message_text.js')).renderBoardMessageBody({ id: 97002, content: 'again coral://artifacts/${HEX}' }))()`), /Ñotas 日本語\.txt/);
         const inbox = await ev(`(async () => { const p = await (await import(${S} + 'inbox_coral.js')).artifactLinkPolicy('see coral://artifacts/${HEX}'); return p('coral://artifacts/${HEX}'); })()`);
