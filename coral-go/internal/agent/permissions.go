@@ -309,11 +309,11 @@ func PermissionFlagsForAgent(agentType, mode string) []string {
 	}
 }
 
-// DefaultLaunchPermissionMode is the permission mode a launch gets when nothing chose one (no mode, no permission flag, no saved default) (#5836): Claude starts in Auto, so a
-// new user is not met with an agent that bypasses every prompt and the agent is not stopped by prompts nobody is there to answer; every other CLI starts as its own default does
-// (Codex's Auto is a sandbox that cannot reach the board on localhost, Antigravity and Pi have no mode between asking and skipping).
+// DefaultLaunchPermissionMode is used only when no mode, permission flag or saved
+// default chose one. Claude uses its classifier; Codex uses workspace-write with
+// no approval prompts and per-launch Coral connectivity (#5925).
 func DefaultLaunchPermissionMode(agentType string) string {
-	if agentType == "" || agentType == "claude" {
+	if agentType == "" || agentType == "claude" || agentType == at.Codex {
 		return "auto"
 	}
 	return "default"

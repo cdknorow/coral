@@ -92,12 +92,34 @@ func TestAClaudeLaunchWithNoChosenPermissionModeStartsInAuto(t *testing.T) {
 	cmd, stored = launch(map[string]any{"agent_type": at.Agy})
 	assert.NotContains(t, cmd, "--permission-mode auto")
 	assert.Equal(t, "default", stored)
+
+	// Codex uses the sandbox default through the real launch route, and stores it
+	// for restarts. Saved Settings modes still choose exactly what the person saved.
+	require.NoError(t, rig.ss.SetSetting(ctx, agent.CLIPathSettingKey(at.Codex), fakeClaude))
+	cmd, stored = launch(map[string]any{"agent_type": at.Codex})
+	assert.Equal(t, "auto", stored)
+	assert.Contains(t, cmd, "--sandbox workspace-write -a never")
+	assert.Contains(t, cmd, "sandbox_workspace_write.network_access=true")
+	assert.NotContains(t, cmd, "dangerously-bypass")
+	for _, saved := range []string{"bypassPermissions", "default", "plan"} {
+		require.NoError(t, rig.ss.SetSetting(ctx, "default_permission_mode", saved))
+		cmd, stored = launch(map[string]any{"agent_type": at.Codex})
+		assert.Equal(t, saved, stored)
+		assert.NotContains(t, cmd, "sandbox_workspace_write.network_access=true")
+		if saved == "bypassPermissions" {
+			assert.Contains(t, cmd, "--dangerously-bypass-approvals-and-sandbox")
+		}
+		if saved == "plan" {
+			assert.Contains(t, cmd, "--sandbox read-only -a on-request")
+		}
+	}
 }
 
-func TestTheDefaultLaunchPermissionModeIsAutoForClaudeOnly(t *testing.T) {
+func TestTheDefaultLaunchPermissionModeIsAutoForClaudeAndCodex(t *testing.T) {
 	assert.Equal(t, "auto", agent.DefaultLaunchPermissionMode("claude"))
 	assert.Equal(t, "auto", agent.DefaultLaunchPermissionMode(""))
-	for _, other := range []string{at.Codex, at.Agy, at.Antigravity, at.Gemini, "pi", "terminal"} {
+	assert.Equal(t, "auto", agent.DefaultLaunchPermissionMode(at.Codex))
+	for _, other := range []string{at.Agy, at.Antigravity, at.Gemini, "pi", "terminal"} {
 		assert.Equal(t, "default", agent.DefaultLaunchPermissionMode(other), other)
 	}
 }
@@ -190,6 +212,28 @@ func TestTheAutoDefaultDoesNotGetPastTheHubGate(t *testing.T) {
 	set("view", "false")
 	assert.Equal(t, "auto", launch(false), "a launch from this computer: Auto, whatever the Hub's settings")
 	assert.Equal(t, "auto", teamMember(false), "a team member from this computer: Auto")
+
+	// The same default gate protects Codex's workspace-write/-a never mode.
+	require.NoError(t, ss.SetSetting(ctx, "default_permission_mode", ""))
+	for _, allowed := range []string{"false", "true"} {
+		set("launch", allowed)
+		b, _ := json.Marshal(map[string]any{"agent_type": at.Codex, "working_dir": t.TempDir()})
+		req := httptest.NewRequest(http.MethodPost, "/api/sessions/launch", bytes.NewReader(b))
+		stamp(req)
+		rec := httptest.NewRecorder()
+		h.Launch(rec, req)
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+		var res map[string]any
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &res))
+		ls, err := ss.GetLiveSession(ctx, res["session_id"].(string))
+		require.NoError(t, err)
+		require.NotNil(t, ls.PermissionMode)
+		expected := "default"
+		if allowed == "true" {
+			expected = "auto"
+		}
+		assert.Equal(t, expected, *ls.PermissionMode, "Codex default obeys Hub auto-accept switch")
+	}
 
 	// a saved default wins, through the Hub as well
 	set("launch", "false")
