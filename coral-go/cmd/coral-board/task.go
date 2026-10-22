@@ -24,7 +24,7 @@ func cmdTask() {
 
 Subcommands:
   add "title" [--body "details"] [--priority P]
-  list
+  list [--json]
   claim
   submit-review <id> --reason "review pending" [--revision N] [--candidate-revision REVISION] [--message "note"] [--outcome success|failed] [--artifacts manifest.json]
   release-review <id> --reason "slot released pending review" (orchestrator only)
@@ -48,12 +48,13 @@ Subcommands:
 	case "add":
 		cmdTaskAdd(st, taskArgs)
 	case "list":
-		cmdTaskList(st)
+		cmdTaskList(st, hasFlag(taskArgs, "--json"))
 	case "claim":
 		cmdTaskClaim(st, taskArgs...)
 	case "current":
 		cmdTaskCurrent(st)
 	case "detail":
+		taskArgs = withoutFlag(taskArgs, "--json") // task detail always prints JSON; --json is accepted so a script can say so
 		if len(taskArgs) == 0 {
 			cmdTaskCurrent(st)
 			return
@@ -107,10 +108,10 @@ const taskUsageText = `Usage: coral-board task <subcommand> [args]
 
 Subcommands:
   add "title" [--body "details"] [--priority P] [--assignee "Agent Name"] [--remind-at TIME]
-  list
+  list [--json]                    Every task; --json prints the tasks as a JSON array
   claim [id]                       Claim a specific task or the next available one
   current                          Show your current in-progress task
-  detail <id>                      Read task instructions, inputs and results
+  detail <id> [--json]             Read task instructions, inputs and results (always JSON; --json is accepted)
   submit-review <id> --reason "review pending" [--revision N] [--message "note"] [--outcome success|failed] [--artifacts manifest.json]
                                    Hands the task to the team's orchestrator (frees your slot); with no orchestrator, completes it
   review <id> --to "Security Reviewer,QA Engineer"  The orchestrator delegates a task in review: one review task each
@@ -245,8 +246,16 @@ func cmdTaskAdd(st *boardState, args []string) {
 	fmt.Printf("Created Task #%.0f: %s\n", id, title)
 }
 
-func cmdTaskList(st *boardState) {
+func cmdTaskList(st *boardState, asJSON bool) {
 	tasks := fetchAllTasks(st)
+	if asJSON {
+		if tasks == nil {
+			tasks = []map[string]any{} // an empty board is [], never null
+		}
+		out, _ := json.MarshalIndent(tasks, "", "  ")
+		fmt.Println(string(out))
+		return
+	}
 	if len(tasks) == 0 {
 		fmt.Println("No tasks found.")
 		return
