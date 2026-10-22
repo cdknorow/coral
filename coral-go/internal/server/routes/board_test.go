@@ -115,9 +115,13 @@ func TestBoardCompleteTask_PersistsChangesArtifact(t *testing.T) {
 	resp.Body.Close()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 
+	// Written after the reply (#217): the completion answers first.
 	artifactPath := filepath.Join(coralDir, "artifacts", "tasks", "1", "changes.diff")
-	data, err := os.ReadFile(artifactPath)
-	require.NoError(t, err)
+	var data []byte
+	require.Eventually(t, func() bool {
+		data, err = os.ReadFile(artifactPath)
+		return err == nil
+	}, 5*time.Second, 10*time.Millisecond, "the changes artifact is written after the completion's reply")
 	assert.Contains(t, string(data), "diff --git")
 
 	download, err := http.Get(base + "/1/changes.diff")

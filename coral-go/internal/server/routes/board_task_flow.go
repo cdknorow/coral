@@ -108,7 +108,7 @@ func (h *BoardHandler) CompleteTaskByID(w http.ResponseWriter, r *http.Request) 
 		}
 		return
 	}
-	h.persistTaskArtifact(r.Context(), task)
+	h.persistTaskArtifactAfterReply(task)
 	// Task outcome and funnel milestones (first completion, first success).
 	tracking.TrackTaskCompleted(taskOutcomeForTracking(task, body.Outcome))
 	completionMsg := ""
@@ -219,7 +219,7 @@ func (h *BoardHandler) CancelTaskByID(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, err.Error())
 		return
 	}
-	h.persistTaskArtifact(r.Context(), task)
+	h.persistTaskArtifactAfterReply(task)
 	stalled, stallErr := h.bs.StallDownstreamTasks(r.Context(), project, task.ID)
 	if stallErr != nil {
 		slog.Warn("failed to reconcile downstream tasks after cancellation", "project", project, "task_id", task.ID, "error", stallErr)
