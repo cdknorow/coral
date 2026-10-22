@@ -314,10 +314,10 @@ function boardHeaderHtml(messages) {
             </button>
         </div>`;
     }
-    // Message count indicator
-    const countHtml = `<div class="mb-message-count" role="listitem">
+    // Message count indicator: only while the window is smaller than the board, where it says how much is not shown ("Showing 2 of 2" said nothing, #5991)
+    const countHtml = messages.length < _totalMessages ? `<div class="mb-message-count" role="listitem">
         Showing ${messages.length} of ${_totalMessages} messages
-    </div>`;
+    </div>` : '';
     return loadEarlierHtml + countHtml;
 }
 
@@ -451,6 +451,7 @@ function renderMessages(messages, { keepAnchor = false, prepended = 0 } = {}) {
         else {
             const count = container.querySelector(':scope > .mb-message-count');
             if (count) { count.tabIndex = -1; count.focus({ preventScroll: true }); }
+            else { container.tabIndex = -1; container.focus({ preventScroll: true }); } // every message is loaded and the count line is gone (#5991)
         }
     }
     if (pendingMessageId) {
@@ -593,8 +594,9 @@ function updateBoardHeader(container) {
     tmp.innerHTML = boardHeaderHtml(_allMessages);
     const fresh = sel => tmp.content.querySelector(sel);
     const count = container.querySelector(':scope > .mb-message-count');
-    if (count) count.textContent = fresh('.mb-message-count').textContent;
-    else container.prepend(fresh('.mb-message-count'));
+    if (count && !fresh('.mb-message-count')) count.remove();
+    else if (count) count.textContent = fresh('.mb-message-count').textContent;
+    else if (fresh('.mb-message-count')) container.prepend(fresh('.mb-message-count'));
     const row = container.querySelector(':scope > .mb-load-earlier');
     const newRow = fresh('.mb-load-earlier');
     if (row && newRow) row.querySelector('button').textContent = newRow.querySelector('button').textContent;
@@ -602,10 +604,12 @@ function updateBoardHeader(container) {
     else if (newRow) container.prepend(newRow);
 }
 
+// The time of a message today, the date and time of an older one: the date said nothing on a board that is read the day it is written (#5991).
 function formatTime(iso) {
     try {
         const d = new Date(iso);
-        return d.toLocaleString();
+        if (d.toDateString() === new Date().toDateString()) return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+        return d.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
     } catch {
         return iso;
     }
