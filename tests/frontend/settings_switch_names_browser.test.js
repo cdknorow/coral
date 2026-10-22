@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const { connect } = require('./agent_view_harness');
 const BASE = require('./test_base').BASE;
+const { nextFrame } = require('./helpers/wait');
 
 const STOP = new Set(['a', 'an', 'the', 'of', 'to', 'in', 'on', 'for', 'by', 'or', 'and', 'with', 'this', 'that', 'is', 'are', 'it']);
 const words = s => (s.toLowerCase().match(/[a-z0-9]+/g) || []).filter(w => !STOP.has(w));
@@ -34,7 +35,7 @@ const REPEAT_OK = new Set([]);
         await waitFor(`!!document.querySelector('#settings-cloud[data-cloud-bound]')`, 'the Hub block is bound', 10000);
         // data-cloud-bound is set when the block is built, before its status is read: the render that re-hides the rows follows the status answer, which Resource Timing reports once it has arrived.
         await waitFor(`performance.getEntriesByType('resource').filter(e => e.name.includes('/api/cloud/status')).length > ${readsBefore}`, 'the Hub block read its status', 10000);
-        await ev(`new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))`); // the render that follows the answer has run
+        await nextFrame(ev); // the render that follows the answer has run (two bounded frames)
         const reveal = () => ev(`(() => { const m = document.getElementById('settings-modal'); for (const e of m.querySelectorAll('[hidden]')) { if (e.querySelector('input[type=checkbox]') || e.matches('input[type=checkbox]') || e.closest('[data-cloud], .settings-cloud-switch-row, #tb-autowake')) e.hidden = false; }
             for (const e of m.querySelectorAll('.settings-pane')) { e.hidden = false; e.style.display = 'block'; } for (const id of ['tb-autowake', 'settings-terminal-backend']) { const e = document.getElementById(id); if (e) { e.hidden = false; e.style.display = 'block'; } }
             for (const e of m.querySelectorAll('[hidden]')) if (e.contains(m.querySelector('input[type=checkbox]:not([data-x])')) === false && e.querySelector('input[type=checkbox]')) e.hidden = false; return true; })()`);
