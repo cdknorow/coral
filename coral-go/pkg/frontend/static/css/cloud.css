@@ -155,7 +155,11 @@ body.cloud-mode .settings-cloud-note { margin: 0 0 12px; }
 .hub-nav-link { color: var(--accent); text-decoration: none; font-size: var(--fs-md, 13px); }
 .hub-nav-link:hover, .hub-nav-link:focus-visible { text-decoration: underline; }
 .cloud-more { display: block; margin: 8px 0 12px; }
-.cloud-more > summary { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; cursor: pointer; font-weight: 600; list-style: none; border: 1px solid var(--border); border-radius: var(--radius-md); }
+.cloud-more > summary { display: inline-flex; align-items: center; justify-content: center; width: 1.5rem; height: 1.5rem; cursor: pointer; list-style: none; border: 1px solid var(--control-border, var(--border)); border-radius: 50%; color: var(--text-secondary); } /* the dashboard's (i): a circle, the icon inside (#6065) */
+.cloud-more > summary .material-icons { font-size: 1rem; }
+.cloud-more > summary:hover { color: var(--text-primary); }
+.cloud-more[open] > summary { background: var(--accent-dim); border-color: var(--accent-dim); color: var(--text-on-accent); }
+@media (pointer: coarse), (max-width: 767px) { .cloud-more > summary { width: 44px; height: 44px; } } /* the 44 px is the target: on touch and at phone width (a narrow window with a mouse too) */
 .cloud-more > summary::-webkit-details-marker { display: none; }
 .cloud-more > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .cloud-more[open] { display: block; margin: 8px 0 0; }
