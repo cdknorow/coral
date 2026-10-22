@@ -3,6 +3,7 @@
 package ptymanager
 
 import (
+	"github.com/shirou/gopsutil/v4/process"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -221,4 +222,74 @@ func TestAStoppedMemberIsEndedWhenCoralIsKilled(t *testing.T) {
 	parent.Wait()
 	waitGone(t, child, 10*time.Second)
 	waitGone(t, guardianPID, 10*time.Second)
+}
+
+// SIGTERM ends the guardian and nothing else: only its pipe reaching EOF ends terminals, so a stray kill or pkill that matches its name cannot end every agent. Coral replaces it.
+func TestSIGTERMEndsTheGuardianButLeavesTheTerminalsRunning(t *testing.T) {
+	canFork(t)
+	b := NewPTYBackend()
+	t.Cleanup(func() { b.Close() })
+	spawn := func(n string) string {
+		id := "00000000-0000-4000-8000-00000000614" + n
+		name := "claude-" + id
+		if err := b.Spawn(name, "claude", t.TempDir(), id, "sleep 600", 80, 24); err != nil {
+			t.Fatal(err)
+		}
+		return name
+	}
+	first := spawn("0")
+	g1, _ := guardian.pid()
+	if g1 <= 1 {
+		t.Fatal("a guardian should be running")
+	}
+	time.Sleep(700 * time.Millisecond) // the guardian is up and serving its pipe (a SIGTERM during its start would end it by the default action, whatever it does with the signal later)
+	if err := syscall.Kill(g1, syscall.SIGTERM); err != nil {
+		t.Fatal(err)
+	}
+	for end := time.Now().Add(3 * time.Second); time.Now().Before(end); time.Sleep(20 * time.Millisecond) {
+		if p, _ := guardian.pid(); p == 0 {
+			break
+		}
+	}
+	if p, _ := guardian.pid(); p != 0 {
+		t.Fatalf("SIGTERM should end the guardian (still %d)", p)
+	}
+	time.Sleep(300 * time.Millisecond) // time enough for it to have killed something, if it did
+	if !b.IsRunning(first) {
+		t.Fatal("SIGTERM to the guardian ended a terminal's tree: only EOF may")
+	}
+	second := spawn("1")
+	g2, regs := guardian.pid()
+	if g2 <= 1 || g2 == g1 || regs < 2 {
+		t.Fatalf("Coral should have started a new guardian, told both terminals (pid %d after %d, %d registered)", g2, g1, regs)
+	}
+	if !b.IsRunning(first) || !b.IsRunning(second) {
+		t.Fatal("both terminals run")
+	}
+}
+
+// The guardian is named in a process list.
+func TestTheGuardianIsNamedInTheProcessList(t *testing.T) {
+	canFork(t)
+	b := NewPTYBackend()
+	t.Cleanup(func() { b.Close() })
+	const id = "00000000-0000-4000-8000-000000006150"
+	if err := b.Spawn("claude-"+id, "claude", t.TempDir(), id, "sleep 600", 80, 24); err != nil {
+		t.Fatal(err)
+	}
+	pid, _ := guardian.pid()
+	if pid <= 1 {
+		t.Fatal("a guardian should be running")
+	}
+	p, err := process.NewProcess(int32(pid))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cmdline string
+	for end := time.Now().Add(2 * time.Second); time.Now().Before(end) && !strings.Contains(cmdline, guardianName); time.Sleep(20 * time.Millisecond) {
+		cmdline, _ = p.Cmdline()
+	}
+	if !strings.Contains(cmdline, guardianName) {
+		t.Fatalf("the process list should say what it is (%q): %q", guardianName, cmdline)
+	}
 }
