@@ -66,7 +66,9 @@ func checkListener(host string, port int) error {
 			return &ForeignListenerError{Port: port, PID: pid, Why: "belongs to " + who + ", not this user or the owner of Coral's data folder"}
 		}
 		if !isCoralImage(image, coralFolders()) && !(AllowTestServerListener && sameExecutable(image)) {
-			return &ForeignListenerError{Port: port, PID: pid, Why: "is " + image + ", not Coral's coral.exe or coral-tray.exe from its own folder"}
+			return &ForeignListenerError{Port: port, PID: pid, Why: "is " + image + ", not Coral's coral.exe or coral-tray.exe from its own folder" +
+				" (if that is your own Coral, a dev or test build run from another folder, build coral-agent and the hooks into the folder of its coral.exe," +
+				" as 'make dev' does, so this tool sits beside it)"}
 		}
 	}
 	return nil
