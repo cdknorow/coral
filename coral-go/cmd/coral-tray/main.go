@@ -512,6 +512,7 @@ func checkForUpdatesOnStartup(baseURL, dataDir string) {
 		if err == nil {
 			if a.Available {
 				beeep.Notify("Coral", a.notice("Update available: v%s (you have v%s)", version), "")
+				tracking.TrackUpdateNotice(a.Latest, tracking.UpdateSourceTray, string(a.channelOf())) // the notice was shown (#5952; sent only with analytics on, once per release)
 			}
 			return
 		}
@@ -534,6 +535,8 @@ func checkForUpdates(baseURL, dataDir string) {
 	if a.Available {
 		beeep.Notify("Coral", a.notice("Update available: v%s\nYou have v%s", version), "")
 		executil.OpenBrowser(a.pageURL())
+		tracking.TrackUpdateNotice(a.Latest, tracking.UpdateSourceTray, string(a.channelOf()))
+		tracking.TrackUpdateOffer(a.Latest, tracking.UpdateSourceTray, string(a.channelOf())) // a deliberate Check for Updates opens the release page (#5952)
 	} else {
 		beeep.Notify("Coral", "You're on the latest version.", "")
 	}

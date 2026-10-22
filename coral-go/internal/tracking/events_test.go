@@ -12,6 +12,8 @@ import (
 var allEventConstants = []string{
 	EventInstall,
 	EventUpgrade,
+	EventUpdateNoticeShown,
+	EventUpdateOfferOpened,
 	EventAppOpened,
 	EventInstallationActiveWeek,
 	EventSessionLaunched,

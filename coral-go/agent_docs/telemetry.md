@@ -6,12 +6,14 @@ Set `CORAL_TELEMETRY_DISABLED=1` before starting Coral to suppress analytics reg
 
 ## Events
 
-The runtime disclosure is generated from `internal/tracking/events.go`. New funnel events use schema version 3.
+The runtime disclosure is generated from `internal/tracking/events.go`. New funnel events use schema version 3; the update events and `upgrade`'s `from_version` are schema version 4.
 
 | Event | Meaning | Additional properties |
 |---|---|---|
 | `install` | First tracked startup for this data directory | — |
-| `upgrade` | First tracked startup after the version changes | — |
+| `upgrade` | First tracked startup after the version changes | `from_version` (the version that last ran on this install, a release number only) |
+| `update_notice_shown` | The dashboard's update toast or the tray's notification showed that a newer release exists. Once per install, release and place. It says the notice was shown, not that anyone updated: Coral does not install updates itself yet | `to_version` (a release number), `source` (`dashboard` or `tray`), `channel` (`approved` or `agentic`) |
+| `update_offer_opened` | The person opened the release page the notice offers (the toast's Download link, or the tray's Check for Updates). Once per install, release and place. It says a page was opened, not that anything was installed | `to_version`, `source`, `channel`, `method` (`download_link`) |
 | `app_opened` | Coral process startup; not proof that a dashboard loaded | — |
 | `installation_active_week` | This install ran Coral during an ISO week (UTC). Sent at most once per install per week: at startup, and the first time that week the dashboard is open for a day, an agent or team is launched, or a task is completed (so a Coral that runs for weeks counts every week it is used) | — |
 | `session_launched` | Individual launch handler created/submitted the agent process | — |
@@ -36,6 +38,8 @@ Weekly active installs are the distinct `distinct_id`s with `installation_active
 Launch completion does not prove provider authentication, model readiness, or a response. The WebSocket composer currently lacks a transport acknowledgment suitable for the confirmed-send milestone, so `first_prompt_submitted` covers HTTP sends only. `prompt_submit_requested` measures intent, not delivery. No first-response or generic agent-ready event is emitted: existing transcript updates cannot reliably attribute new assistant output to a particular submitted prompt.
 
 `dashboard_ready` counts page loads, not users. Active-day records are deduplicated for the installation and UTC date, including multiple tabs. The legacy `returned_24h` event measures restarts; use dashboard activity for engagement and retention. An observed failure may precede recovery and a ready event. Missing events alone do not prove abandonment or a crash.
+
+Update telemetry (#5952): the update check itself (an anonymous request to GitHub, cached for an hour and shared by the dashboard, the tray and the server) is not analytics and is not affected by the Usage analytics setting; the two update events are analytics and are covered by it: with it off nothing is sent and nothing is remembered. Versions are release numbers by a strict pattern (digits.digits.digits with an optional short suffix such as `-beta`); a development build's version or any other shape is never sent. Nothing about the update (URLs, paths, errors, package names) is sent. An update that happened outside Coral (a package manager, a downloaded installer) shows only as the next `upgrade`, with `from_version`.
 
 ## Prerequisite setup observations
 

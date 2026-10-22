@@ -25,12 +25,13 @@ const agenticSt = { ...base, channel: 'agentic', approved: { version: '1.4.142',
     const shot = async name => { const d = process.env.CORAL_SCREENSHOT_DIR; if (!d) return; fs.mkdirSync(d, { recursive: true }); fs.writeFileSync(path.join(d, name.replace(/[^a-z0-9-]+/gi, '-') + '.png'), Buffer.from((await Page.captureScreenshot({ format: 'png' })).data, 'base64')); };
     const settle = (ms, quietMs = 120) => require('./helpers/wait').settle(ev, ms, quietMs); // the page's geometry still for quietMs, or ms at most (helpers/wait.js); not a fixed sleep
     const press = async (key, code, vk) => { const text = key === 'Enter' ? '\r' : key === ' ' ? ' ' : undefined; await Input.dispatchKeyEvent({ type: text ? 'keyDown' : 'rawKeyDown', key, code, windowsVirtualKeyCode: vk, text }); await Input.dispatchKeyEvent({ type: 'keyUp', key, code, windowsVirtualKeyCode: vk }); };
-    const STUB = `(() => { const real = window.fetch; window.__ch = window.__ch || { status: null, puts: [], putStatus: 200, check: null };
+    const STUB = `(() => { const real = window.fetch; window.__ch = window.__ch || { status: null, puts: [], putStatus: 200, check: null, track: [] };
         const json = (o, status) => Promise.resolve(new Response(JSON.stringify(o), { status: status || 200, headers: { 'Content-Type': 'application/json' } }));
         window.fetch = (u, o) => { const url = String(u), method = (o && o.method) || 'GET';
             if (url.includes('/api/cloud/status')) return json({ connected: false, hub_relaunch_updates: false });
             if (url.endsWith('/api/system/update')) return window.__ch.status ? json(window.__ch.status) : json({ error: 'none' }, 404);
             if (url.includes('/api/system/update-check')) return json(window.__ch.check || { available: false });
+            if (method === 'POST' && url.endsWith('/api/tracking/event')) { window.__ch.track.push(JSON.parse(o.body)); return json({ ok: true }); }
             if (method === 'PUT' && url.endsWith('/api/settings')) { const b = JSON.parse(o.body); window.__ch.puts.push(b); return json(b.update_channel ? { error: 'refused' } : { ok: true }, b.update_channel ? window.__ch.putStatus : 200); }
             return real(u, o); }; return true; })()`;
     const load = async (view, status, { hub = false } = {}) => {
@@ -128,6 +129,12 @@ const agenticSt = { ...base, channel: 'agentic', approved: { version: '1.4.142',
         let t = await ev(`document.getElementById('update-toast').innerText.replace(/\\s+/g, ' ')`);
         check(`the Agentic toast says the channel and "Not yet approved" (${t})`, /Coral v1\.4\.143 available \(Agentic channel\)/.test(t) && /Not yet approved\./.test(t));
         await shot('toast-agentic');
+        // update telemetry (#5952): the toast being shown is reported with a release number and the channel, and nothing else; opening its Download link is reported too
+        let track = await ev(`window.__ch.track.filter(e => e.event.startsWith('update_'))`);
+        check(`the toast shown is reported as update_notice_shown with the release number and the channel only (${JSON.stringify(track)})`, track.length === 1 && track[0].event === 'update_notice_shown' && JSON.stringify(track[0].props) === JSON.stringify({ to_version: '1.4.143', channel: 'agentic' }));
+        await ev(`const a = document.querySelector('#update-toast .update-toast-download'); a.addEventListener('click', e => e.preventDefault()); a.click(); true`);
+        track = await ev(`window.__ch.track.filter(e => e.event.startsWith('update_'))`);
+        check(`opening the Download link is reported as update_offer_opened (${JSON.stringify(track.map(e => e.event))})`, track.length === 2 && track[1].event === 'update_offer_opened' && track[1].props.to_version === '1.4.143' && track[1].props.channel === 'agentic' && Object.keys(track[1].props).sort().join() === 'channel,to_version');
         await ev(`document.getElementById('update-toast').remove(); window.__ch.check = { available: true, latest: '1.4.143', current: '1.4.141', channel: 'agentic', approved: true, release_url: 'https://github.com/subgentic/coral/releases/tag/v1.4.143', release_notes: '- one' }; import(${S} + 'update_check.js').then(m => m.checkForUpdates(true)).then(() => true)`);
         await waitFor(`!!document.getElementById('update-toast')`, 'the toast again', 6000);
         t = await ev(`document.getElementById('update-toast').innerText.replace(/\\s+/g, ' ')`);

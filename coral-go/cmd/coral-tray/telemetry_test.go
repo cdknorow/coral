@@ -193,3 +193,18 @@ func TestTelemetryHookSaysTheCurrentSettingNotTheOneItWasCalledWith(t *testing.T
 	hook(false)
 	assert.Equal(t, childSaysTelemetryOff+"\n"+childSaysTelemetryOn+"\n", out.String())
 }
+
+// #5952: the tray reports the update notice it shows (the startup notification and Check for Updates) and the release page it opens (only Check for Updates opens one), with the channel the owner
+// chose, through the tracking functions that send only with analytics on, once per release. The startup notice opens nothing, so it reports no offer.
+func TestTrayReportsTheUpdateNoticeAndOfferItMakes(t *testing.T) {
+	b, err := os.ReadFile("main.go")
+	require.NoError(t, err)
+	src := string(b)
+	startup := src[strings.Index(src, "func checkForUpdatesOnStartup"):strings.Index(src, "func checkForUpdates(baseURL")]
+	assert.Contains(t, startup, "tracking.TrackUpdateNotice(a.Latest, tracking.UpdateSourceTray, string(a.channelOf()))")
+	assert.NotContains(t, startup, "TrackUpdateOffer", "the startup notification opens no page")
+	manual := src[strings.Index(src, "func checkForUpdates(baseURL"):strings.Index(src, "// PID file management")]
+	assert.Contains(t, manual, "tracking.TrackUpdateNotice(a.Latest, tracking.UpdateSourceTray, string(a.channelOf()))")
+	assert.Contains(t, manual, "tracking.TrackUpdateOffer(a.Latest, tracking.UpdateSourceTray, string(a.channelOf()))")
+	assert.Less(t, strings.Index(manual, "executil.OpenBrowser(a.pageURL())"), strings.Index(manual, "tracking.TrackUpdateOffer"), "the offer is reported after the page was opened")
+}

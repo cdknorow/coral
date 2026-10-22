@@ -57,7 +57,7 @@ var NeverCollected = []string{
 // AllEvents is the complete, ordered list of every event Coral can send.
 var AllEvents = []EventDoc{
 	{Name: EventInstall, When: "The first time Coral runs on this machine."},
-	{Name: EventUpgrade, When: "The first run after Coral's version changes."},
+	{Name: EventUpgrade, When: "The first run after Coral's version changes.", Extra: "from_version — the version that last ran on this install (a release number only; left out when it is not one)"},
 	{Name: EventAppOpened, When: "Every time Coral starts: the server sends it when you run coral, and the tray sends it, not the server, when you run the Coral app (coral-tray)."},
 	{Name: EventInstallationActiveWeek, When: "At most once per ISO week (UTC) that Coral runs: sent when Coral starts, and again the first time that week you open the dashboard, launch an agent or team, or complete a task, so a long-running Coral still counts every week it is used."},
 	{Name: EventSessionLaunched, When: "Every time you launch a single agent."},
@@ -76,6 +76,8 @@ var AllEvents = []EventDoc{
 	{Name: EventPromptSubmitRequested, When: "Once ever: the first time you send a prompt from the dashboard composer.", Extra: "source — dashboard_composer; never the prompt"},
 	{Name: EventFirstPromptSubmitted, When: "Once ever: the first time a prompt is accepted by an agent terminal over the dashboard's HTTP send.", Extra: "source — http_send; never the prompt"},
 	{Name: EventReturned24h, When: "Once ever: the first time you open Coral more than 24 hours after your first open."},
+	{Name: EventUpdateNoticeShown, When: "The first time, per release and per place, that the dashboard or the tray tells you a newer Coral release exists. It says the notice was shown, not that you updated: Coral does not install updates itself.", Extra: "to_version — the newer release number; source — dashboard or tray; channel — approved or agentic (the update channel you chose)"},
+	{Name: EventUpdateOfferOpened, When: "The first time, per release and per place, that you open the release page the update notice offers (the toast's Download link, or the tray's Check for Updates). It says you opened a page, not that you installed anything.", Extra: "to_version, source and channel as above; method — download_link"},
 }
 
 // Enabled reports whether this build can send anything at all. Builds compiled
