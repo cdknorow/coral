@@ -175,7 +175,11 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 		if agentDef.Name == "" {
 			continue
 		}
-		if fromAgent && !inSavedTeamTemplate(userSettings, agentDef) {
+		memberType := body.AgentType
+		if agentDef.AgentType != "" {
+			memberType = agentDef.AgentType
+		}
+		if fromAgent && !inSavedTeamTemplate(userSettings, agentDef, memberType) {
 			agentDef.Flags, agentDef.Capabilities, agentDef.Tools, agentDef.Hooks = limitAgentLaunch("launch-team", agentDef.Flags, agentDef.Capabilities, agentDef.Tools, agentDef.Hooks)
 		}
 		if code, msg, stopped := h.hubMemberStopped(ctx, r, body, agentDef); stopped {
@@ -184,7 +188,7 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 			categories = append(categories, "")
 			continue
 		}
-		entry, category := h.launchTeamMember(ctx, body, agentDef, userSettings, workingDir, worktreePath, teamID, (!fromAgent || inSavedTeamTemplate(userSettings, agentDef)) && autoDefaultAllowed(ctx, r, h.ss)) // an agent's own member is not started in Auto (#4032), a saved template's is; the Hub's rule is read now, as the member's own check is (#5839)
+		entry, category := h.launchTeamMember(ctx, body, agentDef, userSettings, workingDir, worktreePath, teamID, (!fromAgent || inSavedTeamTemplate(userSettings, agentDef, memberType)) && autoDefaultAllowed(ctx, r, h.ss)) // an agent's own member is not started in Auto (#4032), a saved template's is; the Hub's rule is read now, as the member's own check is (#5839)
 		if category != "" && firstFailure == "" {
 			firstFailure = category
 		}
@@ -319,7 +323,7 @@ func memberAsksToSkip(body launchTeamRequest, def launchTeamAgent, settings map[
 	if agent.SkipsPermissionPrompts(agentType, flags) {
 		return true
 	}
-	return hubWidens(def.Capabilities, def.Tools, def.Hooks) && !inSavedTeamTemplate(settings, def)
+	return hubWidens(def.Capabilities, def.Tools, def.Hooks) && !inSavedTeamTemplate(settings, def, agentType)
 }
 
 // hubMemberStopped is the check of one member of a team launch that came through Coral Hub, made when it is its turn (#5839): the owner may have turned

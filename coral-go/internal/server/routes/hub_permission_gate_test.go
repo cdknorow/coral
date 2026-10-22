@@ -252,6 +252,39 @@ func TestHubTeamLaunchOfTheOwnersSavedTemplate(t *testing.T) {
 	refused(post("hub", nil, changed("knowledge", "other notes"), reviewer), "hub_auto_accept_disabled", "changed knowledge")
 	refused(post("hub", nil, dev(), builtin), "hub_auto_accept_disabled", "a built-in member the owner never saved")
 	refused(post("hub", []string{"--dangerously-skip-permissions"}, dev(), reviewer), "hub_auto_accept_disabled", "the team's flags are checked all the same")
+	// Review F1: the capabilities mean something else for another CLI (Claude allow rules become agy's and Codex's bypass), so
+	// a member matches only as the type it was saved with, and a saved member with no agent_type never matches.
+	untyped := `[{"name":"Untyped","agents":[{"name":"Dev2","prompt":"p","capabilities":{"allow":["shell","file_write"]}}]}]`
+	typed := `[{"name":"Typed","agents":[{"name":"Dev2","prompt":"p","agent_type":"claude","capabilities":{"allow":["shell","file_write"]}}]}]`
+	dev2 := func(agentType string) map[string]any {
+		m := map[string]any{"name": "Dev2", "prompt": "p", "capabilities": map[string]any{"allow": []string{"shell", "file_write"}}}
+		if agentType != "" {
+			m["agent_type"] = agentType
+		}
+		return m
+	}
+	team := func(teamType string, member map[string]any) *httptest.ResponseRecorder {
+		n++
+		b, _ := json.Marshal(map[string]any{"board_name": "typed-" + string(rune('a'+n)), "new_board": true, "working_dir": t.TempDir(), "agent_type": teamType, "agents": []map[string]any{member}})
+		req := stamp(httptest.NewRequest(http.MethodPost, "/api/sessions/launch-team", bytes.NewReader(b)))
+		rec := httptest.NewRecorder()
+		h.LaunchTeam(rec, req)
+		return rec
+	}
+	require.NoError(t, ss.SetSetting(ctx, "saved_team_templates", untyped))
+	for _, teamType := range []string{"agy", "codex", "claude"} {
+		refused(team(teamType, dev2("")), "hub_auto_accept_disabled", "a saved member with no agent_type, run as "+teamType)
+	}
+	require.NoError(t, ss.SetSetting(ctx, "saved_team_templates", typed))
+	for _, teamType := range []string{"agy", "codex"} {
+		refused(team(teamType, dev2("")), "hub_auto_accept_disabled", "a claude member taking the team's type "+teamType)
+		refused(team("claude", dev2(teamType)), "hub_auto_accept_disabled", "a claude member sent as "+teamType)
+	}
+	rec = team("claude", dev2("claude"))
+	assert.Equal(t, http.StatusOK, rec.Code, "the saved claude member as claude: %s", rec.Body.String())
+	rec = team("claude", dev2(""))
+	assert.Equal(t, http.StatusOK, rec.Code, "the saved claude member taking the team's claude: %s", rec.Body.String())
+
 	// A forged stamp on a request that asks for more (the real router refuses the stamp itself first, 401 invalid_credential).
 	refused(post("forged", nil, changed("prompt", "something else"), reviewer), "no_dashboard_provenance", "a forged stamp")
 }

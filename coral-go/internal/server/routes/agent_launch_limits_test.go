@@ -148,8 +148,8 @@ func TestAgentLaunchOfASavedTemplateKeepsItsChoices(t *testing.T) {
 		assert.NotContains(t, cmds, "/tmp/p", tc.name)
 	}
 	assert.True(t, inSavedTeamTemplate(map[string]string{"saved_team_templates": saved}, launchTeamAgent{Name: "Dev", Prompt: "build", AgentType: "claude",
-		Flags: []string{"--verbose --add-dir", "/srv"}, Capabilities: &agent.Capabilities{Allow: []string{"Bash(make *)"}, Deny: []string{"Bash(rm *)"}}}), "flags compare as words")
+		Flags: []string{"--verbose --add-dir", "/srv"}, Capabilities: &agent.Capabilities{Allow: []string{"Bash(make *)"}, Deny: []string{"Bash(rm *)"}}}, "claude"), "flags compare as words")
 	assert.False(t, inSavedTeamTemplate(map[string]string{"saved_team_templates": saved}, launchTeamAgent{Name: "Dev", Prompt: "build", AgentType: "claude",
-		Flags: []string{"--verbose", "--add-dir", "/srv"}, Capabilities: &agent.Capabilities{Allow: []string{"Bash(*)"}, Deny: []string{"Bash(rm *)"}}}), "a wider allow rule")
-	assert.False(t, inSavedTeamTemplate(map[string]string{}, launchTeamAgent{Name: "Dev"}), "no saved templates")
+		Flags: []string{"--verbose", "--add-dir", "/srv"}, Capabilities: &agent.Capabilities{Allow: []string{"Bash(*)"}, Deny: []string{"Bash(rm *)"}}}, "claude"), "a wider allow rule")
+	assert.False(t, inSavedTeamTemplate(map[string]string{}, launchTeamAgent{Name: "Dev"}, "claude"), "no saved templates")
 }
