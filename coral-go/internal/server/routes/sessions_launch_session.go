@@ -157,8 +157,13 @@ func (h *SessionsHandler) launchSession(ctx context.Context, spec launchSpec) (_
 		CoralDir:  h.cfg.CoralDir(),
 		CoralHost: h.cfg.AgentHost(),
 		CoralPort: h.cfg.Port,
-		RunTag:    h.runTagFor(ctx, sessionID, spec.ResumeSessionID),
+		RunTag:    h.runTagFor(ctx, sessionID, "", spec.ResumeSessionID),
 	}
+	defer func() {
+		if retErr != nil {
+			pendingRunTags.Delete(sessionID) // a launch that failed leaves no pending tag behind
+		}
+	}()
 	if cliPath != "" {
 		log.Printf("[launch] using custom CLI path: %s", logsafe.Path(cliPath))
 	}

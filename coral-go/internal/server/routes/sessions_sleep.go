@@ -270,7 +270,7 @@ func (h *SessionsHandler) wakeExistingSession(ctx context.Context, ls *store.Liv
 		CoralDir:        h.cfg.CoralDir(),
 		CoralHost:       h.cfg.AgentHost(),
 		CoralPort:       h.cfg.Port,
-		RunTag:          h.runTagFor(ctx, ls.SessionID),
+		RunTag:          h.runTagFor(ctx, ls.SessionID, "", ""),
 	}
 
 	// A Codex agent that never completed a turn has no saved session: "codex resume" would end at "No saved session found" and a bare shell. It starts a new one

@@ -15,17 +15,30 @@ import (
 // pendingRunTags holds, by session id, the tag chosen when a launch command is built until the launch is noted (the new row may not exist yet).
 var pendingRunTags sync.Map
 
-// runTagFor is the tag for the agent about to start as newID, "" when it does not start on tmux: the tag already recorded for newID or, failing that, for the session it continues (prevIDs, in order), else
-// a new random one. The caller puts it in the launch parameters; noteLaunchedRunTag records it once the row exists.
-func (h *SessionsHandler) runTagFor(ctx context.Context, newID string, prevIDs ...string) string {
+// runTagFor is the tag for the agent about to start as newID, "" when it does not start on tmux: the tag already recorded for newID (a wake) or, failing that, the one of the session it replaces (replacedID: a
+// restart or resume of that agent) or of the conversation it continues (continuedID), else a new random one. A tag is handed on only while NO OTHER live session holds it: one Kill must never end another live
+// agent's helpers, so a tag that a live agent other than the one being replaced still carries is not shared, and a fresh one is made. The caller puts it in the launch parameters; noteLaunchedRunTag records it once
+// the row exists.
+func (h *SessionsHandler) runTagFor(ctx context.Context, newID, replacedID, continuedID string) string {
 	if terminalKind(h.backend) != "tmux" || h.ss == nil || newID == "" {
 		return ""
 	}
-	tag := h.ss.RunTagOf(ctx, newID)
-	for _, prev := range prevIDs {
-		if tag == "" && prev != "" {
-			tag = h.ss.RunTagOf(ctx, prev)
+	inheritable := func(from string) string {
+		if from == "" {
+			return ""
 		}
+		tag := h.ss.RunTagOf(ctx, from)
+		if tag == "" || h.ss.LiveRunTagHolders(ctx, tag, newID, replacedID) > 0 {
+			return ""
+		}
+		return tag
+	}
+	tag := h.ss.RunTagOf(ctx, newID)
+	if tag == "" {
+		tag = inheritable(replacedID)
+	}
+	if tag == "" {
+		tag = inheritable(continuedID)
 	}
 	if tag == "" {
 		b := make([]byte, 16)
