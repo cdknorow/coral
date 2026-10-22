@@ -595,7 +595,7 @@ function _taskRowsHtml(tasks) {
         return `
         <div class="board-task-item ${statusClass}${isSubagent ? ' board-task-subagent' : ''}"${clickHandler}${isSubagent ? ` data-subagent-id="${escapeAttr(t.subagent_id || '')}"` : ''}>
             ${statusIcon}
-            <button type="button" class="board-task-id board-task-open" title="${isSubagent ? 'Open the subagent' : 'Task ID'}" aria-label="${escapeAttr(openLabel)}">${taskIdLabel}</button>
+            <button type="button" class="board-task-id board-task-open" title="${isSubagent ? 'Open the subagent' : 'Task ID'}" aria-label="${escapeAttr(openLabel)}">${escapeHtml(taskIdLabel)}</button>
             <span class="board-task-priority ${priorityClass}" title="Claim priority: ${escapeAttr(t.priority || 'none')}">${t.priority ? (_priorityLabel[t.priority] || escapeHtml(t.priority)) : '\u2014'}</span>
             ${typeCell}
             <span class="board-task-assignee">${escapeHtml(assignee)}</span>

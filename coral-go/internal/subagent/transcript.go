@@ -21,6 +21,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"unicode/utf8"
@@ -194,7 +195,7 @@ func (t *Transcript) addLine(line []byte, lineNo int, index map[string]int) {
 	if err := json.Unmarshal(line, &rec); err != nil {
 		return
 	}
-	if t.SubagentID == "" && rec.AgentID != "" {
+	if t.SubagentID == "" && ValidID(rec.AgentID) {
 		t.SubagentID = rec.AgentID
 	}
 	if t.ParentSessionID == "" && rec.SessionID != "" {
@@ -333,8 +334,19 @@ func IDFromPath(path string) string {
 	if !strings.HasPrefix(name, transcriptPrefix) || !strings.HasSuffix(name, transcriptSuffix) {
 		return ""
 	}
-	return strings.TrimSuffix(strings.TrimPrefix(name, transcriptPrefix), transcriptSuffix)
+	id := strings.TrimSuffix(strings.TrimPrefix(name, transcriptPrefix), transcriptSuffix)
+	if !ValidID(id) {
+		return ""
+	}
+	return id
 }
+
+var validIDRe = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
+
+// ValidID reports whether id is a plain subagent ID. The ID comes from a file an
+// agent can write and ends up in the dashboard and in file names, so anything
+// else (markup, separators, spaces) is refused rather than escaped.
+func ValidID(id string) bool { return validIDRe.MatchString(id) }
 
 // maxConversationText caps the prompt and result returned by ReadConversation.
 // Both are shown in a UI overlay; a subagent asked to return a whole file
