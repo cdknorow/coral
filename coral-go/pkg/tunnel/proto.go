@@ -80,6 +80,11 @@ type Hello struct {
 	// Capabilities are what this Coral can do beyond the base protocol, each "name/version" (#5508): "cross_team_allowlist/1" means it keeps and checks a board's list of allowed senders
 	// by cross-team board id. A hub reads it only from the destination's own Hello (never from a sender's request or message); absent, malformed or another version means unsupported.
 	Capabilities []string `json:"capabilities,omitempty"`
+	// BootID is random, made once per Coral process, and StartedAt (RFC 3339, UTC) is when that process started (#5855). Both are the same on every connection of one process and
+	// change with a restart, so a hub that sent a request on one connection and sees another BootID on the next knows that what Coral keeps in memory (an Idempotency-Key's record,
+	// for one) is gone: a retry may start a second one. Informational: nothing in the protocol depends on them, and a Hello without them is as before.
+	BootID    string `json:"boot_id,omitempty"`
+	StartedAt string `json:"started_at,omitempty"`
 }
 
 // CapCrossTeamAllowlist is this Coral's list-of-senders capability, version 1 (see Hello.Capabilities).
