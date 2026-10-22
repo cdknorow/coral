@@ -1,13 +1,13 @@
 {
  "about": "what showSettingsModal filled in, scenario by scenario, for settings_modal_trace_browser.test.js: sha256 of every control, list, status line and request, and a readable line",
  "hashes": {
-  "empty settings": "ca6c7b5f1a02fcb2ea894015b6731272dde5834e46df15272b5d5f5fbb36728b",
-  "every setting set": "b4cf99b4350b5d82374a670339ed1131f411a3d4888a883411f6d7be16775cd5",
-  "custom themes and an odd poll interval": "2ee9d93761e6d9cecaad4369f59208beb77af7d69219ff2ce80308c638b0a0da",
-  "requests fail": "c4082ca535047155eb087d2c077fb131a7c2f148bcc3d5d49b5be882561e09bd",
-  "the api key and models answer": "3762e16706fc953ef99da72110f0b949b4f1388608a97554004cb18b82f79c5b",
-  "a group asked for": "52d85c5d68fcc0a86d9f54d5e7d25b269566a655a6d12b09b322c5cc75c6b046",
-  "browser settings": "c73adfad4632ecc1fd63068500fd9b7fd17e4bec2385ef1f764c6cffb9c27748",
+  "empty settings": "d3946178aecb13c30842e11cacadfe3cc324557603b330d19beb1feaf2470c1f",
+  "every setting set": "8d4c9114c90502fde56dc69a06614d0bc937a05569447c19f7ddd1059aef80e6",
+  "custom themes and an odd poll interval": "b251ae09559b5d8d600657ddc1f12e7f7b09b6d9cb02c8909e27f402e985f04c",
+  "requests fail": "5645164391c5a4ca7cadbe39c605ccb1fb629f336d6431ead629c90021b58e49",
+  "the api key and models answer": "250bc761967ffea1d610ef8c99395b77538a00932295483f5bca246c61464d02",
+  "a group asked for": "34e0b3843f32c59919edd94cd0d721d77b840beba52d912354735f5ea11d591b",
+  "browser settings": "6f7e6f03ae222eedc6cbeb8971871e76be175484bcba901625e1d6e624dbd9e5",
   "hub: every setting set": "58016b4a2acdb07a1c6823fe50ef6282c9b5c579931a39e67d0cb8d44499680d",
   "hub: empty settings": "12534f254ae026b6942955f5e7c4f040b0b8877ebd2f910b69882d35ca2e4a84"
  },
