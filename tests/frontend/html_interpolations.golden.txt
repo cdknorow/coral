@@ -598,7 +598,6 @@
 1	task_list.js	statusIcon
 1	task_list.js	subagentBadge
 1	task_list.js	t.priority ? (_priorityLabel[t.priority] || escapeHtml(t.priority)) : '\u2014'
-1	task_list.js	taskIdLabel
 1	task_list.js	timeStr
 1	task_list.js	title
 1	task_list.js	tooltip
