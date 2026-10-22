@@ -124,11 +124,34 @@ func TestGeneratePersistedDiff(t *testing.T) {
 func TestGeneratePersistedDiffCap(t *testing.T) {
 	_, h, _, _ := setupSessionsTestServer(t)
 	repo := diffRepo(t)
-	line := strings.Repeat("y", 99) + "\n"
-	for i := 0; i < 45; i++ { // 45 files of 200 KiB: each section under 256 KiB, 9 MiB in all
-		require.NoError(t, os.WriteFile(filepath.Join(repo, fmt.Sprintf("f%02d.txt", i)), []byte(strings.Repeat(line, 2048)), 0o644))
+	write := func(c string) {
+		line := strings.Repeat(c, 99) + "\n"
+		for i := 0; i < 45; i++ { // 45 files of 200 KiB: each section under 256 KiB, 9 MiB in all
+			require.NoError(t, os.WriteFile(filepath.Join(repo, fmt.Sprintf("f%02d.txt", i)), []byte(strings.Repeat(line, 2048)), 0o644))
+		}
 	}
+	// As new files: kept whole up to the limit, the rest counted in a note (#243), never cut mid-file.
+	write("y")
 	diff, err := h.generatePersistedDiff(context.Background(), repo)
+	require.NoError(t, err)
+	assert.LessOrEqual(t, len(diff), diffPersistMax)
+	assert.Regexp(t, `# Coral: \d+ more new files are not in this diff`, string(diff))
+	assert.NotContains(t, string(diff), "diff cut at")
+
+	// As tracked changes (45 small committed files that each grew by 200 KiB): cut at 8 MiB, with the note.
+	repo = diffRepo(t)
+	for i := 0; i < 45; i++ {
+		require.NoError(t, os.WriteFile(filepath.Join(repo, fmt.Sprintf("f%02d.txt", i)), []byte("start\n"), 0o644))
+	}
+	cmd := exec.Command("git", "-C", repo, "add", ".")
+	require.NoError(t, cmd.Run())
+	cmd = exec.Command("git", "-C", repo, "-c", "user.name=t", "-c", "user.email=t@example.test", "commit", "-q", "-m", "files")
+	require.NoError(t, cmd.Run())
+	line := strings.Repeat("z", 99) + "\n"
+	for i := 0; i < 45; i++ {
+		require.NoError(t, os.WriteFile(filepath.Join(repo, fmt.Sprintf("f%02d.txt", i)), []byte("start\n"+strings.Repeat(line, 2048)), 0o644))
+	}
+	diff, err = h.generatePersistedDiff(context.Background(), repo)
 	require.NoError(t, err)
 	assert.LessOrEqual(t, len(diff), diffPersistMax+256)
 	assert.Contains(t, string(diff), "# Coral: diff cut at 8 MiB")
@@ -314,7 +337,6 @@ func TestGeneratePersistedDiffManyNewFiles(t *testing.T) {
 	out := string(diff)
 	assert.True(t, strings.HasPrefix(out, "# Coral: "), "the notes come first, so the cap never cuts them off")
 	assert.Regexp(t, `# Coral: \d+ more new files are not in this diff`, out)
-	assert.Contains(t, out, "# Coral: diff cut at 8 MiB")
 	assert.Contains(t, out, "+++ b/gen/f0000.txt")
 	assert.LessOrEqual(t, len(diff), diffPersistMax+512)
 
@@ -343,9 +365,9 @@ func TestGeneratePersistedDiffNewFileNames(t *testing.T) {
 	assert.Equal(t, 1, strings.Count(string(diff), "+content of a.txt"), "a.txt once: [a].txt did not match it as a pattern")
 	assert.NotContains(t, string(diff), "more new files are not in this diff")
 
-	batched, err := diffWithNewFiles(context.Background(), repo, "HEAD", names)
+	batched, err := diffNewFiles(context.Background(), repo, names)
 	require.NoError(t, err)
-	oneByOne, dropped, err := diffNewFilesOneByOne(context.Background(), repo, "HEAD", names)
+	oneByOne, dropped, err := diffNewFilesOneByOne(context.Background(), repo, names)
 	require.NoError(t, err)
 	assert.Zero(t, dropped)
 	section := func(d []byte, name string) string {
