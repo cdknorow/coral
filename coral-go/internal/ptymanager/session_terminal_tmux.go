@@ -93,18 +93,27 @@ func (t *TmuxSessionTerminal) CreateSession(ctx context.Context, name, workDir s
 }
 
 func (t *TmuxSessionTerminal) KillSession(ctx context.Context, name, agentType, sessionID string) error {
-	DropHeld(name, "killed") // nothing held for the old process is typed into a new one (#3431)
-	return t.client.KillSession(ctx, name, agentType, sessionID)
+	DropHeld(name, "killed")                                              // nothing held for the old process is typed into a new one (#3431)
+	finish := paneTreeForAgent(ctx, t.client, name, agentType, sessionID) // what the agent started is ended with it, not left running (#6141)
+	err := t.client.KillSession(ctx, name, agentType, sessionID)
+	finish()
+	return err
 }
 
 func (t *TmuxSessionTerminal) KillSessionOnly(ctx context.Context, name, agentType, sessionID string) error {
 	DropHeld(name, "killed") // nothing held for the old process is typed into a new one (#3431)
-	return t.client.KillSessionOnly(ctx, name, agentType, sessionID)
+	finish := paneTreeForAgent(ctx, t.client, name, agentType, sessionID)
+	err := t.client.KillSessionOnly(ctx, name, agentType, sessionID)
+	finish()
+	return err
 }
 
 func (t *TmuxSessionTerminal) RestartPane(ctx context.Context, target, workDir string) error {
 	DropHeld(target, "restarted") // nothing held for the old process is typed into a new one (#3431)
-	return t.client.RespawnPane(ctx, target, workDir)
+	finish := paneTreeForTarget(ctx, t.client, target)
+	err := t.client.RespawnPane(ctx, target, workDir)
+	finish()
+	return err
 }
 
 func (t *TmuxSessionTerminal) RenameSession(ctx context.Context, oldName, newName string) error {
