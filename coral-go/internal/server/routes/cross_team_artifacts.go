@@ -489,7 +489,7 @@ func (h *BoardHandler) receivingOn(ctx context.Context, r *http.Request, target,
 		return false, err
 	}
 	if h.allowlistOn(ctx) {
-		if !settings.CrossTeamArtifacts {
+		if !settings.ExplicitFilesOn() { // the owner's own on: the default does not admit a frame that names no claim (#5916)
 			return false, nil
 		}
 		return !claimKnown || settings.AllowsRelayedSender(src, claim), nil
