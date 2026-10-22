@@ -14,8 +14,8 @@ import (
 //     by the SHA-256 of their DER encoding (the issuing CAs below the PCA, "Microsoft ID Verified CS EOC/AOC CA 0x", rotate and are not pinned);
 //   - the leaf's subject must say O=Subgentic LLC and CN=Subgentic LLC.
 //
-// TODO(first signed release, Security's N4): also pin the leaf's whole subject string as Microsoft writes it (C, S, L as well as O and CN) and
-// the Trusted Signing policy OID. The PCA issues for every ID-verified Microsoft profile, so today the name is the only discriminator.
+// N4 (authenticode_require.go): the leaf's whole subject (C, S, L as well as O and CN) and the Trusted Signing policy OID are pinned there, with the switch that makes a signature
+// required, once the first signed release exists to read them from. The PCA issues for every ID-verified Microsoft profile, so until then the name is the only discriminator.
 //
 // The certificates are in authenticode_pins/ with where they were fetched from. A certificate that names Subgentic LLC from any other
 // issuer is refused, and so is a valid Trusted Signing certificate of anyone else.

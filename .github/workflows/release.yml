@@ -61,6 +61,7 @@ jobs:
           bash tests/release/update_tap_test.sh         # the cask move (#5559); a local bare repository, no network
           bash tests/release/release_cadence_test.sh    # the cadence table (#5559); a stand-in gh, no network
           bash tests/release/release_notes_edits_test.sh   # lines removed from a published body on purpose; no network
+          bash tests/release/signature_required_check_test.sh   # the N4 check: a required Windows signature never meets an unsigned build
           bash tests/release/ldflags_build_test.sh      # every build script's -X flags take effect: version and PostHog key land in the binary (#5539)
           bash tests/release/resolve_release.sh "$GITHUB_REF_NAME" | tee -a "$GITHUB_OUTPUT"
 
@@ -184,6 +185,15 @@ jobs:
         with:
           go-version: "1.26.10"
           cache-dependency-path: coral-go/go.sum
+
+      # N4: while the Windows updater requires a signature (RequireSignedWindowsPackage), a release that will not be signed must not ship: no Windows Coral could take it.
+      # It passes while the switch is false (today). WINDOWS_SIGNING and the tier are the ones the signing steps below test.
+      - name: A required signature needs a signed build
+        shell: bash
+        env:
+          SIGNING: ${{ vars.WINDOWS_SIGNING }}
+          BUILD_TAGS: ${{ needs.resolve.outputs.build_tags }}
+        run: bash tests/release/signature_required_check.sh coral-go/internal/updater/apply/authenticode_require.go "$SIGNING" "$BUILD_TAGS"
 
       - name: Install native GUI compiler
         run: choco install mingw -y
@@ -340,6 +350,19 @@ jobs:
         run: |
           & $env:SIGNTOOL verify /pa /v $env:MSI_PATH
           if ($LASTEXITCODE -ne 0) { throw "signtool verify failed: MSI" }
+
+      - name: Check the signed MSI against the updater's pins
+        if: ${{ vars.WINDOWS_SIGNING == 'true' && !contains(format(',{0},', needs.resolve.outputs.build_tags), ',dropboxers,') }}
+        working-directory: coral-go
+        env:
+          CORAL_SIGNED_MSI: ${{ env.MSI_PATH }}
+          CORAL_TELEMETRY_DISABLED: "1"
+        # What the Windows updater will check on every install: WinVerifyTrust with revocation, the Microsoft Trusted Signing chain, the leaf's O and CN, and
+        # (once pinned, authenticode_require.go) its whole subject and policy. A release the updater would refuse must not be published. The log names the values
+        # to pin when they are not pinned yet.
+        run: |
+          go test -count=1 -v -run TestSignedMSIMatchesTheUpdatersPins ./internal/updater/apply
+          if ($LASTEXITCODE -ne 0) { throw "the signed MSI does not match the updater's pins" }
 
       - name: Create portable ZIP
         run: |

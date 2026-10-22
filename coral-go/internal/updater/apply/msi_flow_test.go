@@ -73,6 +73,7 @@ type fakeMSI struct {
 	coralGone  bool
 	authErr    error
 	signed     bool
+	unsignedAt string // when set, the package at this path is unsigned whatever signed says (the rollback package)
 	product    string
 	registered string
 	regVersion string // the registered product's version
@@ -111,8 +112,11 @@ func (f *fakeMSI) Hold(path, sha string) (Held, error) {
 	f.heldClosed = append(f.heldClosed, false)
 	return fakeHeld{path: path, closed: &f.heldClosed[len(f.heldClosed)-1]}, nil
 }
-func (f *fakeMSI) Authenticode(Held) (bool, error) {
+func (f *fakeMSI) Authenticode(h Held) (bool, error) {
 	f.rec("authenticode")
+	if f.unsignedAt != "" && h.Path() == f.unsignedAt {
+		return false, f.authErr
+	}
 	return f.signed, f.authErr
 }
 func (f *fakeMSI) ProductCode(Held) (string, error) { f.rec("productcode"); return f.product, nil }
