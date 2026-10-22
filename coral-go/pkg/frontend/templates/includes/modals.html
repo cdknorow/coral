@@ -857,7 +857,6 @@
                     </section>
                     <section class="settings-pane" id="settings-pane-notifications" data-group="notifications" data-icon="notifications" data-title="Notifications" role="tabpanel" aria-labelledby="settings-tab-notifications" tabindex="-1" hidden>
                         <h4 class="settings-pane-title">Notifications</h4>
-                        <p class="settings-pane-sub">Alerts when an agent needs you.</p>
                         <dl class="info-grid settings-grid">
                 {{ template "includes/toggle_row" (toggle "settings-notify-needs-input" "Notifications" "Show toast when an agent needs input") }}
                 {{ template "includes/toggle_row" (toggle "settings-desktop-notify" "Desktop alerts" "This browser only: alert while this tab is in the background. Shows the agent and server names (your OS may keep them in its notification history), never agent output. May duplicate a local alert.") }}
