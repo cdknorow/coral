@@ -416,3 +416,46 @@ func TestAFailedWriteNeverClosesALiveGuardiansPipe(t *testing.T) {
 		t.Fatal("a terminal's tree was ended though Coral is running")
 	}
 }
+
+// Retiring a guardian that will not exit takes seconds, and must not hold the client's lock: every terminal start and end would wait behind it. The process here ignores SIGTERM, so retire waits out its two
+// seconds and then kills it; meanwhile the client answers at once.
+func TestRetiringAGuardianDoesNotHoldTheClientsLock(t *testing.T) {
+	needPerl(t)
+	c := exec.Command("perl", "-e", `$SIG{TERM} = "IGNORE"; sleep 600`)
+	in, err := c.StdinPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Start(); err != nil {
+		t.Fatal(err)
+	}
+	h := &guardianHandle{cmd: c, in: in, done: make(chan struct{}), started: time.Now()}
+	go func() { c.Wait(); close(h.done) }()
+	t.Cleanup(func() { c.Process.Kill() })
+	time.Sleep(300 * time.Millisecond) // perl has installed its SIGTERM handler
+	var g guardianClient
+	g.off = true // nothing is started in its place
+	finished := make(chan struct{})
+	go func() { g.afterRetire(h); close(finished) }()
+	time.Sleep(300 * time.Millisecond) // retire is waiting for the process to exit
+	start := time.Now()
+	g.pid()
+	if took := time.Since(start); took > 100*time.Millisecond {
+		t.Fatalf("the client's lock was held for %v while a guardian was retired", took)
+	}
+	select {
+	case <-finished:
+		t.Fatal("retire should still be waiting for a process that ignores SIGTERM")
+	default:
+	}
+	select {
+	case <-finished:
+	case <-time.After(6 * time.Second):
+		t.Fatal("retire never finished")
+	}
+	select {
+	case <-h.done:
+	default:
+		t.Fatal("the guardian that ignored SIGTERM was killed")
+	}
+}
