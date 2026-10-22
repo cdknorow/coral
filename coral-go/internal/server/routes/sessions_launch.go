@@ -86,6 +86,12 @@ func (h *SessionsHandler) Launch(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, err.Error())
 		return
 	}
+	// An agent never starts a type that never asks (#5901): 403, nothing starts. The Operator (dashboard, command line, API key) and the Hub with the owner's switch are unchanged.
+	if agentCaller(r) && agentLaunchUnsupervised(body.AgentType) {
+		attempt.Finish(tracking.OutcomeFailure, tracking.FailInvalidRequest, 0, 1)
+		writeError(w, http.StatusForbidden, agentLaunchUnsupervisedCode, agentLaunchUnsupervisedMessage(body.AgentType))
+		return
+	}
 	// Through the Coral Hub, an agent that skips permission prompts needs the owner's local switch (#126 F4).
 	if refuseHubSkip(w, r, h.ss, hubAsksToSkip(body.AgentType, body.Flags, body.Capabilities, body.Tools, body.Hooks)) {
 		attempt.Finish(tracking.OutcomeFailure, tracking.FailInvalidRequest, 0, 1)
