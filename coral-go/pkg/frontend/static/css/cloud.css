@@ -32,26 +32,50 @@ body.cloud-mode [data-local-only] { display: none !important; }
 .cloud-facts dt { opacity: .65; } .cloud-facts dd { margin: 0; word-break: break-all; }
 
 /* Servers dialog */
-.cs-list { list-style: none; margin: 0; padding: 0; }
-/* minmax(0,1fr): a long name or URL wraps instead of widening the row (#3070 F3). */
-.cs-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 12px; padding: 12px 0; border-bottom: 1px solid var(--border, var(--fx-navy-line)); }
+/* The Servers list is a table: Name, Status, Coral, Agents, Hub access; a row opens a details row (cloud_servers.js). */
+.cs-table { width: 100%; border-collapse: collapse; }
+.cs-th { text-align: left; padding: 6px 8px; font-size: 0.75rem; font-weight: 600; border-bottom: 2px solid var(--border, var(--fx-navy-line)); white-space: nowrap; }
+.cs-sort { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px; margin: 0 -4px; border: 0; border-radius: var(--radius-md); background: none; color: inherit; font: inherit; cursor: pointer; }
+.cs-sort:hover { background: var(--bg-hover); }
+.cs-sort:focus-visible, .cs-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.cs-sort-mark { min-width: 0.75em; font-size: 0.625rem; }
+.cs-row > td { padding: 10px 8px; vertical-align: middle; border-bottom: 1px solid var(--border, var(--fx-navy-line)); font-size: 0.8125rem; }
+.cs-row.cs-open > td { border-bottom-color: transparent; }
+.cs-col-version > .server-update-badge { margin-left: 6px; }
+.cs-col-name { min-width: 0; }
+.cs-toggle { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; padding: 4px 4px; margin: -4px; border: 0; border-radius: var(--radius-md); background: none; color: inherit; font: inherit; font-weight: 600; text-align: left; cursor: pointer; overflow-wrap: anywhere; }
+.cs-toggle:hover { background: var(--bg-hover); }
+.cs-chevron { width: 1em; color: var(--text-secondary, inherit); }
+.cs-detail > td { padding: 4px 8px 14px 30px; border-bottom: 1px solid var(--border, var(--fx-navy-line)); }
+.cs-detail-grid { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 12px; }
+.cs-detail .cs-note { margin-top: 8px; }
+.cs-rename { justify-content: flex-start; }
+.cs-launch select { width: 100%; min-width: 13rem; max-width: 100%; }
+.cs-access { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 6px; font-size: 0.75rem; }
+.cs-access-effective { font-weight: 600; }
 .cs-main { min-width: 0; overflow-wrap: anywhere; }
 .cs-title { font-weight: 600; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; overflow-wrap: anywhere; }
 /* The row's "(online)" / "(offline)" is for screen readers only; the dot shows it. */
 .cs-title .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .cs-meta { font-size: 0.75rem; opacity: .7; margin-top: 2px; }
 @media (max-width: 767px) { .cs-meta { font-size: 0.8125rem; } } /* 13px on a phone (#5669) */
-.cs-note { grid-column: 1 / -1; font-size: 0.75rem; padding: 6px 10px; border-radius: var(--radius-md); background: rgba(var(--fx-amber-rgb), .12); border: 1px solid rgba(var(--fx-amber-rgb), .45); }
+.cs-note { font-size: 0.75rem; padding: 6px 10px; border-radius: var(--radius-md); background: rgba(var(--fx-amber-rgb), .12); border: 1px solid rgba(var(--fx-amber-rgb), .45); }
 .cs-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: flex-end; }
 .cs-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; background: #6e7681; }
 .cs-dot.online { background: var(--fx-green); } .cs-dot.offline { background: var(--fx-amber); }
-.cs-enroll { margin-top: 18px; padding: 14px; border-radius: var(--radius-lg); border: 1px dashed var(--border, var(--fx-navy-line)); }
+.cs-enroll { margin: 0 0 18px; padding: 14px; border-radius: var(--radius-lg); border: 1px dashed var(--border, var(--fx-navy-line)); }
+.cs-enroll-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 220px); gap: 16px; align-items: start; }
 .cs-enroll ol { margin: 8px 0 12px 18px; padding: 0; line-height: 1.6; font-size: 0.8125rem; }
-.cs-enroll ol li a { display: block; margin-top: 2px; color: var(--accent); overflow-wrap: anywhere; } /* the install link: on its own line, in the accent colour (#4586) */
-.cs-enroll ol li code { overflow-wrap: anywhere; }
+.cs-enroll ol li a { display: block; margin-top: 2px; color: var(--link-text, var(--accent)); overflow-wrap: anywhere; } /* the install link: on its own line (#4586) */
+.cs-shots { min-width: 0; }
+.cs-shot { display: block; width: 100%; height: auto; border: 1px solid var(--border, var(--fx-navy-line)); border-radius: var(--radius-lg); }
+/* One picture per theme: the page's theme is the data-theme attribute (dark when there is none). */
+:root:not([data-theme="light"]) .cs-shot-light, :root[data-theme="light"] .cs-shot-dark { display: none; }
+@container servers-tab (max-width: 640px) { .cs-enroll-body { grid-template-columns: minmax(0, 1fr); } .cs-shots { display: none; } } /* a phone adds no computer: the picture is for the desktop's page, and the table comes first there */
 .cs-enroll code { font-family: ui-monospace, monospace; }
 .cs-enroll-form { display: flex; gap: 8px; }
 .cs-enroll-form input { flex: 1; }
+.cs-enroll-form input::placeholder { color: var(--text-primary, inherit); opacity: .8; } /* the example code holds 4.5:1 (the page's default placeholder was 3.4:1) */
 [hidden] { display: none !important; }
 .cs-launch { display: flex; align-items: center; gap: 6px; margin-top: 4px; cursor: pointer; }
 .cs-launch input { width: auto; margin: 0; }
@@ -70,14 +94,25 @@ body.cloud-mode .settings-cloud-note { margin: 0 0 12px; }
    grey (#3070 F5, was ~2.9:1); a disabled one is visibly dimmed. */
 .cs-revoke, .servers-remove { color: var(--error); }
 .cs-revoke:disabled, .servers-remove:disabled { opacity: .5; cursor: not-allowed; }
-/* Narrow (phone): actions go under the server details, full width (#3070 F3). */
-@container servers-tab (max-width: 520px) {
-    .cs-row { grid-template-columns: minmax(0, 1fr); }
+/* Narrow (phone): a stacked list; each row is a card with its name and toggle first, then status, version, agents and the access control; the header turns into a row of sort buttons; the details open under it. */
+@container servers-tab (max-width: 640px) {
+    .cs-table, .cs-table tbody { display: block; }
+    .cs-table thead { display: block; }
+    .cs-table thead tr { display: flex; flex-wrap: wrap; gap: 4px 12px; padding: 6px 0; border-bottom: 2px solid var(--border, var(--fx-navy-line)); }
+    .cs-th { display: block; padding: 0; border: 0; }
+    .cs-row { display: grid; grid-template-columns: repeat(3, auto) 1fr; gap: 2px 14px; align-items: center; padding: 10px 0 8px; }
+    .cs-row > td { padding: 0; border: 0; }
+    .cs-col-name { grid-column: 1 / -1; }
+    .cs-col-access { grid-column: 1 / -1; margin-top: 6px; }
+    .cs-row > .cs-col-status::before, .cs-row > .cs-col-version::before, .cs-row > .cs-col-agents::before { content: attr(data-label) ": "; opacity: .7; }
+    .cs-launch select { width: 100%; }
+    .cs-detail { display: block; border-bottom: 1px solid var(--border, var(--fx-navy-line)); }
+    .cs-row.cs-open { border-bottom: 0; }
+    .cs-detail > td { display: block; padding: 4px 0 14px; border: 0; }
+    .cs-detail-grid { grid-template-columns: minmax(0, 1fr); }
     .cs-actions { justify-content: flex-start; }
 }
 @media (max-width: 520px) {
-    .cs-row { grid-template-columns: minmax(0, 1fr); }
-    .cs-actions { justify-content: flex-start; }
     .cs-enroll-form { flex-wrap: wrap; }
 }
 
@@ -90,7 +125,7 @@ body.cloud-mode .settings-cloud-note { margin: 0 0 12px; }
 .servers-tab-title { font-size: var(--fs-xl, 18px); margin: 0 0 var(--space-md, 8px); }
 .servers-tab-title:focus { outline: none; }
 .servers-tab-title:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.cs-row:focus-visible, .servers-row:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.cs-row:focus-visible, .cs-row:focus-visible > td, .servers-row:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .server-row-target { background: var(--bg-hover, rgba(88,166,255,.08)); transition: background .4s; }
 .cs-enroll-title { font-size: var(--fs-md, 14px); margin: 0; }
 
@@ -98,6 +133,8 @@ body.cloud-mode .settings-cloud-note { margin: 0 0 12px; }
    pointer their inputs and buttons are at least 44px tall, like the dashboard. */
 @media (pointer: coarse) {
     .cloud-card select { min-height: var(--control-touch-height, 44px); }
+    .cs-sort, .cs-toggle { min-height: var(--control-touch-height, 44px); min-width: var(--control-touch-height, 44px); padding-left: 8px; padding-right: 8px; margin-left: -8px; margin-top: 0; margin-bottom: 0; }
+    .cs-launch select { min-height: var(--control-touch-height, 44px); }
     .cs-enroll ol li a { display: flex; align-items: center; min-height: var(--control-touch-height, 44px); }
 }
 

@@ -34,7 +34,7 @@ const LIVE = [
     { id: 'm3', label: 'Box Three', status: 'offline', coral_version: '1.5.0', agents: 0, update: 'current' },
     { id: 'm4', label: 'Box Four', status: 'online', agents: 2, update: 'unknown' },
 ];
-const RELEASES = 'https://github.com/subgentic/coral/releases/latest';
+const RELEASES = 'https://coralhub.dev/coral.html#download';
 
 const CLOUD_PRELOAD = `(() => {
     window.__qaServers = ${JSON.stringify(SERVERS)};
@@ -160,20 +160,21 @@ const contrast = (a, b) => {
         const settled = () => ev(framesJs(2));
         const focusIs = (sel, what) => waitFor(`document.activeElement === document.querySelector(${JSON.stringify(sel)})`, what, 3000,
             `(() => { const a = document.activeElement; return a ? a.tagName + '#' + a.id + '.' + a.className : null; })()`);
-        const rowView = id => ev(`(() => { const r = document.getElementById('server-row-${id}'); const sel = r.querySelector('.cs-launch select');
+        const rowView = id => ev(`(() => { const r = document.getElementById('server-row-${id}'), d = document.getElementById('server-row-${id}-detail'); const sel = r.querySelector('.cs-launch select');
             return { options: [...sel.options].map(o => o.textContent), value: sel.value, label: r.querySelector('.cs-launch').firstChild.textContent.trim(), describedBy: sel.getAttribute('aria-describedby'),
                 help: (document.getElementById(sel.getAttribute('aria-describedby')) || {}).textContent || null,
-                notes: [...r.querySelectorAll('.cs-limit, .cs-note')].map(n => n.textContent.replace(/\\s+/g, ' ').trim()), follow: !!r.querySelector('.cs-follow'),
-                raise: !!r.querySelector('.cs-raise'), summary: !!r.querySelector('.cs-access'), dialogs: document.querySelectorAll('dialog.cs-confirm').length }; })()`);
+                notes: [...d.querySelectorAll('.cs-limit, .cs-note')].map(n => n.textContent.replace(/\\s+/g, ' ').trim()), follow: !!d.querySelector('.cs-follow'),
+                raise: !!r.querySelector('.cs-raise'), summary: !!d.querySelector('.cs-access'), dialogs: document.querySelectorAll('dialog.cs-confirm').length }; })()`);
         let r = Object.fromEntries((await rows()).map(x => [x.id, x]));
         assert.ok(Object.values(r).every(x => x.tabindex === '-1'), 'rows are focus targets (tabindex=-1)');
+        await ev(`document.querySelectorAll('#servers-view .cs-toggle[aria-expanded="false"]').forEach(b => b.click()); true`);
         await rowShots('desktop');
         // m1: the owner limited it to View, the computer allows Launch: the note and a way back; every option offered at or below Launch.
         let v = await rowView('m1');
         assert.deepEqual(v.options, ['Follow this computer (now Launch)', 'Limit to Interact', 'Limit to View']);
-        assert.equal(v.value, 'view'); assert.equal(v.label, 'Hub access');
+        assert.equal(v.value, 'view'); assert.equal(v.label, 'Hub access for Box One');
         assert.ok(v.notes.includes('You limited Coral Hub to View on this computer. It allows Launch. Follow this computer'), JSON.stringify(v.notes));
-        assert.ok(v.follow && !v.raise && !v.summary && v.dialogs === 0, 'a Follow button, no Raise, no Hub/Machine/Effective line, no dialog');
+        assert.ok(v.follow && !v.raise && v.summary && v.dialogs === 0, 'a Follow button (in the details), no Raise, the Hub/Machine/Effective line there, no dialog');
         assert.match(v.help, /^Coral Hub may do on this computer what you allowed in Coral\. Now: View\./);
         assert.ok(v.describedBy && v.help, 'the helper line describes the select');
         // m2: following, the computer allows View only: the machine's note with the path to the question; only View to limit to.
@@ -194,11 +195,11 @@ const contrast = (a, b) => {
 
         const accessOf = id => ev(`import((window.__coralStatic || '/static/') + 'cloud_servers.js').then(cs => cs.serverAccess(${JSON.stringify(id)})).then(a => a && { effective: a.effective, mayInteract: a.mayInteract })`);
         // Follow this computer from the note: immediate (no dialog), one PATCH, focus lands on the select.
-        await ev(`window.__patches = []; document.querySelector('#server-row-m1 .cs-follow').click(); true`);
+        await ev(`window.__patches = []; document.querySelector('#server-row-m1-detail .cs-follow').click(); true`);
         await waitFor(`window.__patches.length > 0`, 'the follow PATCH', 3000);
         await settled();
         assert.deepEqual(await ev('window.__patches'), [{ id: 'm1', body: { access_mode: 'follow' } }], 'Follow this computer sends {access_mode: follow}, no confirmation');
-        await waitFor(`document.querySelector('#server-row-m1 .cs-launch select').value === 'follow' && !document.querySelector('#server-row-m1 .cs-follow')`, 'm1 following', 3000);
+        await waitFor(`document.querySelector('#server-row-m1 .cs-launch select').value === 'follow' && !document.querySelector('#server-row-m1-detail .cs-follow')`, 'm1 following', 3000);
         assert.equal((await rowView('m1')).dialogs, 0);
         await focusIs('#server-row-m1 .cs-launch select', 'focus on the select after Follow this computer');
         assert.deepEqual(await accessOf('m1'), { effective: 'launch', mayInteract: true }, 'the next access check sees Launch at once (#3125)');
@@ -206,7 +207,7 @@ const contrast = (a, b) => {
         const pick = (id, mode) => ev(`(() => { const s = document.querySelector('#server-row-${id} select'); s.focus(); s.value = ${JSON.stringify(mode)}; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
         await ev(`window.__patches = []; true`);
         await pick('m3', 'interact');
-        await waitFor(`window.__patches.length > 0 && document.querySelector('#server-row-m3 .cs-follow')`, 'the Interact PATCH and the note', 3000);
+        await waitFor(`window.__patches.length > 0 && document.querySelector('#server-row-m3-detail .cs-follow')`, 'the Interact PATCH and the note', 3000);
         await settled();
         assert.deepEqual(await ev('window.__patches'), [{ id: 'm3', body: { access_mode: 'interact' } }]);
         assert.ok((await rowView('m3')).notes.includes('You limited Coral Hub to Interact on this computer. It allows Launch. Follow this computer'));
@@ -214,44 +215,38 @@ const contrast = (a, b) => {
         assert.equal((await rowView('m3')).dialogs, 0, 'a lower cap asks nothing');
         await ev(`window.__patches = []; true`);
         await pick('m3', 'follow');
-        await waitFor(`window.__patches.length > 0 && !document.querySelector('#server-row-m3 .cs-follow')`, 'the follow PATCH from the select', 3000);
+        await waitFor(`window.__patches.length > 0 && !document.querySelector('#server-row-m3-detail .cs-follow')`, 'the follow PATCH from the select', 3000);
         await settled();
         assert.deepEqual(await ev('window.__patches'), [{ id: 'm3', body: { access_mode: 'follow' } }], 'choosing Follow in the select is immediate too');
         assert.equal((await rowView('m3')).dialogs, 0);
         console.log('   ✓ Hub access: Follow / Limit to Interact / Limit to View, only options the computer allows, no Raise, no dialog, focus kept, the notes');
 
-        console.log('2b. Row meta (status · Coral version · agents · last contact when offline), update badge, no "null", hidden sr-only state');
+        console.log('2b. Row cells (status, Coral version, agents) and the details line (last contact when offline), update badge, no "null"');
         const rowInfo = await ev(`Object.fromEntries([...document.querySelectorAll('#servers-view .cs-row')].map(r => {
-            const meta = r.querySelector('.cs-meta');
-            const badges = [...r.querySelectorAll('a.server-update-badge')].map(a => ({ cls: a.className, href: a.getAttribute('href'), aria: a.getAttribute('aria-label'), target: a.getAttribute('target'), rel: a.getAttribute('rel'), inTitle: !!a.closest('.cs-title') }));
-            const title = r.querySelector('.cs-title');
-            const sr = title && title.querySelector('.sr-only');
-            return [r.id.replace('server-row-', ''), { meta: meta ? meta.textContent.replace(/\\s+/g, ' ').trim() : '', badges, srText: sr ? sr.textContent : null,
-                srVisible: sr ? (b => b.width > 2 && b.height > 2)(sr.getBoundingClientRect()) : false, visibleTitle: title ? title.innerText.trim() : '' }];
+            const d = document.getElementById(r.id + '-detail');
+            const badges = [...r.querySelectorAll('a.server-update-badge')].map(a => ({ cls: a.className, href: a.getAttribute('href'), aria: a.getAttribute('aria-label'), target: a.getAttribute('target'), rel: a.getAttribute('rel'), inVersion: !!a.closest('.cs-col-version') }));
+            const cell = c => r.querySelector('.cs-col-' + c).textContent.replace(/\\s+/g, ' ').trim();
+            return [r.id.replace('server-row-', ''), { status: cell('status'), version: r.querySelector('.cs-col-version span').textContent, agents: cell('agents'), meta: (d.querySelector('.cs-meta') || {}).textContent || '', badges }];
         }))`);
-        const metaOf = id => rowInfo[id].meta;
-        assert.match(metaOf('m1'), /^Online · Coral 1\.4\.2 · 7 agents$/, `m1 meta: no 'last contact' while online (#3152) (${metaOf('m1')})`);
-        assert.match(metaOf('m2'), /^Online · Coral 1\.4\.6 · 1 agent$/, `m2 meta: version from 'version', singular agent (${metaOf('m2')})`);
-        assert.match(metaOf('m3'), /^Offline · Coral 1\.5\.0 · 0 agents · last contact /, `m3 meta: offline shows last contact (${metaOf('m3')})`);
-        assert.match(metaOf('m4'), /^Online · 2 agents$/, `m4 meta: no version when unknown (${metaOf('m4')})`);
+        assert.deepEqual([rowInfo.m1.status, rowInfo.m1.version, rowInfo.m1.agents, rowInfo.m1.meta], ['Online', '1.4.2', '7', 'Online · Coral 1.4.2'], 'm1: no last contact while online (#3152)');
+        assert.deepEqual([rowInfo.m2.status, rowInfo.m2.version, rowInfo.m2.agents], ['Online', '1.4.6', '1'], "m2: version from 'version'");
+        assert.equal(rowInfo.m3.status, 'Offline'); assert.equal(rowInfo.m3.agents, '0');
+        assert.match(rowInfo.m3.meta, /^Offline · Coral 1\.5\.0 · last contact /, `m3: offline shows last contact in the details (${rowInfo.m3.meta})`);
+        assert.deepEqual([rowInfo.m4.version, rowInfo.m4.agents], ['—', '2'], 'm4: a dash when the version is unknown');
         const notice = { m1: 'Update required: this Coral (1.4.2) is too old for some Coral Hub features. Update to 1.5.0.', m2: 'Update available: 1.5.0' };
         for (const [id, level] of [['m1', 'required'], ['m2', 'available']]) {
             assert.equal(rowInfo[id].badges.length, 1, `${id}: one update badge`);
             const b = rowInfo[id].badges[0];
             assert.equal(b.cls, `server-update-badge server-update-${level}`);
-            assert.equal(b.href, RELEASES, `${id}: constant releases link`);
+            assert.equal(b.href, RELEASES, `${id}: constant download link`);
             assert.equal(b.aria, notice[id], `${id}: aria-label is the notice`);
-            assert.ok(b.inTitle, `${id}: badge sits in the row title`);
+            assert.ok(b.inVersion, `${id}: badge sits in the Coral column`);
             assert.equal(b.target, '_blank'); assert.equal(b.rel, 'noopener noreferrer');
         }
         assert.equal(rowInfo.m3.badges.length, 0, 'no badge when current'); assert.equal(rowInfo.m4.badges.length, 0, 'no badge when unknown');
         const nulls = await ev(`(() => { const w = document.createTreeWalker(document.getElementById('servers-view'), NodeFilter.SHOW_TEXT); const out = []; for (let n = w.nextNode(); n; n = w.nextNode()) if (/\\bnull\\b/.test(n.nodeValue)) out.push(n.nodeValue.trim()); return out; })()`);
         assert.deepEqual(nulls, [], 'no literal "null" text in the Servers view');
-        for (const id of ['m1', 'm3']) {
-            assert.match(rowInfo[id].srText || '', /\((online|offline)\)/, `${id}: status for screen readers`);
-            assert.equal(rowInfo[id].srVisible, false, `${id}: the sr-only status is not visible`);
-        }
-        console.log('   ✓ meta per row (version from coral_version|version, omitted when unknown, 1 agent/N agents), badges m1/m2 only, no "null", sr-only hidden');
+        console.log('   ✓ cells per row, last contact in the details, badges m1/m2 only in the Coral column, no "null"');
 
         console.log('3. Revoke reads as an action (contrast >= 4.5:1)');
         const rv = await ev(`(() => {

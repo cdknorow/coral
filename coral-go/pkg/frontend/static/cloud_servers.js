@@ -20,7 +20,7 @@ import { rememberFocus } from './dom_morph.js';
 import { importOnce } from './import_once.js';
 import { state } from './state.js';
 import { h } from './cloud.js';
-import { formatLastSeen, updateNotice, RELEASES_URL, serverVersion, serverAgentCount, belowMinimumText } from './server_status.js';
+import { formatLastSeen, updateNotice, RELEASES_URL, DOWNLOAD_URL, serverVersion, serverAgentCount, belowMinimumText } from './server_status.js';
 import { accessBlockedMessage, accessChanged } from './hub_access.js';
 import { pollEvery } from './overload.js';
 import { healthDot, healthCard } from './machine_health.js';
@@ -242,43 +242,111 @@ async function setAccess(s, value, fromButton = false) {
     if (sel && (fromButton || document.activeElement === document.body)) sel.focus();
 }
 
-function row(s) {
-    // Version, agent count and the update notice come with the live list's servers entry (#3059, #3099).
-    const live = { ...s, ...((state.servers || []).find(x => x && x.id === s.id) || {}) };
-    const isBusy = busy.has(s.id);
-    const online = s.online === true;
-    const title = renaming === s.id
-        ? h('form', { className: 'cs-actions', onsubmit: e => { e.preventDefault(); const v = e.target.elements.label.value.trim(); renaming = null; if (v && v !== s.label) call(s.id, 'PATCH', { label: v }); else render(); } },
+// The list is a table (Name, Status, Coral, Agents, Hub access) with sortable headers; a row expands for everything else (health, what each side allows, the update notice, Rename, Revoke).
+const COLUMNS = [
+    { key: 'name', label: 'Name' },
+    { key: 'status', label: 'Status' },
+    { key: 'version', label: 'Coral' },
+    { key: 'agents', label: 'Agents' },
+    { key: 'access', label: 'Hub access' },
+];
+let sortKey = 'name';
+let sortDir = 'asc';
+const expanded = new Set(); // ids of the rows that are open
+
+/** Compare two dotted versions numerically ("1.4.10" after "1.4.9"); anything unreadable sorts as 0. */
+function versionParts(v) { return String(v || '').replace(/^v/, '').split(/[.-]/).slice(0, 3).map(n => parseInt(n, 10) || 0); }
+function cmpVersion(a, b) {
+    const x = versionParts(a), y = versionParts(b);
+    for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) - (y[i] || 0);
+    return 0;
+}
+
+function liveOf(s) { return { ...s, ...((state.servers || []).find(x => x && x.id === s.id) || {}) }; } // version, agent count and the update notice (#3059, #3099)
+function effectiveOf(s) { return rank(s.effective_mode) >= 0 ? s.effective_mode : effectiveMode(s); }
+
+/** The value a column sorts by. */
+function sortValue(s, key) {
+    const live = liveOf(s);
+    if (key === 'status') return s.online === true ? 1 : 0;
+    if (key === 'version') return serverVersion(live);
+    if (key === 'agents') return serverAgentCount(live);
+    if (key === 'access') return rank(effectiveOf(s));
+    return String(s.label || 'Unnamed server').toLowerCase();
+}
+
+function sorted(list) {
+    const dir = sortDir === 'asc' ? 1 : -1;
+    const by = (a, b) => {
+        const x = sortValue(a, sortKey), y = sortValue(b, sortKey);
+        const c = sortKey === 'version' ? cmpVersion(x, y) : (typeof x === 'number' ? x - y : String(x).localeCompare(String(y), undefined, { numeric: true, sensitivity: 'base' }));
+        return c || String(a.label || '').toLowerCase().localeCompare(String(b.label || '').toLowerCase()) || String(a.id).localeCompare(String(b.id));
+    };
+    return [...list].sort((a, b) => dir * by(a, b));
+}
+
+function setSort(key) {
+    if (sortKey === key) sortDir = sortDir === 'asc' ? 'desc' : 'asc'; else { sortKey = key; sortDir = key === 'agents' || key === 'access' ? 'desc' : 'asc'; }
+    render();
+}
+
+function headerRow() {
+    return h('tr', { role: 'row' }, COLUMNS.map(c => {
+        const on = sortKey === c.key;
+        const th = h('th', { scope: 'col', role: 'columnheader', className: `cs-th cs-col-${c.key}`, 'aria-sort': on ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none' },
+            h('button', { type: 'button', className: 'cs-sort', dataset: { key: c.key }, onclick: () => setSort(c.key) },
+                h('span', { text: c.label }), h('span', { className: 'cs-sort-mark', 'aria-hidden': 'true', text: on ? (sortDir === 'asc' ? '▲' : '▼') : '' })));
+        return th;
+    }));
+}
+
+/** Open one machine's details (a deep link to it). */
+export function expandServer(id) { expanded.add(id); render(); }
+
+function toggle(id) {
+    if (expanded.has(id)) expanded.delete(id); else expanded.add(id);
+    render();
+}
+
+function nameCell(s, live, online, isOpen, detailId) {
+    if (renaming === s.id) {
+        return h('form', { className: 'cs-actions cs-rename', onsubmit: e => { e.preventDefault(); const v = e.target.elements.label.value.trim(); renaming = null; if (v && v !== s.label) call(s.id, 'PATCH', { label: v }); else render(); } },
             h('input', { name: 'label', type: 'text', value: s.label || '', maxLength: 100, 'aria-label': 'Server name', autocomplete: 'off' }),
             h('button', { type: 'submit', className: 'btn btn-small btn-primary', text: 'Save' }),
-            h('button', { type: 'button', className: 'btn btn-small', text: 'Cancel', onclick: () => { renaming = null; render(); } }))
-        : h('div', { className: 'cs-title' },
+            h('button', { type: 'button', className: 'btn btn-small', text: 'Cancel', onclick: () => { renaming = null; render(); } }));
+    }
+    return h('div', { className: 'cs-title' },
+        h('button', { type: 'button', className: 'cs-toggle', 'aria-expanded': isOpen ? 'true' : 'false', 'aria-controls': detailId, onclick: () => toggle(s.id) },
+            h('span', { className: 'cs-chevron', 'aria-hidden': 'true', text: isOpen ? '▾' : '▸' }),
             h('span', { className: 'cs-dot ' + (online ? 'online' : 'offline'), 'aria-hidden': 'true' }),
-            h('span', { text: s.label || 'Unnamed server' }),
-            h('span', { className: 'sr-only', text: online ? ' (online)' : ' (offline)' }),
-            // The machine's health (#3446): the hub relays it while the machine is connected;
-            // without it (offline, held, reconnecting) the dot says unknown, never a stale ok.
-            healthDot(online ? live.machine_health : null, s.label || 'Server'),
-            updateBadge(live),
-            relaunchBadge(h, s.id));
-    const version = serverVersion(live);
-    const agents = serverAgentCount(live);
-    const meta = h('div', { className: 'cs-meta', text: [online ? 'Online' : 'Offline', version ? `Coral ${version}` : '', `${agents} agent${agents === 1 ? '' : 's'}`, online ? '' : `last contact ${formatLastSeen(s.last_seen)}`].filter(Boolean).join(' · ') });
+            h('span', { className: 'cs-name', text: s.label || 'Unnamed server' })),
+        // The machine's health (#3446): the hub relays it while the machine is connected; without it (offline, held, reconnecting) the dot says unknown, never a stale ok.
+        healthDot(online ? live.machine_health : null, s.label || 'Server'),
+        relaunchBadge(h, s.id));
+}
+
+function accessPicker(s, isBusy, helpId) {
     // One control, lower-only (the connect-time question on that computer is the consent to Launch): Follow this computer (default), Limit to Interact, Limit to View. Only options at or below the
     // computer's announced max; the current choice stays offered. No Launch option and no raise: Launch is reached only by following a computer that allows it.
     const choice = accessChoice(s);
     const local = rank(s.local_mode) >= 0 ? s.local_mode : null;
-    const effective = rank(s.effective_mode) >= 0 ? s.effective_mode : effectiveMode(s);
     const followLabel = local ? `Follow this computer (now ${MODE_INFO[local].label})` : 'Follow this computer'; // what following gives: the announced max, whatever the owner's cap is now
     const options = [['follow', followLabel]];
     if ((local && rank(local) >= rank('interact')) || choice === 'interact') options.push(['interact', 'Limit to Interact']);
     options.push(['view', 'Limit to View']);
-    const helpId = `${rowId(s.id)}-access-help`;
-    const picker = h('label', { className: 'cs-meta cs-launch' }, 'Hub access ',
-        h('select', {
-            disabled: isBusy, value: choice, 'aria-describedby': helpId,
-            onchange: e => setAccess(s, e.target.value),
-        }, options.map(([v, text]) => h('option', { value: v, selected: v === choice, text }))));
+    return h('label', { className: 'cs-launch' }, h('span', { className: 'sr-only', text: `Hub access for ${s.label || 'this server'} ` }),
+        h('select', { disabled: isBusy, value: choice, 'aria-describedby': helpId, onchange: e => setAccess(s, e.target.value) },
+            options.map(([v, text]) => h('option', { value: v, selected: v === choice, text }))));
+}
+
+function detailCell(s, live, online, isBusy, helpId) {
+    const local = rank(s.local_mode) >= 0 ? s.local_mode : null;
+    const effective = effectiveOf(s);
+    const hubWord = { follow: 'Follow this computer', interact: 'Limit to Interact', view: 'Limit to View' }[accessChoice(s)];
+    const summary = h('div', { className: 'cs-access', role: 'group', 'aria-label': 'Access' },
+        h('span', { className: 'cs-access-item', text: `Hub: ${hubWord}` }),
+        h('span', { className: 'cs-access-item', text: `Machine: ${local ? MODE_INFO[local].label : 'unknown'}` }),
+        h('span', { className: 'cs-access-item cs-access-effective', text: `Effective: ${MODE_INFO[effective].label}` }));
     const modeText = h('div', { className: 'cs-meta cs-access-help', id: helpId, text: local
         ? `Coral Hub may do on this computer what you allowed in Coral. Now: ${MODE_INFO[effective].label}. ${MODE_INFO[effective].text}`
         : 'View until this computer connects.' });
@@ -287,7 +355,6 @@ function row(s) {
         ? h('div', { className: 'cs-meta cs-limit' }, h('span', { text: limited + ' ' }),
             h('button', { type: 'button', className: 'btn btn-small btn-link cs-follow', disabled: isBusy, text: 'Follow this computer', onclick: () => setAccess(s, 'follow', true) }))
         : null;
-    const launch = h('div', {}, picker, modeText, follow);
     const actions = confirming === s.id
         ? [h('button', { type: 'button', className: 'btn btn-small btn-danger', text: 'Confirm revoke', onclick: () => { confirming = null; call(s.id, 'DELETE'); } }),
            h('button', { type: 'button', className: 'btn btn-small', text: 'Cancel', onclick: () => { confirming = null; render(); } })]
@@ -298,36 +365,63 @@ function row(s) {
     const updateNote = update
         ? h('div', { className: `cs-note cs-update cs-update-${update.level}` },
             h('span', { text: update.text + ' ' }),
-            h('a', { href: RELEASES_URL, target: '_blank', rel: 'noopener noreferrer', text: 'Get the latest release' }))
+            h('a', { href: RELEASES_URL, target: '_blank', rel: 'noopener noreferrer', text: 'Download the latest Coral' }))
         : null;
-    return h('li', { className: 'cs-row', id: rowId(s.id), tabIndex: -1, dataset: { id: s.id } },
-        h('div', { className: 'cs-main' }, title, meta, belowMinimumText(live) ? h('div', { className: 'cs-meta server-below-minimum', text: belowMinimumText(live) }) : null,
-            online ? healthCard(live.machine_health, { title: 'Health' }) : null, launch),
-        h('div', { className: 'cs-actions' }, actions),
+    const version = serverVersion(live);
+    const meta = h('div', { className: 'cs-meta', text: [online ? 'Online' : 'Offline', version ? `Coral ${version}` : '', online ? '' : `last contact ${formatLastSeen(s.last_seen)}`].filter(Boolean).join(' · ') });
+    return h('td', { colSpan: COLUMNS.length, role: 'cell', className: 'cs-detail-cell' },
+        h('div', { className: 'cs-detail-grid' },
+            h('div', { className: 'cs-main' }, meta, belowMinimumText(live) ? h('div', { className: 'cs-meta server-below-minimum', text: belowMinimumText(live) }) : null,
+                online ? healthCard(live.machine_health, { title: 'Health' }) : null, summary, modeText, follow),
+            h('div', { className: 'cs-actions' }, actions)),
         confirming === s.id ? h('div', { className: 'cs-note', text: 'Revoking disconnects this server now and its token stops working. To connect it again you must enroll it again.' }) : null,
         note ? h('div', { className: 'cs-note', text: note }) : null,
         updateNote);
 }
 
-// The Homebrew tap stays cdknorow/homebrew-coral while an enterprise setting blocks deploy keys in the organisation (#5530): change it here when the tap moves.
-const BREW_INSTALL = 'brew install --cask cdknorow/coral/coral';
+/** One server: its table row and the details row under it (shown while the row is open). */
+function rows(s) {
+    const live = liveOf(s);
+    const isBusy = busy.has(s.id);
+    const online = s.online === true;
+    const id = rowId(s.id), detailId = `${id}-detail`, helpId = `${id}-access-help`;
+    const isOpen = expanded.has(s.id) || renaming === s.id || confirming === s.id;
+    const version = serverVersion(live);
+    const agents = serverAgentCount(live);
+    const upd = updateBadge(live);
+    const main = h('tr', { className: 'cs-row' + (isOpen ? ' cs-open' : ''), id, tabIndex: -1, role: 'row', dataset: { id: s.id } },
+        h('td', { role: 'cell', className: 'cs-col-name' }, nameCell(s, live, online, isOpen, detailId)),
+        h('td', { role: 'cell', className: 'cs-col-status', dataset: { label: 'Status' } }, online ? 'Online' : 'Offline'),
+        h('td', { role: 'cell', className: 'cs-col-version', dataset: { label: 'Coral' } }, h('span', { text: version ? version : '—' }), upd ? ' ' : null, upd),
+        h('td', { role: 'cell', className: 'cs-col-agents', dataset: { label: 'Agents' } }, String(agents)),
+        h('td', { role: 'cell', className: 'cs-col-access' }, accessPicker(s, isBusy, helpId)));
+    const detail = h('tr', { className: 'cs-detail', id: detailId, role: 'row', hidden: !isOpen }, detailCell(s, live, online, isBusy, helpId));
+    return [main, detail];
+}
 
+/** The steps to add a machine, with the download link and what the person will see on that computer. */
 function enrollBlock() {
     const input = h('input', { type: 'text', className: 'cloud-code', placeholder: 'XXXX-XXXX', maxLength: 9, autocomplete: 'off', spellcheck: false, 'aria-label': 'Enrollment code', id: 'cs-enroll-code' });
     const go = () => {
         const v = input.value.trim().toUpperCase();
         location.href = '/enroll' + (v ? '?code=' + encodeURIComponent(v) : '');
     };
-    return h('div', { className: 'cs-enroll' },
-        h('h3', { className: 'cs-enroll-title', text: 'Add a machine' }),
-        h('ol', {},
-            h('li', {}, h('strong', { text: 'Install Coral' }), ' on the machine: ', h('code', { text: BREW_INSTALL }), ', or download it from ',
-                h('a', { href: 'https://github.com/subgentic/coral/releases', target: '_blank', rel: 'noopener noreferrer', text: 'github.com/subgentic/coral/releases' }), '.'),
-            h('li', {}, 'Open Coral → Settings → ', h('strong', { text: 'Connect to Coral Hub' }), ' (or start it with ', h('code', { text: `--cloud-url ${location.origin}` }), ').'),
-            h('li', { text: 'Coral shows a short code. Enter it below.' }),
-            h('li', { text: 'Check the machine details on the next page and approve.' })),
-        h('form', { className: 'cs-enroll-form', onsubmit: e => { e.preventDefault(); go(); } }, input,
-            h('button', { type: 'submit', className: 'btn btn-primary', text: 'Continue' })));
+    const shot = theme => h('img', { className: `cs-shot cs-shot-${theme}`, src: new URL(theme === 'dark' ? './hub-img/connect-question-dark.png' : './hub-img/connect-question-light.png', import.meta.url).pathname, width: 520, height: 636, loading: 'lazy',
+        alt: theme === 'dark' ? 'Coral\'s Connect to Coral Hub screen asking "What may Coral Hub do on this computer?" with View, Interact and Launch, Launch selected, and a Connect button.' : '' });
+    // The light picture carries the alt text through its sibling: one description, one picture shown per theme (css).
+    const lightShot = shot('light'); lightShot.alt = shot('dark').alt;
+    return h('section', { className: 'cs-enroll', id: 'cs-add-machine', 'aria-labelledby': 'cs-enroll-title' },
+        h('h3', { className: 'cs-enroll-title', id: 'cs-enroll-title', text: 'Add a machine' }),
+        h('div', { className: 'cs-enroll-body' },
+            h('div', { className: 'cs-enroll-steps' },
+                h('ol', {},
+                    h('li', {}, h('strong', { text: 'Install Coral' }), ' on the computer you want to add: ', h('a', { href: DOWNLOAD_URL, target: '_blank', rel: 'noopener noreferrer', text: 'coralhub.dev/coral.html#download' })),
+                    h('li', {}, 'Open Coral on that computer and press ', h('strong', { text: 'Connect to Coral Hub' }), ' (Settings › General › About, or the Coral Hub card on the home screen).'),
+                    h('li', {}, 'Choose what Coral Hub may do on that computer, then press ', h('strong', { text: 'Connect' }), '. Coral shows a short code.'),
+                    h('li', {}, 'Enter the code here, check the computer\'s details on the next page and approve.')),
+                h('form', { className: 'cs-enroll-form', onsubmit: e => { e.preventDefault(); go(); } }, input,
+                    h('button', { type: 'submit', className: 'btn btn-primary', text: 'Continue' }))),
+            h('div', { className: 'cs-shots' }, shot('dark'), lightShot)));
 }
 
 /** The DOM id of a server's row, for deep links. */
@@ -337,23 +431,26 @@ function render() {
     if (!host) return;
     // Re-rendering replaces every row: keep focus on the same control where we can.
     const active = document.activeElement && host.contains(document.activeElement) ? document.activeElement : null;
-    const keep = active && active.closest('.cs-row') ? { row: active.closest('.cs-row').id, text: active.textContent } : null;
+    const keepRow = active && active.closest('.cs-row, .cs-detail');
+    const keep = keepRow ? { row: keepRow.id, text: active.textContent, cls: active.className, tag: active.tagName } : null;
     syncServersBar(servers, 'machine', render); // the search box, from six machines up
-    const shown = servers.filter(serverVisible);
-    const list = shown.length
-        ? h('ul', { className: 'cs-list', 'aria-label': 'Your servers' }, shown.map(row))
+    const shown = sorted(servers.filter(serverVisible));
+    const table = shown.length
+        ? h('table', { className: 'cs-table', role: 'table', 'aria-label': 'Your servers' },
+            h('thead', { role: 'rowgroup' }, headerRow()),
+            h('tbody', { role: 'rowgroup' }, shown.flatMap(rows)))
         : h('p', { className: 'servers-empty', text: loadError ? '' : serversFiltered() ? 'No machines match this search.' : 'No servers connected yet.' });
     // replaceChildren() would render a null as the text "null": leave it out.
     const restoreFocus = rememberFocus(host); // a control the redraw replaced gets focus back (#4882)
     host.replaceChildren(...[
         h('p', { className: 'servers-intro', text: 'Machines connected to your account. Each one connects out to this hub; no inbound port is needed. What Coral Hub may do on a machine is what you allowed when you connected it; you can limit it further here.' }),
+        enrollBlock(),
         loadError ? h('div', { className: 'servers-form-error', role: 'alert', text: loadError }) : null,
-        list,
-        enrollBlock()].filter(Boolean));
+        table].filter(Boolean));
     restoreFocus();
     if (keep) {
         const r = document.getElementById(keep.row);
-        const again = r && [...r.querySelectorAll('button, select, input')].find(el => el.textContent === keep.text);
-        if (again) again.focus(); else if (r) r.focus();
+        const again = r && [...r.querySelectorAll('button, select, input')].find(el => el.textContent === keep.text && el.className === keep.cls);
+        if (again) again.focus(); else if (r) (r.querySelector('.cs-toggle') || r).focus();
     }
 }

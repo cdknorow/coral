@@ -78,7 +78,7 @@ const TIP = 'Coral on this machine is restarting into an update. It reconnects o
         await waitFor(`window.__calls.length >= 2`, 'the reads', 4000); await ev(`new Promise(r => setTimeout(r, 60))`);
         const calls1 = (await ev('window.__calls.slice().sort()'));
         check(`only the online machines are read, once each (${JSON.stringify(calls1)})`, JSON.stringify(calls1) === '["on1","on2"]');
-        check(`the badge is on the one the hub flagged (${JSON.stringify(await badges())})`, JSON.stringify(await badges()) === JSON.stringify([{ id: 'on1', badge: 'Updating' }, { id: 'off1', badge: null }, { id: 'on2', badge: null }]));
+        check(`the badge is on the one the hub flagged (${JSON.stringify(await badges())})`, JSON.stringify(await badges()) === JSON.stringify([{ id: 'off1', badge: null }, { id: 'on1', badge: 'Updating' }, { id: 'on2', badge: null }]) /* the table is sorted by name */);
         // the list polls every 5 s: a machine that comes back online is read, the others are not read again
         await ev(`window.__servers = ${JSON.stringify([srv('on1', 'Online one', true), srv('off1', 'Offline one', true), srv('on2', 'Online two', true)])}; true`);
         await waitFor(`JSON.stringify(window.__calls.slice().sort()) === '["off1","on1","on2"]' && ((document.querySelector('#rb-host .cs-row[data-id="off1"] .server-relaunch-badge') || {}).textContent === 'Updating')`, 'the poll to read the machine that came back online and its badge to show', 9000); // the list polls every 5 s: wait for the read, not for 5.6 s

@@ -296,8 +296,8 @@ const CLOUD_PRELOAD = `(() => {
         await ev(`window.__wsInject(JSON.stringify({ type: 'hub_read_only', required: 'interact', hub_mode: 'view' })); window.__sessBefore = T.state.currentSession; true`);
         await waitFor(`!!(T.state.currentSession.hubReadOnly && T.state.currentSession.hubReadOnly.fromFrame)`, 'the frame lock', 3000);
         await ev(`window.switchNavTab('servers'); true`);
-        await waitFor(`!!document.querySelector('#server-row-m6 .cs-follow')`, 'the Follow this computer button for m6', 5000);
-        await ev(`document.querySelector('#server-row-m6 .cs-follow').click(); true`);
+        await waitFor(`!!document.querySelector('#server-row-m6-detail .cs-follow')`, 'the Follow this computer button for m6', 5000);
+        await ev(`document.querySelector('#server-row-m6-detail .cs-follow').click(); true`);
         await waitFor(`T.state.currentSession.hubReadOnly === null`, 'the lock clearing after following the computer', 5000);
         const a = await ev(`({ same: T.state.currentSession === window.__sessBefore, chipHidden: document.getElementById('hub-readonly-chip').hidden, patches: window.__qaServers.patches })`);
         assert.ok(a.same, 'the same session object: no reselect');

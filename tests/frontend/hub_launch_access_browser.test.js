@@ -92,13 +92,13 @@ const BASE = require('./test_base').BASE;
         assert.equal(t2.length, 1, JSON.stringify(t2)); assert.match(t2[0], /^Blocked: /);
         assert.equal(launched, 1);
 
-        console.log('4. The Add a machine steps lead with the install step');
+        console.log('4. The Add a machine steps lead with the install step (the download page)');
         await ev(`window.switchNavTab('servers'); true`);
         await waitFor(`!!document.querySelector('.cs-enroll ol li')`, 'the steps', { timeout: 8000 });
         const steps = await ev(`[...document.querySelectorAll('.cs-enroll ol li')].map(l => l.textContent)`);
-        assert.match(steps[0], /^Install Coral.*brew install --cask cdknorow\/coral\/coral.*github\.com\/subgentic\/coral\/releases/);
+        assert.match(steps[0], /^Install Coral on the computer you want to add: coralhub\.dev\/coral\.html#download$/);
         assert.match(steps[1], /Connect to Coral Hub/); assert.equal(steps.length, 4);
-        assert.equal(await ev(`document.querySelector('.cs-enroll ol li a').href`), 'https://github.com/subgentic/coral/releases');
+        assert.equal(await ev(`document.querySelector('.cs-enroll ol li a').href`), 'https://coralhub.dev/coral.html#download', 'the download page, no brew command and no GitHub link');
 
         console.log('5. The install link reads in the accent colour (4.5:1 on the page), on its own line, and is a 44 px target on a phone');
         const contrast = await ev(`(() => { const lum = c => { const [r, g, b] = c.match(/[0-9.]+/g).slice(0, 3).map(Number).map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };

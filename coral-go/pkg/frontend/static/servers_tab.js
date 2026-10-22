@@ -55,10 +55,11 @@ export async function leaveServersTab() {
     else (await importOnce('./servers.js')).hideServersModal();
 }
 
-function focusRow(focusId) {
+async function focusRow(focusId) {
     const heading = document.getElementById('servers-tab-title');
     if (!focusId) { if (heading) heading.focus(); return; }
     const id = 'server-row-' + String(focusId).replace(/[^A-Za-z0-9_-]/g, '_');
+    if (isCloud()) (await importOnce('./cloud_servers.js')).expandServer(focusId); // a deep link opens the machine's details
     const row = document.getElementById(id) || document.getElementById('server-row-' + focusId);
     if (!row) { if (heading) heading.focus(); return; }
     row.scrollIntoView({ block: 'center' });

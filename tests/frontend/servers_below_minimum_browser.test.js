@@ -66,7 +66,7 @@ const CLOUD_PRELOAD = `(() => {
         console.log('1. The Servers list: the hint beside the machines that are below, nowhere else');
         await ev(`document.getElementById('nav-tab-servers').click(); true`);
         await waitFor(`document.querySelectorAll('#servers-view .cs-row').length === ${SERVERS.length}`, 'the server rows', 6000);
-        const hints = () => ev(`Object.fromEntries([...document.querySelectorAll('#servers-view .cs-row')].map(r => [r.dataset.id, [...r.querySelectorAll('.server-below-minimum')].map(n => ({ text: n.textContent, kids: n.children.length, links: n.querySelectorAll('a, img').length }))]))`);
+        const hints = () => ev(`Object.fromEntries([...document.querySelectorAll('#servers-view .cs-row')].map(r => [r.dataset.id, [...document.getElementById(r.id + '-detail').querySelectorAll('.server-below-minimum')].map(n => ({ text: n.textContent, kids: n.children.length, links: n.querySelectorAll('a, img').length }))]))`);
         let h = await hints();
         assert.deepEqual(h.m1, [{ text: 'Update Coral to 1.4.61', kids: 0, links: 0 }], 'm1: below, with its minimum');
         assert.equal(h.m2.length, 1, 'm2: one hint');

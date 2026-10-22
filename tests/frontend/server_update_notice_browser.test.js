@@ -10,7 +10,7 @@ const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
 
 const BASE = require('./test_base').BASE;
-const RELEASES = 'https://github.com/subgentic/coral/releases/latest';
+const RELEASES = 'https://coralhub.dev/coral.html#download'; // the download page, not GitHub's releases (#5927)
 const HOSTILE_V = '<img src=x onerror="window.__pwned=1">';
 const HOSTILE_L = '"><script>window.__pwned=2</script><a href="javascript:window.__pwned=3">';
 
@@ -118,14 +118,16 @@ const NONE = ['srv-current', 'srv-unknown', 'srv-odd'];
             await cs.renderCloudServersInto(document.getElementById('servers-tab-body'));
             await new Promise(r => setTimeout(r, 200));
             const out = {};
-            for (const li of document.querySelectorAll('#servers-tab-body .cs-row')) {
+            for (const main of document.querySelectorAll('#servers-tab-body .cs-row')) {
+                const li = document.getElementById(main.id + '-detail'); // the notice is in the row's details
+                li.dataset.id = main.dataset.id;
                 const note = li.querySelector('.cs-update');
                 out[li.dataset.id] = note ? {
                     cls: note.className, text: note.querySelector('span').textContent.trim(),
                     links: [...note.querySelectorAll('a')].map(a => ({ href: a.getAttribute('href'), target: a.getAttribute('target'), rel: a.getAttribute('rel'), text: a.textContent })),
                     foreign: li.querySelectorAll('img, script, iframe').length,
                 } : null;
-                out[li.dataset.id + ':disabled'] = [...li.querySelectorAll('button, select')].filter(b => b.disabled).length;
+                out[li.dataset.id + ':disabled'] = [...main.querySelectorAll('button, select'), ...li.querySelectorAll('button, select')].filter(b => b.disabled).length;
             }
             cs.hideCloudServers();
             window.fetch = real;
@@ -136,7 +138,7 @@ const NONE = ['srv-current', 'srv-unknown', 'srv-odd'];
             assert.ok(n, `dialog: ${id} has an update note`);
             assert.equal(n.cls, `cs-note cs-update cs-update-${want.level}`);
             assert.equal(n.text, want.text, `dialog: ${id} text`);
-            assert.deepEqual(n.links, [{ href: RELEASES, target: '_blank', rel: 'noopener noreferrer', text: 'Get the latest release' }], `dialog: ${id} link`);
+            assert.deepEqual(n.links, [{ href: RELEASES, target: '_blank', rel: 'noopener noreferrer', text: 'Download the latest Coral' }], `dialog: ${id} link`);
             assert.equal(n.foreign, 0, `dialog: ${id} hostile text inert`);
         }
         for (const id of NONE) assert.equal(dialog[id], null, `dialog: no note for ${id}`);

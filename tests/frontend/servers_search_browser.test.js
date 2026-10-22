@@ -36,7 +36,7 @@ const hubRows = n => remotes(n).map(s => ({ id: s.id, label: s.label, online: s.
     });
     const typeInto = (text) => ev(`(() => { const e = document.getElementById('sb-search'); e.focus(); e.value = ${JSON.stringify(text)}; e.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
     const view = (rowSel) => ev(`(() => { const bar = document.getElementById('servers-bar'); const rows = [...document.querySelectorAll(${JSON.stringify(rowSel)})].map(r => r.id);
-        const list = document.querySelector('#servers-view .servers-list, #servers-view .cs-list'); const add = document.querySelector('#servers-view [data-action="add"]');
+        const list = document.querySelector('#servers-view .servers-list, #servers-view .cs-table'); const add = document.querySelector('#servers-view [data-action="add"]');
         return { shown: !!bar && !bar.hidden && bar.getClientRects().length > 0, hasBox: !!document.getElementById('sb-search'), count: (bar.querySelector('.list-bar-count') || {}).textContent || '', rows,
             empty: (document.querySelector('#servers-view .servers-empty') || {}).textContent || null, above: !!(list && bar.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING), filtersBtn: !!bar.querySelector('.list-bar-filter-btn'), chips: bar.querySelectorAll('.list-bar-chip').length,
             addVisible: !!add && add.getClientRects().length > 0, over: document.documentElement.scrollWidth - document.documentElement.clientWidth,

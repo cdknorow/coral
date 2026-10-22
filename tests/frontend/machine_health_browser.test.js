@@ -202,7 +202,7 @@ const HEALTH = {
             if (d && /busy/.test(d.className)) return true; window.__injectServers(); return false; })()`, 'm1 health', 8000);
         const rows = await ev(`[...document.querySelectorAll('#servers-view .cs-row')].map(r => {
             const dot = r.querySelector('.cs-title .machine-health-dot');
-            const c = r.querySelector('.machine-health-card');
+            const c = document.getElementById(r.id + '-detail').querySelector('.machine-health-card'); // the card is in the row's details
             return { id: r.dataset.id, label: dot && dot.getAttribute('aria-label'), dot: dot && dot.className,
                 card: c ? c.querySelector('.machine-health-status').textContent : null,
                 load: c && [...c.querySelectorAll('dt')].find(d => d.textContent === 'Load per core')?.nextElementSibling.textContent || null };

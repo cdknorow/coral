@@ -70,7 +70,7 @@ const { pathToFileURL } = require('url');
     }
     // A version, with or without v, with a prerelease: shown.
     for (const good of ['1.4.70', 'v1.4.70', '1.4.71-rc1', '2.0.0-beta.2']) assert.strictEqual(m.updateNotice({ update: 'available', latest_coral: good }).text, 'Update available: ' + good, good);
-    assert.ok(ub.includes('href="https://github.com/subgentic/coral/releases/latest"') && ub.includes('rel="noopener noreferrer"') && ub.includes('target="_blank"'));
+    assert.ok(ub.includes('href="https://coralhub.dev/coral.html#download"') && ub.includes('rel="noopener noreferrer"') && ub.includes('target="_blank"'));
     assert.strictEqual((ub.match(/href=/g) || []).length, 1, 'the only link is the constant one');
     const prevServers = state.servers;
     state.servers = [{ id: 'ws1', label: 'Work', status: 'online', update: 'available', latest_coral: '1.4.4' }, { id: 'ws2', label: 'Cloud', status: 'online', update: 'current' }];
