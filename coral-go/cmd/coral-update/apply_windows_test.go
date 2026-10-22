@@ -51,7 +51,7 @@ func TestRunApplyOnWindowsReachesTheMSIApply(t *testing.T) {
 
 	// A click in Settings: #82's one-time marker, which runApply's gate reads before the apply.
 	dir := t.TempDir()
-	require.NoError(t, trigger.WriteMarker(dir, "1.5.0", time.Now()))
+	require.NoError(t, trigger.WriteMarker(dir, "1.5.0", "", time.Now()))
 	var out bytes.Buffer
 	require.Equal(t, 0, runApply(context.Background(), &out, dir, nil, verify.TrustSource("test")))
 	var got map[string]any
@@ -60,4 +60,71 @@ func TestRunApplyOnWindowsReachesTheMSIApply(t *testing.T) {
 	assert.Equal(t, "1.5.0", clickedVersion, "with the clicked version")
 	assert.Equal(t, apply.ResultUnsupported, got["result"])
 	assert.Equal(t, "no_registered_product", got["failed_stage"])
+}
+
+// portableMSI is a Coral registered per machine whose folder the apply refuses (a portable copy beside a registered product, or one moved).
+type portableMSI struct {
+	apply.MSI
+	why string
+}
+
+func (m portableMSI) Install() (string, error)           { return `C:\Users\x\coral`, nil }
+func (m portableMSI) Unsupported(string) string          { return m.why }
+func (m portableMSI) RegisteredProduct() (string, error) { return "", errors.New("none") }
+
+// #5946: the Windows "Install update" quit the server first, so the apply's early answers start Coral again from the server's own folder
+// (the marker's): no registered product, a portable or unreadable install. The results the MSI apply answers after it has Coral's folder start the
+// old one itself (apply's own tests).
+func TestRunApplyThatInstallsNothingStartsCoralFromTheMarkersFolder(t *testing.T) {
+	for name, tc := range map[string]struct {
+		msi   apply.MSI
+		stage string
+	}{
+		"no registered product": {noProductMSI{asked: new(bool)}, "no_registered_product"},
+		"a portable install":    {portableMSI{why: "portable_install"}, "portable_install"},
+		"an unreadable install": {portableMSI{why: "unreadable_install"}, "unreadable_install"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			started := fakeStart(t, nil)
+			old := newWindowsMSI
+			newWindowsMSI = func(string) apply.MSI { return tc.msi }
+			t.Cleanup(func() { newWindowsMSI = old })
+
+			dir, install := t.TempDir(), installFolder(t)
+			require.NoError(t, trigger.WriteMarker(dir, "1.5.0", install, time.Now()))
+			var out bytes.Buffer
+			require.Equal(t, 0, runApply(context.Background(), &out, dir, nil, verify.TrustSource("test")))
+			var got map[string]any
+			require.NoError(t, json.Unmarshal(out.Bytes(), &got))
+			assert.Equal(t, apply.ResultUnsupported, got["result"])
+			assert.Equal(t, tc.stage, got["failed_stage"])
+			assert.Equal(t, []string{install}, *started, "Coral is started again from the server's folder")
+			assert.NotContains(t, got, "restart_failed")
+		})
+	}
+	t.Run("a start that fails is said in the answer", func(t *testing.T) {
+		fakeStart(t, errors.New("no"))
+		old := newWindowsMSI
+		newWindowsMSI = func(string) apply.MSI { return noProductMSI{asked: new(bool)} }
+		t.Cleanup(func() { newWindowsMSI = old })
+		dir := t.TempDir()
+		require.NoError(t, trigger.WriteMarker(dir, "1.5.0", installFolder(t), time.Now()))
+		var out bytes.Buffer
+		require.Equal(t, 0, runApply(context.Background(), &out, dir, nil, verify.TrustSource("test")))
+		var got map[string]any
+		require.NoError(t, json.Unmarshal(out.Bytes(), &got))
+		assert.Equal(t, true, got["restart_failed"])
+	})
+}
+
+// The status says whether the apply can update this install, for the server to ask before it quits.
+func TestStatusSaysWhetherThisInstallCanBeUpdated(t *testing.T) {
+	old := newWindowsMSI
+	t.Cleanup(func() { newWindowsMSI = old })
+	newWindowsMSI = func(string) apply.MSI { return noProductMSI{asked: new(bool)} }
+	assert.Equal(t, "no_registered_product", installSupport())
+	newWindowsMSI = func(string) apply.MSI { return portableMSI{why: "portable_install"} }
+	assert.Equal(t, "portable_install", installSupport())
+	newWindowsMSI = func(string) apply.MSI { return portableMSI{why: ""} }
+	assert.Equal(t, "supported", installSupport())
 }

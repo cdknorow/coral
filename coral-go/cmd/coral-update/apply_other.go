@@ -15,3 +15,6 @@ import (
 func runApplyWindows(context.Context, string, root.TrustedMaterial, verify.Pins) apply.Result {
 	return apply.Result{Result: apply.ResultUnsupported, FailedStage: "not_windows"}
 }
+
+// installSupport is Windows' (apply_windows.go): elsewhere the status has no such field.
+func installSupport() string { return "" }

@@ -29,6 +29,7 @@ type statusOut struct {
 	Feature      string `json:"feature"`              // on or off
 	OffReason    string `json:"off_reason,omitempty"` // build_tier, no_version or env_switch
 	ApplyEnabled bool   `json:"apply_enabled"`        // the apply's off switch (#5325)
+	Install      string `json:"install,omitempty"`    // Windows: "supported", or why this Coral can't be updated by the apply (no_registered_product, portable_install, unreadable_install)
 	Installed    string `json:"installed,omitempty"`  // the version this program was built as
 	StateFile    string `json:"state_file"`           // present, missing or unreadable
 	Accepted     *struct {
@@ -137,7 +138,7 @@ func timeText(s string) string {
 }
 
 func collectStatus(getenv func(string) string, dataDir string, now time.Time) statusOut {
-	out := statusOut{Feature: "on", ApplyEnabled: applyEnabled, Installed: config.Version}
+	out := statusOut{Feature: "on", ApplyEnabled: applyEnabled, Installed: config.Version, Install: installSupport()}
 	switch {
 	case !config.TierChecksForUpdates:
 		out.Feature, out.OffReason = "off", "build_tier"

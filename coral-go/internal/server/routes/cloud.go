@@ -170,11 +170,12 @@ type CloudHandler struct {
 	// QuitForUpdate, set by the server where a tray or the desktop app supervises it, makes this process quit with UpdateQuitExitCode after the answer is
 	// written, so the updater (started just before) has Coral to itself and the supervisor does not start the server again (#166).
 	QuitForUpdate func() error
-	// stagedUpdate, launchUpdater and installing belong to InstallUpdate (system_update_install.go); the two funcs are nil in production (the staged
-	// folder and the Windows updater launch are used) and are set by a test.
-	stagedUpdate  func(context.Context) (string, error)
-	launchUpdater func(context.Context) error
-	installing    int32
+	// stagedUpdate, launchUpdater and installing belong to InstallUpdate (system_update_install.go); the three funcs are nil in production (the staged
+	// folder, the updater's own answer to "will you install?" and the Windows updater launch are used) and are set by a test.
+	stagedUpdate     func(context.Context) (string, error)
+	preflightUpdater func(context.Context) error
+	launchUpdater    func(context.Context) error
+	installing       int32
 	// The terminal backend (#3634), set by the server: the one this run uses, and whether
 	// --backend forced it.
 	BackendRunning string

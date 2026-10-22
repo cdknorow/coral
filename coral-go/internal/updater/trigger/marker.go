@@ -32,6 +32,9 @@ type Marker struct {
 	Nonce    string `json:"nonce"`
 	Version  string `json:"version"`
 	IssuedAt int64  `json:"issued_at"` // unix seconds
+	// InstallDir is the folder of the server that wrote the marker (the program that quits for the update). When the updater installs nothing
+	// (the apply is off, the install is portable or not registered), it starts Coral again from here (#5946): the server has already quit.
+	InstallDir string `json:"install_dir,omitempty"`
 }
 
 // Errors Consume answers with (the updater reports them as a fixed word, never the path).
@@ -44,7 +47,7 @@ var (
 func markerPath(dataDir string) string { return filepath.Join(dataDir, UpdatesDir, markerFile) }
 
 // WriteMarker writes the marker, replacing any older one, in the private updates folder (a plain file only this user can read or write).
-func WriteMarker(dataDir, version string, now time.Time) error {
+func WriteMarker(dataDir, version, installDir string, now time.Time) error {
 	dir := filepath.Join(dataDir, UpdatesDir)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
@@ -56,7 +59,7 @@ func WriteMarker(dataDir, version string, now time.Time) error {
 	if _, err := rand.Read(n); err != nil {
 		return err
 	}
-	b, err := json.Marshal(Marker{Nonce: hex.EncodeToString(n), Version: version, IssuedAt: now.Unix()})
+	b, err := json.Marshal(Marker{Nonce: hex.EncodeToString(n), Version: version, IssuedAt: now.Unix(), InstallDir: installDir})
 	if err != nil {
 		return err
 	}
@@ -118,6 +121,9 @@ func Consume(dataDir string, now time.Time) (Marker, error) {
 	var m Marker
 	if err := json.Unmarshal(b, &m); err != nil || len(m.Nonce) != 32 || m.Version == "" || m.IssuedAt == 0 {
 		return Marker{}, ErrMarkerInvalid
+	}
+	if m.InstallDir != "" && (len(m.InstallDir) > 1024 || !filepath.IsAbs(m.InstallDir)) {
+		return Marker{}, ErrMarkerInvalid // a folder that is not an absolute path is no folder to start Coral from
 	}
 	age := now.Sub(time.Unix(m.IssuedAt, 0))
 	if age > MarkerTTL || age < -time.Minute {

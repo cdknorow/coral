@@ -3,6 +3,7 @@
 package trigger
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"errors"
@@ -70,7 +71,7 @@ func Launch(ctx context.Context, dataDir, version string) error {
 	// the file between the check and CreateProcess.
 	defer hold.Close()
 	// The marker goes down last, so a failure above leaves none behind; it is for this start only and is removed if the start fails.
-	if err := WriteMarker(dataDir, version, time.Now()); err != nil {
+	if err := WriteMarker(dataDir, version, installDir, time.Now()); err != nil {
 		return fmt.Errorf("the install marker: %w", err)
 	}
 	if err := startDetached(copyPath, dir); err != nil {
@@ -225,4 +226,45 @@ func updaterEnv(environ []string) []string {
 		}
 	}
 	return out
+}
+
+// statusTimeout bounds the updater's status: it reads local files and asks Windows Installer, no network.
+const statusTimeout = 20 * time.Second
+
+func init() { runStatus = runInstalledStatus }
+
+// runInstalledStatus runs "coral-update status --json" from the installed program beside the server (read-only: local files and Windows Installer).
+func runInstalledStatus(ctx context.Context, dataDir string) ([]byte, error) {
+	installDir, err := updaterInstallDir()
+	if err != nil {
+		return nil, fmt.Errorf("where Coral is installed: %w", err)
+	}
+	ctx, cancel := context.WithTimeout(ctx, statusTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, filepath.Join(installDir, updaterExe), "status", "--json")
+	cmd.Env = updaterEnv(os.Environ())
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	var out bytes.Buffer
+	cmd.Stdout = &limitedWriter{w: &out, n: maxStatusBytes + 1}
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("running the updater's status: %w", err)
+	}
+	return out.Bytes(), nil
+}
+
+// limitedWriter keeps at most n bytes and discards the rest, so a runaway answer cannot grow without bound.
+type limitedWriter struct {
+	w *bytes.Buffer
+	n int
+}
+
+func (l *limitedWriter) Write(p []byte) (int, error) {
+	if room := l.n - l.w.Len(); room > 0 {
+		if len(p) > room {
+			l.w.Write(p[:room])
+		} else {
+			l.w.Write(p)
+		}
+	}
+	return len(p), nil
 }

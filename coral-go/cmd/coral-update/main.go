@@ -94,11 +94,15 @@ func run(args []string, getenv func(string) string, stdout io.Writer) int {
 	}
 	// Only a prod release build updates itself: a dev, beta or dropboxers build, a build with no version, and an install turned off say so.
 	if !config.TierChecksForUpdates || config.Version == "" || getenv("CORAL_AUTO_UPDATE") == "off" {
-		print(stdout, output{Result: "off"})
+		out := output{Result: "off"}
+		if args[0] == "apply" { // the server quit for this run if a click sent it: Coral is started again
+			out.RestartFailed = restartAfterNothingFailed()
+		}
+		print(stdout, out)
 		return 0
 	}
 	if args[0] == "apply" && !applyEnabled {
-		print(stdout, output{Result: "not_enabled", Installed: config.Version})
+		print(stdout, output{Result: "not_enabled", Installed: config.Version, RestartFailed: restartAfterNothingFailed()})
 		return 0
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), checkTimeout)
