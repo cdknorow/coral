@@ -14,7 +14,7 @@ export const CLI_INSTALL_INSTRUCTIONS = {
     antigravity: AGY,
     gemini: AGY,
     codex: { name: 'codex', cmd: 'npm install -g @openai/codex', url: 'https://github.com/openai/codex' },
-    pi: { name: 'pi', cmd: 'npm install -g @mariozechner/pi-coding-agent', url: 'https://pi.dev' },
+    pi: { name: 'pi', cmd: 'npm install -g --ignore-scripts @earendil-works/pi-coding-agent', url: 'https://pi.dev' },
 };
 
 export function _checkAgentCLI(agentType, warning = document.getElementById('cli-check-warning'), force = false) {

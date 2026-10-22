@@ -345,7 +345,7 @@ var agentCLIs = map[string]CLIInfo{
 	at.Antigravity: {Binary: "agy", InstallCommand: agyInstallCommand, InstallURL: agyInstallURL, InstallNote: agyInstallNote},
 	at.Gemini:      {Binary: "agy", InstallCommand: agyInstallCommand, InstallURL: agyInstallURL, InstallNote: agyInstallNote},
 	at.Codex:       {Binary: "codex", InstallCommand: "npm install -g @openai/codex", InstallURL: "https://github.com/openai/codex"},
-	at.Pi:          {Binary: "pi", InstallCommand: "npm install -g @mariozechner/pi-coding-agent", InstallURL: "https://pi.dev"},
+	at.Pi:          {Binary: "pi", InstallCommand: "npm install -g --ignore-scripts @earendil-works/pi-coding-agent", InstallURL: "https://pi.dev"},
 }
 
 // GetCLIInfo returns CLI info for an agent type, or nil if unknown.

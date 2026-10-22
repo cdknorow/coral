@@ -38,6 +38,25 @@ func TestEveryCLIHasAnInstallCommandAndOfficialPage(t *testing.T) {
 	}
 }
 
+// #5885: each command was checked against the vendor's own install page (Claude Code's setup page, Codex's README, pi.dev, Antigravity's download page). pi moved to a new npm
+// scope: the old package is deprecated on npm ("please use @earendil-works/pi-coding-agent"), so a person who ran it was told to install something that is no longer kept.
+// The dashboard's own copy of the table (cli_check.js) must say the same as the server's.
+func TestInstallCommandsAreThoseOfTheVendorsPagesAndBothTablesAgree(t *testing.T) {
+	assert.Equal(t, "npm install -g --ignore-scripts @earendil-works/pi-coding-agent", agentCLIs[at.Pi].InstallCommand)
+	assert.Equal(t, "npm install -g @anthropic-ai/claude-code", agentCLIs[at.Claude].InstallCommand)
+	assert.Equal(t, "npm install -g @openai/codex", agentCLIs[at.Codex].InstallCommand)
+	raw, err := os.ReadFile(filepath.Join("..", "..", "pkg", "frontend", "static", "cli_check.js"))
+	require.NoError(t, err)
+	js := string(raw)
+	for typ, info := range agentCLIs {
+		assert.Contains(t, js, "'"+info.InstallCommand+"'", typ+": the dashboard's table says what the server's does")
+	}
+	assert.NotContains(t, js, "mariozechner")
+	for typ, info := range agentCLIs {
+		assert.NotContains(t, info.InstallCommand, "mariozechner", typ)
+	}
+}
+
 // The old Antigravity address (/install.sh, which is "not found" now) must not come back anywhere Coral shows or documents it.
 func TestOldAntigravityInstallAddressIsGone(t *testing.T) {
 	old := "antigravity.google/" + "install.sh"
