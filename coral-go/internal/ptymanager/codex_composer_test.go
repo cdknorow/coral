@@ -273,3 +273,61 @@ func TestAMissingCodexBoxIsRedrawnAndTheSendGoes(t *testing.T) {
 	assert.Equal(t, 1, term.repaints, "asked to redraw once")
 	assert.Equal(t, []string{"[Task #5 available] Run 'coral-board task claim 5'."}, term.submitted)
 }
+
+// #262 (found by #257's live run): when the rendered screen loses Codex's composer marker, the lowest "›" line left is a past
+// prompt with Codex's reply under it. It is not the box: the box is unknown (so the gate holds and has Codex redraw), never a
+// draft that holds every send. A real composer under the same history is still read.
+func TestACodexHistoryLineIsNotTheBox(t *testing.T) {
+	screen := codexCapture(t, "codex_history_echo.txt")
+	_, ok := inputBoxText(screen)
+	assert.False(t, ok, "a past prompt with Codex's reply below it is history, not the box")
+
+	withBox := strings.TrimRight(screen, "\n") + "\n\n› Ask Codex to do anything\n\n  ? for shortcuts\n"
+	box, ok := inputBoxText(withBox)
+	require.True(t, ok)
+	assert.Equal(t, boxEmpty, boxTextState(box, "[Task #9 available]", false), "the composer under the history: empty")
+}
+
+// historyTerm shows the live capture (the composer's marker lost, a past prompt above) until it is asked to redraw, then Codex's
+// idle box.
+type historyTerm struct {
+	codexTerm
+	screen   string
+	repaints int
+}
+
+func (h *historyTerm) AgentScreen(ctx context.Context, name, agentType, sessionID string) (string, error) {
+	h.mu.Lock()
+	s := h.screen
+	h.mu.Unlock()
+	if s != "" {
+		return s, nil
+	}
+	return h.codexTerm.AgentScreen(ctx, name, agentType, sessionID)
+}
+
+func (h *historyTerm) RepaintSession(context.Context, string, string, string) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.repaints++
+	h.screen = ""
+	return nil
+}
+
+// Through the gate: the send is held (not as a draft), Codex is asked to redraw once, and the send goes.
+func TestASendBehindACodexHistoryLineGoesAfterARedraw(t *testing.T) {
+	dialogGate(t, time.Hour)
+	term := &historyTerm{screen: codexCapture(t, "codex_history_echo.txt")}
+	name := "codex-composer-history"
+	t.Cleanup(func() { DropHeld(name, "test") })
+	in := codexInput(&term.codexTerm, name, "", "You have 1 unread message on the message board. Run 'coral-board read' to see them.", false)
+	in.Term = term
+	d, err := DeliverAutomated(context.Background(), in)
+	require.NoError(t, err)
+	assert.Equal(t, Held, d)
+	waitFor(t, "delivered after the redraw", func() bool { return HeldCount(name) == 0 })
+	term.mu.Lock()
+	defer term.mu.Unlock()
+	assert.Equal(t, 1, term.repaints)
+	assert.Equal(t, []string{"You have 1 unread message on the message board. Run 'coral-board read' to see them."}, term.submitted)
+}
