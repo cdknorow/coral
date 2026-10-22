@@ -228,6 +228,9 @@ func winPathsMode(args []string, namedOnly bool) []string {
 			}
 			continue
 		}
+		if a == "" {
+			continue // an empty argument ('' or "") names nothing
+		}
 		if a[0] == '/' && winSwitches[strings.ToLower(a[1:])] { // cmd's /s /q /f /y and robocopy's /MIR; /etc is a path
 			continue
 		}
