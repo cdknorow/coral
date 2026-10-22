@@ -2,14 +2,39 @@
 //
 // The shapes (shapes_test.go) are coral-hub's, from their harness (artifact coral://artifacts/64a76d960d88d1c868864f5ef5d1ef758e2e4963f82863b78cc13697a5ad9f62,
 // the coral-hub team's code, used with their agreement); only the package name and this comment changed. harness_test.go is Coral's: it
-// draws 2000 fresh random samples per shape (the hub's own sample size) and requires zero that survive.
+// draws 2000 random samples per shape (the hub's own sample size) and requires zero that survive. The samples are SEEDED (#5943): the same seed draws the same secrets, so a miss can be run
+// again; HUB_HARNESS_SEED picks another seed, HUB_HARNESS_SAMPLES another sample count (the helpers below were crypto/rand, the only other change to the hub's code).
 package hubharness
 
 import (
-	"crypto/rand"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/hex"
-	"math/big"
+	"math/rand/v2"
+	"os"
+	"strconv"
+)
+
+// defaultSeed is the seed of a plain run: a fixed number, so the harness draws the same secrets every time and a failure can be run again (#5943).
+const defaultSeed = 5943
+
+// harnessSeed is HUB_HARNESS_SEED (a number) or defaultSeed.
+func harnessSeed() uint64 {
+	if v := os.Getenv("HUB_HARNESS_SEED"); v != "" {
+		n, err := strconv.ParseUint(v, 0, 64)
+		must(err)
+		return n
+	}
+	return defaultSeed
+}
+
+var (
+	chacha = func() *rand.ChaCha8 {
+		var seed [32]byte
+		binary.LittleEndian.PutUint64(seed[:], harnessSeed())
+		return rand.NewChaCha8(seed)
+	}()
+	rng = rand.New(chacha)
 )
 
 type T struct{}
@@ -31,9 +56,7 @@ func randFrom(t *T, set string, n int) string {
 	t.Helper()
 	out := make([]byte, n)
 	for i := range out {
-		j, err := rand.Int(rand.Reader, big.NewInt(int64(len(set))))
-		must(err)
-		out[i] = set[j.Int64()]
+		out[i] = set[rng.IntN(len(set))]
 	}
 	return string(out)
 }
@@ -41,7 +64,7 @@ func randFrom(t *T, set string, n int) string {
 func randHexStr(t *T, n int) string {
 	t.Helper()
 	b := make([]byte, (n+1)/2)
-	_, err := rand.Read(b)
+	_, err := chacha.Read(b)
 	must(err)
 	return hex.EncodeToString(b)[:n]
 }
@@ -49,7 +72,7 @@ func randHexStr(t *T, n int) string {
 func randB64(t *T, nbytes int) string {
 	t.Helper()
 	b := make([]byte, nbytes)
-	_, err := rand.Read(b)
+	_, err := chacha.Read(b)
 	must(err)
 	return base64.StdEncoding.EncodeToString(b)
 }

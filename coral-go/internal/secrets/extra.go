@@ -59,6 +59,11 @@ var extraRules = []extraRule{
 	// 10-character key after X-Service-Key was shown). The names: the ones listed, and any X- header whose last word is key, token or secret (X-Service-Key, X-Custom-Auth-Token). Only these header
 	// names: ordinary text has none (the repository's own docs and sources hold two, both test secrets).
 	{re: regexp.MustCompile(`(?i)\b(?:x-?api-?key|api-?key|x-?api-?token|x-?auth-?token|x-?access-?token|x-?auth-?key|x-?secret(?:-?key)?|x-?api-?secret|private-?token|x-(?:[a-z0-9]+-)*(?:key|token|secret))\b["']?[ \t]*:[ \t]*["']?([A-Za-z0-9._~+/=-]{8,})`), group: 1, ok: headerKeyValueOK},
+	// A Google API key, AIza + 35 letters, digits, "_" or "-" (#5943). betterleaks' gcp-api-key drops a finding whose entropy is 4.0 or less, to skip placeholders, and about one random key in
+	// 2000 is that low (3.98 for AIza_99wwxuvvooOGwerO9eA2evoewoN2IQNrx9), so a real key was shown whole. This rule has no entropy filter; it keeps the library's other protections: its list of
+	// documented example keys and a run of eight or more of one character (AIzaaaaa...) are not keys. Over-masking a placeholder is the safe direction. Where the library needs the key to be
+	// followed by a quote, a space, ";", a line end or the end of the text, this needs only that no key character follows, so a key before "," ")" "&" or "." is masked too.
+	{re: regexp.MustCompile(`\b(AIza[\w-]{35})(?:[^\w-]|$)`), group: 1, ok: googleKeyOK},
 	// AWS access key IDs: AKIA (long-term), ASIA (temporary) and the other IAM prefixes. Amazon's
 	// documentation example (...EXAMPLE) is not a secret, as betterleaks also treats it.
 	{re: regexp.MustCompile(`\b(?:AKIA|ASIA|AGPA|AIDA|AIPA|ANPA|ANVA|AROA|ABIA|ACCA)[A-Z0-9]{16}\b`), ok: notDocumentationKey},
@@ -87,6 +92,44 @@ func mixesLettersAndDigits(s string) bool {
 }
 
 func notDocumentationKey(s string) bool { return !strings.HasSuffix(s, "EXAMPLE") }
+
+// googleExampleKeys are the documented example Google API keys betterleaks' gcp-api-key rule allowlists (from the Firebase SDK's samples): not secrets.
+var googleExampleKeys = map[string]bool{
+	"AIzaSyabcdefghijklmnopqrstuvwxyz1234567": true,
+	"AIzaSyAnLA7NfeLquW1tJFpx_eQCxoX-oo6YyIs": true,
+	"AIzaSyCkEhVjf3pduRDt6d1yKOMitrUEke8agEM": true,
+	"AIzaSyDMAScliyLx7F0NPDEJi1QmyCgHIAODrlU": true,
+	"AIzaSyD3asb-2pEZVqMkmL6M9N6nHZRR_znhrh0": true,
+	"AIzayDNSXIbFmlXbIE6mCzDLQAqITYefhixbX4A": true,
+	"AIzaSyAdOS2zB6NCsk1pCdZ4-P6GBdi_UUPwX7c": true,
+	"AIzaSyASWm6HmTMdYWpgMnjRBjxcQ9CKctWmLd4": true,
+	"AIzaSyANUvH9H9BsUccjsu2pCmEkOPjjaXeDQgY": true,
+	"AIzaSyA5_iVawFQ8ABuTZNUdcwERLJv_a_p4wtM": true,
+	"AIzaSyA4UrcGxgwQFTfaI3no3t7Lt1sjmdnP5sQ": true,
+	"AIzaSyDSb51JiIcB6OJpwwMicseKRhhrOq1cS7g": true,
+	"AIzaSyBF2RrAIm4a0mO64EShQfqfd2AFnzAvvuU": true,
+	"AIzaSyBcE-OOIbhjyR83gm4r2MFCu4MJmprNXsw": true,
+	"AIzaSyB8qGxt4ec15vitgn44duC5ucxaOi4FmqE": true,
+	"AIzaSyA8vmApnrHNFE0bApF4hoZ11srVL_n0nvY": true,
+}
+
+// googleKeyOK: a match of the Google key shape is a key unless it is one of the documented example keys or holds a run of eight or more of one character (a placeholder such as AIzaaaaa...).
+func googleKeyOK(s string) bool {
+	if googleExampleKeys[s] {
+		return false
+	}
+	run := 1
+	for i := 1; i < len(s); i++ {
+		if s[i] == s[i-1] {
+			if run++; run >= 8 {
+				return false
+			}
+		} else {
+			run = 1
+		}
+	}
+	return true
+}
 
 // withExtraRules finds what base finds and what Coral's own rules find. An error from base is the
 // answer: nothing is passed on as checked when the library could not check it.

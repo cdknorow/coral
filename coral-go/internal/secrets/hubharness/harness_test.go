@@ -1,7 +1,10 @@
 package hubharness
 
 import (
+	"encoding/binary"
 	"encoding/json"
+	"os"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -12,7 +15,17 @@ import (
 )
 
 // samples per shape, as coral-hub's harness measures (N=2000).
-const samples = 2000
+const defaultSamples = 2000
+
+// samples is HUB_HARNESS_SAMPLES (a number of samples per shape, to measure a rare miss over more draws) or defaultSamples.
+var samples = func() int {
+	if v := os.Getenv("HUB_HARNESS_SAMPLES"); v != "" {
+		n, err := strconv.Atoi(v)
+		must(err)
+		return n
+	}
+	return defaultSamples
+}()
 
 // How often does the redactor Coral Hub sees leave the random part of a secret in a board reply? One message per shape, replied as the board's
 // JSON, as the hub's view-leak test posts them. Every shape must have zero misses, the ones coral-hub lists as known gaps of the library's rules
@@ -49,7 +62,7 @@ func TestHubRedactorMissRate(t *testing.T) {
 	}
 	require.NotEmpty(t, names)
 	for _, n := range names {
-		assert.Zero(t, miss[n], "%s: %d of %d missed; the first: %.80q", n, miss[n], samples, first[n]) // assert, not require: one run lists every shape that leaks
+		assert.Zero(t, miss[n], "%s: %d of %d missed (seed %d: HUB_HARNESS_SEED=%d HUB_HARNESS_SAMPLES=%d reruns it); the first: %.80q", n, miss[n], samples, harnessSeed(), harnessSeed(), samples, first[n]) // assert, not require: one run lists every shape that leaks
 	}
 }
 
@@ -69,4 +82,23 @@ func TestHubRedactorWithKeywordsOffHasTheKnownGaps(t *testing.T) {
 		}
 	}
 	require.NotZero(t, missed, "the shapes coral-hub lists as known gaps leak without the keyword rules")
+}
+
+// The samples are seeded (#5943): the same seed draws the same secrets, another seed draws others, so a miss found by a run can be run again with its seed.
+func TestTheHarnessDrawsTheSameSecretsForTheSameSeed(t *testing.T) {
+	draw := func(seed uint64) []string {
+		var seedBytes [32]byte
+		binary.LittleEndian.PutUint64(seedBytes[:], seed)
+		chacha.Seed(seedBytes)
+		var out []string
+		for _, s := range leakShapes(&T{}) {
+			out = append(out, s.text)
+		}
+		return out
+	}
+	t.Cleanup(func() { draw(harnessSeed()) })
+	a, b, c := draw(7), draw(7), draw(8)
+	assert.Equal(t, a, b, "the same seed, the same secrets")
+	assert.NotEqual(t, a, c, "another seed, other secrets")
+	assert.Equal(t, uint64(defaultSeed), func() uint64 { t.Setenv("HUB_HARNESS_SEED", ""); return harnessSeed() }(), "no seed named: the fixed default")
 }

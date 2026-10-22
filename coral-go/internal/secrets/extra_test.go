@@ -182,3 +182,56 @@ func TestAnInvisibleCharacterInsideAKeyDoesNotHideIt(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, plain, string(out))
 }
+
+// #5943: betterleaks' gcp-api-key drops a finding whose entropy is 4.0 or less (a placeholder filter), and about one random Google key in 2000 is that low, so a real key was shown whole
+// (AIza_99wwxuvvooOGwerO9eA2evoewoN2IQNrx9, 3.98). Coral's own rule has no entropy filter and keeps the library's other protections.
+func TestAGoogleKeyOfLowEntropyIsMasked(t *testing.T) {
+	require.NoError(t, Init())
+	const low = "AIza_99wwxuvvooOGwerO9eA2evoewoN2IQNrx9" // the key the miss-rate harness missed
+	keys := []string{
+		low,
+		"AIza" + fake(35, "ab", 41),     // two symbols: entropy 1
+		"AIza" + fake(35, "abcd01", 42), // six: about 2.6
+		"AIza" + fake(35, "-_ab9", 43),  // hyphens and underscores in the body
+		"AIza" + fake(35, alnumAZ, 44),
+	}
+	frames := []string{"%s", "key %s", `apiKey: "%s"`, "the key is %s, do not share it", "?key=%s&alt=json", "(%s)", "KEY=%s;", "line one\n%s\nline three", "a=%s."}
+	for _, k := range keys {
+		for _, f := range frames {
+			text := strings.Replace(f, "%s", k, 1)
+			out, err := Redactor().Text([]byte(text))
+			require.NoError(t, err, k)
+			assert.NotContains(t, string(out), k[4:], "%q in %q", k, f)
+		}
+	}
+}
+
+// What the library's rule leaves alone, Coral's rule leaves alone: its documented example keys, a run of one character, a token that is longer or shorter than a key, another case.
+func TestAGoogleKeyRuleLeavesPlaceholdersAndExamplesAlone(t *testing.T) {
+	require.NoError(t, Init())
+	for _, s := range []string{
+		"AIzaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",               // 35 of one character
+		"see AIzaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa here",      // in a sentence (after a key-like name, the header rule masks it by name, which is not this rule)
+		"AIza" + strings.Repeat("0", 8) + fake(27, alnumAZ, 51), // a run of eight zeros
+		"AIzaSyabcdefghijklmnopqrstuvwxyz1234567",               // the Firebase SDK's example keys
+		"AIzaSyAnLA7NfeLquW1tJFpx_eQCxoX-oo6YyIs",
+		"AIzaSyCkEhVjf3pduRDt6d1yKOMitrUEke8agEM",
+		"AIzaSyDMAScliyLx7F0NPDEJi1QmyCgHIAODrlU",
+		"AIzaSyD3asb-2pEZVqMkmL6M9N6nHZRR_znhrh0",
+		"AIzayDNSXIbFmlXbIE6mCzDLQAqITYefhixbX4A",
+		"AIzaSyBcE-OOIbhjyR83gm4r2MFCu4MJmprNXsw",
+		"AIzaSyA8vmApnrHNFE0bApF4hoZ11srVL_n0nvY",
+		"AIzaTesb6Tscfcni8vIpWZqNCXFDFslJtVSvFDqabcd123", // longer than a key: the library's text-boundary sample
+		"GWw4hjABFzZCGiRpmlDyDdo87Jn9BN9THUA47muVRNunLxsa82tMAdvmrhOqNkRKiYMEAFbTJAIzaTesb6Tscfcni8vIpWZqNCXFDFslJtVSvFDq", // a key shape inside a longer token
+		"AIZASYCO2CXRMC9ELSKLHLHRMBSWDEVEDZTLO2O", // another case
+		"AIza is the prefix of a Google API key",
+		"AIza" + fake(34, alnumAZ, 52), // one short
+	} {
+		// Coral's own rule is what is asked (the library's other rules, and the keyword rules after "apiKey:", may mask what they judge a secret): it finds no span.
+		assert.Empty(t, extraSpans(s), s)
+	}
+	assert.True(t, googleKeyOK("AIza"+fake(35, alnumAZ, 53)))
+	for k := range googleExampleKeys {
+		assert.False(t, googleKeyOK(k), k)
+	}
+}
