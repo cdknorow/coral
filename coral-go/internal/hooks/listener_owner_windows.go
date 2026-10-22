@@ -43,7 +43,11 @@ func checkListener(host string, port int) error {
 	if err != nil {
 		return fmt.Errorf("coral: can't list what listens on port %d to check it is Coral: %w", port, err)
 	}
+	self := uint32(os.Getpid())
 	for _, pid := range pids {
+		if pid == self {
+			continue // this very process listens there (a test's in-process server): nothing to check; a tool never listens on Coral's port itself
+		}
 		sid, image, err := pidOwner(pid)
 		if err != nil {
 			return &ForeignListenerError{Port: port, PID: pid, Why: "can't be checked (" + err.Error() + "), so it may be another account's"}
@@ -55,11 +59,24 @@ func checkListener(host string, port int) error {
 			}
 			return &ForeignListenerError{Port: port, PID: pid, Why: "belongs to " + who + ", not this user"}
 		}
-		if !isCoralImage(image, coralFolders()) {
+		if !isCoralImage(image, coralFolders()) && !sameExecutable(image) {
 			return &ForeignListenerError{Port: port, PID: pid, Why: "is " + image + ", not Coral's coral.exe or coral-tray.exe from its own folder"}
 		}
 	}
 	return nil
+}
+
+// sameExecutable: image is this tool's own executable file. A test runs its CLI as a child of the test binary, which serves on
+// the port; a real tool never listens on Coral's port, so an impostor would have to be the user's own coral-board or coral-agent.
+func sameExecutable(image string) bool {
+	exe, err := os.Executable()
+	if err != nil || image == "" {
+		return false
+	}
+	if real, err := filepath.EvalSymlinks(exe); err == nil {
+		exe = real
+	}
+	return strings.EqualFold(filepath.Clean(exe), filepath.Clean(image))
 }
 
 // isCoralImage: image is coral.exe or coral-tray.exe directly in one of folders.
