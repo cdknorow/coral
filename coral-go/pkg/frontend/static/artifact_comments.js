@@ -103,7 +103,7 @@ export function attachComments(dialog, body, host, opts = {}) {
             st.data = data; st.gone = false;
             if (!st.visibilitySet) {
                 st.visibilitySet = true;
-                setSheet(remembered() ?? openCount() > 0);
+                setSheet(remembered() ?? (!phone.matches && openCount() > 0));
             }
         } catch (e) {
             if (hex !== st.hex) return;
