@@ -12,6 +12,11 @@ import (
 
 // #4151: the disconnect overlay names the log this server writes, in its own data folder.
 func TestServerLogPathIsTheNewestServerLog(t *testing.T) {
+	// The home folder is shown as "~" (below). On Windows the temp folder is under the real home (its AppData\Local\Temp), which turned every path here into a "~" one.
+	// This test is about which log is newest, so the home is a folder of its own that holds none of them.
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	dir := t.TempDir()
 	if got := serverLogPath(dir); got != filepath.Join(dir, "coral.log") {
 		t.Fatalf("no log yet: %q", got)
