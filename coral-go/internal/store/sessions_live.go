@@ -46,6 +46,31 @@ func (s *SessionStore) RunTagOf(ctx context.Context, sessionID string) string {
 	return tag.String
 }
 
+// LiveRunTagHolders is how many live (active) sessions other than the ones named hold tag: a tag may be handed to a new agent only while no other live agent has it, or one Kill would end both's helpers.
+func (s *SessionStore) LiveRunTagHolders(ctx context.Context, tag string, except ...string) int {
+	if tag == "" {
+		return 0
+	}
+	q, args := "SELECT session_id FROM live_sessions WHERE status = 'active' AND run_tag = ?", []any{tag}
+	var ids []string
+	if err := s.db.Reader().SelectContext(ctx, &ids, q, args...); err != nil {
+		return 1 // cannot tell: do not share
+	}
+	n := 0
+	for _, id := range ids {
+		skip := false
+		for _, e := range except {
+			if e != "" && id == e {
+				skip = true
+			}
+		}
+		if !skip {
+			n++
+		}
+	}
+	return n
+}
+
 // SetRunTagIfEmpty records the tag a tmux agent's processes carry (CORAL_PTY_RUN, #6141) unless the session has one already: the tag stays the same for the life of the row. A session with no row is
 // left alone.
 func (s *SessionStore) SetRunTagIfEmpty(ctx context.Context, sessionID, tag string) error {
