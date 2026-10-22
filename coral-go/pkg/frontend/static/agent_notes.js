@@ -51,7 +51,7 @@ function renderMarkdown() {
     rendered.style.display = '';
 
     if (!_lastSaved.trim()) {
-        rendered.innerHTML = '<div class="note-md-placeholder">Click to add notes...</div>';
+        rendered.innerHTML = '<div class="note-md-placeholder">Add notes</div>';
     } else if (typeof marked !== 'undefined') {
         rendered.innerHTML = sanitizeMarkdown(_lastSaved, undefined, 'board');
     } else {
