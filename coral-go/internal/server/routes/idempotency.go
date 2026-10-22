@@ -30,7 +30,8 @@ const (
 	idempotencyTTL        = 10 * time.Minute
 	idempotencyMaxKeys    = 2000
 	idempotencyMaxPerUser = 200
-	idempotencyMaxBody    = 1 << 20 // a request body or an answer bigger than this is not deduplicated
+	idempotencyMaxBody    = 1 << 20  // a request body bigger than this is not deduplicated; an answer bigger than this is not kept (a repeat is answered 409 request_already_done)
+	idempotencyMaxBytes   = 32 << 20 // all the answers kept: the oldest finished ones go first when it is over (#5855)
 )
 
 var idempotencyKeyRe = regexp.MustCompile(`^[A-Za-z0-9_-]{16,128}$`)
@@ -44,6 +45,7 @@ type idemEntry struct {
 	ctype    string
 	cache    string
 	body     []byte
+	tooBig   bool // it succeeded but its answer was too big to keep: a repeat is told so, and starts nothing
 }
 
 // Idempotency is the in-memory record of the requests run through Coral Hub with a key.
@@ -51,6 +53,7 @@ type Idempotency struct {
 	mu      sync.Mutex
 	entries map[[sha256.Size]byte]*idemEntry
 	perUser map[string]int
+	bytes   int // the size of the answers kept
 	now     func() time.Time
 }
 
@@ -111,7 +114,8 @@ func (i *Idempotency) Wrap(next http.HandlerFunc) http.HandlerFunc {
 		r.Body = io.NopCloser(bytes.NewReader(raw))
 
 		scope := sha256.Sum256([]byte(r.Method + "\x00" + r.URL.Path + "\x00" + user + "\x00" + keys[0]))
-		hash := sha256.Sum256(raw)
+		// The query string is part of what the request asks for: the same key with another query is another request (#5855).
+		hash := sha256.Sum256(append([]byte(r.URL.RawQuery+"\x00"), raw...))
 		e, replay, refuse := i.begin(scope, user, hash)
 		switch {
 		case refuse == "key_reuse":
@@ -120,6 +124,10 @@ func (i *Idempotency) Wrap(next http.HandlerFunc) http.HandlerFunc {
 		case refuse == "in_progress":
 			w.Header().Set("Retry-After", "2")
 			writeError(w, http.StatusConflict, "request_in_progress", "a request with this Idempotency-Key is still running: wait for its answer")
+			return
+		case replay != nil && replay.tooBig:
+			slog.Info("[cloud] a repeated Coral Hub request succeeded before and its answer was too big to keep", "hub_user", user, "path", r.URL.Path)
+			writeError(w, http.StatusConflict, "request_already_done", "a request with this Idempotency-Key already succeeded and started its work; its answer is too big to send again: look at the list instead of repeating it")
 			return
 		case replay != nil:
 			if replay.ctype != "" {
@@ -187,13 +195,20 @@ func (i *Idempotency) finish(scope [sha256.Size]byte, e *idemEntry, rec *idemWri
 	if status == 0 {
 		status = http.StatusOK
 	}
-	if status < 200 || status > 299 || rec.over {
-		i.removeLocked(scope, e) // not a success (or too big to keep): a retry runs again
+	if status < 200 || status > 299 {
+		i.removeLocked(scope, e) // not a success: a retry runs again
 		return
 	}
 	e.done, e.status, e.at = true, status, i.now()
+	if rec.over {
+		e.tooBig = true // it started its work but its answer is not kept: a repeat is refused, never run again
+		return
+	}
 	e.ctype, e.cache = rec.Header().Get("Content-Type"), rec.Header().Get("Cache-Control")
 	e.body = append([]byte(nil), rec.buf.Bytes()...)
+	i.bytes += len(e.body)
+	for i.bytes > idempotencyMaxBytes && i.evictOldestDoneLocked("") { // the oldest finished answers go until the kept ones fit
+	}
 }
 
 func (i *Idempotency) drop(scope [sha256.Size]byte, e *idemEntry) {
@@ -206,6 +221,7 @@ func (i *Idempotency) drop(scope [sha256.Size]byte, e *idemEntry) {
 
 func (i *Idempotency) removeLocked(scope [sha256.Size]byte, e *idemEntry) {
 	delete(i.entries, scope)
+	i.bytes -= len(e.body)
 	if i.perUser[e.user]--; i.perUser[e.user] <= 0 {
 		delete(i.perUser, e.user)
 	}
