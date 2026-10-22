@@ -40,7 +40,9 @@ if ($tray) {
   if ($chev) { "found the overflow chevron: $($chev.Current.Name)"; try { $chev.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() } catch { "invoke chevron failed: $($_.Exception.Message)" }; Start-Sleep -Seconds 2 }
   Shot 'tray-overflow-open'
   $icon = $null
-  foreach ($c in $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)) { try { if ($c.Current.Name -like 'Coral*' -and $c.Current.ControlType.ProgrammaticName -match 'Button' -and $c.Current.ClassName -ne 'webview') { $icon = $c; "tray candidate: '{0}' ({1}) at {2}" -f $c.Current.Name, $c.Current.ClassName, $c.Current.BoundingRectangle; break } } catch {} }
+  foreach ($c in $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)) {
+    try { if ($c.Current.Name -like '*Coral*' -and $c.Current.ClassName -notmatch 'TaskList|webview|MsiDialog') { "tray candidate: '{0}' type {1} class {2} at {3}" -f $c.Current.Name, $c.Current.ControlType.ProgrammaticName, $c.Current.ClassName, $c.Current.BoundingRectangle; if (-not $icon) { $icon = $c } } } catch {}
+  }
   if ($icon) {
     $r = $icon.Current.BoundingRectangle
     [Mouse]::Click([int]($r.X + $r.Width / 2), [int]($r.Y + $r.Height / 2), $true)

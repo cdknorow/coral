@@ -5,8 +5,9 @@ gh release download "v$ver" --repo $env:GITHUB_REPOSITORY --dir $dl --pattern "C
 $msi = Join-Path $dl "Coral-$ver-x64.msi"
 $want = ((Get-Content (Join-Path $dl 'SHA256SUMS.txt') | Where-Object { $_ -match "Coral-$ver-x64.msi" }) -split '\s+')[0].ToLower()
 "msi sha256 ok: $($want -eq (Get-FileHash $msi -Algorithm SHA256).Hash.ToLower())"
-"--- the package's platform (summary information, template)"
-try { $wi = New-Object -ComObject WindowsInstaller.Installer; $db = $wi.GetType().InvokeMember("OpenDatabase", "InvokeMethod", $null, $wi, @($msi, 0)); $si = $db.GetType().InvokeMember("SummaryInformation", "GetProperty", $null, $db, @(0)); "template: " + $si.GetType().InvokeMember("Property", "GetProperty", $null, $si, @(7)) } catch { "could not read: $($_.Exception.Message)" }
+"--- the package's platform (the template in its summary information)"
+$bytes = [IO.File]::ReadAllBytes($msi); $txt = [Text.Encoding]::GetEncoding(28591).GetString($bytes)
+foreach ($t in 'Intel;1033', 'x64;1033', 'Intel64;1033', 'Intel;0', 'x64;0') { if ($txt.Contains($t)) { "template found: $t" } }
 "running as: " + [Security.Principal.WindowsIdentity]::GetCurrent().Name + ", session " + (Get-Process -Id $PID).SessionId + ", elevated " + ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 $sw = [Diagnostics.Stopwatch]::StartNew()
 $p = Start-Process msiexec -ArgumentList "/i `"$msi`" /l*v `"$env:RUNNER_TEMP\walk-msi.log`"" -PassThru
