@@ -42,11 +42,11 @@ function _selectLaunchType(type) {
             value: { agentType: _settingsFor(_effectiveServer(launch.server)).default_agent_type || 'claude' },
         });
         _wireDirNote(); _syncDirNote(); _syncLaunchBlock();
-        checkTmuxForLaunch(document.getElementById('launch-tmux-slot')); // tmux missing: said once, Launch off (#6046)
+        _checkTmuxHere(); // tmux missing: said once, Launch off (#6046)
         document.getElementById('launch-dir')?.focus(); // the one thing most launches need: the folder
     } else if (type === "team") {
         _initTeamForm();
-        checkTmuxForLaunch(document.getElementById('team-tmux-slot'));
+        _checkTmuxHere();
         const shell = document.querySelector('#launch-step-team .settings-shell');
         if (shell) { initSectionDialog(shell); showSection(shell, 'members'); } // always opens on Members; the name, which every launch needs, is above the sections (#5589 finding 6), and the keyboard starts in it
         document.getElementById('team-board-name')?.focus();
@@ -172,6 +172,7 @@ async function _onLaunchServerChange(value, { force = false } = {}) {
     const s = _settingsFor(next);
     const typeSelect = document.getElementById('launch-type');
     if (s.default_agent_type && typeSelect) typeSelect.value = s.default_agent_type;
+    if (launch.mode === 'agent' || launch.mode === 'team') _checkTmuxHere();
     if (launch.mode === 'agent') _loadAgentBoardProjects();
     if (launch.mode === 'team') { _loadExistingTeamBoards(); _checkTeamGitDir(); }
     document.querySelectorAll('#launch-modal [data-acf-uid], #team-agent-modal [data-acf-uid]').forEach(c => {
@@ -216,6 +217,13 @@ function _syncLaunchBlock() {
     if (why) { why.id ||= 'launch-cli-warning'; go.setAttribute('aria-describedby', why.id); } else go.removeAttribute('aria-describedby');
 }
 document.addEventListener('cli-blocks-launch', e => { if (e.target.closest && e.target.closest('#launch-step-agent')) _syncLaunchBlock(); });
+// The tmux line is about this computer: a launch on another server (a local multi-server hub) is reported by that server's own launch (#6046).
+const _launchIsLocal = () => _effectiveServer(launch.server) === LOCAL_SERVER;
+function _checkTmuxHere() {
+    const id = launch.mode === 'team' ? 'team-tmux-slot' : 'launch-tmux-slot';
+    checkTmuxForLaunch(document.getElementById(id), { isLocal: _launchIsLocal });
+}
+
 // A team launch on a machine without tmux says it once too, and Launch Team stays off (#6046).
 function _syncTeamBlock() {
     const go = document.getElementById('launch-team-go');

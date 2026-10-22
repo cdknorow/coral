@@ -324,7 +324,7 @@ func (h *SessionsHandler) wakeExistingSession(ctx context.Context, ls *store.Liv
 		if backend == "pty" && h.backend != nil {
 			// PTY backend: spawn shell, then send command
 			if err := h.backend.Spawn(sessionName, ls.AgentType, ls.WorkingDir, ls.SessionID, "", 200, 50); err != nil {
-				return fmt.Errorf("pty spawn failed: %w", err)
+				return spawnError(err)
 			}
 			if cmd != "" {
 				if pb, ok := h.backend.(*ptymanager.PTYBackend); ok {

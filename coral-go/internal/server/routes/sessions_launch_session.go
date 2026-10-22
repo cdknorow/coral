@@ -332,7 +332,7 @@ func (h *SessionsHandler) launchPath(requested string) string {
 // the shell interprets bash syntax like $(cat ...) correctly. It returns the log file the backend keeps.
 func (h *SessionsHandler) startOnBackend(ctx context.Context, team, sessionName, agentType, dir, sessionID, cmd string) (string, error) {
 	if err := h.backend.Spawn(sessionName, agentType, dir, sessionID, "", 200, 50); err != nil {
-		return "", fmt.Errorf("pty spawn failed: %w", err)
+		return "", spawnError(err)
 	}
 	logFile := h.backend.LogPath(sessionName) // PTY backend manages its own log file
 	if cmd == "" {
@@ -369,7 +369,7 @@ func (h *SessionsHandler) startOnTmux(ctx context.Context, params agent.LaunchPa
 		if !ok {
 			// What was missing and where it was looked for, without the PATH itself (it is logged once, at server start, with the home folder as "~").
 			logTmuxNotFound()
-			return fmt.Errorf("tmux is required to launch agents but was not found on this system. Install tmux (e.g. 'brew install tmux' on macOS), then try again")
+			return errors.New(tmux.MissingMessage())
 		}
 		if tmuxPath != "" && tmuxTerm.Client().TmuxBin != tmuxPath {
 			slog.Info("launch updating tmux client binary",
@@ -552,4 +552,15 @@ func launchCommand(ag agent.Agent, p agent.LaunchParams) (string, error) {
 // logTmuxNotFound says what a launch could not find and where it looked, without the PATH itself: that is logged once, at server start, with the home folder as "~" (#6018).
 func logTmuxNotFound() {
 	slog.Warn("launch: tmux not found", "binary", "tmux", "searched", "the PATH logged at server start, then the common tmux locations and a login shell", "path_entries", logsafe.Count())
+}
+
+// tmuxAvailable is a variable so a test can stand in for a computer without tmux.
+var tmuxAvailable = func() bool { _, ok := tmux.IsAvailable(); return ok }
+
+// spawnError is a failed terminal start as the launch says it: when tmux is what is missing, that and the one command for this computer (#6046), not "pty spawn failed: tmux new-session: exec: not found".
+func spawnError(err error) error {
+	if !tmuxAvailable() {
+		return errors.New(tmux.MissingMessage())
+	}
+	return fmt.Errorf("pty spawn failed: %w", err)
 }

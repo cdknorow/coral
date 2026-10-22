@@ -108,11 +108,13 @@ export async function checkTmux(force = false) {
 }
 
 /** First run: tmux missing is said once in the launch form, with the one command for this OS and a Check again; Launch stays off with it as the reason (#6046).
- *  Only where the backend needs tmux; nothing is installed. */
-export async function checkTmuxForLaunch(element, {force = false} = {}) {
+ *  Only where the backend needs tmux and the launch is on this computer; nothing is installed. */
+export async function checkTmuxForLaunch(element, {force = false, isLocal = () => true} = {}) {
     if (!element) return;
     const controller = start(element);
-    const recheck = () => checkTmuxForLaunch(element, {force:true});
+    const recheck = () => checkTmuxForLaunch(element, {force:true, isLocal});
+    // A launch on another server is that server's to report: this dashboard's tmux is not the one the agent will run in.
+    if (!isLocal()) { element.replaceChildren(); setHidden(element, true); blocksLaunch(element, false); return; }
     try {
         const response = await fetchSystemStatus({fresh:force});
         if (!response.ok) throw new Error(`Could not check tmux (HTTP ${response.status}).`);
