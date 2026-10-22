@@ -167,9 +167,12 @@ func TestProcStartAsksWindowsThroughPowerShell(t *testing.T) {
 	script := `source "$1"
 a=$(coral_test_proc_start_windows $$)
 echo "start=[$a]"
-sleep 5 & other=$!
-kill $other; wait $other 2>/dev/null
-echo "gone=[$(coral_test_proc_start_windows $other)]"`
+# Windows allocates PIDs in multiples of four. This positive Int32 value is
+# never assigned, unlike an exited child's PID which Windows can reuse (#5957).
+gone=2147483647
+# Do not let an MSYS /proc entry translate it to some other Windows PID.
+[[ ! -e /proc/$gone/winpid ]] || exit 1
+echo "gone=[$(coral_test_proc_start_windows $gone)]"`
 	out, err := bashRun(script, lib).CombinedOutput()
 	require.NoError(t, err, string(out))
 	assert.Regexp(t, `start=\[[0-9]{10,}\]`, string(out), "UTC ticks of the shell's start")
