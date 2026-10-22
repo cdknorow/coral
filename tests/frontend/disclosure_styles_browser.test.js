@@ -255,6 +255,8 @@ const EXPECTED = {
         // w and h depend on the text and the panel, not on the rules: compare them too (a padding or a size that moved moves them)
         // (a width within a few pixels is the panel's scrollbar, not a rule: the 'prompt text' summaries became flex with a fold arrow in the prompt inspection cut, #5987)
         for (const k of Object.keys(out)) if (EXPECTED[k] && Math.abs(out[k].w - EXPECTED[k].w) <= 8) out[k].w = EXPECTED[k].w;
+        // On Windows the system font's line is a pixel taller (16 where Linux and macOS measure 15): a font's metrics, not a rule that moved.
+        if (process.platform === 'win32') for (const k of Object.keys(out)) if (EXPECTED[k] && Math.abs(out[k].h - EXPECTED[k].h) <= 1) out[k].h = EXPECTED[k].h;
         assert.deepEqual(out, EXPECTED);
         console.log(`   ✓ ${Object.keys(out).length} summaries, closed and open, fine and coarse: the same as before the shared class`);
     } finally { await removeBoards(ev, [TEAM]); await client.close(); }

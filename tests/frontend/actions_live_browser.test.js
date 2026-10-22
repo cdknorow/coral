@@ -48,7 +48,7 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
         await coralReady();
 
         agent = await ev(`fetch('/api/sessions/launch', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ working_dir: '/tmp', agent_type: 'terminal', display_name: 'Live QA' }) }).then(r => r.json())`);
+            body: JSON.stringify({ working_dir: ${JSON.stringify(require('node:os').tmpdir())}, agent_type: 'terminal', display_name: 'Live QA' }) }).then(r => r.json())`);
         await until(`import(${MOD} + 'state.js').then(({ state }) => (state.liveSessions || []).some(s => s.session_id === ${JSON.stringify(agent.session_id)}))`, 'the agent in the live list');
         await ev(`window.selectLiveSession(${JSON.stringify(agent.session_name)}, 'terminal', ${JSON.stringify(agent.session_id)}); true`);
         await until(`!!document.querySelector('#command-toolbar [data-on-click="cmd-raw-keys"]')`, 'the command toolbar');

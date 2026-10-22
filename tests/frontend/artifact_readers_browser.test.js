@@ -18,7 +18,7 @@ const BASE = require('./test_base').BASE;
         await Page.enable(); // the real live list, not the harness's mock agents: the agent below is a real session
         await Emulation.setDeviceMetricsOverride({ width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
         await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired(); await coralReady();
-        const launch = await ev(`fetch('/api/sessions/launch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ working_dir: '/tmp', agent_type: 'terminal', display_name: 'Readers QA' }) }).then(r => r.json())`);
+        const launch = await ev(`fetch('/api/sessions/launch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ working_dir: ${JSON.stringify(require('node:os').tmpdir())}, agent_type: 'terminal', display_name: 'Readers QA' }) }).then(r => r.json())`);
         sid = launch.session_id; name = launch.session_name || launch.name;
         const up = await ev(`fetch('/api/agent/artifacts?session_id=${sid}', { method: 'POST', headers: { 'X-Artifact-Name': 'readers.txt', 'X-Artifact-Media-Type': 'text/plain' }, body: 'who can read this ' + Date.now() }).then(async r => ({ status: r.status, body: await r.json() }))`);
         assert.equal(up.status, 201, JSON.stringify(up));
