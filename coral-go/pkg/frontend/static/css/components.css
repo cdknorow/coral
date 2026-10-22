@@ -273,10 +273,16 @@
     overflow-wrap: anywhere;
 }
 
-.mb-message-time {
+.mb-message .message-time {
     font-size: var(--fs-base);
     color: var(--text-secondary);
+    margin-left: auto;
+    opacity: 0;
 }
+.mb-message .message-time + .mb-save-btn { margin-left: 0; }
+.mb-message:hover .message-time,
+.mb-message:focus-within .message-time { opacity: 1; }
+@media (hover: none) { .mb-message .message-time { opacity: 1; } }
 
 /* Cross-team message: "from <board>" (inbound) or "to <board>" (mirror). */
 .mb-external-badge {

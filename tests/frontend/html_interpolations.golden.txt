@@ -75,6 +75,7 @@
 1	chat_messages.js	attachmentChips(msg.attachments)
 2	chat_messages.js	chips.join("")
 2	chat_messages.js	getToolIcon(view.icon)
+2	chat_messages.js	messageTimeHtml(msg.timestamp)
 2	chat_messages.js	msg.key ? SAVE_BUTTON : ""
 3	chat_messages.js	outputHtml
 1	chat_messages.js	renderMarkdown(lead.rest, undefined, 'chat')
@@ -330,11 +331,11 @@
 1	message_board.js	boardMessageColorStyle(color)
 1	message_board.js	checkbox
 1	message_board.js	externalMessageBadge(m)
-1	message_board.js	formatTime(m.created_at)
 1	message_board.js	hubUserBadge(m)
 1	message_board.js	icon
 1	message_board.js	messageAttachmentAttrs(m)
 1	message_board.js	messageAttachmentsHtml(m)
+1	message_board.js	messageTimeHtml(m.created_at)
 2	message_board.js	p.message_count
 1	message_board.js	p.subscriber_count
 1	message_board.js	remaining
