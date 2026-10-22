@@ -7,8 +7,23 @@ import { registerActions } from './actions.js';
 
 const RECHECK_MS = 60_000;
 
+let _known; // the last status's claude_signed_in: true, false, or undefined (not known: no background check or first launch yet)
+let _askedAt = 0;
+
+/** What the last status said about Claude's sign-in: true, false, or undefined when it did not say (#5852). */
+export function claudeSignedIn() { return _known; }
+
+/** A card that is waiting to say whether Claude is signed in asks for a fresh status, at most every 10 seconds (the server checks once after the first Claude launch, #5838). */
+export function askSigninSoon() {
+    const now = Date.now();
+    if (now - _askedAt < 10_000) return;
+    _askedAt = now;
+    refresh();
+}
+
 /** Shows the line for a status with claude_signed_in === false, hides it otherwise (absent is "not known": nothing to say). */
 export function applySigninStatus(data) {
+    _known = data && typeof data.claude_signed_in === 'boolean' ? data.claude_signed_in : undefined;
     const line = document.getElementById('claude-signin-line');
     if (!line) return;
     const off = !!data && data.claude_signed_in === false;

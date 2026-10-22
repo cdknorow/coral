@@ -2,6 +2,8 @@
 import { deriveSessionState } from './render.js';
 import { escapeHtml, renderMarkdown } from './utils.js';
 import { state } from './state.js';
+import { claudeSignedIn, askSigninSoon } from './signin_line.js';
+import { isCloud, normServer, sessionServer, LOCAL_SERVER } from './server_base.js';
 
 // ── Needs input ──────────────────────────────────────────────────────────
 // Claude Code writes a tool call to the transcript only once it completes, so
@@ -47,7 +49,16 @@ function needsInputInfo(session) {
     if (pt && BLOCKING_TOOLS[pt.tool_name]) return { kind: BLOCKING_TOOLS[pt.tool_name], tool: pt, screen };
     if (row.waiting_for_input && row.waiting_kind !== "login") return { kind: "permission", tool: pt, screen, summary: String(row.waiting_summary || "").replace(/^Notification:\s*/, "") };
     if (readsPromptsFromScreen(session) && screen && screen.options.length) return { kind: pt ? "permission" : "prompt", tool: pt, screen };
-    if (key === "check_terminal") return { kind: "startup" };
+    if (key === "check_terminal") {
+        // A new Claude agent that has not started: when the server says Claude is not signed in (#5838's check after the first launch), the card says that, not the generic "startup prompt" (#5852).
+        // Only for a session on THIS computer: claude_signed_in is this computer's Claude, and an agent on another server (or seen through Coral Hub) must not send the person to the wrong terminal.
+        if (session.agent_type === "claude" && !isCloud() && normServer(sessionServer(row)) === LOCAL_SERVER) {
+            const signedIn = claudeSignedIn();
+            if (signedIn === false) return { kind: "startup", signedOut: true };
+            if (signedIn === undefined) askSigninSoon();
+        }
+        return { kind: "startup" };
+    }
     return null;
 }
 
@@ -191,8 +202,14 @@ function needsInputHtml(info, session) {
     } else if (info.kind === "prompt") {
         question = screenQuestion || "The agent is waiting for you";
     } else {
-        question = "The agent may be waiting at a startup prompt";
-        context = `<div class="cni-context-text">For example, trusting this folder or signing in. Open the terminal, answer it there, then come back and type your first message.</div>`;
+        if (info.signedOut) {
+            kicker = "Sign-in needed";
+            question = "Claude is not signed in";
+            context = `<div class="cni-context-text">Open the terminal and sign in, then come back and type.</div>`;
+        } else {
+            question = "The agent may be waiting at a startup prompt";
+            context = `<div class="cni-context-text">For example, trusting this folder or signing in. Open the terminal, answer it there, then come back and type your first message.</div>`;
+        }
     }
 
     if (info.kind === "login") return loginCardHtml(info, name, kicker);
