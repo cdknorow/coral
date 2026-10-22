@@ -105,3 +105,12 @@ func TestTimeout(t *testing.T) {
 		assert.Equal(t, c.want, Timeout(10*time.Second), "CORAL_TIMEOUT=%q", c.env)
 	}
 }
+
+func TestDescribe(t *testing.T) {
+	assert.Equal(t, "Coral answered HTTP 404: task not found", Describe(nil, 404, []byte(`{"error":"task not found"}`)))
+	assert.Equal(t, "Coral answered HTTP 403: not yours", Describe(nil, 403, []byte(`{"message":"not yours","error":"x"}`)))
+	assert.Equal(t, "Coral answered HTTP 502: bad gateway", Describe(nil, 502, []byte("  bad gateway  ")))
+	assert.Equal(t, "Coral answered HTTP 500", Describe(nil, 500, nil))
+	assert.Equal(t, "boom", Describe(errors.New("boom"), 0, nil))
+	assert.NotContains(t, Describe(nil, 404, []byte(`{}`)), "nil")
+}
