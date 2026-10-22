@@ -69,9 +69,24 @@ func TestWindowsIdleShellStopsWithinThePoliteStop(t *testing.T) {
 	name := "claude-68-idle"
 	require.NoError(t, b.Spawn(name, "claude", t.TempDir(), "0069", "powershell.exe -NoProfile", 120, 40))
 	time.Sleep(2 * time.Second)
+	assertPoliteStop(t, b, name, "an idle shell is told to exit once the Ctrl-Cs are in, not killed after the grace")
+}
+
+// politeGrace is a grace so long that only the polite stop (the Ctrl-Cs and the exit line) can end the shell inside politeLimit: reaching the force kill takes
+// politeGrace, which is more than twice politeLimit. The old checks timed Kill against 3 s with a 5 s grace, so a loaded runner's 3.14 s failed a stop that was
+// polite (run 39793303867); this one fails only when the polite stop does not end the shell, however slow the machine is.
+const (
+	politeGrace = 60 * time.Second
+	politeLimit = 25 * time.Second
+)
+
+// assertPoliteStop stops name with the long grace and requires it to have ended within politeLimit.
+func assertPoliteStop(t *testing.T, b *PTYBackend, name, msg string) {
+	t.Helper()
 	start := time.Now()
-	require.NoError(t, b.Kill(name))
-	assert.Less(t, time.Since(start), 3*time.Second, "an idle shell is told to exit once the Ctrl-Cs are in, not killed after 5 s")
+	require.NoError(t, b.KillWithin(name, politeGrace))
+	assert.Less(t, time.Since(start), politeLimit, msg)
+	assert.False(t, b.IsRunning(name))
 }
 
 // #5706 (Security's answer a): the stop's control keys are in the input debug log: the first Ctrl-C (session.killWithin), the second
@@ -85,9 +100,7 @@ func TestWindowsStopRecordsItsControlKeysAndKeepsItsTiming(t *testing.T) {
 	name := "claude-5706-stop"
 	require.NoError(t, b.Spawn(name, "claude", t.TempDir(), "5706", "powershell.exe -NoProfile", 120, 40))
 	time.Sleep(2 * time.Second)
-	start := time.Now()
-	require.NoError(t, b.Kill(name))
-	assert.Less(t, time.Since(start), 3*time.Second, "the same polite stop as without the log")
+	assertPoliteStop(t, b, name, "the same polite stop as without the log")
 	inputlog.Flush()
 	raw, err := os.ReadFile(filepath.Join(dir, inputlog.FileName))
 	require.NoError(t, err)
