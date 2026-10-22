@@ -242,6 +242,7 @@ func (h *SessionsHandler) deliverHumanSend(ctx context.Context, name, agentType,
 	}
 	// The same text already in the box: an earlier send of it that wasn't submitted. It gets Enter; typing it again
 	// would put a second copy in the box.
+	before := screen // the screen before anything is typed: a send that never arrived leaves it as it is
 	seen := canEnter && ptymanager.TextInInputBox(screen, text)
 	if seen {
 		if err := es.SendEnter(ctx, name, agentType, sessionID); err != nil {
@@ -281,13 +282,22 @@ func (h *SessionsHandler) deliverHumanSend(ctx context.Context, name, agentType,
 				return nil // typed to an agent in the middle of a turn, and its box is empty: queued behind its work (#4794). A box
 				// holding anything else (an image chip and the text the match above could not read, a draft) may still hold the message.
 			}
-			if retyped < humanSendRetypes && h.agentHasNoEvents(ctx, sessionID) && ptymanager.InputBoxEmpty(screen) {
-				if err := send(); err != nil { // its keystrokes were lost while it started: none of it is in the box
-					return err
+			if h.agentHasNoEvents(ctx, sessionID) && ptymanager.InputBoxEmpty(screen) {
+				if screen != before {
+					// An empty box is also what a submitted message looks like, and an agent whose hooks are not reaching Coral (or
+					// that has none yet) sends no event for it. The screen moved since before the typing, so the keys arrived: it
+					// was taken, and typing it again would send it twice (three times with both retypes).
+					return nil
 				}
-				retyped++
-				typedAt, enteredAt = time.Now(), time.Now()
-				continue
+				if !command && retyped < humanSendRetypes {
+					if err := send(); err != nil { // the screen is as it was before the typing: its keystrokes were lost while it started
+						return err
+					}
+					retyped++
+					typedAt, enteredAt = time.Now(), time.Now()
+					continue
+				}
+				// A command is never typed again: /clear or /compact acts on the agent, and the person asked for it once.
 			}
 			if command && !h.agentHasNoEvents(ctx, sessionID) {
 				return nil // a CLI's own command sends no hook: out of the box, with nothing against it, it ran
