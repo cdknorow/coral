@@ -1,7 +1,7 @@
 // The first-run "Set a password" prompt waits its turn (#294, QA on a fresh data folder): it opened over the New Agent dialog
-// and covered its error, and it took the Esc a focused terminal was sent. Now it waits until no other dialog is on screen and,
-// with the keyboard in a terminal, until the person has stopped typing for 3 s (people type there, so it never waits for the
-// terminal to lose focus), asks the server again, and opens; with nothing in the way it opens at once, so a fresh install
+// and covered its error, it took the Esc a focused terminal was sent, and then the words a person typed after a pause. Now it
+// waits until no other dialog is on screen and asks the server again. With the keyboard in a terminal it shows a card that never
+// takes the focus (Tab or F6 reach its button, which opens the dialog). Otherwise the dialog opens at once, so a fresh install
 // still sees it. The server's /api/system/auth-status is stubbed on the page. Run against an isolated dev server.
 const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
@@ -21,7 +21,7 @@ const { connect } = require('./agent_view_harness');
                 : R(u, o);
             return true; })()`);
         const shown = () => ev(`!!document.getElementById('set-password-modal')`);
-        const dismiss = () => ev(`(() => { const b = document.getElementById('set-password-later'); if (b) b.click(); document.getElementById('set-password-modal')?.remove(); return true; })()`);
+        const dismiss = () => ev(`(() => { const b = document.getElementById('set-password-later'); if (b) b.click(); document.getElementById('set-password-modal')?.remove(); document.getElementById('set-password-card')?.remove(); return true; })()`);
         // The prompt as the dashboard asks for it; __settled says whether the promise (which the Coral Hub question waits on) has settled.
         const ask = () => ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'password_ui.js'); window.__ps = false; window.__settled = false;
             m.maybePromptSetPassword().then(() => { window.__settled = true; }); return true; })()`);
@@ -41,29 +41,43 @@ const { connect } = require('./agent_view_harness');
         await waitFor(`window.__settled === true`, 'the promise settled once it opened', 2000);
         await dismiss();
 
-        console.log('2. typing in a terminal: the prompt waits while the person types, and opens there once they stop for 3 s');
+        console.log('2. the keyboard in a terminal: a card that never takes the focus; the person keeps typing; its button opens the dialog');
         await ev(`(() => { const x = document.createElement('div'); x.className = 'xterm'; x.id = 'qa-xterm'; x.style.cssText = 'position:fixed;left:0;top:0;width:200px;height:100px';
             x.innerHTML = '<textarea id="qa-xterm-input"></textarea>'; document.body.appendChild(x); document.getElementById('qa-xterm-input').focus(); return true; })()`);
+        // Keys as the terminal sees them: counted at the textarea, wherever the focus is.
+        await ev(`window.__keys = 0; document.getElementById('qa-xterm-input').addEventListener('keydown', () => { window.__keys++; }); true`);
         await ask();
-        const type = () => ev(`document.getElementById('qa-xterm-input').dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true })); true`);
-        for (let i = 0; i < 10; i++) { await pause(500); await type(); } // 5 s of typing, a key every half second
-        assert.equal(await shown(), false, 'not while the person types');
-        assert.equal(await ev(`document.activeElement && document.activeElement.id`), 'qa-xterm-input', 'the terminal keeps the keyboard while they type');
-        const stopped = Date.now();
-        await waitFor(`!!document.getElementById('set-password-modal')`, 'the prompt once the typing stopped, the terminal still focused', 6000);
-        const quiet = Date.now() - stopped;
-        assert.ok(quiet >= 2500, `it opened ${quiet} ms after the last key: not mid-typing`);
+        await waitFor(`!!document.getElementById('set-password-card')`, 'the card', 3000);
+        assert.equal(await shown(), false, 'no dialog over the terminal');
+        assert.equal(await ev(`window.__settled`), true, 'settled: the card is up');
+        assert.equal(await ev(`document.getElementById('set-password-card').getAttribute('role')`), 'status');
+        assert.equal(await ev(`document.activeElement && document.activeElement.id`), 'qa-xterm-input', 'the terminal keeps the keyboard');
+        // QA's case: the person types again right after it appears ("yes", Enter): every key reaches the terminal, none the card.
+        for (const key of ['y', 'e', 's', 'Enter']) {
+            await ev(`(() => { const a = document.activeElement; a.dispatchEvent(new KeyboardEvent('keydown', { key: ${JSON.stringify(key)}, bubbles: true })); return true; })()`);
+            await pause(150);
+        }
+        assert.equal(await ev(`window.__keys`), 4, 'all four keys reached the terminal');
+        assert.equal(await ev(`document.activeElement && document.activeElement.id`), 'qa-xterm-input', 'still in the terminal');
+        await pause(3500);
+        assert.equal(await ev(`document.activeElement && document.activeElement.id`), 'qa-xterm-input', 'the card never takes the focus, however long it waits');
+        assert.equal(await shown(), false, 'and no dialog opens by itself');
+        // Tab or F6 reach the button: it is in the page's order, after the terminal.
+        assert.equal(await ev(`(() => { const b = document.getElementById('set-password-card-open'); return b.tabIndex >= 0 && !!(document.getElementById('qa-xterm').compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING); })()`), true, 'its button is reachable after the terminal');
+        await ev(`document.getElementById('set-password-card-open').click(); true`);
+        await waitFor(`!!document.getElementById('set-password-modal')`, 'the dialog from the card', 2000);
+        assert.equal(await ev(`!!document.getElementById('set-password-card')`), false, 'the card goes when the dialog opens');
+        assert.equal(await ev(`!!(document.activeElement && document.getElementById('set-password-modal').contains(document.activeElement))`), true, 'the dialog has the focus, as before');
         await dismiss();
         await ev(`document.getElementById('qa-xterm').remove(); true`);
 
-        console.log('2b. a terminal that just has the keyboard (no typing): it still opens after the quiet spell');
+        console.log('2b. the card goes once a password is set (another browser or Settings)');
         await ev(`(() => { const x = document.createElement('div'); x.className = 'xterm'; x.id = 'qa-xterm'; x.style.cssText = 'position:fixed;left:0;top:0;width:200px;height:100px';
             x.innerHTML = '<textarea id="qa-xterm-input"></textarea>'; document.body.appendChild(x); document.getElementById('qa-xterm-input').focus(); return true; })()`);
         await ask();
-        await pause(1500);
-        assert.equal(await shown(), false, 'not at once over a focused terminal');
-        await waitFor(`!!document.getElementById('set-password-modal')`, 'the prompt after the quiet spell', 5000);
-        await dismiss();
+        await waitFor(`!!document.getElementById('set-password-card')`, 'the card', 3000);
+        await ev(`window.__ps = true; window.dispatchEvent(new Event('focus')); true`);
+        await waitFor(`!document.getElementById('set-password-card')`, 'the card gone once a password is set', 3000);
         await ev(`document.getElementById('qa-xterm').remove(); true`);
 
         console.log('3. nothing in the way: it opens at once (a fresh install still sees it)');
@@ -78,7 +92,7 @@ const { connect } = require('./agent_view_harness');
         await ev(`window.__ps = true; document.getElementById('qa-other-dialog').remove(); true`);
         await waitFor(`window.__settled === true`, 'the promise settled', 4000);
         assert.equal(await shown(), false, 'no prompt once a password is set');
-        console.log('PASS password prompt waits for open dialogs and for typing in a terminal to stop, and still opens on its own');
+        console.log('PASS password prompt waits for open dialogs, asks with a card that never takes the keyboard from the terminal, and still opens on its own');
     } finally {
         await client.close();
     }
