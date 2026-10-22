@@ -29,6 +29,7 @@ const VIEW = 'View only through Coral Hub';
         await readOnly(true);
         assert.deepEqual(await box(), { disabled: true, placeholder: VIEW });
 
+        assert.equal(await ev(`document.getElementById('command-input').getAttribute('aria-label')`), VIEW, 'the box is named for why it is off, not only by a placeholder');
         console.log('3. the access answer first, then a live update (the bug): the words stay');
         await ev(`window._coralHandleWsMessage({ type: 'coral_update', sessions: [{ name: 'ro-a', session_id: 'ro-a-id', agent_type: 'claude', display_name: 'Alpha renamed', working_directory: '/x', status: 'working' }, { name: 'ro-b', session_id: 'ro-b-id', agent_type: 'claude', working_directory: '/y', status: 'working' }] }); true`);
         assert.equal(await ev(`window.T.state.currentSession.display_name`), 'Alpha renamed', 'the update was applied (it renames the agent)');
@@ -42,6 +43,7 @@ const VIEW = 'View only through Coral Hub';
         assert.deepEqual(await box(), { disabled: true, placeholder: VIEW });
         await readOnly(false);
         const backB = await box();
+        assert.equal(await ev(`document.getElementById('command-input').getAttribute('aria-label')`), 'Enter command or paste image', 'its own name is back');
         assert.equal(backB.disabled, false); assert.ok(/Beta|ro-b/i.test(backB.placeholder) && !/Alpha|ro-a/i.test(backB.placeholder), `Beta's own placeholder is back: ${backB.placeholder}`);
 
         console.log('5. what a live update wrote while view only is what comes back');

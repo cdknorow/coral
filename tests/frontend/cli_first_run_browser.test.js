@@ -47,9 +47,18 @@ const { setTheme, installAudit, auditRegion } = require('./helpers/contrast');
         await ev(`window.__found = false; window.__launches.length = 0; document.getElementById('launch-dir').value = '/tmp'; window.launchSession(); true`);
         await waitFor(`!!document.querySelector('body > .modal:not([id]) [data-action="recheck"]')`, 'the Not Found dialog', 8000);
         assert.deepEqual(await ev(`[...document.querySelectorAll('body > .modal:not([id]) .modal-actions button')].map(b => b.dataset.action)`), ['settings', 'close', 'recheck']);
+        // the dialog is readable in both themes (the install-page link used the accent: 4.44:1 on the light panel), and the keyboard keeps its place after Check again
+        for (const theme of ['light', 'dark']) {
+            await setTheme(ev, theme);
+            const au = await auditRegion(ev, ['body > .modal:not([id])'], { focus: ['body > .modal:not([id]) [data-action="recheck"]'] });
+            assert.ok(au.checked > 0 && !au.fails.length, `${theme}: the Not Found dialog holds 4.5:1: ` + JSON.stringify(au.fails).slice(0, 300));
+        }
+        await setTheme(ev, 'dark');
+        await ev(`document.querySelector('body > .modal:not([id]) [data-action="recheck"]').focus(); true`);
         await ev(`document.querySelector('body > .modal:not([id]) [data-action="recheck"]').click(); true`);
         await waitFor(`/Still not found/.test((document.querySelector('body > .modal:not([id]) .cli-recheck-status') || {}).textContent || '')`, 'the still-missing words', 8000);
         assert.equal(await ev(`window.__launches.length`), 1, 'no second launch while it is missing');
+        assert.equal(await ev(`document.activeElement && document.activeElement.dataset.action`), 'recheck', 'focus is back on Check again after the answer (the button is disabled while it looks)');
         await ev(`window.__found = true; document.querySelector('body > .modal:not([id]) [data-action="recheck"]').click(); true`);
         await waitFor(`window.__launches.length === 2`, 'the launch after the CLI was found', 8000);
         assert.equal(await ev(`!!document.querySelector('body > .modal:not([id]) [data-action="recheck"]')`), false, 'the dialog closed');

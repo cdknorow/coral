@@ -1756,7 +1756,7 @@
 .xt-switches { display: grid; gap: 4px; }
 .xt-switches label { display: flex; gap: 10px; align-items: center; min-height: 36px; font-weight: 500; }
 .xt-changed { margin: -2px 0 4px 26px; font-size: .75rem; color: var(--text-secondary); }
-.settings-cloud-changed { margin: -4px 0 8px 0; font-size: .75rem; color: var(--text-secondary); } /* under the switch row it is about, like .xt-changed (#5847) */ /* under its switch, level with the label text */
+.settings-cloud-changed { margin: 8px 0 14px; font-size: .75rem; color: var(--text-secondary); } /* its own line below the switch row's description, apart from it (#5847, the same words and size as .xt-changed) */
 .xt-hub-may { margin: 6px 0 0; }
 .xt-h { margin: 0 0 6px; font-size: var(--fs-md); color: var(--text-secondary); font-weight: 600; }
 .xt-h-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 12px; } /* the heading holds its words, the link sits beside it (a link inside a heading made its name longer) */

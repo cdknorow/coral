@@ -2,8 +2,7 @@
 import { deriveSessionState } from './render.js';
 import { escapeHtml, renderMarkdown } from './utils.js';
 import { state } from './state.js';
-import { claudeSignedIn, askSigninSoon } from './signin_line.js';
-import { isCloud, normServer, sessionServer, LOCAL_SERVER } from './server_base.js';
+import { claudeSignedIn, askSigninSoon, isLocalClaude } from './signin_line.js';
 
 // ── Needs input ──────────────────────────────────────────────────────────
 // Claude Code writes a tool call to the transcript only once it completes, so
@@ -52,7 +51,7 @@ function needsInputInfo(session) {
     if (key === "check_terminal") {
         // A new Claude agent that has not started: when the server says Claude is not signed in (#5838's check after the first launch), the card says that, not the generic "startup prompt" (#5852).
         // Only for a session on THIS computer: claude_signed_in is this computer's Claude, and an agent on another server (or seen through Coral Hub) must not send the person to the wrong terminal.
-        if (session.agent_type === "claude" && !isCloud() && normServer(sessionServer(row)) === LOCAL_SERVER) {
+        if (session.agent_type === "claude" && isLocalClaude(row)) {
             const signedIn = claudeSignedIn();
             if (signedIn === false) return { kind: "startup", signedOut: true };
             if (signedIn === undefined) askSigninSoon();
