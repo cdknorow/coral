@@ -32,7 +32,7 @@ const { connect } = require('./agent_view_harness');
         await ev(`(() => { const d = document.createElement('div'); d.className = 'modal'; d.id = 'qa-other-dialog'; d.style.cssText = 'display:flex;position:fixed;inset:20%;background:#333;z-index:1000';
             d.innerHTML = '<p>Launch failed: the folder does not exist</p><button id="qa-dialog-btn">OK</button>'; document.body.appendChild(d); document.getElementById('qa-dialog-btn').focus(); return true; })()`);
         await ask();
-        await pause(1800);
+        await pause(1800); // sleep-ok: nothing may open during it, so there is no condition to wait for
         assert.equal(await shown(), false, 'not over another dialog');
         assert.equal(await ev(`window.__settled`), false, 'still waiting (the next question waits behind it)');
         assert.equal(await ev(`document.activeElement && document.activeElement.id`), 'qa-dialog-btn', 'the dialog keeps the focus');
@@ -60,11 +60,11 @@ const { connect } = require('./agent_view_harness');
         // QA's case: the person types again right after it appears ("yes", Enter): every key reaches the terminal, none the card.
         for (const key of ['y', 'e', 's', 'Enter']) {
             await ev(`(() => { const a = document.activeElement; a.dispatchEvent(new KeyboardEvent('keydown', { key: ${JSON.stringify(key)}, bubbles: true })); return true; })()`);
-            await pause(150);
+            await pause(150); // sleep-ok: nothing may open during it, so there is no condition to wait for
         }
         assert.equal(await ev(`window.__keys`), 4, 'all four keys reached the terminal');
         assert.equal(await ev(`document.activeElement && document.activeElement.id`), 'qa-xterm-input', 'still in the terminal');
-        await pause(3500);
+        await pause(3500); // sleep-ok: nothing may open during it, so there is no condition to wait for
         assert.equal(await ev(`document.activeElement && document.activeElement.id`), 'qa-xterm-input', 'the card never takes the focus, however long it waits');
         assert.equal(await shown(), false, 'and no dialog opens by itself');
         // Tab or F6 reach the button: it is the next control after the terminal in the page's order. F6 is #121's: with it, F6's own
@@ -98,7 +98,7 @@ const { connect } = require('./agent_view_harness');
         console.log('4. a password set while it waited: it does not open');
         await ev(`(() => { const d = document.createElement('div'); d.className = 'modal'; d.id = 'qa-other-dialog'; d.style.cssText = 'display:flex;position:fixed;inset:20%;z-index:1000'; document.body.appendChild(d); return true; })()`);
         await ask();
-        await pause(600);
+        await pause(600); // sleep-ok: nothing may open during it, so there is no condition to wait for
         await ev(`window.__ps = true; document.getElementById('qa-other-dialog').remove(); true`);
         await waitFor(`window.__settled === true`, 'the promise settled', 4000);
         assert.equal(await shown(), false, 'no prompt once a password is set');

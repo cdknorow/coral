@@ -143,7 +143,7 @@ function untilNoDialog() {
         };
         const observer = new MutationObserver(look);
         observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class', 'open', 'hidden'] });
-        const tick = setInterval(look, 1000);
+        const tick = setInterval(look, 1000); // interval-ok: a look at this page's own dialogs, no request
         look();
     });
 }
