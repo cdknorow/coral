@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	at "github.com/subgentic/coral/internal/agenttypes"
 	"github.com/subgentic/coral/internal/ptymanager"
@@ -332,11 +333,22 @@ func (h *SessionsHandler) deliverHumanSend(ctx context.Context, name, agentType,
 // echoMinChars is the shortest text echoedSince searches for.
 const echoMinChars = 4
 
-// echoKey is what a message's echo on the screen is searched for by: its first line, whitespace-normalised, at most 32 characters (a
-// long or multi-line message wraps on screen, so the whole text would not be found).
+// noSpace is s with all whitespace removed: a wrap in the middle of a word, or a TUI's indent on continuation lines, cannot hide an echo
+// compared this way.
+func noSpace(s string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsSpace(r) {
+			return -1
+		}
+		return r
+	}, s)
+}
+
+// echoKey is what a message's echo on the screen is searched for by: the start of its first non-empty line, without whitespace, at most 32
+// characters (a long or multi-line message wraps on screen, so the whole text would not be found).
 func echoKey(text string) string {
 	for _, line := range strings.Split(text, "\n") {
-		if f := strings.Join(strings.Fields(line), " "); f != "" {
+		if f := noSpace(line); f != "" {
 			if r := []rune(f); len(r) > 32 {
 				f = string(r[:32])
 			}
@@ -347,14 +359,13 @@ func echoKey(text string) string {
 }
 
 // echoedSince reports whether the message's echo is on the screen more times than it was on the screen before the typing (an earlier
-// message of the same words does not count). Both screens have their line breaks taken out.
+// message of the same words does not count). Both screens are compared without whitespace.
 func echoedSince(before, now, text string) bool {
 	key := echoKey(text)
 	if len([]rune(key)) < echoMinChars {
 		return false
 	}
-	flat := func(s string) string { return strings.Join(strings.Fields(s), " ") }
-	return strings.Count(flat(now), key) > strings.Count(flat(before), key)
+	return strings.Count(noSpace(now), key) > strings.Count(noSpace(before), key)
 }
 
 // slashCommandRe is a CLI command: a slash, a name, then nothing or arguments on the same line ("/tmp/x is
