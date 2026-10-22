@@ -41,6 +41,8 @@ const BASE = require('./test_base').BASE;
         const rail = () => ev(`window.toggleSidebarRail && window.toggleSidebarRail(); true`);
 
         // 1. normal motion: the page loops, and no dot has a ring
+        // Say so: a Windows runner has Settings > Accessibility > Animation effects off, which makes the browser's own answer "reduce" before this test emulates anything.
+        await Emulation.setEmulatedMedia({ features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] });
         await specimens(); await notices(); await sleep(600); // sleep-ok: an animation's first frames; there is no event for "started"
         const normal = await looping();
         const loops = new Set(normal.map(x => x.split(' @ ')[0]));

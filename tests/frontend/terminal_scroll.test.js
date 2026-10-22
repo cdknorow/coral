@@ -78,7 +78,7 @@ async function run() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    working_dir: '/tmp',
+                    working_dir: ${JSON.stringify(require('node:os').tmpdir())},
                     agent_type: 'terminal',
                     display_name: 'Scroll Test'
                 })
