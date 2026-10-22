@@ -19,6 +19,7 @@ import (
 	"github.com/subgentic/coral/internal/agentmodels"
 	"github.com/subgentic/coral/internal/agentsignin"
 	at "github.com/subgentic/coral/internal/agenttypes"
+	"github.com/subgentic/coral/internal/logsafe"
 	"github.com/subgentic/coral/internal/naming"
 	"github.com/subgentic/coral/internal/proxy"
 	"github.com/subgentic/coral/internal/ptr"
@@ -364,9 +365,10 @@ func (h *SessionsHandler) startOnTmux(ctx context.Context, params agent.LaunchPa
 			"resolved_path", tmuxPath,
 			"client_tmux_bin_before", tmuxTerm.Client().TmuxBin,
 			"socket", tmuxTerm.Client().SocketPath,
-			"path", os.Getenv("PATH"),
 		)
 		if !ok {
+			// What was missing and where it was looked for, without the PATH itself (it is logged once, at server start, with the home folder as "~").
+			logTmuxNotFound()
 			return fmt.Errorf("tmux is required to launch agents but was not found on this system. Install tmux (e.g. 'brew install tmux' on macOS), then try again")
 		}
 		if tmuxPath != "" && tmuxTerm.Client().TmuxBin != tmuxPath {
@@ -545,4 +547,9 @@ func launchCommand(ag agent.Agent, p agent.LaunchParams) (string, error) {
 		return "", err
 	}
 	return agent.WrapWithBundlePath(agent.WrapWithCLINode(cmd, p.CLIPath)), nil // an npm-installed CLI runs with its own node (#5899)
+}
+
+// logTmuxNotFound says what a launch could not find and where it looked, without the PATH itself: that is logged once, at server start, with the home folder as "~" (#6018).
+func logTmuxNotFound() {
+	slog.Warn("launch: tmux not found", "binary", "tmux", "searched", "the PATH logged at server start, then the common tmux locations and a login shell", "path_entries", logsafe.Count())
 }
