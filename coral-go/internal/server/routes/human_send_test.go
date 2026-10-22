@@ -492,6 +492,63 @@ func TestHumanSendIsSubmittedOrSaysSo(t *testing.T) {
 			assert.Equal(t, []string{msg}, typed)
 		})
 	}
+	// Security's probe on #73: a screen that redraws by itself (a spinner) is no evidence that the message arrived.
+	t.Run("no hook events, a spinner redraws and the text never shows: typed again once, then not confirmed, never sent", func(t *testing.T) {
+		h := setup(t, "codex", false)
+		h.term.show(codexReady(t, ""))
+		h.term.onType = func(string) { h.term.show("Working (3s)\n" + codexReady(t, "")) }
+		rec := h.send("please fix the build")
+		assert.Equal(t, http.StatusConflict, rec.Code, rec.Body.String())
+		assert.Equal(t, "not_confirmed", code(rec))
+		typed, _ := h.term.counts()
+		assert.Len(t, typed, 1+humanSendRetypes)
+	})
+	t.Run("no hook events, the first typing is lost behind a spinner and the second lands: sent after one retype", func(t *testing.T) {
+		h := setup(t, "codex", false)
+		h.term.show(codexReady(t, ""))
+		n := 0
+		h.term.onType = func(text string) {
+			if n++; n == 1 {
+				h.term.show("Working (3s)\n" + codexReady(t, ""))
+				return
+			}
+			h.term.show("> you: " + text + "\n" + codexReady(t, ""))
+		}
+		rec := h.send("please fix the build")
+		assert.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+		typed, _ := h.term.counts()
+		assert.Len(t, typed, 2)
+	})
+	t.Run("no hook events, a long multi-line message echoed wrapped: its first line is found, sent once", func(t *testing.T) {
+		h := setup(t, "codex", false)
+		h.term.show(codexReady(t, ""))
+		msg := "Please review the change to the retry logic in the uploader, and tell me whether the backoff can overflow"+"\n"+"Second line with more detail."
+		h.term.onType = func(text string) {
+			h.term.show("> Please review the change to the retry\n  logic in the uploader, and tell me whether\n  the backoff can overflow Second line" + "\n" + codexReady(t, ""))
+		}
+		rec := h.send(msg)
+		assert.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+		typed, _ := h.term.counts()
+		assert.Len(t, typed, 1)
+	})
+	t.Run("an earlier message of the same words on the screen is no echo of this one", func(t *testing.T) {
+		h := setup(t, "codex", false)
+		h.term.show("> you: please fix the build\n" + codexReady(t, ""))
+		h.term.onType = func(string) {}
+		rec := h.send("please fix the build")
+		assert.Equal(t, http.StatusConflict, rec.Code, rec.Body.String())
+		typed, _ := h.term.counts()
+		assert.Len(t, typed, 1+humanSendRetypes)
+	})
+	t.Run("no hook events, a text too short to search for: a screen that moved is taken as sent", func(t *testing.T) {
+		h := setup(t, "codex", false)
+		h.term.show(codexReady(t, ""))
+		h.term.onType = func(string) { h.term.show("Working (3s)\n" + codexReady(t, "")) }
+		rec := h.send("ok")
+		assert.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+		typed, _ := h.term.counts()
+		assert.Len(t, typed, 1)
+	})
 	t.Run("a message that starts with a path is a message: no evidence, not confirmed", func(t *testing.T) {
 		h := setup(t, "codex", true)
 		h.term.show(codexReady(t, ""))

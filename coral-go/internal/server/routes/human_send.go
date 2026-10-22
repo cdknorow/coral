@@ -64,7 +64,7 @@ var (
 	// The same for a message with attached images (#4794): the CLI reads the images before its UserPromptSubmit hook.
 	humanSendAttachConfirmWait = 6 * time.Second
 	// Times a message lost while the agent started is typed again, at most.
-	humanSendRetypes = 2
+	humanSendRetypes = 1
 	// Messages waiting behind the one being delivered to an agent, at most; and messages being delivered or waiting, in all.
 	humanSendMaxWaiting  = 4
 	humanSendMaxInFlight = 32
@@ -283,14 +283,18 @@ func (h *SessionsHandler) deliverHumanSend(ctx context.Context, name, agentType,
 				// holding anything else (an image chip and the text the match above could not read, a draft) may still hold the message.
 			}
 			if h.agentHasNoEvents(ctx, sessionID) && ptymanager.InputBoxEmpty(screen) {
-				if screen != before {
-					// An empty box is also what a submitted message looks like, and an agent whose hooks are not reaching Coral (or
-					// that has none yet) sends no event for it. The screen moved since before the typing, so the keys arrived: it
-					// was taken, and typing it again would send it twice (three times with both retypes).
+				// An empty box is also what a submitted message looks like, and an agent whose hooks are not reaching Coral (or
+				// that has none yet) sends no event for it. So a message counts as taken only on evidence of its text: the
+				// agent's echo of it, on the screen more times than before the typing. A screen that merely changed (a spinner,
+				// a clock) is no evidence: its keystrokes may have been lost.
+				if echoedSince(before, screen, text) {
 					return nil
 				}
+				if len(echoKey(text)) < echoMinChars && !command && screen != before {
+					return nil // too short to search for: a screen that moved is all there is to go on
+				}
 				if !command && retyped < humanSendRetypes {
-					if err := send(); err != nil { // the screen is as it was before the typing: its keystrokes were lost while it started
+					if err := send(); err != nil { // no trace of it: its keystrokes were lost while it started, and none of it is in the box
 						return err
 					}
 					retyped++
@@ -323,6 +327,34 @@ func (h *SessionsHandler) deliverHumanSend(ctx context.Context, name, agentType,
 		extra++
 		enteredAt = time.Now()
 	}
+}
+
+// echoMinChars is the shortest text echoedSince searches for.
+const echoMinChars = 4
+
+// echoKey is what a message's echo on the screen is searched for by: its first line, whitespace-normalised, at most 32 characters (a
+// long or multi-line message wraps on screen, so the whole text would not be found).
+func echoKey(text string) string {
+	for _, line := range strings.Split(text, "\n") {
+		if f := strings.Join(strings.Fields(line), " "); f != "" {
+			if r := []rune(f); len(r) > 32 {
+				f = string(r[:32])
+			}
+			return f
+		}
+	}
+	return ""
+}
+
+// echoedSince reports whether the message's echo is on the screen more times than it was on the screen before the typing (an earlier
+// message of the same words does not count). Both screens have their line breaks taken out.
+func echoedSince(before, now, text string) bool {
+	key := echoKey(text)
+	if len([]rune(key)) < echoMinChars {
+		return false
+	}
+	flat := func(s string) string { return strings.Join(strings.Fields(s), " ") }
+	return strings.Count(flat(now), key) > strings.Count(flat(before), key)
 }
 
 // slashCommandRe is a CLI command: a slash, a name, then nothing or arguments on the same line ("/tmp/x is
