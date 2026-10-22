@@ -6,9 +6,13 @@ const out = process.env.WALK_OUT;
 const phase = process.argv[2] || 'phase1';
 const chromePath = ['C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe'].find(fs.existsSync);
 const base = 'http://127.0.0.1:8450';
-const chrome = spawn(chromePath, ['--remote-debugging-port=9222', '--user-data-dir=C:/walk/chrome-profile', '--headless=new', '--no-first-run', '--window-size=1280,900', 'about:blank'], { stdio: 'ignore' });
-let client;
-for (let i = 0; i < 30 && !client; i++) { await new Promise(r => setTimeout(r, 1000)); try { client = await CDP({ port: 9222 }); } catch {} }
+let chrome, client;
+for (let attempt = 1; attempt <= 3 && !client; attempt++) {
+    chrome = spawn(chromePath, ['--remote-debugging-port=9222', '--user-data-dir=C:/walk/chrome-profile', '--headless=new', '--no-first-run', '--no-sandbox', '--window-size=1280,900', 'about:blank'], { stdio: 'ignore' });
+    for (let i = 0; i < 40 && !client; i++) { await new Promise(r => setTimeout(r, 1000)); try { client = await CDP({ port: 9222 }); } catch {} }
+    if (!client) { console.log('chrome did not answer on attempt ' + attempt); try { chrome.kill(); } catch {} await new Promise(r => setTimeout(r, 2000)); }
+}
+if (!client) throw new Error('no browser');
 const { Page, Runtime, Input } = client;
 await Page.enable();
 let n = 200;
@@ -30,7 +34,16 @@ if (phase === 'phase1') {
     await Input.dispatchMouseEvent({ type: 'mousePressed', x: bp.x, y: bp.y, button: 'left', clickCount: 1 });
     await Input.dispatchMouseEvent({ type: 'mouseReleased', x: bp.x, y: bp.y, button: 'left', clickCount: 1 });
     await sleep(4000);
-} else { console.log('phase 2 page: ' + (await ev('location.href'))); }
+} else {
+    console.log('phase 2 page: ' + (await ev('location.href')));
+    if ((await ev('location.href')).includes('/auth')) {
+        // the server was restarted: the browser signs in with the password it created
+        await ev(`document.querySelector('input[type=password]').focus()`); await Input.insertText({ text: 'walk-pass-Correct-Horse-9' });
+        const sp = await ev(`(() => { const e = [...document.querySelectorAll('button')].find(b => /sign in|open coral|log in/i.test(b.innerText.trim())); if (!e) return null; const r = e.getBoundingClientRect(); return JSON.stringify({ x: r.x + r.width / 2, y: r.y + r.height / 2 }); })()`);
+        if (sp) { const p2 = JSON.parse(sp); await Input.dispatchMouseEvent({ type: 'mousePressed', x: p2.x, y: p2.y, button: 'left', clickCount: 1 }); await Input.dispatchMouseEvent({ type: 'mouseReleased', x: p2.x, y: p2.y, button: 'left', clickCount: 1 }); }
+        await sleep(4000); console.log('after sign-in: ' + (await ev('location.href')));
+    }
+}
 async function experiment(label, agentType, settings, seconds, workDir = 'C:\\walk\\work') {
     console.log(`\n##### ${label}`);
     if (settings) { const r = await api('PUT', '/api/settings', settings); console.log('PUT settings', r.status, r.body.slice(0, 160)); }
