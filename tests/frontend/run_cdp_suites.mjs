@@ -238,7 +238,7 @@ function sweepLeftovers() {
     try { groups = JSON.parse(fs.readFileSync(path.join(pidDir, f), 'utf8')); } catch { /* unreadable: just remove it */ }
     for (const { pid, tmux: sock, tmp: t } of groups) {
       // A recorded tmux socket: only one under that runner's own folder.
-      if (sock) { if (t && sock.startsWith(t + path.sep)) { killTmux(sock); n++; } continue; }
+      if (sock) { if (t && sock.startsWith(t + path.sep) && fs.existsSync(sock)) { killTmux(sock); n++; } continue; } // counted only when its socket was still there
       const r = spawnSync('ps', ['-o', 'command=', '-p', String(pid)], { encoding: 'utf8' });
       if (r.status !== 0 || !t || !r.stdout.includes(t)) continue; // gone, or the pid now belongs to something else
       try { process.kill(-pid, 'SIGKILL'); n++; } catch { /* already gone */ }
