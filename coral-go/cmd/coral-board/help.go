@@ -70,10 +70,11 @@ func commandUsage(cmd string, rest []string) string {
 }
 
 // windowsTextNote is added to post's and send's help: the two things that damage a message on Windows before Coral sees it.
-const windowsTextNote = `On Windows: PowerShell 5.1 drops the double quotes inside a native program's argument and turns
-non-ASCII text into '?' when piped to one. For text with quotes or non-ASCII use --file <path> (a UTF-8
-file), or pipe to "-" after  $OutputEncoding = [Text.UTF8Encoding]::new()  (PowerShell 7 and cmd.exe
-need neither).`
+const windowsTextNote = `On Windows: PowerShell 5.1 drops the double quotes inside a native
+program's argument and turns non-ASCII text into '?' when piped to one.
+For text with quotes or non-ASCII use --file <path> (a UTF-8 file), or
+pipe to "-" after  $OutputEncoding = [Text.UTF8Encoding]::new()
+(PowerShell 7 and cmd.exe need neither).`
 
 // postFlags and sendFlags are the options of post and of send. They are read in any case (--TO is --to) and anywhere before or among the words of the message.
 var (
