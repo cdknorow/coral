@@ -42,11 +42,14 @@ func TestAuthenticodePinsAreTheRecordedCertificates(t *testing.T) {
 }
 
 // #162 D: the MSI is one file. tools/coral.wxs embeds its cabinet (MediaTemplate EmbedCab="yes"); a package with an external cab beside it
-// would let the cab be swapped next to the held MSI, so this fails if that changes.
+// would let the cab be swapped next to the held MSI, so this fails if that changes: also on any EmbedCab="no" or Cabinet= (a Media element
+// naming an external cab), wherever it is (QA N2).
 func TestTheWindowsPackageEmbedsItsCabinet(t *testing.T) {
 	b, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "tools", "coral.wxs"))
 	if err != nil {
 		t.Skip("tools/coral.wxs is not in this checkout")
 	}
 	assert.Contains(t, string(b), `<MediaTemplate EmbedCab="yes" />`)
+	assert.NotRegexp(t, `(?i)\bEmbedCab\s*=\s*["']\s*no`, string(b), "no cabinet left outside the MSI")
+	assert.NotRegexp(t, `(?i)\bCabinet\s*=`, string(b), "no external cabinet named")
 }

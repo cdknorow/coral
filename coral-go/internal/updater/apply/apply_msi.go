@@ -270,6 +270,13 @@ func RunMSI(ctx context.Context, mc MSIConfig) Result {
 	code, err := m.Msiexec(ctx, msiInstallArgs(held.Path(), filepath.Join(dir, "msi-install.log"))...)
 	closeHeld()
 	switch {
+	case ctx.Err() != nil:
+		// N3: coral-update's time ran out (30 minutes: an unanswered consent prompt) and msiexec was ended. Windows Installer rolls back an
+		// install whose client is gone; the journal stays all the same, so the next run checks what is registered (recoverMSI drops it when
+		// the old version still is). The old Coral is started again.
+		cfg.history(&st, cfg.Installed, rec.Version, "failed", "timeout")
+		_ = verify.SaveState(dir, st)
+		return fail("timeout")
 	case err != nil:
 		removeMSIJournal(dir)
 		return fail("msiexec")
