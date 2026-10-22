@@ -93,8 +93,8 @@ export function updateWaitingIndicator(s) {
         let text = "";
         if (bannerKey === 'needs_input') {
             setClassName(banner, "waiting-banner");
-            // A sign-in is said once, by the card in the chat (needs_input_card.js, "needs you to sign in", Open terminal): no pill for it (#5895); the terminal tab shows no pill at all (css)
-            text = s.waiting_kind === 'login' ? "" : "⏳ Agent is waiting for input";
+            // The card in the chat says this too (needs_input_card.js), and the pill is hidden while that card is on screen (css, #5895): one message; scrolled away from the card, the pill is the cue
+            text = s.waiting_kind === 'login' ? "⏳ Agent needs you to sign in (in its terminal)" : "⏳ Agent is waiting for input";
         } else if (bannerKey === 'check_terminal' && !startupSignedOut(s)) { // signed out: the card says so, once
             setClassName(banner, "waiting-banner waiting-banner-not-started");
             text = "⏳ This agent hasn't done anything yet. Open its terminal: some agents ask to trust the folder, or to sign in, the first time they run.";

@@ -53,6 +53,7 @@ const SESSIONS = [
         await shot('pill-ask-chat');
         // with no card in the chat the pill is the message: take the card away, as before the chat has drawn it
         await ev(`document.querySelector('#live-history-messages > .chat-needs-input').remove(); true`);
+        await waitFor(`getComputedStyle(document.getElementById('waiting-banner')).display !== 'none'`, 'the pill once the card is gone (the page learns it from the observer)', 5000);
         p = await pill();
         assert.ok(p.display !== 'none' && p.h > 0 && /waiting for input/.test(p.text), 'with no card the pill shows: ' + JSON.stringify(p));
 

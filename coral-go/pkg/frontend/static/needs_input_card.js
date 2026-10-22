@@ -264,11 +264,37 @@ export function announcePrompt(message) {
     promptLive().textContent = message + (_liveFlip ? "" : "\u00a0"); // the same words twice are still a change
 }
 
+// The waiting pill over the chat says what the card in the chat says, so it is not drawn beside it while the card is on screen; scrolled away from the card (up in a long chat) the pill is the
+// cue again (#5895 review). The capture wrapper carries "card-in-view" while at least a tenth of the card is on screen; the stylesheet hides the pill on that class. A card taken out of the page
+// is not on screen, so the class goes with it.
+let _cardWatch = null; // { el, observer }
+function watchCardInView(el) {
+    const wrap = document.getElementById("capture-wrapper");
+    if (!wrap) return;
+    if (_cardWatch && _cardWatch.el === el) return;
+    unwatchCardInView();
+    if (typeof IntersectionObserver === "undefined") { wrap.classList.add("card-in-view"); _cardWatch = { el, observer: null }; return; } // cannot tell: keep one message, the card
+    const observer = new IntersectionObserver(entries => {
+        const last = entries[entries.length - 1];
+        if (last) wrap.classList.toggle("card-in-view", last.intersectionRatio >= 0.1);
+    }, { threshold: [0, 0.1] });
+    observer.observe(el);
+    _cardWatch = { el, observer };
+}
+function unwatchCardInView() {
+    if (!_cardWatch) return;
+    if (_cardWatch.observer) _cardWatch.observer.disconnect();
+    _cardWatch = null;
+    const wrap = document.getElementById("capture-wrapper");
+    if (wrap) wrap.classList.remove("card-in-view");
+}
+
 export function syncNeedsInputCard(container, session) {
     const info = needsInputInfo(session);
     let el = container.querySelector(":scope > .chat-needs-input");
     if (!info) {
         if (el) el.remove();
+        unwatchCardInView();
         return;
     }
     const key = JSON.stringify(info);
@@ -311,4 +337,5 @@ export function syncNeedsInputCard(container, session) {
     } else if (container.lastElementChild !== el) {
         container.appendChild(el);
     }
+    watchCardInView(el);
 }
