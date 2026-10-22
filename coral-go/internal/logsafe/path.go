@@ -4,6 +4,7 @@ package logsafe
 
 import (
 	"os"
+	"os/user"
 	"path/filepath"
 	"strings"
 )
@@ -55,11 +56,103 @@ func homeFolders() []string {
 	return h
 }
 
-// PathSummary is the line's PATH fields: the entry count and the folders with the home folder as "~". Used once, at server start.
+// userNames are the names this person is known by: the account name as the system and the environment give it (a Windows one can be "DOMAIN\\name"), and the home folder's own name.
+func userNames() []string {
+	seen := map[string]bool{}
+	var out []string
+	add := func(n string) {
+		if i := strings.LastIndexAny(n, `\/`); i >= 0 {
+			n = n[i+1:]
+		}
+		n = strings.TrimSpace(n)
+		if n != "" && !seen[strings.ToLower(n)] {
+			seen[strings.ToLower(n)] = true
+			out = append(out, n)
+		}
+	}
+	if u, err := user.Current(); err == nil {
+		add(u.Username)
+	}
+	for _, k := range []string{"USERNAME", "USER", "LOGNAME"} {
+		add(os.Getenv(k))
+	}
+	for _, h := range homeFolders() {
+		add(filepath.Base(h))
+	}
+	return out
+}
+
+// isShortFormOf reports whether comp is the DOS 8.3 short form of name: its first six letters (spaces and dots left out, upper case), "~" and a number, as "RUNNER~1" is for "runneradmin". A
+// path can name the same folder by either, so the user's name is hidden in both.
+func isShortFormOf(comp, name string) bool {
+	i := strings.LastIndexByte(comp, '~')
+	if i <= 0 || i == len(comp)-1 {
+		return false
+	}
+	for _, c := range comp[i+1:] {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	base := strings.ToUpper(strings.NewReplacer(" ", "", ".", "").Replace(name))
+	if len(base) > 6 {
+		base = base[:6]
+	}
+	return base != "" && strings.EqualFold(comp[:i], base)
+}
+
+// HideUserName writes any folder of p that is the user's name, or its 8.3 short form, as "<user>": the home folder is only one of the places a path can carry it (a PATH entry can name the
+// profile by its short form, and an installer can put a folder named for the user anywhere).
+func HideUserName(p string, names []string) string {
+	if p == "" || len(names) == 0 {
+		return p
+	}
+	parts := strings.FieldsFunc(p, func(r rune) bool { return r == '/' || r == '\\' })
+	if len(parts) == 0 {
+		return p
+	}
+	out := p
+	for _, part := range parts {
+		for _, n := range names {
+			if strings.EqualFold(part, n) || isShortFormOf(part, n) {
+				out = replaceComponent(out, part, "<user>")
+				break
+			}
+		}
+	}
+	return out
+}
+
+// replaceComponent replaces whole folder names equal to comp (case-blind) in p.
+func replaceComponent(p, comp, with string) string {
+	var b strings.Builder
+	start := 0
+	flush := func(end int) {
+		seg := p[start:end]
+		if strings.EqualFold(seg, comp) {
+			b.WriteString(with)
+		} else {
+			b.WriteString(seg)
+		}
+	}
+	for i := 0; i < len(p); i++ {
+		if p[i] == '/' || p[i] == '\\' {
+			flush(i)
+			b.WriteByte(p[i])
+			start = i + 1
+		}
+	}
+	flush(len(p))
+	return b.String()
+}
+
+// PathSummary is the line's PATH fields: the entry count and the folders with the home folder as "~" and the user's name (and its 8.3 short form) as "<user>" wherever else it is a folder's
+// name. Used once, at server start.
 func PathSummary() string {
 	es := Entries()
 	shown := make([]string, len(es))
 	homes := homeFolders()
+	names := userNames()
 	for i, e := range es {
 		shown[i] = e
 		for _, h := range homes {
@@ -68,6 +161,7 @@ func PathSummary() string {
 				break
 			}
 		}
+		shown[i] = HideUserName(shown[i], names)
 	}
 	return "path_entries=" + itoa(len(es)) + " path=" + strings.Join(shown, string(filepath.ListSeparator))
 }
