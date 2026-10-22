@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"github.com/subgentic/coral/internal/clierr"
 	"io"
 	"os"
 	"strings"
@@ -100,7 +101,7 @@ func stdinTextOrExit(what string) string {
 		if errors.As(err, &u) {
 			os.Exit(2)
 		}
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	return text
 }

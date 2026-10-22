@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/subgentic/coral/internal/clierr"
 	"io"
 	"net/http"
 	"strings"
@@ -49,9 +50,10 @@ func cmdNotify(args []string, out io.Writer) error {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := (&http.Client{Timeout: 10 * time.Second}).Do(req)
+	wait := clierr.Timeout(10 * time.Second)
+	resp, err := (&http.Client{Timeout: wait}).Do(req)
 	if err != nil {
-		return fmt.Errorf("could not reach Coral at %s: %w", hooks.RedactedURL(serverURL), err)
+		return clierr.CannotReach(hooks.RedactedURL(serverURL), err, wait)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {

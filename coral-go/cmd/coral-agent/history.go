@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/subgentic/coral/internal/clierr"
 	"net/http"
 	"net/url"
 	"os"
@@ -38,7 +39,7 @@ Flags for 'history context':
 func cmdHistory(args []string) {
 	if len(args) == 0 {
 		printHistoryUsage()
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	switch args[0] {
 	case "search":
@@ -50,7 +51,7 @@ func cmdHistory(args []string) {
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown history subcommand: %s\n", args[0])
 		printHistoryUsage()
-		os.Exit(1)
+		clierr.Exit1()
 	}
 }
 
@@ -87,7 +88,7 @@ func cmdHistorySearch(args []string) {
 	if strings.TrimSpace(query) == "" {
 		fmt.Fprintln(os.Stderr, "Error: search query is required.")
 		fmt.Fprintln(os.Stderr, "Usage: coral-agent history search <query> [flags]")
-		os.Exit(1)
+		clierr.Exit1()
 	}
 
 	sid := resolveSessionID()
@@ -106,7 +107,7 @@ func cmdHistorySearch(args []string) {
 	data, status, err := apiCallRaw("GET", "/history/search?"+params.Encode(), nil)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error connecting to Coral server: %v\n", err)
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	if status != http.StatusOK {
 		var errResp struct {
@@ -117,7 +118,7 @@ func cmdHistorySearch(args []string) {
 		} else {
 			fmt.Fprintf(os.Stderr, "Search error (%d): %s\n", status, string(data))
 		}
-		os.Exit(1)
+		clierr.Exit1()
 	}
 
 	if *rawJSON {
@@ -155,7 +156,7 @@ func cmdHistorySearch(args []string) {
 
 	if err := json.Unmarshal(data, &resp); err != nil {
 		fmt.Fprintf(os.Stderr, "Error decoding search response: %v\n", err)
-		os.Exit(1)
+		clierr.Exit1()
 	}
 
 	if resp.TotalMatches == 0 {
@@ -226,7 +227,7 @@ func cmdHistoryContext(args []string) {
 		if err != nil || idx < 0 {
 			fmt.Fprintln(os.Stderr, "Error: turn index must be a non-negative integer.")
 			fmt.Fprintln(os.Stderr, "Usage: coral-agent history context [session_id] <turn_index> [--window W]")
-			os.Exit(1)
+			clierr.Exit1()
 		}
 		targetIndex = idx
 	} else if len(posArgs) >= 2 {
@@ -235,12 +236,12 @@ func cmdHistoryContext(args []string) {
 		if err != nil || idx < 0 {
 			fmt.Fprintln(os.Stderr, "Error: turn index must be a non-negative integer.")
 			fmt.Fprintln(os.Stderr, "Usage: coral-agent history context [session_id] <turn_index> [--window W]")
-			os.Exit(1)
+			clierr.Exit1()
 		}
 		targetIndex = idx
 	} else {
 		fmt.Fprintln(os.Stderr, "Usage: coral-agent history context [session_id] <turn_index> [--window W]")
-		os.Exit(1)
+		clierr.Exit1()
 	}
 
 	params := url.Values{}
@@ -252,7 +253,7 @@ func cmdHistoryContext(args []string) {
 	data, status, err := apiCallRaw("GET", "/history/context?"+params.Encode(), nil)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error connecting to Coral server: %v\n", err)
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	if status != http.StatusOK {
 		var errResp struct {
@@ -263,7 +264,7 @@ func cmdHistoryContext(args []string) {
 		} else {
 			fmt.Fprintf(os.Stderr, "Context error (%d): %s\n", status, string(data))
 		}
-		os.Exit(1)
+		clierr.Exit1()
 	}
 
 	if *rawJSON {
@@ -292,7 +293,7 @@ func cmdHistoryContext(args []string) {
 
 	if err := json.Unmarshal(data, &resp); err != nil {
 		fmt.Fprintf(os.Stderr, "Error decoding context response: %v\n", err)
-		os.Exit(1)
+		clierr.Exit1()
 	}
 
 	fmt.Printf("Context for session %s around turn #%d (window: %d, total session turns: %d):\n\n",

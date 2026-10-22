@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/subgentic/coral/internal/clierr"
 	"net/http"
 	"net/url"
 	"os"
@@ -20,18 +21,18 @@ func cmdHealth() {
 			os.Exit(0)
 		}
 		fmt.Fprintln(os.Stderr, healthUsageText)
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	st := loadState()
 	if st == nil {
 		fmt.Fprintln(os.Stderr, "Not subscribed to any board. Run: coral-board join <project> --as <role>")
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	item := os.Args[3]
 	data, status, err := apiCallRaw("POST", "/"+url.PathEscape(st.Project)+"/health/ack", map[string]any{"item": item})
 	if err != nil || status != http.StatusOK {
 		fmt.Fprintf(os.Stderr, "Error acknowledging %s: %v %s\n", item, err, data)
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	fmt.Printf("Acknowledged %s: it stays off the health check until it changes\n", item)
 }
