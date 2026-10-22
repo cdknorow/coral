@@ -134,10 +134,14 @@
          who ran the installer, never the elevated one that installed the files (a deferred or no-impersonate action would run
          it as SYSTEM or elevated). ExitDialog shows the checkbox only on a first install or an upgrade (NOT Installed), and
          the launch has the same condition plus NOT REMOVE~="ALL", so a repair or an uninstall starts nothing. A silent or
-         basic-UI install (/qn, /passive) shows no ExitDialog and starts nothing. -->
+         basic-UI install (/qn, /passive) shows no ExitDialog and starts nothing.
+         The action is Directory-based, so coral-tray starts in its install folder, not in the folder the installer was run from
+         (often Downloads). One limit: an msiexec started from an elevated prompt ("Run as administrator") has an elevated client
+         process too, and Windows Installer can't tell the two apart, so Coral starts elevated then, as anything started from
+         that prompt would. A normal double-click install starts it unelevated. -->
     <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Launch $(var.ProductName)" />
     <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
-    <CustomAction Id="LaunchCoral" FileRef="coral_tray.exe" ExeCommand="" Execute="immediate" Return="asyncNoWait" />
+    <CustomAction Id="LaunchCoral" Directory="INSTALLFOLDER" ExeCommand="&quot;[INSTALLFOLDER]coral-tray.exe&quot;" Execute="immediate" Return="asyncNoWait" />
     <UI>
       <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchCoral"
         Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 AND NOT Installed AND NOT REMOVE~=&quot;ALL&quot;" />
