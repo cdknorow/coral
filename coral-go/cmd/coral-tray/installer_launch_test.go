@@ -58,3 +58,12 @@ func TestWxsCommentsHaveNoDoubleHyphen(t *testing.T) {
 		assert.NotContains(t, string(c[1]), "--", "an XML comment in tools/coral.wxs holds a double hyphen: %.60q", c[1])
 	}
 }
+
+// The person is told why, in words that name the cause and the way on: the installer was run as administrator, and Coral opens from the Start Menu.
+func TestTheElevatedInstallerNoteSaysWhyAndWhatToDo(t *testing.T) {
+	assert.Contains(t, elevatedInstallerNote, "administrator")
+	assert.Contains(t, elevatedInstallerNote, "Start Menu")
+	assert.Contains(t, elevatedInstallerNote, "not started")
+	assert.NotEmpty(t, elevatedInstallerNoteTitle)
+	assert.Less(t, len(elevatedInstallerNote), 300, "a message box, not a page")
+}

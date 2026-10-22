@@ -10,3 +10,10 @@ const installerLaunchFlag = "from-installer"
 func installerLaunchRefused(fromInstaller bool, elevated func() bool) bool {
 	return fromInstaller && elevated()
 }
+
+// elevatedInstallerNote is what the person is told when the installer's "Launch Coral" is refused because the installer was run as administrator (#6004's W2): without it
+// the Finish page's ticked "Launch Coral" leads to nothing and no word.
+const (
+	elevatedInstallerNoteTitle = "Coral"
+	elevatedInstallerNote      = "Coral is installed, but it was not started: the installer was run as administrator, and Coral does not start with administrator rights.\n\nOpen Coral from the Start Menu."
+)
