@@ -3,6 +3,7 @@ package routes
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/subgentic/coral/internal/store"
 	"github.com/subgentic/coral/internal/store/storetest"
+	"github.com/subgentic/coral/internal/updater/trigger"
 )
 
 // The local "Install update" (#166): a person at this computer only, no body, Windows only, and the server quits only once the updater is running.
@@ -30,8 +32,9 @@ func TestInstallUpdateIsLocalPersonOnly(t *testing.T) {
 	h.SetPeerCheck(func(*http.Request) (bool, bool) { return peer[0], peer[1] })
 
 	var launched, quit int
-	var launchErr error
+	var launchErr, preErr error
 	h.stagedUpdate = func(context.Context) (string, error) { return "1.5.0", nil }
+	h.preflightUpdater = func(context.Context) error { return preErr }
 	h.launchUpdater = func(context.Context) error { launched++; return launchErr }
 	h.QuitForUpdate = func() error { quit++; return nil }
 
@@ -48,7 +51,7 @@ func TestInstallUpdateIsLocalPersonOnly(t *testing.T) {
 		h.InstallUpdate(rec, r)
 		return rec
 	}
-	reset := func() { launched, quit, launchErr = 0, 0, nil; h.installing = 0 }
+	reset := func() { launched, quit, launchErr, preErr = 0, 0, nil, nil; h.installing = 0 }
 
 	t.Run("the dashboard on this computer starts the updater, then quits", func(t *testing.T) {
 		reset()
@@ -141,6 +144,29 @@ func TestInstallUpdateIsLocalPersonOnly(t *testing.T) {
 		launchErr = nil
 		assert.Equal(t, http.StatusAccepted, req("", nil).Code)
 	})
+	// The server quits once the updater is running, so the updater is asked first (#5946): each answer that means "I will not install" is a 409 with its own
+	// code, the updater is never started and the server never quits.
+	for name, tc := range map[string]struct {
+		err  error
+		code string
+	}{
+		"the apply is not turned on":       {trigger.ErrApplyDisabled, "apply_not_enabled"},
+		"updates are off for this build":   {trigger.ErrUpdatesOff, "updates_off"},
+		"not a registered per-machine one": {trigger.ErrInstallUnsupported, "install_not_supported"},
+		"the updater cannot be asked":      {trigger.ErrUpdaterUnavailable, "updater_unavailable"},
+		"an error nobody expected":         {errors.New("boom"), "updater_unavailable"},
+		"wrapped, as Preflight returns it": {fmt.Errorf("%w: exit 1", trigger.ErrUpdaterUnavailable), "updater_unavailable"},
+	} {
+		t.Run("the updater says no: "+name, func(t *testing.T) {
+			reset()
+			preErr = tc.err
+			rec := req("", nil)
+			assert.Equal(t, http.StatusConflict, rec.Code, rec.Body.String())
+			assert.Contains(t, rec.Body.String(), tc.code)
+			assert.Equal(t, [2]int{0, 0}, [2]int{launched, quit}, "Coral keeps running: nothing was started and it did not quit")
+			assert.Zero(t, h.installing, "and the next try is not held up")
+		})
+	}
 	t.Run("a second request while one is under way is refused", func(t *testing.T) {
 		reset()
 		require.Equal(t, http.StatusAccepted, req("", nil).Code)

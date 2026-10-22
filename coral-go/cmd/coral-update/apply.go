@@ -39,6 +39,9 @@ func runApply(ctx context.Context, stdout io.Writer, dataDir string, trust root.
 	case "windows":
 		// A per-machine MSI: a major upgrade by Windows Installer, not a build-and-swap (#162, apply_msi.go).
 		res := runApplyWindows(ctx, dataDir, trust, pins)
+		if installedNothingAndLeftNoCoral(res) {
+			res.RestartFailed = !restartFromMarker(dataDir, clickedInstallDir)
+		}
 		print(stdout, output{Result: res.Result, Installed: res.From, Version: res.To, FailedStage: res.FailedStage, RestartFailed: res.RestartFailed, Trust: string(source)})
 		return 0
 	default:
@@ -68,14 +71,18 @@ const (
 // version it is about to install and refuses a stale click before any prompt (#82, #80's ClickedVersion).
 var clickedVersion string
 
+// clickedInstallDir is the folder of the server that quit for this run (the marker's): where Coral is started again when the apply installs nothing (#5946).
+var clickedInstallDir string
+
 // installRequest consumes the dashboard's one-time install marker and returns "" when there was a good one, else the result word to print. The marker is deleted
 // whatever it held, so a second run finds none.
 func installRequest(dataDir string, now time.Time) string {
-	clickedVersion = ""
+	clickedVersion, clickedInstallDir = "", ""
 	m, err := trigger.Consume(dataDir, now)
 	switch {
 	case err == nil:
 		clickedVersion = m.Version
+		clickedInstallDir = m.InstallDir
 		return ""
 	case errors.Is(err, trigger.ErrNoMarker):
 		return resultNotRequested

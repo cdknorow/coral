@@ -11,6 +11,7 @@ package routes
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -29,8 +30,8 @@ const UpdateQuitExitCode = 5
 var updateInstallPlatform = runtime.GOOS == "windows"
 
 // InstallUpdate: POST /api/system/update/install, on this computer only (the dashboard or the signed command line, as Coral's own user), no body.
-// 202 once the updater is running and the server has been asked to quit; 409 when there is nothing to install, it is not Windows, or one is already
-// under way.
+// 202 once the updater is running and the server has been asked to quit; 409 when there is nothing to install, it is not Windows, the updater says it
+// would not install (apply_not_enabled, updates_off, install_not_supported, updater_unavailable), or one is already under way.
 func (h *CloudHandler) InstallUpdate(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	if h.refuseCloud(w, r, allowDashboard|allowCLI) {
@@ -61,6 +62,26 @@ func (h *CloudHandler) InstallUpdate(w http.ResponseWriter, r *http.Request) {
 	version, err := staged(r.Context())
 	if err != nil {
 		writeError(w, http.StatusConflict, "nothing_staged", "There is no verified update staged to install")
+		return
+	}
+	// The server quits once the updater is running, so the updater is asked first whether it will install anything: an updater that would answer "not
+	// enabled", "off" or "not a registered install" leaves nobody to start Coral again (#5946).
+	preflight := h.preflightUpdater
+	if preflight == nil {
+		preflight = func(ctx context.Context) error { return trigger.Preflight(ctx, h.dataDir) }
+	}
+	if err := preflight(r.Context()); err != nil {
+		switch {
+		case errors.Is(err, trigger.ErrApplyDisabled):
+			writeError(w, http.StatusConflict, "apply_not_enabled", "Installing updates from here is not turned on yet: Coral keeps running as it is")
+		case errors.Is(err, trigger.ErrUpdatesOff):
+			writeError(w, http.StatusConflict, "updates_off", "Updates are off for this build or by CORAL_AUTO_UPDATE: Coral keeps running as it is")
+		case errors.Is(err, trigger.ErrInstallUnsupported):
+			writeError(w, http.StatusConflict, "install_not_supported", "This Coral is not installed for this computer's users with the installer (a portable copy, or one Windows Installer does not know): update it from its installer")
+		default:
+			slog.Warn("[update] the updater could not be asked", "error", err)
+			writeError(w, http.StatusConflict, "updater_unavailable", "The updater could not be asked whether it will install: Coral keeps running as it is")
+		}
 		return
 	}
 	if !atomic.CompareAndSwapInt32(&h.installing, 0, 1) {

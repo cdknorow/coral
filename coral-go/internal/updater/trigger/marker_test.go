@@ -19,7 +19,7 @@ func TestUpdatesDirIsTheStagersAndTheTriggersOwnFixedName(t *testing.T) {
 func TestAMarkerIsGoodForOneConsumeOnly(t *testing.T) {
 	dir := t.TempDir()
 	now := time.Now()
-	require.NoError(t, WriteMarker(dir, "1.5.0", now))
+	require.NoError(t, WriteMarker(dir, "1.5.0", "", now))
 	m, err := Consume(dir, now.Add(5*time.Second))
 	require.NoError(t, err)
 	assert.Equal(t, "1.5.0", m.Version)
@@ -36,7 +36,7 @@ func TestNoMarkerMeansNoApply(t *testing.T) {
 func TestAnOldMarkerIsRefusedAndDeleted(t *testing.T) {
 	dir := t.TempDir()
 	now := time.Now()
-	require.NoError(t, WriteMarker(dir, "1.5.0", now.Add(-MarkerTTL-time.Second)))
+	require.NoError(t, WriteMarker(dir, "1.5.0", "", now.Add(-MarkerTTL-time.Second)))
 	_, err := Consume(dir, now)
 	assert.ErrorIs(t, err, ErrMarkerExpired)
 	_, err = Consume(dir, now)
@@ -46,7 +46,7 @@ func TestAnOldMarkerIsRefusedAndDeleted(t *testing.T) {
 func TestAMarkerFromTheFutureIsRefused(t *testing.T) {
 	dir := t.TempDir()
 	now := time.Now()
-	require.NoError(t, WriteMarker(dir, "1.5.0", now.Add(time.Hour)))
+	require.NoError(t, WriteMarker(dir, "1.5.0", "", now.Add(time.Hour)))
 	_, err := Consume(dir, now)
 	assert.ErrorIs(t, err, ErrMarkerExpired)
 }
@@ -85,8 +85,8 @@ func TestAMarkerThatIsAFolderIsRefused(t *testing.T) {
 func TestWritingAMarkerReplacesAnOlderOne(t *testing.T) {
 	dir := t.TempDir()
 	now := time.Now()
-	require.NoError(t, WriteMarker(dir, "1.4.0", now))
-	require.NoError(t, WriteMarker(dir, "1.5.0", now))
+	require.NoError(t, WriteMarker(dir, "1.4.0", "", now))
+	require.NoError(t, WriteMarker(dir, "1.5.0", "", now))
 	m, err := Consume(dir, now)
 	require.NoError(t, err)
 	assert.Equal(t, "1.5.0", m.Version)
@@ -94,7 +94,7 @@ func TestWritingAMarkerReplacesAnOlderOne(t *testing.T) {
 
 func TestRemoveMarkerLeavesNone(t *testing.T) {
 	dir := t.TempDir()
-	require.NoError(t, WriteMarker(dir, "1.5.0", time.Now()))
+	require.NoError(t, WriteMarker(dir, "1.5.0", "", time.Now()))
 	RemoveMarker(dir)
 	_, err := Consume(dir, time.Now())
 	assert.ErrorIs(t, err, ErrNoMarker)
