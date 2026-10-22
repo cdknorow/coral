@@ -2,10 +2,10 @@
 // "text changed" when it is gone, and the text index that maps squashed offsets back to nodes. Run on its own: node artifact_anchor.test.mjs
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const { squash, buildAnchor, lineRange, locateQuote, indexText, QUOTE_MAX, CONTEXT } = await import(path.resolve(here, '../../coral-go/pkg/frontend/static/artifact_anchor.js'));
+const { squash, buildAnchor, lineRange, locateQuote, indexText, QUOTE_MAX, CONTEXT } = await import(pathToFileURL(path.resolve(here, '../../coral-go/pkg/frontend/static/artifact_anchor.js')).href);
 
 assert.equal(squash('  a \n\t b   c '), 'a b c'); assert.equal(squash(null), '');
 // buildAnchor

@@ -38,6 +38,11 @@ const { execFileSync } = require('node:child_process');
         await g2.restore();
         assert.equal(store.cli_path_claude, '/mock', 'the other key was still put back');
 
+        // The two database checks below need the sqlite3 command-line tool, which a Windows machine has not by default.
+        if (require("node:child_process").spawnSync("sqlite3", ["-version"]).error) {
+            console.log("settings_guard: the API checks passed; the database checks were SKIPPED, the sqlite3 command-line tool is not on PATH");
+            return;
+        }
         // The database path: exact (an added key is deleted, a removed key comes back, quotes survive).
         const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sguard-'));
         try {

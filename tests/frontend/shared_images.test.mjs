@@ -2,9 +2,9 @@
 // a user's own text is never eaten.
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 const here = path.dirname(fileURLToPath(import.meta.url));
-const { splitSharedImages, attachmentText, attachmentsLead, imageHint } = await import(path.resolve(here, '../../coral-go/pkg/frontend/static/shared_images.js'));
+const { splitSharedImages, attachmentText, attachmentsLead, imageHint } = await import(pathToFileURL(path.resolve(here, '../../coral-go/pkg/frontend/static/shared_images.js')).href);
 
 const H1 = 'a'.repeat(64), H2 = 'b1'.repeat(32);
 const P1 = '/home/dev/.coral/uploads/screenshot_20261019_101500_ab12.png';

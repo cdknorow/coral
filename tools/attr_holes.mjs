@@ -7,6 +7,7 @@
 //               handler would not run; markup names a data-on-* action instead.
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const HANDLER = /^on[a-z]+$/;
 
@@ -110,8 +111,8 @@ export function scanTree(dir) {
     return results;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
-    const dir = path.resolve(process.argv[2] || path.join(path.dirname(new URL(import.meta.url).pathname), '../coral-go/pkg/frontend/static'));
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+    const dir = path.resolve(process.argv[2] || path.join(path.dirname(fileURLToPath(import.meta.url)), '../coral-go/pkg/frontend/static'));
     const r = scanTree(dir);
     for (const x of r) console.log(`${x.file}:${x.line} ${x.attr}${x.quoted ? ' (quoted)' : ''}: \${${x.expr}}`);
     console.log(`${r.length} unprotected holes`);
