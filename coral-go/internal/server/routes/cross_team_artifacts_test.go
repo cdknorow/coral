@@ -219,14 +219,23 @@ func TestReceivedArtifactSwitchesAnswerUniformly(t *testing.T) {
 	assert.Equal(t, 200, status, out)
 }
 
-func TestReceivedArtifactUnknownBoardIsNotFound(t *testing.T) {
+// A file for a board that does not exist is refused with the same status and bytes as a file for a board that does not take it (#5968, the uniform-refusal rule, #5508: no oracle for which boards exist).
+func TestReceivedArtifactUnknownBoardIsRefusedLikeEveryOtherRefusal(t *testing.T) {
 	e := newArtifactEnv(t)
-	req := httptest.NewRequest("POST", "/api/board/nope/external-artifacts", bytes.NewReader(frame(meta([]byte("x"), "x"), []byte("x"))))
-	req.Header.Set(tunnel.HubServerHeader, relaySrc)
-	req.Header.Set(tunnel.ViaHeader, cloud.ViaSecret())
-	rec := httptest.NewRecorder()
-	e.r.ServeHTTP(rec, req)
-	assert.Equal(t, 404, rec.Code)
+	post := func(board string) (int, string) {
+		req := httptest.NewRequest("POST", "/api/board/"+board+"/external-artifacts", bytes.NewReader(frame(meta([]byte("x"), "x"), []byte("x"))))
+		req.Header.Set(tunnel.HubServerHeader, relaySrc)
+		req.Header.Set(tunnel.ViaHeader, cloud.ViaSecret())
+		rec := httptest.NewRecorder()
+		e.r.ServeHTTP(rec, req)
+		return rec.Code, rec.Body.String()
+	}
+	// beta exists and has not listed relaySrc: the ordinary refusal
+	code, body := post("beta")
+	require.Equal(t, 403, code, body)
+	unknown, unknownBody := post("nope")
+	assert.Equal(t, code, unknown, "no such board: the same status")
+	assert.Equal(t, body, unknownBody, "and the same bytes")
 }
 
 // The setting is off by default, the Operator's alone, and Coral Hub cannot change it.

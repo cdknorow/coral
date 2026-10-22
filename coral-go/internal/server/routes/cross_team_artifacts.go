@@ -327,11 +327,8 @@ func (h *BoardHandler) PostExternalArtifact(w http.ResponseWriter, r *http.Reque
 		errInternalServer(w, "could not check the board")
 		return
 	} else if !ok {
-		if h.allowlistOn(ctx) { // an unknown board is the same answer as every other refusal (#5508: no oracle)
-			receivedRefuse(w, http.StatusForbidden, "artifacts_off", "this board does not accept files from other computers", "")
-			return
-		}
-		receivedRefuse(w, http.StatusNotFound, "not_found", "no such board", "")
+		// An unknown board is the same answer as every other refusal, whatever the mode (#5508, #5968: no oracle for which boards exist).
+		receivedRefuse(w, http.StatusForbidden, "artifacts_off", "this board does not accept files from other computers", "")
 		return
 	}
 	// One uniform answer for every switch that is off, so a sender cannot tell which.
