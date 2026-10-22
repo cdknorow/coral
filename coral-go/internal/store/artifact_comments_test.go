@@ -189,3 +189,19 @@ func TestArtifactCommentLocksAndCascade(t *testing.T) {
 	locked, _ = s.ArtifactCommentsLocked(ctx, artA, "")
 	assert.False(t, locked, "deleting an artifact's comments drops its own lock")
 }
+
+// The list is in the order the comments were written, whatever their created_at text sorts as: RFC3339Nano drops trailing zeros, so a comment at 120 ms has a later-sorting string than one at 123 ms.
+func TestArtifactCommentsListInWriteOrderWhateverTheirTimestampsSortAs(t *testing.T) {
+	ctx := context.Background()
+	s := newCommentStore(t)
+	first, _ := s.CreateArtifactComment(ctx, mk(artA, "", "first", nil))
+	second, _ := s.CreateArtifactComment(ctx, mk(artA, "", "second", nil))
+	_, err := s.DB().ExecContext(ctx, `UPDATE artifact_comments SET created_at = ? WHERE id = ?`, "2026-10-22T20:00:00.12Z", first.ID)
+	require.NoError(t, err)
+	_, err = s.DB().ExecContext(ctx, `UPDATE artifact_comments SET created_at = ? WHERE id = ?`, "2026-10-22T20:00:00.123Z", second.ID)
+	require.NoError(t, err)
+	got, err := s.ListArtifactComments(ctx, artA, "", nil)
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	assert.Equal(t, []string{"first", "second"}, []string{got[0].Body, got[1].Body})
+}
