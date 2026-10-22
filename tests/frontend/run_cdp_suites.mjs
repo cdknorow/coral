@@ -3,7 +3,7 @@
 //
 //   node run_cdp_suites.mjs [--only substring[,substring...]] [--timeout seconds] [--chrome /path/to/chrome]
 //                           [--shards N] [--retries N] [--allow-flaky] [--keep] [--stress [--runs N] [--cpu-throttle X]]
-//                           [--sequences] [--strict | --no-strict] [--part K/N] [--results-out FILE]
+//                           [--sequences] [--strict | --no-strict] [--pty | --no-pty] [--part K/N] [--results-out FILE]
 //
 // It builds coral with -tags "dev fts5" into a temp dir, starts it with a temp CORAL_DATA_DIR on a
 // free non-default port (never ~/.coral, never :8420), starts headless Chrome with a temp profile and
@@ -161,7 +161,19 @@ const STRICT_SUITES = [
   'strict_mode_browser.test.js', 'server_switcher_browser.test.js', 'agent_state.test.js',
   'team_view_consolidation.test.js', 'team_view_responsive_rows.test.js', 'a11y_dashboard_browser.test.js',
 ];
-const strictShard = strictOnly || (!flag('--no-strict') && !only && !stress && !flag('--sequences') && !part);
+// Terminal backend (#6064): the built-in terminal (pty) is Coral's default on macOS and Linux, tmux a choice. The suites were written when tmux was the default and several drive the tmux server
+// itself (pane sizes, fit width, a gone session), so the main run pins --backend tmux (CORAL_BACKEND overrides it; 'default' passes no flag). --pty runs PTY_SUITES on a shard that starts Coral
+// as a new install does, with no --backend: a full run adds one such shard at the end; --no-pty leaves it out.
+const ptyOnly = flag('--pty');
+const PTY_SUITES = [
+  'first_run_browser.test.js', 'terminal_backend_browser.test.js', 'tmux_first_run_browser.test.js', 'launch_dialog_browser.test.js', 'auto_wake_browser.test.js',
+  'kill_log_note_browser.test.js', 'settings_side_change_browser.test.js', 'terminal_open_from_card_browser.test.js', 'terminal_reconnect_browser.test.js',
+  'terminal_switch_desktop_agent_browser.test.js', 'terminal_switch_desktop_browser.test.js', 'terminal_switch_desktop_stream_browser.test.js',
+  'terminal_switch_phone_agent_browser.test.js', 'terminal_switch_phone_browser.test.js', 'terminal_switch_phone_stream_browser.test.js',
+];
+const MAIN_BACKEND = process.env.CORAL_BACKEND || 'tmux';
+const ptyShard = ptyOnly || (!flag('--no-pty') && !only && !stress && !flag('--sequences') && !part);
+const strictShard = strictOnly || (!flag('--no-strict') && !ptyOnly && !only && !stress && !flag('--sequences') && !part);
 const PROD_PORT = 8420;
 const chromePath = arg('--chrome', process.env.CHROME || [
   '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/usr/bin/google-chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser',
@@ -381,7 +393,7 @@ const allLogs = []; // every shard's Coral log, including shards that were repla
 // startShard starts one isolated Coral server and one headless Chrome. Each shard has its own data dir,
 // Codex home, ports and Chrome profile, so shards share nothing but the built binary. gen counts the
 // replacements of shard n (after a timeout or a dead process), so each start gets fresh directories.
-async function startShard(n, gen = 0, strict = false) {
+async function startShard(n, gen = 0, strict = false, backend = MAIN_BACKEND) {
   await ensureRunDir();
   const dir = path.join(tmp, `shard${n}${gen ? `-${gen}` : ''}`);
   fs.mkdirSync(dir, { recursive: true });
@@ -429,7 +441,7 @@ async function startShard(n, gen = 0, strict = false) {
     }
   }
   const coral = spawn(bin, ['--home', data, '--host', '127.0.0.1', '--port', String(port), '--no-browser', '--cloud-url', 'off',
-    ...(strict ? ['--strict-local-auth'] : ['--strict-local-auth=false']), ...(process.env.CORAL_BACKEND ? ['--backend', process.env.CORAL_BACKEND] : [])],
+    ...(strict ? ['--strict-local-auth'] : ['--strict-local-auth=false']), ...(backend && backend !== 'default' ? ['--backend', backend] : [])],
     { env: serverEnv, stdio: ['ignore', fs.openSync(log, 'w'), fs.openSync(log, 'a')], detached: true });
   track(coral);
   allLogs.push(log);
@@ -494,7 +506,7 @@ async function startShard(n, gen = 0, strict = false) {
   // CORAL_TEST_TMUX_SOCKET: this shard's own tmux socket (<data>/tmux.sock), for suites that compare
   // the pane with the dashboard (#3422). CORAL_TEST_LOG: this shard's Coral log, which a suite reads
   // only to explain its own failure (helpers/stand_in_agent.js, #3502).
-  return { n, gen, log, coral, chrome, throttler, strict, data, tmuxSock, serverEnv, env: { ...testEnv, CORAL_TEST_URL: `http://127.0.0.1:${port}`, CDP_PORT: String(cdp), CORAL_CDP_PORT: String(cdp),
+  return { n, gen, log, coral, chrome, throttler, strict, backend, data, tmuxSock, serverEnv, env: { ...testEnv, CORAL_TEST_URL: `http://127.0.0.1:${port}`, CDP_PORT: String(cdp), CORAL_CDP_PORT: String(cdp),
     CORAL_TEST_TMUX_SOCKET: path.join(data, 'tmux.sock'), CORAL_TEST_LOG: log, CORAL_TEST_DATA_DIR: data, CORAL_TEST_BIN: bin /* the built coral, for a suite that starts a server of its own (first_run_browser) */, /* helpers/settings_guard.js restores the shard's settings exactly through this */ ...(strict ? { CORAL_TEST_STRICT: '1' } : {}) } };
 }
 
@@ -510,15 +522,16 @@ async function stopShard(shard) {
 // starting at once could be handed the same port. Each shard also waits for coral's own "bound" log line.
 const shardsUp = [];
 try {
-  for (let i = 1; i <= shards; i++) shardsUp.push(await startShard(i, 0, strictOnly));
+  for (let i = 1; i <= shards; i++) shardsUp.push(await startShard(i, 0, strictOnly, ptyOnly ? 'default' : MAIN_BACKEND));
 } catch (e) { console.error(e.message); process.exit(2); }
 console.log('');
 
 for (const t of STRICT_SUITES) if (!suites.cdp.includes(t)) { console.error(`STRICT_SUITES names ${t}, which is not a CDP suite`); process.exit(2); }
+for (const t of PTY_SUITES) if (!suites.cdp.includes(t)) { console.error(`PTY_SUITES names ${t}, which is not a CDP suite`); process.exit(2); }
 // Longest first, from the durations of a previous run (suite_durations.json; update_suite_durations.mjs writes it): shards take the next
 // suite from one queue, and a long suite left to the end of an alphabetical queue would leave the other shards idle (#3916).
 const suiteDurations = loadDurations(path.join(here, 'suite_durations.json'));
-let tests = sequencesOnly ? [] : (strictOnly ? STRICT_SUITES : [...suites.cdp, ...suites.server])
+let tests = sequencesOnly ? [] : (strictOnly ? STRICT_SUITES : ptyOnly ? PTY_SUITES : [...suites.cdp, ...suites.server])
   .filter(f => !only || only.split(',').some(o => f.includes(o))).sort();
 // --part K/N: the parts have about equal recorded time, not every Nth name (#4605: by name, the six CI parts ran 152 to 272 s of suites).
 if (part) tests = partsByDuration(tests, suiteDurations, part.n)[part.k - 1];
@@ -530,8 +543,8 @@ if (shuffleSeed) { // mulberry32: the same seed gives the same order, so a failu
 }
 if (Object.keys(suiteDurations).length) console.log(`queue: longest first (${tests.filter(t => typeof suiteDurations[t] === 'number').length} of ${tests.length} suites have a recorded duration in suite_durations.json)`);
 // The strict phase's results are named 'strict: <suite>' (the default-mode run of a suite is separate).
-let phase = strictOnly ? 'strict: ' : '';
-const sequences = stress || strictOnly || part || (only && !sequencesOnly) ? [] : SEQUENCES;
+let phase = strictOnly ? 'strict: ' : ptyOnly ? 'pty: ' : '';
+const sequences = stress || strictOnly || ptyOnly || part || (only && !sequencesOnly) ? [] : SEQUENCES;
 for (const t of sequences.flat()) if (!suites.cdp.includes(t)) { console.error(`SEQUENCES names ${t}, which is not a CDP suite`); process.exit(2); }
 if (!tests.length && !sequences.length) { console.error('no CDP suites matched'); process.exit(2); }
 console.log(`running ${tests.length} of ${suites.cdp.length + suites.server.length} suites${only ? ` (--only ${only})` : ''}${part ? ` (part ${part.k}/${part.n})` : ''}${sequences.length ? `, then ${sequences.length} sequence(s)` : ''}`);
@@ -665,7 +678,7 @@ async function ensureShard(i, force) {
   const why = problem;
   await stopShard(sh);
   console.log(`  [runner] replacing shard ${sh.n} (${why})`);
-  shardsUp[i] = await startShard(sh.n, sh.gen + 1, sh.strict);
+  shardsUp[i] = await startShard(sh.n, sh.gen + 1, sh.strict, sh.backend);
   return shardsUp[i];
 }
 
@@ -773,6 +786,16 @@ const runStarted = Date.now();
 try {
   for (let run = 1; run <= runs; run++) await runOnce(run);
   await runSequences();
+  if (ptyShard && !ptyOnly) {
+    // One more shard, started as a new install is (the built-in terminal default, no --backend), for the suites that matter there (#6064).
+    tests = PTY_SUITES.slice().sort();
+    phase = 'pty: ';
+    console.log(`\npty phase: ${tests.length} suites on one shard with the default backend (the built-in terminal)`);
+    for (const sh of shardsUp) await stopShard(sh);
+    shardsUp.length = 0;
+    shardsUp.push(await startShard(shards + 1, 0, false, 'default'));
+    await runOnce(1);
+  }
   if (strictShard && !strictOnly) {
     // One more shard, in strict mode, for the suites that matter there (#3527).
     tests = STRICT_SUITES.slice().sort();

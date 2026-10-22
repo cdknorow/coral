@@ -3,6 +3,7 @@ package startup
 import (
 	"context"
 	"fmt"
+	"github.com/subgentic/coral/internal/backendchoice"
 	"log"
 	"os"
 	"runtime"
@@ -36,10 +37,16 @@ func applyStartupSettings(ctx context.Context, db *store.DB, cfg *config.Config,
 		agentprio.SetSetting(setreg.Raw(settings, agentprio.SettingKey))
 		savedBackend = setreg.Raw(settings, routes.TerminalBackendSetting)
 	}
-	var backendForced bool
-	opts.BackendType, backendForced = ResolveBackend(backendFlag, savedBackend, runtime.GOOS)
+	var backendForced, keptForAgents bool
+	opts.BackendType, backendForced, keptForAgents = backendchoice.Resolve(backendFlag, savedBackend, runtime.GOOS, func() int {
+		return len(tmux.PrivateAgentSessions(ctx, tmux.PrivateSocketPath(cfg.CoralDir())))
+	})
 	cfg.TerminalBackend, cfg.TerminalBackendForced = opts.BackendType, backendForced
 	log.Printf("[STARTUP] terminal backend=%s (%s)", opts.BackendType, map[bool]string{true: "--backend", false: "Settings > Terminal backend, or the default"}[backendForced])
+	if keptForAgents {
+		log.Printf("[startup] Coral agents are still running in Coral's tmux server, so this start keeps tmux to leave them reachable; the first start without them runs the built-in terminal")
+	}
+	owedDefaultNotice(ctx, store.NewSessionStore(db), savedBackend, opts.BackendType, backendForced, runtime.GOOS)
 	if opts.BackendType == "tmux" {
 		if _, ok := tmux.IsAvailable(); !ok {
 			log.Printf("[startup] tmux not found — agents cannot be launched until tmux is installed (%s)", tmux.InstallCommand())
@@ -162,4 +169,30 @@ func applyReplayBytesFromSettings(ctx context.Context, db *store.DB) {
 	}
 	ptymanager.SetReplayBytes(int(n))
 	log.Printf("[startup] terminal_replay_bytes=%d", n)
+}
+
+// owedDefaultNotice decides, once, whether the dashboard owes the one line "Agents now stop when you quit Coral" (#6064): only an install that ran on the old tmux default, at its first start on the
+// built-in terminal default (no --backend, no saved choice, not Windows, running pty). A new install is marked "none", so it never sees it. A start that kept tmux for running agents decides nothing:
+// the question is asked again at the first start that runs the built-in terminal. The decision is written once and never changed by Coral.
+func owedDefaultNotice(ctx context.Context, ss *store.SessionStore, saved, backend string, forced bool, goos string) {
+	if forced || goos == "windows" || saved == "tmux" || saved == "pty" || backend != "pty" {
+		return
+	}
+	settings, err := ss.GetSettings(ctx)
+	if err != nil || setreg.Raw(settings, setreg.TerminalDefaultNotice) != "" {
+		return
+	}
+	used, err := ss.HasRunAgents(ctx)
+	if err != nil {
+		return
+	}
+	value := "none"
+	if used {
+		value = "pending"
+	}
+	if err := ss.SetSetting(ctx, setreg.TerminalDefaultNotice, value); err != nil {
+		log.Printf("[startup] could not record the terminal default notice: %v", err)
+		return
+	}
+	log.Printf("[startup] built-in terminal is now the default; notice=%s", value)
 }

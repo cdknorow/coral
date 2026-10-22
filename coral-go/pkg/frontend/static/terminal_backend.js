@@ -38,7 +38,7 @@ async function fetchStatus() {
 function nextBackend(st) {
     if (st.forced) return st.running;
     if (!st.choice) return 'pty';
-    return st.saved || 'tmux';
+    return st.next || st.saved || 'pty'; // the server says what the next start runs (the default is pty, #6064)
 }
 
 function picked() {
@@ -238,6 +238,24 @@ export async function endLeftoverTmux() {
     if (!r.ok) { showToast(r.body.error || 'Could not end them', true); return; }
     showToast(`Ended ${r.body.ended} agent${r.body.ended === 1 ? '' : 's'}: wake them from the list`);
     checkLeftoverTmux();
+}
+
+// ── The built-in terminal became the default (#6064) ─────────────────────
+// One line, once, for an install that ran on the old tmux default; dismissing it is kept in the server's settings.
+
+export async function checkDefaultNotice() {
+    const banner = $('default-notice-banner');
+    if (!banner || isCloud()) return;
+    let st;
+    try { st = await fetchStatus(); } catch { return; }
+    banner.hidden = !st.default_notice;
+}
+
+export async function dismissDefaultNotice() {
+    const r = await post('/api/system/terminal-backend/notice-seen');
+    if (!r.ok) { showToast(r.body.error || 'Could not dismiss this', true); return; }
+    const banner = $('default-notice-banner');
+    if (banner) banner.hidden = true;
 }
 
 // ── More agents to wake than Coral wakes by itself (#3636) ───────────────

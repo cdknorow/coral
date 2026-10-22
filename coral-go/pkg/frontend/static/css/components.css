@@ -3984,6 +3984,10 @@ button.terminal-gone-header { margin: 0 4px 0 0; font-size: 0.6875rem; line-heig
 .leftover-tmux-banner { display: flex; align-items: center; gap: var(--space-lg); margin: var(--space-md) var(--space-xl) 0; padding: var(--space-md) var(--space-lg); border-radius: var(--radius-lg); border: 1px solid color-mix(in srgb, var(--warning) 50%, var(--border)); background: color-mix(in srgb, var(--warning) 12%, var(--bg-secondary)); color: var(--text-primary); font-size: var(--fs-md); }
 .leftover-tmux-banner[hidden] { display: none; }
 .leftover-tmux-banner .material-icons { color: var(--warning); }
+/* The built-in terminal default (#6064) is news, not a warning: the accent, not the warning colour. */
+.default-notice-banner { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); background: color-mix(in srgb, var(--accent) 10%, var(--bg-secondary)); }
+.default-notice-banner .material-icons { color: var(--accent); }
+.default-notice-link { background: none; border: 0; padding: 0; font: inherit; color: var(--link-text); text-decoration: underline; cursor: pointer; }
 .leftover-tmux-text { flex: 1; min-width: 0; }
 .local-auth-banner { flex: none; display: flex; align-items: flex-start; gap: 12px; padding: 10px 16px; background: color-mix(in srgb, var(--error) 16%, var(--bg-secondary)); border-bottom: 1px solid var(--error); color: var(--text-primary); font-size: var(--fs-base, 13px); } /* #4291 */
 .local-auth-banner[hidden] { display: none; }

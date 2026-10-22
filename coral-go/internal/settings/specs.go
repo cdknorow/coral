@@ -24,6 +24,7 @@ const (
 	DefaultAgentType         = "default_agent_type"
 	TerminalReplayBytes      = "terminal_replay_bytes"
 	TerminalBackend          = "terminal_backend"
+	TerminalDefaultNotice    = "terminal_default_notice"
 	HubMode                  = "hub_mode"
 	HubOperatorDisabled      = "hub_operator_disabled"
 	LegacyHubOperator        = "hub_acts_as_operator"
@@ -225,6 +226,7 @@ func init() {
 	optIn(ArtifactCommentsHubWrite)
 
 	// Coral's own.
+	coral(TerminalDefaultNotice, "Whether the one line \"Agents now stop when you quit Coral\" is owed (pending) or was shown and dismissed (seen) or is not owed (none): set once, by Coral, at the first start on the built-in terminal default of an install that ran on the old tmux default (#6064).")
 	coral(ArtifactCommentsOwnerID, "The random id the owner's artifact comments are stored under.")
 	coral(ArtifactRetentionEnable, "When Coral saw the retention days change.")
 	coral(ArtifactStoreAutoRaised, "The cap was raised automatically.")

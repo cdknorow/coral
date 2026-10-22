@@ -7,7 +7,7 @@
 //  - A system with no choice (Windows, no tmux) shows pty as fixed, no radios.
 //  - Under pty with agents left in the old tmux server: a banner with End them, which asks, ends
 //    them and goes away.
-// The server here runs tmux; the pty, leftover and fixed states are served by a fetch wrapper.
+// The built-in terminal (pty) is the default (#6064): this server runs it, so each state the row shows (an install that chose tmux, the default, the one-time notice, leftover agents) is served by a fetch wrapper.
 'use strict';
 
 const CDP = require('chrome-remote-interface');
@@ -48,6 +48,7 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
             if (f && /\\/api\\/system\\/restart/.test(u)) return json({ ok: true }, 202);
             if (f && f.put && m === 'PUT' && /\\/api\\/system\\/terminal-backend$/.test(u)) return json({ saved: 'pty', running: 'tmux', can_restart: true });
             if (f && /end-leftover/.test(u)) { f.ended = true; return json({ ended: 2, left: 0 }); }
+            if (f && /notice-seen/.test(u)) { f.seen = true; return json({ ok: true }); }
             return inner(url, opts);
         };
         return true; })()`);
@@ -71,12 +72,12 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
         await open();
         await wrap();
 
-        // ── The row on this tmux server ─────────────────────────────────────
-        await ev(`window.showSettingsModal(); true`);
+        // ── The row for an install that chose tmux (this server itself runs the pty default) ─────────
+        await ev(`window.__tbFake = { status: () => ({ saved: 'tmux', running: 'tmux', next: 'tmux', forced: false, choice: true, restart_required: false, can_restart: false, running_agents: 0, leftover_tmux_agents: 0 }) }; window.showSettingsModal(); true`);
         await until(`document.getElementById('settings-terminal-backend')?.hidden === false`, 'the backend row');
         let r = await row();
         check('Settings shows the backend row: running tmux, tmux picked, both options', !r.hidden && r.now === 'Running now: tmux' && r.choice && !r.fixed && r.checked === 'tmux'
-            && r.texts[0].startsWith('tmux: agents keep running') && r.texts[1] === 'pty: better isolation between agents', JSON.stringify(r));
+            && r.texts[0] === 'tmux: agents keep running' && r.texts[1] === 'pty: agents stop when you quit Coral (default)', JSON.stringify(r));
         check("the pty text has Security's crash wording", /puts them to sleep first when it stops cleanly, and marks them asleep at the next start after a crash/.test(r.ptyText), r.ptyText);
         check('nothing pending to start with', r.pending === '', r.pending);
         await pick('pty');
@@ -84,7 +85,7 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
         check('picking pty says it switches when Coral restarts', r.pending === 'Switches to pty when Coral restarts. Apply asks first.', r.pending);
 
         // ── Apply, then Cancel: nothing saved, Settings stays open ──────────
-        await ev(`window.__tbFake = { status: () => ({ saved: '', running: 'tmux', forced: false, choice: true, restart_required: false, can_restart: true, running_agents: 2, leftover_tmux_agents: 0 }) }; true`);
+        await ev(`window.__tbFake = { status: () => ({ saved: 'tmux', running: 'tmux', next: 'tmux', forced: false, choice: true, restart_required: false, can_restart: true, running_agents: 2, leftover_tmux_agents: 0 }) }; true`);
         await ev(`window.showSettingsModal(); true`);
         await until(`document.getElementById('tb-now').textContent === 'Running now: tmux'`, 'the row again');
         await pick('pty');
@@ -132,6 +133,22 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
         r = await row();
         check('with no choice (Windows, no tmux) the row shows pty as fixed, no radios', !r.hidden && !r.choice && r.fixed && r.now === 'Running now: pty', JSON.stringify(r));
         await ev(`window.hideSettingsModal(); true`);
+
+        // ── The built-in terminal became the default: one line, once, for an install that ran on the old default (#6064) ──
+        await ev(`window.__tbFake = { status: () => ({ saved: '', running: 'pty', next: 'pty', forced: false, choice: true, restart_required: false, can_restart: false, running_agents: 0, leftover_tmux_agents: 0, default_notice: !window.__tbFake.seen }) };
+            import((window.__coralStatic || '/static/') + 'terminal_backend.js').then(m => m.checkDefaultNotice()).then(() => true)`);
+        await until(`!document.getElementById('default-notice-banner').hidden`, 'the default notice');
+        const notice = await ev(`document.getElementById('default-notice-banner').textContent.replace(/\\s+/g, ' ').trim()`);
+        check('the line says agents now stop on quit and where to keep them running', notice === 'info Agents now stop when you quit Coral. To keep them running, choose tmux in Settings > Terminal. Got it', notice);
+        await ev(`document.querySelector('#default-notice-banner .default-notice-link').click(); true`);
+        await until(`getComputedStyle(document.getElementById('settings-modal')).display !== 'none'`, 'Settings from the link');
+        await until(`!!document.getElementById('settings-pane-terminal') && !document.getElementById('settings-pane-terminal').hidden`, 'the Terminal tab');
+        check('its link opens Settings on the Terminal tab', await ev(`!!document.getElementById('settings-pane-terminal') && !document.getElementById('settings-pane-terminal').hidden && getComputedStyle(document.getElementById('settings-pane-terminal')).display !== 'none'`));
+        await ev(`window.hideSettingsModal(); window.__tbCalls.length = 0; document.getElementById('default-notice-dismiss').click(); true`);
+        await until(`document.getElementById('default-notice-banner').hidden`, 'the notice dismissed');
+        check('Got it is recorded on the server (not in the browser) and the line goes', await ev(`window.__tbFake.seen === true && window.__tbCalls.includes('POST /api/system/terminal-backend/notice-seen')`), JSON.stringify(await ev(`window.__tbCalls`)));
+        await ev(`import((window.__coralStatic || '/static/') + 'terminal_backend.js').then(m => m.checkDefaultNotice()).then(() => true)`);
+        check('once dismissed it is not shown again', await ev(`document.getElementById('default-notice-banner').hidden`));
 
         // ── Under pty, agents left in the old tmux server ───────────────────
         await ev(`window.__tbFake = { status: () => ({ saved: 'pty', running: 'pty', forced: false, choice: true, restart_required: false, can_restart: false, running_agents: 0, leftover_tmux_agents: window.__tbFake.ended ? 0 : 2 }) };

@@ -202,6 +202,8 @@ registerActions({
     'm-close-top-bar-settings-then-stop-all-auto-accept': () => { window.__coral.closeTopBarSettings(); window.stopAllAutoAccept(); },
     'm-dismiss-auto-wake': () => { window.dismissAutoWake(); },
     'm-end-leftover-tmux': () => { window.endLeftoverTmux(); },
+    'm-dismiss-default-notice': () => { window.dismissDefaultNotice(); },
+    'm-open-terminal-settings': () => { window.showSettingsModal('terminal'); },
     'm-go-home': () => { window.__coral._goHome(); },
     'saved-close': () => { importOnce('./saved.js').then(m => m.closeSaved()).catch(() => {}); }, // the X in the Saved sidebar (#4742)
     'm-show-saved': () => { importOnce('./saved.js').then(m => m.openSavedAll({ toggle: true })).catch(() => {}); }, // the Saved list loads the first time it is opened (#4510)
@@ -385,6 +387,7 @@ Object.assign(window, {
     pinFolder, unpinFolder, showOpenFolderModal, hideOpenFolderModal, submitOpenFolder,
     // terminal backend (#3634): the banner's End them, loaded on first use
     endLeftoverTmux: () => importOnce('./terminal_backend.js').then(m => m.endLeftoverTmux()),
+    dismissDefaultNotice: () => importOnce('./terminal_backend.js').then(m => m.dismissDefaultNotice()),
     // auto-wake (#3636): the over-the-cap banner's two buttons
     wakePendingAgents: () => importOnce('./terminal_backend.js').then(m => m.wakePendingAgents()),
     dismissAutoWake: () => importOnce('./terminal_backend.js').then(m => m.dismissAutoWake()),
@@ -822,7 +825,7 @@ function loadInitialData(popout) {
     loadAllFolderTags();
     if (!popout) loadPinnedFolders();
     if (!popout) importOnce('./received_cap_notice.js').then(m => m.checkReceivedCap()).catch(() => {}); // #4441: told once when received files reach 80% of their limit
-    if (!popout) importOnce('./terminal_backend.js').then(m => { m.checkLeftoverTmux(); m.watchAutoWake(); m.watchHooksStatus(); }).catch(() => {}); // #3634, #3636, #3665
+    if (!popout) importOnce('./terminal_backend.js').then(m => { m.checkLeftoverTmux(); m.checkDefaultNotice(); m.watchAutoWake(); m.watchHooksStatus(); }).catch(() => {}); // #3634, #3636, #3665
     loadCustomViews();
     initTabCustomize();
     initAgentUI();

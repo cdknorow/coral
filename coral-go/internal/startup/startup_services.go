@@ -2,6 +2,7 @@ package startup
 
 import (
 	"context"
+	"github.com/subgentic/coral/internal/backendchoice"
 	"log"
 	"log/slog"
 	"net"
@@ -357,23 +358,10 @@ func startCloudConnector(ctx context.Context, db *store.DB, cfg *config.Config, 
 	})
 }
 
-// ResolveBackend picks this run's terminal backend: an explicit --backend (forced); on Windows
-// always pty (no tmux there); else the saved setting when it is exactly "tmux" or "pty"; else
-// tmux.
+// ResolveBackend picks this run's terminal backend without asking what is running (the pure rules are in backendchoice, #6064).
 func ResolveBackend(flagValue, saved, goos string) (backend string, forced bool) {
-	if flagValue != "" {
-		if flagValue == "pty" {
-			return "pty", true
-		}
-		return "tmux", true
-	}
-	if goos == "windows" {
-		return "pty", false
-	}
-	if saved == "tmux" || saved == "pty" {
-		return saved, false
-	}
-	return "tmux", false
+	backend, forced, _ = backendchoice.Resolve(flagValue, saved, goos, nil)
+	return backend, forced
 }
 
 // boardHealthMonitorEnabled reports whether the all-teams health service runs: on unless the setting is false. The
