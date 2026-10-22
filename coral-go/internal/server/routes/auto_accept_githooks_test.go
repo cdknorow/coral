@@ -215,7 +215,7 @@ func TestPowerShellAndCmdWritesIntoGitHookPlacesAreHeld(t *testing.T) {
 }
 
 // An empty argument names no path: it must not trip the path readers (the hook check reads every stage's paths, so this is on the way of every command).
-func TestAnEmptyArgumentIsNotAPath(t *testing.T) {
+func TestTheHookCheckSkipsAnEmptyArgument(t *testing.T) {
 	assert.NotPanics(t, func() {
 		assert.Equal(t, []string{"a"}, winPaths([]string{"", "a", ""}))
 		_ = winPaths([]string{"", "x"})
