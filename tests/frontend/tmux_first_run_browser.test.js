@@ -86,12 +86,6 @@ const { setTheme, installAudit, auditRegion } = require('./helpers/contrast');
         assert.equal(await ev(`window.__launches.length`), before, 'no member launch is sent while tmux is missing');
         await ev(`window.hideLaunchModal(); true`);
         assert.notEqual(await ev(`getComputedStyle(document.getElementById('tmux-missing-banner')).display`), 'none', 'the banner is back once the dialog is closed');
-        console.log('7. the quick-launch team dialog: the same line, Launch off, no request sent');
-        await ev(`const q = document.getElementById('quick-launch-modal'); q.style.display = 'flex'; document.getElementById('quick-launch-template').value = 'Coding Team'; document.getElementById('quick-launch-board-name').value = 'quick-tmux'; document.getElementById('quick-launch-workdir').value = '/tmp'; window.__launches.length = 0; window._quickLaunchTeam(); true`);
-        const quick = `document.getElementById('quick-tmux-slot')`;
-        await waitFor(`/tmux is not installed/.test(${quick}.textContent) && document.getElementById('quick-launch-go').disabled`, 'the quick-launch line and Launch off', 8000);
-        assert.deepEqual(await ev(`({ command: ${quick}.querySelector('code').textContent, describedBy: document.getElementById('quick-launch-go').getAttribute('aria-describedby') === ${quick}.id, banner: getComputedStyle(document.getElementById('tmux-missing-banner')).display, launches: window.__launches.length })`), { command: 'brew install tmux', describedBy: true, banner: 'none', launches: 0 });
-        await ev(`document.getElementById('quick-launch-modal').style.display = 'none'; true`);
         console.log('PASS tmux missing is said once in the launch form and holds Launch until it is there');
     } finally { await client.close(); }
 })().catch(e => { console.error(e); process.exit(1); });

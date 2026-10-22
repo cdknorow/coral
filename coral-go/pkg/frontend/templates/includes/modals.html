@@ -1309,45 +1309,6 @@
         </div>
     </div>
 
-    <!-- Quick Launch Team Modal -->
-    <div id="quick-launch-modal" class="modal" role="dialog" aria-labelledby="quick-launch-title" aria-modal="true" style="display:none">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3 id="quick-launch-title">Launch Coding Team</h3>
-            </div>
-            <div class="modal-body">
-                <input type="hidden" id="quick-launch-template">
-                <div id="quick-launch-server-row" style="display:none;align-items:center;gap:8px;margin-bottom:12px;font-size:0.8125rem">
-                    <label for="quick-launch-server" style="margin:0;white-space:nowrap">Server:</label>
-                    <select id="quick-launch-server" aria-label="Launch on server" style="flex:1;min-width:0" data-on-change="m-on-quick-launch-server-change"></select>
-                </div>
-                <label>Team Name:
-                    <input type="text" id="quick-launch-board-name" placeholder="e.g. my-project-team">
-                </label>
-                <label>Working Directory:
-                    <div class="dir-input-row">
-                        <input type="text" id="quick-launch-workdir" placeholder="/path/to/project" data-coral-root="{{ .CoralRoot }}" value="{{ .CoralRoot }}">
-                        <button class="btn" data-on-click="m-toggle-browser" data-browser="quick-launch-workdir quick-launch-browser quick-launch-browser-list quick-launch-browser-path">Browse</button>
-                    </div>
-                </label>
-                <div id="quick-launch-browser" class="dir-browser" style="display:none">
-                    <div class="dir-browser-header">
-                        <button class="btn btn-small dir-browser-up" data-on-click="m-browser-navigate-up" title="Go up">..</button>
-                        <span class="dir-browser-path" id="quick-launch-browser-path">~</span>
-                    </div>
-                    <ul class="dir-browser-list" id="quick-launch-browser-list">
-                        <li class="empty-state">Loading...</li>
-                    </ul>
-                </div>
-            </div>
-            <div id="quick-tmux-slot" class="launch-cli-slot"></div>
-            <div class="modal-actions modal-footer">
-                <button class="btn" data-on-click="m-quick-launch-close">Cancel</button>
-                <button class="btn btn-primary" id="quick-launch-go" data-on-click="m-quick-launch-team">Launch</button>
-            </div>
-        </div>
-    </div>
-
     <!-- Add Agent to Board Modal -->
     <div id="add-agent-board-modal" class="modal" role="dialog" aria-labelledby="add-agent-board-title" aria-modal="true" style="display:none">
         <div class="modal-content modal-content-wide">

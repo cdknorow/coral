@@ -69,7 +69,7 @@ export function showLaunchModal(server, lock = false) {
     launch.serverLocked = !!lock && isHub();
     launch.server = _effectiveServer(coerceSelection(server, isHub(), state.servers));
     if (launch.serverLocked && normServer(server) !== LOCAL_SERVER) launch.server = normServer(server);
-    _renderServerPicker('launch');
+    _renderServerPicker();
     document.getElementById("launch-modal").style.display = "flex";
     _showLaunchStep("chooser");
 
@@ -114,19 +114,13 @@ export function showLaunchModal(server, lock = false) {
 
 // ── Server picker (hub mode) ─────────────────────────────────────────────
 
-const _PICKERS = {
-    launch: { row: 'launch-server-row', select: 'launch-server' },
-    quick: { row: 'quick-launch-server-row', select: 'quick-launch-server' },
-};
-
 /** Fill and show/hide a Server dropdown. Hidden unless hub mode has a usable remote. */
-function _renderServerPicker(which) {
-    const ids = _PICKERS[which];
-    const row = document.getElementById(ids.row);
-    const sel = document.getElementById(ids.select);
+function _renderServerPicker() {
+    const row = document.getElementById('launch-server-row');
+    const sel = document.getElementById('launch-server');
     if (!row || !sel) return;
-    const current = which === 'launch' ? launch.server : launch.quickServer;
-    const locked = which === 'launch' && launch.serverLocked;
+    const current = launch.server;
+    const locked = launch.serverLocked;
     const show = isHub() && (locked ? current !== LOCAL_SERVER : pickerVisible(true, state.servers));
     if (!show) { row.style.display = 'none'; return; }
     let opts = pickerOptions(state.servers);
@@ -190,27 +184,9 @@ async function _onLaunchServerChange(value, { force = false } = {}) {
 }
 window._onLaunchServerChange = _onLaunchServerChange;
 
-async function _onQuickLaunchServerChange(value) {
-    const next = _effectiveServer(coerceSelection(value, isHub(), state.servers));
-    if (next === launch.quickServer) return;
-    launch.quickServer = next;
-    const b = document.getElementById('quick-launch-browser');
-    if (b) b.style.display = 'none';
-    _resetDirInputs(['quick-launch-workdir'], next, {}, { switching: true });
-    if (next !== LOCAL_SERVER) {
-        try { await _loadServerSettings(next); } catch (_) { /* launch will surface the error */ }
-        if (launch.quickServer !== next) return;
-        _resetDirInputs(['quick-launch-workdir'], next, _settingsFor(next), { switching: true });
-    } else {
-        _resetDirInputs(['quick-launch-workdir'], next, _settingsFor(next), { switching: true });
-    }
-}
-window._onQuickLaunchServerChange = _onQuickLaunchServerChange;
-
 // Directory inputs belong to whichever server their form launches on.
 setDirServerResolver(inputId => {
     if (!isHub()) return LOCAL_SERVER;
-    if (inputId === 'quick-launch-workdir') return launch.quickServer;
     if (inputId === 'resume-dir') return LOCAL_SERVER; // resume uses the hub's own session history
     return launch.server;
 });

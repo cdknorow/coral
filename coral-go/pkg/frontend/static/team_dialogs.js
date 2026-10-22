@@ -1,4 +1,4 @@
-/* Moved out of modals.js as it was (#4684): The AI team wizard, the team-agent dialog, and the Launch dialog's team form: its agents, templates, quick launch and Launch Team. No behaviour change. */
+/* Moved out of modals.js as it was (#4684): The AI team wizard, the team-agent dialog, and the Launch dialog's team form: its agents, templates and Launch Team. No behaviour change. */
 import { importOnce } from './import_once.js';
 import { scrollBehavior } from './motion.js';
 import { showToast, escapeHtml, escapeAttr, boardNameProblem, OPERATOR_ID } from './utils.js';

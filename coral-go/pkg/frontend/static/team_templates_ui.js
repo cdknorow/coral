@@ -1,15 +1,7 @@
-/* The Agent Team form's templates (moved out of team_dialogs.js as it was, #5174; no behaviour change): the built-in templates, the template selector, the welcome screen's quick launch and Save as Template. */
+/* The Agent Team form's templates (moved out of team_dialogs.js as it was, #5174; no behaviour change): the built-in templates, the template selector and Save as Template. */
 import { importOnce } from './import_once.js';
-import { showToast, escapeHtml, escapeAttr, boardNameProblem } from './utils.js';
-import { loadLiveSessions } from './api.js';
-import { recordRecentDir } from './browser.js';
-import { checkTmuxForLaunch } from './prerequisites.js';
-const { launch } = await importOnce('./launch_state.js');
-const { _effectiveServer, _settingsFor } = await importOnce('./launch_models.js');
-const { defaultPermissionMode, _getPermissionFlagsForAgentMode } = await importOnce('./permission_flags.js');
+import { showToast, escapeHtml, escapeAttr } from './utils.js';
 const { _getSavedTeamTemplates, _upsertSavedTeamTemplates } = await importOnce('./persona_store.js');
-const { _launchBlocked, _launchOn, _onServerSuffix, _refreshAfterLaunch, showTeamLaunchFailures } = await importOnce('./launch_core.js');
-const { showSettingsModal } = await importOnce('./settings_dialog.js');
 const { getAgentConfig } = await importOnce('./agent_config_form.js');
 
 const BUILTIN_TEAM_TEMPLATES = [
@@ -73,89 +65,6 @@ function _renderTeamTemplateSelector() {
     }
     select.innerHTML = html;
 }
-
-/** Launch a team preset from the welcome screen — opens the team modal pre-filled. */
-// tmux missing is said once in the dialog and Launch stays off, like the other launch dialogs (#6046).
-function _syncQuickBlock() {
-    const go = document.getElementById('quick-launch-go'), why = document.querySelector('#quick-launch-modal [data-blocks-launch]');
-    if (!go) return;
-    go.disabled = !!why;
-    if (why) go.setAttribute('aria-describedby', why.id); else go.removeAttribute('aria-describedby');
-}
-document.addEventListener('cli-blocks-launch', e => { if (e.target.closest && e.target.closest('#quick-launch-modal')) _syncQuickBlock(); });
-
-window._quickLaunchTeam = async function() {
-    const tmuxSlot = document.getElementById('quick-tmux-slot');
-    await checkTmuxForLaunch(tmuxSlot);
-    if (tmuxSlot?.dataset.blocksLaunch) return; // tmux is missing: the line above Launch says so, and no request is sent
-    const templateName = document.getElementById('quick-launch-template').value;
-    const boardName = document.getElementById('quick-launch-board-name').value.trim() ||
-        document.getElementById('quick-launch-board-name').placeholder;
-    const workDir = document.getElementById('quick-launch-workdir').value.trim();
-
-    if (!workDir) { showToast('Working directory is required', 'error'); return; }
-    const nameProblem = boardNameProblem(boardName);
-    if (nameProblem) { showToast(nameProblem, 'error'); return; }
-
-    const all = [...BUILTIN_TEAM_TEMPLATES, ..._getSavedTeamTemplates()];
-    const tmpl = all.find(t => t.name === templateName);
-    if (!tmpl) { showToast('Template not found', 'error'); return; }
-
-    // Disable launch button to prevent double-clicks
-    const launchBtn = document.querySelector('#quick-launch-modal .btn-primary');
-    if (launchBtn) { launchBtn.disabled = true; launchBtn.textContent = 'Launching...'; }
-
-    const server = _effectiveServer(launch.quickServer);
-    if (_launchBlocked(server)) { if (launchBtn) { launchBtn.disabled = false; launchBtn.textContent = 'Launch'; } return; }
-    const ts = _settingsFor(server);
-    const agentType = tmpl.agents?.[0]?.agent_type || ts.default_agent_type || 'claude';
-    const defaultPermMode = defaultPermissionMode(ts, agentType);
-    const permFlag = _getPermissionFlagsForAgentMode(agentType, defaultPermMode);
-    const flags = permFlag ? permFlag.split(/\s+/) : [];
-
-    try {
-        const data = await _launchOn(server, '/api/sessions/launch-team', {
-                board_name: boardName,
-                working_dir: workDir,
-                agent_type: agentType,
-                flags,
-                agents: tmpl.agents.map(a => {
-                    const entry = { name: a.name, prompt: a.prompt, capabilities: a.capabilities };
-                    if (a.agent_type) entry.agent_type = a.agent_type;
-                    if (a.model) entry.model = a.model;
-                    if (a.flags) {
-                        entry.flags = typeof a.flags === 'string' ? a.flags.split(/\s+/).filter(Boolean) : a.flags;
-                    }
-                    if (a.knowledge) entry.knowledge = a.knowledge;
-                    return entry;
-                }),
-                team_knowledge_index: tmpl.team_knowledge_index || '',
-                working_mode: tmpl.working_mode || null,
-                workflow_presets: tmpl.workflow_presets || null,
-        }, undefined, { teamFailures: true });
-        if (!data) return;
-        const launched = data.agents || [];
-        const failed = launched.filter(a => a.error);
-        // Nobody started (the server answered an error, #122): each member's error, and the dialog stays open to try again.
-        if (data.ok === false) {
-            showTeamLaunchFailures(failed, 0, showSettingsModal);
-            return;
-        }
-        recordRecentDir(workDir, server);
-        document.getElementById('quick-launch-modal').style.display = 'none';
-        if (failed.length > 0) {
-            showToast(`Launched ${launched.length - failed.length} of ${launched.length} agents (${failed.length} failed)`, 'error');
-        } else {
-            showToast(`Launched ${templateName} on ${boardName}${_onServerSuffix(server)}`);
-            setTimeout(loadLiveSessions, 2000);
-            _refreshAfterLaunch(server, { boardName });
-        }
-    } catch (e) {
-        showToast('Launch failed: ' + e.message, 'error');
-    } finally {
-        if (launchBtn) { launchBtn.disabled = false; launchBtn.textContent = 'Launch'; }
-    }
-};
 
 let _pendingSaveTemplateAgents = null;
 let _pendingSaveTemplateFlags = '';
