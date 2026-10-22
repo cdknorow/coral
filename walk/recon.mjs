@@ -1,11 +1,14 @@
 // The dashboard as a first-time person meets it, through headless Chrome over CDP (trial branch; not for landing).
 import CDP from 'chrome-remote-interface';
 import fs from 'node:fs';
+import { spawn } from 'node:child_process';
 const out = process.env.WALK_OUT;
-const targets = await CDP.List({ port: 9333 });
-console.log('targets', JSON.stringify(targets.map(t => [t.type, t.url, t.title])));
-const target = targets.find(t => t.type === 'page' && /127\.0\.0\.1|localhost/.test(t.url)) || targets.find(t => t.type === 'page');
-const client = await CDP({ port: 9333, target });
+const chromePath = ['C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe'].find(fs.existsSync);
+console.log('chrome at', chromePath);
+const base = 'http://127.0.0.1:8450';
+const chrome = spawn(chromePath, ['--remote-debugging-port=9222', '--user-data-dir=C:/walk/chrome-profile', '--headless=new', '--no-first-run', '--window-size=1280,900', 'about:blank'], { stdio: 'ignore' });
+let client;
+for (let i = 0; i < 30 && !client; i++) { await new Promise(r => setTimeout(r, 1000)); try { client = await CDP({ port: 9222 }); } catch {} }
 const { Page, Runtime } = client;
 await Page.enable();
 let n = 100;
@@ -19,5 +22,7 @@ const dump = async (label) => {
         text: document.body.innerText.replace(/\\s+/g, ' ').slice(0, 900) }); })()`);
     console.log('PAGE ' + label + ' ' + d);
 };
-await shot('app-first-load'); await dump('app-first-load');
-await client.close();
+await Page.navigate({ url: base + '/' });
+await new Promise(r => setTimeout(r, 4000));
+await shot('browser-first-load'); await dump('browser-first-load');
+await client.close(); chrome.kill();

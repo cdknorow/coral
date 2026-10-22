@@ -29,11 +29,3 @@ Get-ChildItem "$env:USERPROFILE\.coral" -Force -ErrorAction SilentlyContinue | F
 "--- tray log tail"
 foreach ($f in @('C:\walk\data\tray.log', "$env:USERPROFILE\.coral\tray.log")) { if (Test-Path $f) { "== $f"; Get-Content $f -Tail 25 } }
 
-"--- the app window, once more with a debugging port, so the walk can drive it (the tray's own window above is what a person first sees)"
-Get-Process coral-app -ErrorAction SilentlyContinue | Stop-Process -Force
-Start-Sleep -Seconds 2
-$env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--remote-debugging-port=9333 --remote-allow-origins=*'
-Start-Process 'C:\Program Files (x86)\Coral\coral-app.exe' -ArgumentList '--url', 'http://localhost:8450', '--data-dir', 'C:\walk\data'
-$ok = $false
-for ($i = 0; $i -lt 30; $i++) { Start-Sleep -Seconds 1; try { $t = Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:9333/json/version' -TimeoutSec 2; $ok = $true; break } catch {} }
-"debug port 9333 answers: $ok"
