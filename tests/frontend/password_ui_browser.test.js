@@ -45,6 +45,7 @@ const BASE = require('./test_base').BASE;
             // 1. the prompt: password-manager fields, Show/Hide, advisory meter
             await ui.maybePromptSetPassword();
             await waitFor(() => $('set-password-modal'), 'the prompt');
+            out.lead1 = document.querySelector('#set-password-modal .pw-lead').textContent; // one wording for every visit (#6010)
             out.fields = { newAc: $('set-password-new').autocomplete, confAc: $('set-password-confirm').autocomplete, type: $('set-password-new').type,
                 username: (() => { const u = document.querySelector('#set-password-form input[name=username]'); return u ? { ac: u.autocomplete, hidden: u.hidden } : null; })(),
                 focused: document.activeElement.id };
@@ -66,7 +67,7 @@ const BASE = require('./test_base').BASE;
 
             // 2. Not now: final on this computer, asked again from another
             status = { authenticated: true, method: 'session', password_set: false, local: true };
-            await ui.maybePromptSetPassword(); await waitFor(() => $('set-password-modal'), 'prompt again');
+            await ui.maybePromptSetPassword(); await waitFor(() => $('set-password-modal'), 'prompt again'); out.lead2 = document.querySelector('#set-password-modal .pw-lead').textContent;
             $('set-password-later').click();
             out.flagAfterLocalNotNow = localStorage.getItem('coral-password-not-now');
             await ui.maybePromptSetPassword(); await sleep(50);
@@ -145,6 +146,9 @@ const BASE = require('./test_base').BASE;
         assert.deepEqual(out.fields.username, { ac: 'username', hidden: true }, 'a username field for the password manager');
         assert.equal(out.fields.type, 'password'); assert.equal(out.fields.focused, 'set-password-new', 'focus moves to the password');
         assert.equal(out.shown, 'text'); assert.equal(out.hiddenAgain, 'password', 'Show then Hide');
+        assert.equal(out.lead1, 'Choose a password to open Coral in a browser. The Coral app and the tray open without it.', 'the dialog says what the password is for, not a change notice');
+        assert.equal(out.lead2, out.lead1, 'the same words on a later visit, and no "nothing changed" notice');
+        assert.doesNotMatch(out.lead1 + out.lead2, /nothing changed|now asks browsers/);
         assert.deepEqual(out.weak, { level: 'weak', disabled: false }, 'the meter advises and never blocks');
         assert.equal(out.emptyErr, 'Enter a password.'); assert.equal(out.callsAfterEmpty, 0);
         assert.match(out.mismatchErr, /do not match/); assert.equal(out.callsAfterMismatch, 0, 'nothing is sent for a mismatch');
