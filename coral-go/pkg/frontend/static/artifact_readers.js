@@ -67,10 +67,10 @@ export function readersDisclosure(hex, server) {
         body.textContent = 'Loading…';
         try {
             const data = await fetchReaders(hex, server);
-            if (!data) { body.textContent = 'Who can read this is not available here.'; loaded = false; return; }
+            if (!data) { d.remove(); return; } // the machine cannot say now: draw nothing, not a line about it (#5991)
             body.replaceChildren(...lines(data).map(t => { const p = document.createElement('p'); p.textContent = t; return p; }));
             if (typeof data.note === 'string' && data.note.trim()) { const n = document.createElement('p'); n.className = 'artifact-readers-note'; n.textContent = clean(data.note, 400); body.append(n); }
-        } catch { body.textContent = 'Who can read this is not available here.'; loaded = false; }
+        } catch { d.remove(); }
     });
     return d;
 }
