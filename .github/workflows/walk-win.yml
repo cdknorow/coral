@@ -1,0 +1,28 @@
+name: walk-win
+on:
+  push:
+    branches: [ci/walk-win]
+permissions:
+  contents: read
+jobs:
+  walk:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    env:
+      CORAL_TELEMETRY_DISABLED: "1"
+      WALK_VERSION: "1.4.155"
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Stage 1, the installer wizard
+        shell: pwsh
+        run: ./walk/stage1.ps1
+      - name: Keep the screenshots
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: walk-out
+          path: walk-out
+          if-no-files-found: ignore
