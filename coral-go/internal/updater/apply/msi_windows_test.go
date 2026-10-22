@@ -68,7 +68,7 @@ func TestAuthenticodeOnRealFiles(t *testing.T) {
 	assert.False(t, signed)
 	assert.NoError(t, err)
 
-	tried := 0
+	tried, foreign := 0, 0
 	for _, p := range []string{
 		filepath.Join(os.Getenv("ProgramFiles(x86)"), `Microsoft\Edge\Application\msedge.exe`),
 		filepath.Join(os.Getenv("ProgramFiles"), `Git\git-bash.exe`),
@@ -82,12 +82,21 @@ func TestAuthenticodeOnRealFiles(t *testing.T) {
 		require.NoError(t, err, p)
 		signed, err := w.Authenticode(h)
 		h.Close()
-		assert.True(t, signed, p)
+		if !signed {
+			// The runner image decides which of these carries an embedded signature (Git for Windows 2.56's git-bash.exe has none): a file with
+			// none is the unsigned case, checked above, not the foreign-publisher case this loop is for.
+			t.Logf("%s has no embedded signature on this machine: skipped", filepath.Base(p))
+			continue
+		}
+		foreign++
 		assert.Error(t, err, "%s is validly signed, by someone else: refused", p)
 		t.Logf("%s: %v", filepath.Base(p), err)
 	}
-	if tried == 0 {
+	if foreign == 0 {
 		t.Log("no signed program of another publisher found to check the refusal against")
+		if os.Getenv("GITHUB_ACTIONS") == "true" {
+			t.Errorf("GitHub's Windows runner has Microsoft Edge, signed by Microsoft: none of the %d programs tried was signed, so the refusal went unchecked", tried)
+		}
 	}
 }
 
