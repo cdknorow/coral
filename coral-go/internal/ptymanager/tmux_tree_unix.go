@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -44,8 +45,12 @@ func beginTreeKill(paneOut string) (finish func()) {
 	root := member{pid, created}
 	known := treeMembers(root, "") // found now, while they are still its descendants; signalled only after tmux's own kill, which would otherwise find its session already ended by a signal and fail
 	return func() {
-		// In the background: the person's Kill, sleep or Restart is answered at once and the tree ends while the dashboard shows the result, not after the grace.
+		// In the background: the person's Kill, sleep or Restart is answered at once and the tree ends while the dashboard shows the result, not after the grace. It is registered while it runs, so a Coral that quits
+		// meanwhile can finish it (finishPendingTreeKills) instead of leaving the helpers running.
+		job := &treeKillJob{known: known, root: root, done: make(chan struct{})}
+		pendingTreeKills.add(job)
 		safego.Go("ptymanager/tmux-tree", func() {
+			defer func() { pendingTreeKills.remove(job); close(job.done) }()
 			signalTree(known, syscall.SIGHUP) // what closing the terminal does, then the polite stop
 			signalTree(known, syscall.SIGTERM)
 			deadline := time.Now().Add(tmuxTreeGrace)
@@ -60,6 +65,57 @@ func beginTreeKill(paneOut string) (finish func()) {
 				time.Sleep(10 * time.Millisecond)
 			}
 		})
+	}
+}
+
+// treeKillJob is one tmux tree kill that is waiting out its grace in the background.
+type treeKillJob struct {
+	known []member
+	root  member
+	done  chan struct{}
+}
+
+var pendingTreeKills pendingJobs
+
+type pendingJobs struct {
+	mu   sync.Mutex
+	jobs map[*treeKillJob]struct{}
+}
+
+func (p *pendingJobs) add(j *treeKillJob) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.jobs == nil {
+		p.jobs = map[*treeKillJob]struct{}{}
+	}
+	p.jobs[j] = struct{}{}
+}
+
+func (p *pendingJobs) remove(j *treeKillJob) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	delete(p.jobs, j)
+}
+
+func (p *pendingJobs) snapshot() []*treeKillJob {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	out := make([]*treeKillJob, 0, len(p.jobs))
+	for j := range p.jobs {
+		out = append(out, j)
+	}
+	return out
+}
+
+// finishPendingTreeKills is for a Coral that is quitting: a tree kill still waiting out its grace would die with the process and leave the helpers running, so each pending one is finished now with the
+// same stop, sweep and SIGKILL, and waited for, within a second.
+func finishPendingTreeKills() {
+	for _, j := range pendingTreeKills.snapshot() {
+		killTree(j.known, j.root, "")
+		select {
+		case <-j.done:
+		case <-time.After(time.Second):
+		}
 	}
 }
 
