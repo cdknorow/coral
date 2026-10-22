@@ -54,6 +54,10 @@ func realWindows(t *testing.T) realPackages {
 	if code, err := (&WindowsMSI{}).RegisteredProduct(); err == nil {
 		t.Skipf("a Coral (%s) is installed on this machine: this test never touches an existing install", code)
 	}
+	// Per user too (a per-user product with Coral's UpgradeCode is not the one updated, but it is an install this test must not sit beside).
+	if codes, err := relatedProducts(); err != nil || len(codes) > 0 {
+		t.Skipf("a Coral product is registered on this machine (%v, %v): this test never touches an existing install", codes, err)
+	}
 	return p
 }
 

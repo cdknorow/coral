@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  The real Windows upgrade from the previous release (#162, #167), on a THROWAWAY Windows machine (a CI runner): the previous release's MSI is
+  The real Windows upgrade from the previous release (#162, #167), on a THROWAWAY Windows machine (a GitHub-hosted runner): the previous release's MSI is
   installed per machine, the new release's MSI goes through coral-update's Windows apply (apply.RunMSI) with the real Windows Installer, and the
   rollback is exercised for real.
 
@@ -14,7 +14,7 @@
     - a click that is not for what is staged (none, or another version) is refused, nothing installed;
     - a new release that does not stay up is rolled back for real: the new product removed, the previous MSI installed again.
 
-  It INSTALLS AND REMOVES software on the machine it runs on. So it refuses to run unless that machine is a CI runner (GITHUB_ACTIONS=true) or you
+  It INSTALLS AND REMOVES software on the machine it runs on. So it refuses to run unless that machine is a GitHub-hosted runner (GITHUB_ACTIONS=true and RUNNER_ENVIRONMENT=github-hosted) or you
   pass -ThrowawayMachine, it needs an administrator (so Windows Installer asks no consent), and it refuses when any Coral is installed. It never
   starts Coral (a runner has no tray to supervise it) and shows no message box. The windows apply is OFF in releases (windowsApplyEnabled=false); this
   test drives apply.RunMSI directly.
@@ -88,14 +88,16 @@ if ($SumsFile -ne '') {
 }
 
 # 2. A throwaway machine, an administrator, no Coral installed.
-if ($env:GITHUB_ACTIONS -ne 'true' -and -not $ThrowawayMachine) {
-    Fail 'this installs and removes Coral: it runs on a GitHub Actions runner, or pass -ThrowawayMachine on a machine you can spoil'
+# A GitHub-HOSTED runner is a throwaway VM; a self-hosted one can be someone's own machine, so it needs -ThrowawayMachine like any other computer.
+$hostedRunner = ($env:GITHUB_ACTIONS -eq 'true' -and $env:RUNNER_ENVIRONMENT -eq 'github-hosted')
+if (-not $hostedRunner -and -not $ThrowawayMachine) {
+    Fail 'this installs and removes Coral: it runs on a GitHub-hosted runner, or pass -ThrowawayMachine on a machine you can spoil'
 }
 $principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     Fail 'run as an administrator (a per-machine install without a consent prompt)'
 }
-$uninstallKeys = @('HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*', 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*')
+$uninstallKeys = @('HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*', 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*', 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*')
 $installed = Get-ItemProperty -Path $uninstallKeys -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -like 'Coral*' }
 if ($installed) { Fail "Coral is installed on this machine ($($installed[0].DisplayName) $($installed[0].DisplayVersion)): this test never touches an existing install" }
 Pass 'an administrator, on a throwaway machine, with no Coral installed'
