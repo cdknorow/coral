@@ -553,6 +553,9 @@ func (in AutomatedInput) enterSubmitted(ctx context.Context, sr ScreenReader, ag
 func (g *inputGate) confirmSubmitted(ctx context.Context, in AutomatedInput, sr ScreenReader, rendered bool, agentType, sessionID string) (bool, error) {
 	if !rendered || sr == nil || in.enterSubmitted(ctx, sr, agentType, sessionID, in.Text) {
 		g.setLastPasted(in.Name, "")
+		if rendered && sr != nil {
+			g.forgetOwnText(in.Name, in.Text) // the screen shows the box emptied of it: delivered, so a person's identical draft later is theirs
+		}
 		return false, nil
 	}
 	in.entered = true
