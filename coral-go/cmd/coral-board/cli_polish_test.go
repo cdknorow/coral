@@ -2,11 +2,13 @@ package main
 
 import (
 	"encoding/json"
+	"github.com/subgentic/coral/internal/clihelp"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -254,6 +256,40 @@ func TestPostRefusesAnUnknownOptionBeforeTheText(t *testing.T) {
 	assert.Contains(t, res.stderr, "unknown option")
 	assert.NotContains(t, res.stderr, "did you mean")
 	assert.Empty(t, srv.requests())
+}
+
+// help <topic> prints a short page; a command name still prints its usage; anything else exits 2 and lists the topics (#236).
+func TestHelpTopicsBoard(t *testing.T) {
+	srv := newRecordingServer(t)
+	dir := subscribedDataDir(t, srv.URL)
+	for topic, want := range map[string]string{"windows": "$OutputEncoding", "exit-codes": "ERRORLEVEL", "json": "task list --json", "timeouts": "CORAL_TIMEOUT"} {
+		res := runBoard(t, srv.URL, dir, "help", topic)
+		assert.Equal(t, 0, res.code, topic)
+		assert.Contains(t, res.stdout, want, topic)
+		assert.Contains(t, res.stdout, "coral-board", topic)
+		assert.NotContains(t, res.stdout, "TOOL", topic)
+	}
+	res := runBoard(t, srv.URL, dir, "help", "post")
+	assert.Equal(t, 0, res.code)
+	assert.Contains(t, res.stdout, "post --file")
+	res = runBoard(t, srv.URL, dir, "help", "nonsense")
+	assert.Equal(t, 2, res.code)
+	assert.Contains(t, res.stderr, "windows | exit-codes | json | timeouts")
+	res = runBoard(t, srv.URL, dir, "help")
+	assert.Contains(t, res.stdout, "Help topics:  coral-board help windows | exit-codes | json | timeouts", "the usage lists the topics")
+	assert.Empty(t, srv.requests())
+}
+
+// Every "coral-board <word>" in a help page is a command coral-board has (the agent pages once showed commands the tool lacks).
+func TestHelpPagesNameOnlyRealCommands(t *testing.T) {
+	re := regexp.MustCompile(`coral-board ([a-z][a-z-]*)`)
+	for _, topic := range clihelp.TopicNames() {
+		page, ok := clihelp.TopicPage("coral-board", topic)
+		require.True(t, ok, topic)
+		for _, m := range re.FindAllStringSubmatch(page, -1) {
+			assert.True(t, commands[m[1]] || m[1] == "help", "%s page: %q is not a coral-board command", topic, m[0])
+		}
+	}
 }
 
 // Once the text has begun, a "--word" that is not an option is text, whatever it looks like (#241); --to and --file are read anywhere, in any case.

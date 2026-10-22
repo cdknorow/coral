@@ -73,7 +73,9 @@ Output:
 
 Environment:
   CORAL_URL   Server URL (default http://localhost:8420)
-  CORAL_PORT  Server port (overrides CORAL_URL)` + "\n\n" + clierr.Table
+  CORAL_PORT  Server port (overrides CORAL_URL)
+
+Help topics:  coral-agent help windows | exit-codes | json | timeouts` + "\n\n" + clierr.Table
 
 func main() {
 	hooks.InstallIdentity("coral-agent") // the agent session's token, sent with every request (#3387)
@@ -729,7 +731,7 @@ func cmdTaskDetail(args []string) {
 	id := positiveTaskID(args[0])
 	data, status, err := apiCallRaw("GET", fmt.Sprintf("/tasks/%d?session_id=%s", id, url.QueryEscape(resolveSessionID())), nil)
 	if err != nil || status != http.StatusOK {
-		fmt.Fprintf(os.Stderr, "Error reading task: %s %v\n", data, err)
+		fmt.Fprintln(os.Stderr, "Error reading task: "+clierr.Describe(err, status, data))
 		clierr.Exit1()
 	}
 	var pretty bytes.Buffer

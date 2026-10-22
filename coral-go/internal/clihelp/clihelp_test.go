@@ -1,6 +1,9 @@
 package clihelp
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestRequested(t *testing.T) {
 	for _, c := range []struct {
@@ -97,5 +100,38 @@ func TestNearFlag(t *testing.T) {
 		if got, ok := NearFlag(arg, known); ok {
 			t.Errorf("NearFlag(%q) = %q; it is text or a real option", arg, got)
 		}
+	}
+}
+
+func TestTopicPages(t *testing.T) {
+	for _, tool := range []string{"coral-board", "coral-agent"} {
+		for _, name := range TopicNames() {
+			page, ok := TopicPage(tool, name)
+			if !ok {
+				t.Errorf("%s has no %s page", tool, name)
+				continue
+			}
+			if strings.Contains(page, "TOOL") {
+				t.Errorf("%s %s: the program's name was not filled in", tool, name)
+			}
+			if n := strings.Count(page, "\n") + 1; n > 25 {
+				t.Errorf("%s %s is %d lines; keep pages under 25", tool, name, n)
+			}
+			if strings.Contains(page, "`") {
+				t.Errorf("%s %s has a backtick", tool, name)
+			}
+		}
+	}
+	if _, ok := TopicPage("coral-board", "nope"); ok {
+		t.Error("an unknown topic has a page")
+	}
+	if got := TopicLine("coral-board"); got != "Help topics:  coral-board help windows | exit-codes | json | timeouts" {
+		t.Errorf("TopicLine = %q", got)
+	}
+	// json differs per tool, the rest are shared
+	b, _ := TopicPage("coral-board", "json")
+	a, _ := TopicPage("coral-agent", "json")
+	if b == a || !strings.Contains(b, "read --json") || strings.Contains(a, "read --json") {
+		t.Error("the json pages should differ per tool")
 	}
 }
