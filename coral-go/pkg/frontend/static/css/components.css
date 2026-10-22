@@ -2298,7 +2298,7 @@ button.subscriber-history-link {
 
 .agent-persona-actions .btn-subtle {
     padding: 4px 10px;
-    border-radius: 999px;
+    border-radius: var(--radius-md); /* the shape of every other button (#6042); these were pills */
     background: transparent;
     border-color: var(--control-border);
     color: var(--text-muted);
@@ -2444,7 +2444,7 @@ button.subscriber-history-link {
 
 .team-template-actions .btn-subtle {
     padding: 4px 10px;
-    border-radius: 999px;
+    border-radius: var(--radius-md); /* the shape of every other button (#6042); these were pills */
     background: transparent;
     border-color: var(--control-border);
     color: var(--text-muted);
