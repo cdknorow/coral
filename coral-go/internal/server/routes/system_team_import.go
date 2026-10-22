@@ -323,7 +323,7 @@ func runTeamGeneration(ctx context.Context, claudePath, prompt, coralDir string)
 		prompt,
 	)
 	cmd.Env = agent.CLIEnv(os.Environ(), claudePath) // an npm-installed CLI runs with its own node (#5899)
-	executil.NoCwdSearch(cmd) // Windows: a claude.cmd shim looks for node in the current folder first, so a repository's node.exe would run
+	executil.NoCwdSearch(cmd)                        // Windows: a claude.cmd shim looks for node in the current folder first, so a repository's node.exe would run
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, "Claude CLI failed: " + err.Error()

@@ -550,7 +550,7 @@ func (h *ThemesHandler) GenerateTheme(w http.ResponseWriter, r *http.Request) {
 	args := append(cliArgs, prompt)
 	cmd := executil.Command(r.Context(), cliPath, args...)
 	cmd.Env = agent.CLIEnv(os.Environ(), cliPath) // an npm-installed CLI runs with its own node (#5899)
-	executil.NoCwdSearch(cmd) // Windows: a claude.cmd shim looks for node in the current folder first, so a repository's node.exe would run
+	executil.NoCwdSearch(cmd)                     // Windows: a claude.cmd shim looks for node in the current folder first, so a repository's node.exe would run
 	output, err := cmd.Output()
 	if err != nil {
 		errInternalServer(w, "Claude CLI failed: "+err.Error())
