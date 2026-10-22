@@ -4,6 +4,7 @@
 // in any rule) and no script, template or Go theme sets (setProperty, a style string, a theme map). A name that is read and truly never set is named in
 // OPTIONAL below with the reason (the theme editor's table in internal/server/routes/themes.go counts as setting a name). Run it on its own: node css_vars_defined.test.mjs
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
@@ -52,7 +53,7 @@ for (const n of OPTIONAL.keys()) assert.ok(used.has(n) && !declared.has(n), `${n
 
 // The scan itself: it sees a name that is read and never declared (with and without a fallback), and one that is declared.
 {
-    const tmp = fs.mkdtempSync(path.join(fs.realpathSync(process.env.TMPDIR || '/tmp'), 'cssvars-'));
+    const tmp = fs.mkdtempSync(path.join(fs.realpathSync(process.env.TMPDIR || os.tmpdir()), 'cssvars-'));
     try {
         const f = path.join(tmp, 'a.css');
         fs.writeFileSync(f, ':root { --ok: 1px; }\n.a { border: var(--ok); color: var(--nope-a); background: var(--nope-b, red); /* var(--in-comment) */ }');

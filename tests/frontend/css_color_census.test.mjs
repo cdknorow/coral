@@ -6,6 +6,7 @@
 // is a new bare colour). The same for the colours in the scripts' inline styles and the page's templates (a colour a script paints with: a QR code's white, a file type's colour,
 // a standalone export's own palette), each with its reason in the file. A single-value border-radius of 3, 4, 6, 8, 10 or 12 px is a token (--radius-xs ... --radius-xl) too.
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
@@ -99,7 +100,7 @@ for (const [k, n] of Object.entries(now.radius)) problems.push(`${k}: ${n} singl
 assert.deepEqual(problems, [], `bare colours or radii outside the tokens:\n  ${problems.join('\n  ')}`);
 // the census itself catches what it should
 {
-    const tmp = path.join(fs.mkdtempSync(path.join(process.env.TMPDIR || '/tmp', 'cc-')), 'x.css');
+    const tmp = path.join(fs.mkdtempSync(path.join(process.env.TMPDIR || os.tmpdir(), 'cc-')), 'x.css');
     fs.writeFileSync(tmp, ['.a {', '  color: #abc;', '  background: rgba(1, 2, 3, 0.5);', '  border: 1px solid red;', '  --t: #fff;', '  box-shadow: 0 1px 2px rgb(0 0 0 / 3%);', '  border-radius: 6px;', '}',
         '.red { margin: 0 }', '/* #123456 */', '.b {', '  background: var(--x) url("data:image/svg+xml,%23fff");', '  color: var(--text-primary);', '  background: rgba(var(--black-rgb), 0.3);', '}', ''].join('\n'));
     const r = scanCss(tmp);
