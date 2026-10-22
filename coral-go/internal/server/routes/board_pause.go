@@ -20,12 +20,16 @@ func (h *BoardHandler) isPaused(project string) bool {
 // flag is stored with the board, so a restart doesn't un-pause it (#3668, the audit's finding 2).
 // A pause set here is a person's: auto-wake keeps it (#286).
 func (h *BoardHandler) SetPaused(project string, paused bool) {
+	h.pauseMu.Lock()
+	defer h.pauseMu.Unlock()
 	h.setPaused(project, paused, false)
 }
 
 // PauseForSleep pauses a board because its agents sleep (a team sleep, or Coral's restart with agents left sleeping), a pause
 // auto-wake lifts (LiftSleepPause). A board already paused keeps its pause as it is: a person's stays a person's (#286).
 func (h *BoardHandler) PauseForSleep(project string) {
+	h.pauseMu.Lock() // the check and the pause as one step: a person's Pause in between is never stored as sleep's
+	defer h.pauseMu.Unlock()
 	h.mu.RLock()
 	already := h.paused[project]
 	h.mu.RUnlock()
@@ -37,6 +41,8 @@ func (h *BoardHandler) PauseForSleep(project string) {
 // LiftSleepPause resumes a board whose pause sleep or Coral's restart put there, when auto-wake has woken one of its agents
 // (as the dashboard's Wake resumes the board, #286). A person's Pause is kept. It reports whether it resumed the board.
 func (h *BoardHandler) LiftSleepPause(project string) bool {
+	h.pauseMu.Lock() // the check and the resume as one step: a person's Pause in between is never resumed
+	defer h.pauseMu.Unlock()
 	h.mu.RLock()
 	bySleep := h.paused[project] && h.sleepPaused[project]
 	h.mu.RUnlock()
@@ -46,6 +52,7 @@ func (h *BoardHandler) LiftSleepPause(project string) bool {
 	return bySleep
 }
 
+// setPaused changes the pause in memory and in the store; the caller holds pauseMu, so the stored row always ends as the maps do.
 func (h *BoardHandler) setPaused(project string, paused, bySleep bool) {
 	h.mu.Lock()
 	if paused {

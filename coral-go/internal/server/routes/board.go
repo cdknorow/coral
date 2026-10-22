@@ -31,6 +31,7 @@ type BoardHandler struct {
 	mu                            sync.RWMutex
 	paused                        map[string]bool      // in-memory set of paused project names
 	sleepPaused                   map[string]bool      // the paused boards whose pause sleep or Coral's restart put there, which auto-wake lifts (#286)
+	pauseMu                       sync.Mutex           // one pause change at a time, its check, maps and stored row together (Security on #119)
 	notifyFn                      func(project string) // triggers an immediate notification pass for project's board
 	coralDir                      string
 	alsoMu                        sync.Mutex    // serialises adding a later receipt to a received row (#4449)

@@ -3,8 +3,10 @@ package routes
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
@@ -12,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/subgentic/coral/internal/board"
+	"github.com/subgentic/coral/internal/board/boardtest"
 	"github.com/subgentic/coral/internal/naming"
 	"github.com/subgentic/coral/internal/store"
 )
@@ -174,4 +177,44 @@ func TestPausedByIsKeptStraight(t *testing.T) {
 	got, err = r.h.bs.PausedBoardsBy(ctx)
 	require.NoError(t, err)
 	assert.NotContains(t, got, "b")
+}
+
+// Security on #119: a person's Pause racing PauseForSleep, or racing LiftSleepPause, always ends as the person's pause, in
+// memory and in the store, whichever runs first (each check and set is one step under pauseMu). Run with -race.
+func TestAPersonsPauseWinsEitherRace(t *testing.T) {
+	ctx := context.Background()
+	bs, err := boardtest.Open(t.TempDir() + "/race.db")
+	require.NoError(t, err)
+	t.Cleanup(func() { bs.Close() })
+	bh := NewBoardHandler(bs)
+	t.Cleanup(bh.WaitBackground)
+
+	race := func(a, b func()) {
+		var wg sync.WaitGroup
+		start := make(chan struct{})
+		for _, f := range []func(){a, b} {
+			wg.Add(1)
+			go func(f func()) { defer wg.Done(); <-start; f() }(f)
+		}
+		close(start)
+		wg.Wait()
+	}
+	for i := 0; i < 50; i++ {
+		sleepFirst := fmt.Sprintf("sleep-%d", i)
+		race(func() { bh.PauseForSleep(sleepFirst) }, func() { bh.SetPaused(sleepFirst, true) })
+
+		lift := fmt.Sprintf("lift-%d", i)
+		bh.PauseForSleep(lift)
+		race(func() { bh.LiftSleepPause(lift) }, func() { bh.SetPaused(lift, true) })
+
+		stored, err := bs.PausedBoardsBy(ctx)
+		require.NoError(t, err)
+		for _, b := range []string{sleepFirst, lift} {
+			require.True(t, bh.IsPaused(b), "%s: the person's Pause stays", b)
+			require.False(t, bh.LiftSleepPause(b), "%s: it is the person's, not sleep's", b)
+			by, ok := stored[b]
+			require.True(t, ok, "%s: stored as paused", b)
+			require.Equal(t, "", by, "%s: stored as the person's", b)
+		}
+	}
 }
