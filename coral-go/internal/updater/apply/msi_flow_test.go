@@ -131,6 +131,9 @@ func (f *fakeMSI) RegisteredVersion() (string, error) {
 func (f *fakeMSI) Msiexec(ctx context.Context, args ...string) (int, error) {
 	f.rec("msiexec " + args[0])
 	f.msiArgs = append(f.msiArgs, args)
+	if ctx.Err() != nil {
+		f.rec("on an ended context")
+	}
 	if f.onMsiexec != nil {
 		f.onMsiexec()
 	}
@@ -468,6 +471,39 @@ func TestAnInterruptedWindowsApplyIsFinishedByTheNext(t *testing.T) {
 }
 
 var _ io.Closer = fakeHeld{}
+
+// The Orchestrator's ask on #80: the consent prompt answered at the last moment, the install landing after msiexec was ended. The timeout
+// path finds the new product registered and recovers now, on a context of its own: the new Coral is checked and accepted, or, when it
+// doesn't come up, rolled back (never the old Coral started into the replaced folder).
+func TestATimedOutInstallThatLandedAnywayIsRecoveredThen(t *testing.T) {
+	landed := func(r *msiRig, cancel context.CancelFunc) func() {
+		return func() { cancel(); r.msi.registered, r.msi.regVersion = newProduct, "1.4.130" }
+	}
+
+	r := newMSIRig(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	r.msi.onMsiexec = landed(r, cancel)
+	r.msi.codes = []int{1}
+	res := RunMSI(ctx, r.cfg)
+	assert.Equal(t, ResultRelaunched, res.Result, res.FailedStage)
+	assert.Equal(t, []string{"wait", "hold", "authenticode", "productcode", "msiexec /i", "healthy"}, r.msi.calls, "checked, not the old Coral started")
+	assert.Equal(t, "1.4.130", r.state().Version)
+	_, err := os.Stat(filepath.Join(r.data, stage.UpdatesDir, msiJournalFile))
+	assert.True(t, os.IsNotExist(err), "no journal left")
+
+	r = newMSIRig(t)
+	ctx2, cancel2 := context.WithCancel(context.Background())
+	defer cancel2()
+	r.msi.onMsiexec = landed(r, cancel2)
+	r.msi.codes = []int{1}
+	r.msi.healthErr = []error{errors.New("down"), errors.New("still down")}
+	res = RunMSI(ctx2, r.cfg)
+	assert.Equal(t, ResultRolledBack, res.Result, res.FailedStage)
+	calls := strings.Join(r.msi.calls, " ")
+	assert.Contains(t, calls, "msiexec /x")
+	assert.NotContains(t, calls, "on an ended context", "the rollback's msiexec runs on the recovery's own context")
+}
 
 // Security's L on #80: a journal older than an apply can run (a timeout's, kept for days), from the future, or without a time is dropped,
 // never acted on. The person may have installed that new version by hand since: even when it is registered and can't be started, it is
