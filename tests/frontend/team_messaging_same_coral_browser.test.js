@@ -33,9 +33,9 @@ const { removeBoards } = require('./helpers/board_cleanup');
         const here = () => ev(`document.querySelector('${P} .xt-reach-here').textContent.replace(/\\s+/g, ' ').trim()`);
         const turnOn = async team => {
             await open(team);
-            assert.match(await here(), /^Teams on this computer: off/, team + ' starts off on this computer');
+            assert.match(await here(), /^Message teams on this computer: off/, team + ' starts off on this computer');
             await ev(`document.querySelector('${P} [data-act=turn-on-here]').click(); true`);
-            await waitFor(`document.querySelector('${P} .xt-reach-here')?.textContent.trim() === 'Teams on this computer: on'`, team + ' on', 8000);
+            await waitFor(`document.querySelector('${P} .xt-reach-here')?.textContent.trim() === 'Message teams on this computer: on'`, team + ' on', 8000);
             assert.equal(((await api(team, '/cross-team-state')).body || {}).messaging_here, true, team + ': saved as an explicit on');
         };
         const refusedFor = async (res, teams, label) => {
