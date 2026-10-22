@@ -198,7 +198,8 @@ func newMSIRig(t *testing.T) *msiRig {
 	require.NoError(t, os.WriteFile(r.rbPath, rb, 0o600))
 	r.rbRec = &verify.Record{Version: "1.4.125", Asset: msiAsset("1.4.125"), PackageSHA256: msiSum(rb)}
 	r.cfg = MSIConfig{DataDir: data, Installed: "1.4.125", Pins: verify.DefaultPins(), Verifier: msiTestSigner{}, Asset: msiAsset, MSI: r.msi,
-		Now: func() time.Time { return msiTestNow }, Rollback: func() (string, *verify.Record, error) { return r.rbPath, r.rbRec, nil }}
+		Now: func() time.Time { return msiTestNow }, Rollback: func() (string, *verify.Record, error) { return r.rbPath, r.rbRec, nil },
+		ClickedVersion: "1.4.130"}
 	return r
 }
 
@@ -463,3 +464,17 @@ func TestAnInterruptedWindowsApplyIsFinishedByTheNext(t *testing.T) {
 }
 
 var _ io.Closer = fakeHeld{}
+
+// #82's click: the apply honours only a click for what is staged now. No clicked version (no marker) or another one (a newer version staged
+// since, a stale marker): refused before anything is verified or asked, and the old Coral is started again.
+func TestTheApplyHonoursOnlyAClickForWhatIsStaged(t *testing.T) {
+	for clicked, why := range map[string]string{"": "no_request", "1.4.129": "stale_request", "1.4.131": "stale_request"} {
+		r := newMSIRig(t)
+		r.cfg.ClickedVersion = clicked
+		res := r.run()
+		assert.Equal(t, ResultRefused, res.Result, "clicked %q", clicked)
+		assert.Equal(t, why, res.FailedStage, "clicked %q", clicked)
+		assert.Equal(t, []string{"wait", "start"}, r.msi.calls, "clicked %q: no hold, no prompt; the old Coral is started", clicked)
+		assert.Equal(t, why, r.lastHistory().Reason)
+	}
+}
