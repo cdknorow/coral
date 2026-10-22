@@ -129,6 +129,20 @@
     <ui:WixUI Id="WixUI_Minimal" />
     <WixVariable Id="WixUILicenseRtf" Value="$(var.BuildDir)\license.rtf" />
 
+    <!-- The last screen offers to start Coral, ticked (#151): coral-tray.exe, as the Start Menu shortcut does. It runs from the
+         Finish button, in the installer's client (UI) process, as an immediate action: Coral starts with the token of the person
+         who ran the installer, never the elevated one that installed the files (a deferred or no-impersonate action would run
+         it as SYSTEM or elevated). ExitDialog shows the checkbox only on a first install or an upgrade (NOT Installed), and
+         the launch has the same condition plus NOT REMOVE~="ALL", so a repair or an uninstall starts nothing. A silent or
+         basic-UI install (/qn, /passive) shows no ExitDialog and starts nothing. -->
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Launch $(var.ProductName)" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
+    <CustomAction Id="LaunchCoral" FileRef="coral_tray.exe" ExeCommand="" Execute="immediate" Return="asyncNoWait" />
+    <UI>
+      <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchCoral"
+        Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 AND NOT Installed AND NOT REMOVE~=&quot;ALL&quot;" />
+    </UI>
+
     <!-- Coral's dialog art in place of WiX's stock bitmaps (tools/make_installer_art.py) -->
     <WixVariable Id="WixUIBannerBmp" Value="$(sys.SOURCEFILEDIR)..\assets\installer\WixUIBannerBmp.bmp" />
     <WixVariable Id="WixUIDialogBmp" Value="$(sys.SOURCEFILEDIR)..\assets\installer\WixUIDialogBmp.bmp" />
