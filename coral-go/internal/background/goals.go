@@ -795,6 +795,7 @@ func runGoalCLI(ctx context.Context, bin, prompt string) (goalCLIResult, error) 
 	cmd.Env = append(cmd.Env, "MAX_THINKING_TOKENS=0")
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
+	executil.NoCwdSearch(cmd) // Windows: a claude.cmd shim looks for node in the current folder first, so a repository's node.exe would run
 	out, err := cmd.Output()
 	res, perr := parseGoalCLIOutput(out)
 	if err != nil {

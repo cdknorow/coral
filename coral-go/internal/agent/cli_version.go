@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/subgentic/coral/internal/agentenv"
+	"github.com/subgentic/coral/internal/executil"
 	"os"
 	"os/exec"
 	"regexp"
@@ -55,6 +56,7 @@ func CLIVersion(settings map[string]string, agentType string) string {
 	// A CLI that is a wrapper (node, npm shims) can leave a child holding stdout past
 	// the kill: stop waiting for the pipes 2 s after it (Backend's review).
 	cmd.WaitDelay = 2 * time.Second
+	executil.NoCwdSearch(cmd) // Windows: a claude.cmd shim looks for node in the current folder first, so a repository's node.exe would run
 	out, _ := cmd.Output()
 	v := cliVersionRe.FindString(string(out))
 	if ctx.Err() == nil {

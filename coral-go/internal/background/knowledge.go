@@ -565,6 +565,7 @@ func checkClaudeCLI(ctx context.Context, settings map[string]string) (string, er
 	defer cancel()
 	cmd := executil.Command(checkCtx, claudePath, "--version")
 	setSysProcAttr(cmd)
+	executil.NoCwdSearch(cmd) // Windows: a claude.cmd shim looks for node in the current folder first, so a repository's node.exe would run
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("claude CLI not ready (may need authentication): %s", strings.TrimSpace(string(out)))
@@ -602,6 +603,7 @@ func callClaudeForKnowledge(ctx context.Context, claudePath string, timeout time
 	)
 	cmd.Stdin = strings.NewReader(input)
 	setSysProcAttr(cmd)
+	executil.NoCwdSearch(cmd) // Windows: a claude.cmd shim looks for node in the current folder first, so a repository's node.exe would run
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		detail := strings.TrimSpace(string(out))

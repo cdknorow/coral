@@ -20,6 +20,7 @@ import (
 	"github.com/subgentic/coral/internal/agentmodels"
 	"github.com/subgentic/coral/internal/agentsignin"
 	at "github.com/subgentic/coral/internal/agenttypes"
+	"github.com/subgentic/coral/internal/executil"
 	"github.com/subgentic/coral/internal/store"
 )
 
@@ -127,6 +128,7 @@ func (wr *WorkflowRunner) executeShellStep(ctx context.Context, runID int64, ste
 	cmd := exec.CommandContext(stepCtx, shell, "-c", expandedCmd)
 	cmd.Dir = repoPath
 	cmd.Env = withShellDirs(append(agentenv.Filter(os.Environ()), env...), shell) // #3389: no server-only settings
+	executil.NoCwdSearch(cmd)                                                     // Windows: a `cmd /c` in a step must not run a program planted in the repository (#183)
 	// Set process group for clean kill
 	configureChildProcess(cmd)
 
@@ -358,6 +360,7 @@ func (wr *WorkflowRunner) executeAgentPrint(ctx context.Context, runID int64, st
 	}
 	output.attach(cmd)
 
+	executil.NoCwdSearch(cmd) // Windows: a claude.cmd shim looks for node in the current folder first, so a repository's node.exe would run
 	if err := cmd.Start(); err != nil {
 		output.release()
 		return fmt.Errorf("start agent: %w", err)

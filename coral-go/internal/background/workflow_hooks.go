@@ -10,6 +10,7 @@ import (
 	"github.com/subgentic/coral/internal/agentprio"
 
 	"github.com/subgentic/coral/internal/agentenv"
+	"github.com/subgentic/coral/internal/executil"
 )
 
 // parseStepHooks unmarshals the hooks JSON from a step definition.
@@ -100,6 +101,7 @@ func (wr *WorkflowRunner) fireHooks(ctx context.Context, hooks map[string]interf
 			cmd := exec.CommandContext(hookCtx, shell, "-c", command)
 			cmd.Dir = dir
 			cmd.Env = withShellDirs(append(agentenv.Filter(os.Environ()), env...), shell) // #3389: no server-only settings
+			executil.NoCwdSearch(cmd)
 			configureChildProcess(cmd)
 			err := cmd.Start()
 			if err == nil {
