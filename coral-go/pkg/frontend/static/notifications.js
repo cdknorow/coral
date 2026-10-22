@@ -161,7 +161,7 @@ export function showNotificationToast(agentLabel, detail, onClick) {
                 <button class="notification-toast-close">✕</button>
             </div>
             ${detailHtml}
-            <a href="#" class="notification-toast-link">Switch to session →</a>
+            <a href="#" class="notification-toast-link">Open agent</a>
         </div>`;
     toast.querySelector(".notification-toast-link").addEventListener("click", (e) => {
         e.preventDefault();

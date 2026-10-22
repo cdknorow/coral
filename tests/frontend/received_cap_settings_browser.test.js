@@ -88,7 +88,7 @@ const GIB = 1024 ** 3;
 
         console.log('3. The notice at 80%: a toast when Settings is closed, none on top of the dialog, shown once');
         await ev(`document.querySelectorAll('.toast').forEach(t => t.remove()); true`); // the saves above left their own
-        const TOAST = /Files from other teams take 1\.7 GiB of the 2\.0 GiB limit\. Above it, new ones are refused\. Raise it in Settings > Storage\./;
+        const TOAST = /Other teams’ files: 1\.7 GiB of 2\.0 GiB\. New files are refused above this limit\. Raise it in Settings > Storage\./;
         // With Settings open the line says it: remembered, no toast.
         await ev(`window.__puts.length = 0; window.__status = { ...window.__status, bytes: ${Math.round(1.7 * GIB)}, notice: true }; window.showSettingsModal('cleanup'); true`);
         await waitFor(`/ GiB| B/.test(document.getElementById('settings-received-size').textContent)`, 'Settings open', 8000);
@@ -99,14 +99,14 @@ const GIB = 1024 ** 3;
         await waitFor(`(window.hideSettingsModal(), getComputedStyle(document.getElementById('settings-modal')).display === 'none')`, 'Settings to close', 6000);
         await ev(`window.__puts.length = 0; window.__status = { ...window.__status, notice: true }; true`);
         await ev(`import(${MOD} + 'received_cap_notice.js').then(m => m.checkReceivedCap()).then(() => true)`);
-        await waitFor(`/Above it, new ones are refused/.test(document.body.innerText)`, 'the notice', 8000);
+        await waitFor(`/New files are refused above this limit/.test(document.body.innerText)`, 'the notice', 8000);
         assert.deepEqual(await ev(`window.__puts`), [{ received_cap_notice_ack: String(2 * GIB) }], 'it is remembered by the cap it was shown for');
         assert.match(await ev(`document.body.innerText`), TOAST);
         await sleep(700); // sleep-ok: the toast fades in
         await shot('received-cap-notice');
         await ev(`import(${MOD} + 'received_cap_notice.js').then(m => m.checkReceivedCap()).then(() => true)`); await sleep(300); // sleep-ok: shows that nothing more happens (no condition to wait for)
         assert.equal(await ev(`window.__puts.length`), 1, 'the next check, with the server no longer saying it is due, says and saves nothing');
-        assert.equal(await ev(`(document.body.innerText.match(/Above it, new ones are refused/g) || []).length`), 1);
+        assert.equal(await ev(`(document.body.innerText.match(/New files are refused above this limit/g) || []).length`), 1);
 
         console.log('4. Received files no board lists: listed, and deleted only after a confirmation, by the exact digests');
         // More than the 50 the server names: the line counts all of them, says that the button takes the oldest 50, and the button names 50.
