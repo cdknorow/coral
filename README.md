@@ -159,6 +159,8 @@ make build
 
 Open **http://localhost:8420** in your browser. Click **+New** to launch your first agent or create a team.
 
+> **On Windows Coral listens on port 8450**, not 8420 (8420 is taken by Windows system services on some computers), so open **http://localhost:8450**. The Coral app and the tray open the right address by themselves, and the examples below that say `8420` mean 8450 on Windows (or pass `--port` to choose one).
+
 > **Requirements:** The macOS app build includes [tmux](https://github.com/tmux/tmux); older downloads, Linux, and standalone/source builds may need it installed separately. Agent CLIs must still be installed and authenticated. Coral works with Claude Code, Codex, Gemini CLI (Antigravity), and Pi.dev; each can be pointed at a custom binary with a `cli_path_<type>` setting.
 
 ### Run it on a remote machine

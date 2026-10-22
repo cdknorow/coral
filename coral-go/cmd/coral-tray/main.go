@@ -68,6 +68,7 @@ func main() {
 	// Before the tray spawns its background process, which would inherit this elevated token.
 	if installerLaunchRefused(*fromInstaller, processElevated) {
 		fmt.Println("Coral was not started: the installer was run as administrator, and Coral does not start elevated. Open Coral from the Start Menu.")
+		showElevatedInstallerNote() // this is a program with no console: say it where the person is looking
 		return
 	}
 

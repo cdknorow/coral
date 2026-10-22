@@ -223,7 +223,7 @@ HTTP …`) and **Settings › Privacy › Remote access** all say so. Pick one o
 
 ## 3. Open the dashboard
 
-Go to **http://localhost:8420**.
+Go to **http://localhost:8420**. (On Windows Coral listens on **8450** by default, because 8420 is taken by Windows system services on some computers: go to **http://localhost:8450**. The Coral app and the tray open the right address themselves, and `8420` in the examples in these docs means 8450 on Windows unless you passed `--port`.)
 
 > **The first time, Coral offers to connect to Coral Hub** (app.coralhub.dev, invite-only
 > beta), so you can use your agents from any browser or your phone. **Connect** shows a
