@@ -18,6 +18,9 @@ let _data = null;           // the models list for the current agent type: { mod
 let _dataKey = '';
 let _local = null;          // { until, text, kind }: "switching" shown on the chip that was changed, from the click until the row says so
 let _open = '';             // which menu is open: 'model', 'thinking' or ''
+let _loading = false;       // the list has not arrived (or the server is still asking the CLI for it): the menu says so instead of "No models"
+let _loadToken = 0;
+const LOAD_DELAYS_MS = [600, 1000, 1500, 2500, 4000, 4000, 4000, 4000, 4000, 4000]; // about 30 s of asking while the server says it is refreshing
 
 const $ = id => document.getElementById(id);
 
@@ -89,25 +92,48 @@ export function updateModelChip(session, server) {
 
 // ── The menu ─────────────────────────────────────────────────────────────
 
+/** One answer of the list route: { models, thinking, refreshing }, or null when it could not be read. refreshing: the server is still asking the CLI (it answers with no models at first). */
+async function _askList(agentType) {
+    try {
+        const resp = await serverFetch(_cur.server, `/api/agents/models?type=${encodeURIComponent(agentType)}`);
+        if (!resp.ok) return null;
+        const d = await resp.json();
+        return d && Array.isArray(d.models) ? { models: d.models, thinking: Array.isArray(d.thinking) ? d.thinking : [], refreshing: d.refreshing === true, raw: d } : null;
+    } catch { return null; }
+}
+
+/** The models list for the open agent. Only an answer that HAS models is remembered for the session (and cached in the browser): an empty one is the server still asking the CLI ("refreshing": the menu says
+ *  "Loading models…" and asks again with a growing pause, up to about 30 seconds) or a final nothing, and neither is kept, so the next open asks again (a CLI that lists nothing at first, like Codex, showed
+ *  "No models to choose from" for good). */
 async function _loadList() {
     const s = _cur && _cur.session;
     if (!s) return null;
     const key = `${_cur.server}:${s.agent_type}`;
     if (_dataKey === key && _data) return _data;
+    if (_dataKey !== key) { _data = null; _dataKey = ''; }
     const cached = readModelsCache(_cur.server, s.agent_type);
     if (cached) { _data = { models: cached.models, thinking: [] }; _dataKey = key; }
+    const token = ++_loadToken;
     try {
-        const resp = await serverFetch(_cur.server, `/api/agents/models?type=${encodeURIComponent(s.agent_type)}`);
-        if (resp.ok) {
-            const d = await resp.json();
-            if (d && Array.isArray(d.models)) {
-                if (d.models.length) writeModelsCache(_cur.server, s.agent_type, d);
-                _data = { models: d.models, thinking: Array.isArray(d.thinking) ? d.thinking : [] };
+        for (let i = 0; ; i++) {
+            const answer = await _askList(s.agent_type);
+            if (token !== _loadToken || !_cur || `${_cur.server}:${_cur.session.agent_type}` !== key) return _data;
+            if (!answer) return _data; // it could not be read: keep what there is (the cached list)
+            if (answer.models.length) {
+                writeModelsCache(_cur.server, s.agent_type, answer.raw);
+                _data = { models: answer.models, thinking: answer.thinking };
                 _dataKey = key;
+                return _data;
             }
+            if (_data && _data.models.length) return _data; // a cached list stands while the server has none yet
+            _data = { models: [], thinking: answer.thinking }; _dataKey = ''; // shown, not remembered
+            if (!answer.refreshing || i >= LOAD_DELAYS_MS.length) return _data;
+            await new Promise(r => setTimeout(r, LOAD_DELAYS_MS[i]));
+            if (token !== _loadToken || !_open) return _data; // the menu was closed: stop asking; the next open asks again
         }
-    } catch { /* keep the cached list */ }
-    return _data;
+    } finally {
+        if (token === _loadToken) { _loading = false; if (_open) _renderMenu(_open); }
+    }
 }
 
 /** The levels the switcher offers for a model of a catalog reply `data` ({ thinking, models }): the type's levels, narrowed to the model's own efforts. A custom model (#5480) lists exactly the levels its owner ticked, so none ticked means no level choice. */
@@ -145,7 +171,13 @@ function _renderMenu(kind) {
                 + levels.map(l => item('level', l, levelName(l), l === curLevel)).join('') + '</div>';
         }
     }
-    if (!html) html = `<div class="model-chip-empty">${kind === 'model' ? 'No models to choose from for this agent.' : 'No thinking levels to choose from for this model.'}</div>`;
+    if (!html) {
+        // Loading says so once (a status the screen reader reads when it appears); the same words are not drawn again by the feed's updates (below)
+        html = _loading ? `<div class="model-chip-empty" role="status">${kind === 'model' ? 'Loading models…' : 'Loading thinking levels…'}</div>`
+            : `<div class="model-chip-empty">${kind === 'model' ? 'No models to choose from for this agent.' : 'No thinking levels to choose from for this model.'}</div>`;
+    }
+    if (menu.dataset.sig === html) return; // nothing changed: the feed's ticks do not redraw the menu (a redraw would announce the loading line again and drop the focused item)
+    menu.dataset.sig = html;
     menu.innerHTML = html;
 }
 
@@ -154,6 +186,7 @@ async function _openMenu(kind) {
     if (!p[kind].chip || !p[kind].menu || !_cur) return;
     if (_open && _open !== kind) _closeMenu(); // one menu at a time
     _open = kind;
+    _loading = !(_data && _data.models.length && _dataKey === `${_cur.server}:${_cur.session.agent_type}`);
     p[kind].menu.hidden = false;
     p[kind].chip.setAttribute('aria-expanded', 'true');
     _renderMenu(kind);
@@ -169,9 +202,9 @@ function menuHasFocus() {
 
 function _closeMenu() {
     const p = parts();
-    _open = '';
+    _open = ''; _loading = false;
     for (const k of KINDS) {
-        if (p[k].menu) p[k].menu.hidden = true;
+        if (p[k].menu) { p[k].menu.hidden = true; delete p[k].menu.dataset.sig; }
         if (p[k].chip) p[k].chip.setAttribute('aria-expanded', 'false');
     }
 }
