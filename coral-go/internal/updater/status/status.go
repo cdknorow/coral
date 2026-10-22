@@ -67,3 +67,15 @@ type Install struct {
 	Unsupported string `json:"unsupported,omitempty"`
 	Writable    bool   `json:"writable"`
 }
+
+// ReadyFile is the marker, in <data dir>/updates, that "coral-update apply" writes once everything that can be done while Coral still runs is done: the staged package verified again, copied,
+// built into a new install beside the old one and that one verified where it will run (#5982). The server that started the apply ends itself only when it sees this, so a package that fails any
+// of those steps never costs the person their running Coral. It is removed when the apply ends.
+const ReadyFile = "ready-to-swap.json"
+
+// Ready is the marker's content: the version that is ready, and the pid of the apply that says so (the server accepts only the apply it started).
+type Ready struct {
+	Version string `json:"version"`
+	PID     int    `json:"pid"`
+	At      string `json:"at,omitempty"`
+}

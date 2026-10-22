@@ -97,3 +97,11 @@ func (d updatesDir) write(name string, data []byte) error {
 	}
 	return os.Rename(tmp, filepath.Join(d.Dir, name))
 }
+
+// remove deletes a state file; a file that is not there is fine.
+func (d updatesDir) remove(name string) error {
+	if err := os.Remove(filepath.Join(d.Dir, name)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
+}

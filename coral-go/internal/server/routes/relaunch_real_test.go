@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -29,17 +30,60 @@ type fakeProgram struct {
 	startErr   error
 	statusRuns atomic.Int32
 	starts     atomic.Int32
+	kills      atomic.Int32
+
+	// what the started "apply" does: its pid, and the marker it writes (nil: none) once told to (ready is closed by the test; nil: at once).
+	pid      int
+	dir      *updatesDir
+	marker   *status.Ready
+	ready    chan struct{}
+	endEarly bool // the apply ends without a marker
+	noMarker bool // the apply runs and never writes one
+	// statusDelay makes the updater slow to answer, so concurrent callers all stand at the same check
+	done        chan struct{}
+	statusDelay time.Duration
 }
 
 func (f *fakeProgram) Status(context.Context) ([]byte, error) {
 	f.statusRuns.Add(1)
+	time.Sleep(f.statusDelay)
 	if f.statusErr != nil {
 		return nil, f.statusErr
 	}
 	return json.Marshal(f.out)
 }
 
-func (f *fakeProgram) StartApply() error { f.starts.Add(1); return f.startErr }
+func (f *fakeProgram) StartApply() (applyRun, error) {
+	f.starts.Add(1)
+	if f.startErr != nil {
+		return applyRun{}, f.startErr
+	}
+	pid := f.pid
+	if pid == 0 {
+		pid = 4242
+	}
+	f.done = make(chan struct{})
+	run := applyRun{PID: pid, Done: f.done, Kill: func() { f.kills.Add(1) }}
+	go func() {
+		if f.endEarly {
+			close(f.done)
+			return
+		}
+		if f.ready != nil {
+			<-f.ready
+		}
+		if f.dir != nil && f.marker != nil && !f.noMarker {
+			m := *f.marker
+			if m.PID == 0 {
+				m.PID = pid
+			}
+			b, _ := json.Marshal(m)
+			_ = f.dir.ensure()
+			_ = f.dir.write(status.ReadyFile, b)
+		}
+	}()
+	return run, nil
+}
 
 func readyStatus() status.Out {
 	return status.Out{
@@ -52,8 +96,15 @@ func readyStatus() status.Out {
 
 func newRealUpdater(t *testing.T, f *fakeProgram, quit func()) *realUpdater {
 	t.Helper()
+	var mu sync.Mutex
 	now := time.Date(2026, 10, 22, 6, 0, 0, 0, time.UTC)
-	return &realUpdater{dir: updatesDir{filepath.Join(t.TempDir(), "updates")}, prog: f, quit: quit, quitDelay: time.Millisecond, now: func() time.Time { now = now.Add(time.Minute); return now }}
+	u := &realUpdater{dir: updatesDir{filepath.Join(t.TempDir(), "updates")}, prog: f, quit: quit, quitDelay: time.Millisecond, readyPoll: 5 * time.Millisecond, readyWithin: 5 * time.Second,
+		now: func() time.Time { mu.Lock(); defer mu.Unlock(); now = now.Add(time.Minute); return now }}
+	f.dir = &u.dir
+	if f.marker == nil {
+		f.marker = &status.Ready{Version: "1.4.155"}
+	}
+	return u
 }
 
 func TestTheRecordSaysWhatTheUpdaterSaysInTheRoutesWords(t *testing.T) {
@@ -134,26 +185,29 @@ func TestTheLastApplyAndRollbackAreInTheRoutesVocabulary(t *testing.T) {
 	assert.Equal(t, resultRefused, recordFrom(out, relaunchState{}, time.Now()).LastResult.Result)
 }
 
-func TestApplyRecordsStartsTheUpdaterAndEndsTheServer(t *testing.T) {
-	f := &fakeProgram{out: readyStatus()}
-	quit := make(chan struct{}, 1)
-	u := newRealUpdater(t, f, func() { quit <- struct{}{} })
+func untilTrue(t *testing.T, what string, cond func() bool) {
+	t.Helper()
+	require.Eventually(t, cond, 5*time.Second, 5*time.Millisecond, what)
+}
+
+func TestApplyRecordsAndStartsTheUpdaterAndTheServerEndsOnlyWhenTheApplyIsReady(t *testing.T) {
+	f := &fakeProgram{out: readyStatus(), ready: make(chan struct{})}
+	var quit atomic.Int32
+	u := newRealUpdater(t, f, func() { quit.Add(1) })
 
 	op, err := u.Apply(t.Context(), "hub:hub-user-0a1b2c3d")
 	require.NoError(t, err)
 	assert.Regexp(t, `^[0-9a-f]{16}$`, op)
 	assert.EqualValues(t, 1, f.starts.Load())
-	select {
-	case <-quit:
-	case <-time.After(5 * time.Second):
-		t.Fatal("the server was not ended after the relaunch started")
-	}
 	st, err := u.loadState()
 	require.NoError(t, err)
 	assert.Equal(t, "1.4.155", st.HubRelaunched, "once per version: the version is recorded")
 	assert.Equal(t, "1.4.150", st.From)
 	assert.Equal(t, op, st.Operation)
 	assert.Equal(t, "hub:hub-user-0a1b2c3d", st.By)
+
+	time.Sleep(100 * time.Millisecond) // sleep-ok: the absence of a quit while the apply is not ready needs a moment to mean something
+	assert.Zero(t, quit.Load(), "the apply is still verifying and building: the server keeps running")
 
 	// the record now says a relaunch is running, and a second Apply starts nothing
 	rec, err := u.Record(t.Context())
@@ -162,6 +216,91 @@ func TestApplyRecordsStartsTheUpdaterAndEndsTheServer(t *testing.T) {
 	_, err = u.Apply(t.Context(), "local")
 	assert.Error(t, err)
 	assert.EqualValues(t, 1, f.starts.Load())
+
+	close(f.ready) // the apply writes its ready marker
+	untilTrue(t, "the server ends once the apply is ready", func() bool { return quit.Load() == 1 })
+}
+
+func TestTheServerIgnoresAReadyMarkerThatIsNotThisAppliesForThisVersion(t *testing.T) {
+	for name, m := range map[string]*status.Ready{
+		"another version":     {Version: "1.4.156"},
+		"another pid":         {Version: "1.4.155", PID: 1},
+		"the version missing": {},
+	} {
+		f := &fakeProgram{out: readyStatus(), marker: m}
+		if name == "the version missing" {
+			f.marker = &status.Ready{PID: 4242}
+		}
+		var quit atomic.Int32
+		u := newRealUpdater(t, f, func() { quit.Add(1) })
+		u.readyWithin = 150 * time.Millisecond
+		_, err := u.Apply(t.Context(), "local")
+		require.NoError(t, err, name)
+		untilTrue(t, name+": it gave up instead", func() bool { st, _ := u.loadState(); return st.Failed != nil })
+		assert.Zero(t, quit.Load(), name+": the server keeps running")
+	}
+}
+
+func TestAnApplyThatIsNeverReadyIsEndedTheServerKeepsRunningAndThePersonCanTryAgain(t *testing.T) {
+	f := &fakeProgram{out: readyStatus()}
+	f.noMarker = true // it never writes the marker
+	var quit atomic.Int32
+	u := newRealUpdater(t, f, func() { quit.Add(1) })
+	u.readyWithin = 100 * time.Millisecond
+	_, err := u.Apply(t.Context(), "local")
+	require.NoError(t, err)
+	untilTrue(t, "it gives up", func() bool { st, _ := u.loadState(); return st.Failed != nil })
+	assert.Zero(t, quit.Load(), "no ready, no quit")
+	assert.EqualValues(t, 1, f.kills.Load(), "the apply is ended")
+	st, _ := u.loadState()
+	assert.Equal(t, "not_ready", st.Failed.Reason)
+	assert.True(t, st.StartedAt.IsZero(), "nothing is in flight")
+
+	u.mu.Lock()
+	u.cachedOK = false
+	u.mu.Unlock()
+	rec, err := u.Record(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, updStaged, rec.State, "the update is still staged and can be tried again")
+	require.NotNil(t, rec.LastResult, "and the person is told it did not happen")
+	assert.Equal(t, resultRefused, rec.LastResult.Result)
+}
+
+func TestAnApplyThatEndsBeforeItIsReadyLeavesTheServerRunning(t *testing.T) {
+	f := &fakeProgram{out: readyStatus(), endEarly: true}
+	var quit atomic.Int32
+	u := newRealUpdater(t, f, func() { quit.Add(1) })
+	_, err := u.Apply(t.Context(), "local")
+	require.NoError(t, err)
+	untilTrue(t, "it gives up", func() bool { st, _ := u.loadState(); return st.Failed != nil })
+	st, _ := u.loadState()
+	assert.Equal(t, "updater_ended", st.Failed.Reason)
+	assert.Zero(t, quit.Load())
+	assert.EqualValues(t, 0, f.kills.Load(), "it had already ended")
+}
+
+// Security's point 4 (#5981): two Apply calls at once start one updater and schedule one quit.
+func TestTwoApplyCallsAtOnceStartOneUpdaterAndOneQuit(t *testing.T) {
+	f := &fakeProgram{out: readyStatus(), statusDelay: 20 * time.Millisecond} // every caller reads the status before any of them has recorded a start
+	var quit atomic.Int32
+	u := newRealUpdater(t, f, func() { quit.Add(1) })
+	var wg sync.WaitGroup
+	var ok atomic.Int32
+	for i := 0; i < 16; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, err := u.Apply(t.Context(), "local"); err == nil {
+				ok.Add(1)
+			}
+		}()
+	}
+	wg.Wait()
+	assert.EqualValues(t, 1, ok.Load(), "one call starts it, the others are refused")
+	assert.EqualValues(t, 1, f.starts.Load())
+	untilTrue(t, "the one quit", func() bool { return quit.Load() == 1 })
+	time.Sleep(100 * time.Millisecond) // sleep-ok: a second quit would come within a moment
+	assert.EqualValues(t, 1, quit.Load())
 }
 
 func TestApplyStartsNothingWhenTheUpdaterCannotApply(t *testing.T) {
@@ -256,7 +395,8 @@ func TestTheUpdaterProgramIsRunWithAFixedArgvAndOnlyTheAllowlistedEnvironment(t 
 	out, err := e.Status(t.Context())
 	require.NoError(t, err)
 	assert.JSONEq(t, `{"feature":"on"}`, string(out))
-	require.NoError(t, e.StartApply())
+	_, err = e.StartApply()
+	require.NoError(t, err)
 	require.Eventually(t, func() bool {
 		b, _ := os.ReadFile(argsFile)
 		return strings.Count(string(b), "\n") == 2
