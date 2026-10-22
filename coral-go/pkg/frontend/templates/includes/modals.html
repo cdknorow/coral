@@ -1418,6 +1418,8 @@
                         <option value="">Unassigned</option>
                     </select>
                 </label>
+                <details class="disclosure task-workflow-options">
+                <summary>Workflow and prerequisites</summary>
                 <label>Blocked By <span class="text-muted-sm">(optional)</span></label>
                 <div id="create-task-deps" class="dep-picker"></div>
                 <label for="create-task-condition">Proceed when prerequisites
@@ -1439,6 +1441,7 @@
                     <textarea id="create-task-instructions" rows="3" placeholder="Project-specific checks and hand-off requirements"></textarea>
                 </label>
                 <p class="text-muted-sm">Coral adds default instructions to every task: consume the specified inputs, publish evidence, report failures honestly, and keep completed stages immutable.</p>
+                </details>
                 <label class="create-task-draft-toggle">
                     <input type="checkbox" id="create-task-draft">
                     <span>Create as draft <span class="text-muted-sm">— not visible to agents until published</span></span>

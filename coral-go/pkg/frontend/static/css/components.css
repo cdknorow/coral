@@ -4583,3 +4583,7 @@ body:has(#launch-modal[style*="flex"] :is(#launch-tmux-slot, #team-tmux-slot)[da
 .telemetry-install-id { display: flex; align-items: center; gap: 8px; width: 100%; max-width: 28rem; }
 .telemetry-install-id code { min-width: 0; flex: 1; overflow-wrap: anywhere; text-align: left; }
 .telemetry-install-id .btn { flex: none; }
+.task-workflow-options > summary { display: flex; align-items: center; gap: 4px; list-style: none; }
+.task-workflow-options > summary::-webkit-details-marker { display: none; }
+.task-workflow-options > summary::before { content: '▸' / ''; }
+.task-workflow-options[open] > summary::before { content: '▾' / ''; }

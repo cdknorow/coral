@@ -39,6 +39,11 @@ const BASE = require('./test_base').BASE;
         assert.deepEqual(err, { text: 'Title is required', shown: true, invalid: 'true', described: 'create-task-error', focus: 'create-task-title' });
         await shot('create-error-dark');
         await ev(`const t = document.getElementById('create-task-title'); t.value = 'x'; t.dispatchEvent(new Event('input', { bubbles: true })); true`);
+        assert.equal(await ev(`document.querySelector('.task-workflow-options').open`), false, 'optional workflow fields start folded');
+        assert.equal(await ev(`document.getElementById('create-task-draft').checkVisibility()`), true, 'draft visibility remains a primary choice');
+        await ev(`document.querySelector('.task-workflow-options > summary').focus();true`);
+        await key(' ', 'Space', 32);
+        assert.equal(await ev(`document.getElementById('create-task-workflow').checkVisibility()`), true, 'Space opens the workflow fields');
         const add = await ev(`(() => { const b = document.querySelector('#create-task-modal .dep-picker-add-link'); return { tag: b && b.tagName, type: b && b.type, expanded: b && b.getAttribute('aria-expanded'), controls: b && b.getAttribute('aria-controls'), tabbable: !!b && b.tabIndex >= 0 }; })()`);
         assert.deepEqual(add, { tag: 'BUTTON', type: 'button', expanded: 'false', controls: add.controls, tabbable: true }, '"+ Add dependency" is a button');
         await ev(`document.querySelector('#create-task-modal .dep-picker-add-link').focus(); true`);
@@ -47,9 +52,26 @@ const BASE = require('./test_base').BASE;
         await ev(`document.querySelector('#create-task-modal .dep-picker-item input').click(); true`);
         const tag = await ev(`(() => { const b = document.querySelector('#create-task-modal .dep-tag .dep-tag-remove'); return b && { tag: b.tagName, label: b.getAttribute('aria-label') }; })()`);
         assert.ok(tag && tag.tag === 'BUTTON' && /^Remove dependency #\d+/.test(tag.label), 'a dependency tag\'s x is a named button: ' + JSON.stringify(tag));
+        // A rejected workflow must not remain concealed after the user folds it.
+        await ev(`(async () => { const d=document.querySelector('.task-workflow-options'); d.open=false;
+            const original=window.fetch; window.fetch=async (u,o)=>String(u).endsWith('/tasks') && o?.method==='POST' ? new Response(JSON.stringify({error:'Required upstream artifact is missing'}),{status:400,headers:{'content-type':'application/json'}}) : original(u,o);
+            try { await window.submitCreateTask(); } finally { window.fetch=original; } })()`);
+        assert.equal(await ev(`document.querySelector('.task-workflow-options').open`), true, 'a server refusal reveals workflow fields');
+        await ev(`(() => { const d=document.querySelector('.task-workflow-options'), f=document.getElementById('create-task-inputs'); d.open=false; f.setCustomValidity('Artifact required'); f.checkValidity(); f.setCustomValidity(''); })()`);
+        assert.equal(await ev(`document.querySelector('.task-workflow-options').open`), true, 'native validation reveals the invalid field');
         await key('Escape', 'Escape', 27);
         await waitFor(`getComputedStyle(document.getElementById('create-task-modal')).display === 'none'`, 'Escape closes it', 4000);
         assert.ok(await ev(`document.activeElement.classList.contains('btn-create-task')`), 'focus goes back to + Task');
+
+        await ev(`(async()=>{await window.showCreateTaskModal({blocked_by:[{task_id:(await import((window.__coralStatic||'/static/')+'state.js')).state.currentBoardTasks[0].id,condition:'failure',required_artifacts:['build']}],workflow:{name:'Release'}});})()`);
+        assert.ok(await ev(`document.querySelector('.task-workflow-options').open && document.getElementById('create-task-condition').value==='failure' && document.getElementById('create-task-workflow').value==='Release' && document.querySelector('#create-task-deps input:checked') && document.getElementById('create-task-inputs').value==='build'`), 'preset prerequisites, condition and workflow are visible');
+        await key('Escape', 'Escape', 27);
+        await ev(`window.showCreateTaskModal({condition:'termination'})`);
+        assert.ok(await ev(`document.querySelector('.task-workflow-options').open && document.getElementById('create-task-condition').value==='termination'`), 'a preset condition alone is visible');
+        await key('Escape', 'Escape', 27);
+        await ev(`window.showCreateTaskModal()`);
+        assert.equal(await ev(`document.querySelector('.task-workflow-options').open`), false, 'fresh tasks reset to folded');
+        await key('Escape', 'Escape', 27);
 
         console.log('2. the task detail dialog is named by its task');
         await ev(`document.querySelector('#agentic-panel-tasks .board-task-open').focus(); document.querySelector('#agentic-panel-tasks .board-task-open').click(); true`);

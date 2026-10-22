@@ -9,9 +9,12 @@ import { showToast } from './utils.js';
 import { addPendingMessage } from './live_chat.js';
 import { loadBoardTasks, loadAgentTasks } from './task_list.js';
 
-export async function showCreateTaskModal() {
+export async function showCreateTaskModal(preset = {}) {
     const modal = ensureBuilt('create-task-modal'); // built on first open (#4500)
     if (!modal) return;
+
+    // A fresh task starts with its optional workflow controls folded.
+    modal.querySelector('.task-workflow-options')?.removeAttribute('open');
 
     // Reset form
     document.getElementById('create-task-title').value = '';
@@ -64,8 +67,26 @@ export async function showCreateTaskModal() {
         } catch { /* ignore */ }
     }
 
-    // Populate dependency picker
-    if (!solo) _renderDepPicker('create-task-deps');
+    // A template or duplicate can supply workflow/prerequisites. Reveal those values.
+    if (!solo) {
+        const deps = preset.blocked_by || [];
+        _renderDepPicker('create-task-deps', deps.map(d => d.task_id));
+        const workflow = preset.workflow || {};
+        const values = { workflow: workflow.name, stage: workflow.stage,
+            outputs: workflow.required_outputs?.join(', '), instructions: workflow.instructions,
+            inputs: deps[0]?.required_artifacts?.join(', ') };
+        for (const [field, value] of Object.entries(values)) {
+            if (value) document.getElementById(`create-task-${field}`).value = value;
+        }
+        if (condition) condition.value = deps[0]?.condition || preset.condition || 'success';
+        const details = modal.querySelector('.task-workflow-options');
+        details.open = deps.length > 0 || condition?.value !== 'success' || Object.values(values).some(Boolean);
+        // Native constraint validation must reveal a field before the browser focuses it.
+        if (!details.dataset.invalidBound) {
+            details.addEventListener('invalid', () => { details.open = true; }, { capture: true });
+            details.dataset.invalidBound = 'true';
+        }
+    }
 
     modal.style.display = '';
     document.getElementById('create-task-title').focus();
@@ -149,6 +170,8 @@ export async function submitCreateTask() {
         await loadBoardTasks(boardProject);
         showToast('Task created');
     } catch (e) {
+        // Server validation can name a workflow or prerequisite field; keep all of them visible.
+        document.querySelector('#create-task-modal .task-workflow-options').open = true;
         if (errEl) {
             errEl.textContent = e.message || 'Failed to create task';
             errEl.style.display = '';
