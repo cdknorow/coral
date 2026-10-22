@@ -18,6 +18,8 @@ const SESSIONS = [{ name: 'first-agent', display_name: 'Agent', agent_type: 'cla
             window.fetch = (url, opts) => { const u = String(url).replace(/^https?:\\/\\/[^/]+/, ''), path = u.split('?')[0], m = ((opts && opts.method) || 'GET').toUpperCase();
               const json = b => Promise.resolve(new Response(JSON.stringify(b), { status: 200, headers: { 'Content-Type': 'application/json' } }));
               if (m !== 'GET') return json({ ok: true });
+              if (path === '/api/system/status' && opts && opts.cache === 'no-store') window.__freshStatus = (window.__freshStatus || 0) + 1;
+              if (path === '/api/system/status') return window.__origFetch(url, opts).then(r => r.json()).then(d => { if (window.__signedIn !== undefined) d.claude_signed_in = window.__signedIn; else delete d.claude_signed_in; return json(d); });
               if (path === '/api/sessions/live') return json(window.__sessions);
               if (/^\\/api\\/sessions\\/live\\/[^/]+\\/chat$/.test(path)) return json({ messages: [], total: 0, has_more: false, pending: null });
               if (/^\\/api\\/board\\//.test(path)) return json({});
@@ -38,6 +40,35 @@ const SESSIONS = [{ name: 'first-agent', display_name: 'Agent', agent_type: 'cla
             assert.ok(g.open, `${w}: the card has Open terminal`);
             console.log(`   ok ${w}: pill ${g.pillBottom}, card ${g.cardTop}`);
         }
+
+        // Claude's sign-in as the server says it (#5852, after #5838's check): not signed in -> the card says so; signed in or not said -> the generic words
+        console.log('2. the card says "Claude is not signed in" when the status says so');
+        const card = () => ev(`(() => { const c = document.querySelector('#live-history-messages > .chat-needs-input'); return c ? { text: c.textContent.replace(/\\s+/g, ' ').trim(), open: !!c.querySelector('[data-on-click="terminal-view-open"]') } : null; })()`);
+        const withStatus = async v => { await ev(`window.__signedIn = ${v === undefined ? 'undefined' : v}; import((window.__coralStatic || '/static/') + 'signin_line.js').then(m => m.askSigninSoon ? null : null).then(() => fetch('/api/system/status', { cache: 'no-store' }).then(r => r.json()).then(d => import((window.__coralStatic || '/static/') + 'signin_line.js').then(m => { m.applySigninStatus(d); return true; })))`); await ev(`import((window.__coralStatic || '/static/') + 'live_chat.js').then(m => m.refreshLiveHistory()).then(() => true)`); };
+        await withStatus(false);
+        await waitFor(`/Claude is not signed in/.test((document.querySelector('#live-history-messages > .chat-needs-input') || {}).textContent || '')`, 'the signed-out card', 10000);
+        let c = await card();
+        assert.match(c.text, /Sign-in needed.*Claude is not signed in.*Open the terminal and sign in, then come back and type\./); assert.ok(c.open, 'Open terminal stays');
+        assert.ok(!/startup prompt/.test(c.text), 'not the generic words');
+        await withStatus(true);
+        await waitFor(`/startup prompt/.test((document.querySelector('#live-history-messages > .chat-needs-input') || {}).textContent || '')`, 'the generic card when signed in', 10000);
+        assert.ok(!/not signed in/.test((await card()).text));
+        await withStatus(undefined);
+        await waitFor(`/startup prompt/.test((document.querySelector('#live-history-messages > .chat-needs-input') || {}).textContent || '')`, 'the generic card when not said', 10000);
+        assert.ok(!/not signed in/.test((await card()).text));
+        console.log('   ok signed out / signed in / not said');
+        // claude_signed_in is THIS computer's Claude: an agent on another server gets the generic card, and nothing is asked for it
+        console.log('3. an agent on another server never gets the sign-in card');
+        await ev(`window.__sessions[0].server = 'other'; window._coralSetLiveSessions(JSON.parse(JSON.stringify(window.__sessions))); true`);
+        await withStatus(false);
+        await waitFor(`/startup prompt/.test((document.querySelector('#live-history-messages > .chat-needs-input') || {}).textContent || '')`, 'the generic card for another server', 10000);
+        assert.ok(!/not signed in/.test((await card()).text), 'the local Claude being signed out says nothing about the other server');
+        await withStatus(undefined);
+        await ev(`window.__freshStatus = 0; true`);
+        for (let i = 0; i < 3; i++) await ev(`import((window.__coralStatic || '/static/') + 'live_chat.js').then(m => m.refreshLiveHistory()).then(() => true)`);
+        assert.equal(await ev(`window.__freshStatus`), 0, 'a card for another server asks for no status');
+        assert.ok(!/not signed in/.test((await card()).text));
+
         console.log('PASS the first-run card is readable and says what to do');
     } finally { await client.close(); }
 })().catch(e => { console.error(e); process.exit(1); });
