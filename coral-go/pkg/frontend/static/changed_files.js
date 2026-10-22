@@ -250,6 +250,7 @@ function _updateSearchSelection() {
 
 // The list was refused as too large to check through Coral Hub (#3718): it says so, not "No changed files".
 let _filesRefused = false;
+let _notGit = false; // the folder is not a git repository (#6072): there is nothing to compare, so the panel says so instead of "0 files changed vs HEAD~1"
 
 export async function loadChangedFiles(agentName, sessionId) {
     if (!agentName) return;
@@ -263,9 +264,11 @@ export async function loadChangedFiles(agentName, sessionId) {
         if (!resp.ok) { dropBody(resp); throw new Error(`files fetch failed: ${resp.status}`); }
         const data = await resp.json();
         _currentFiles = data.files || [];
+        _notGit = data.is_git === false;
         if (data.diff_mode) _cloudDiffMode = data.diff_mode;
     } catch (e) {
         _currentFiles = [];
+        _notGit = false;
     }
     renderStarredFiles();
     renderChangedFiles();
@@ -445,6 +448,7 @@ export async function refreshChangedFiles() {
         if (resp.ok) {
             const data = await resp.json();
             _currentFiles = data.files || [];
+            _notGit = data.is_git === false;
             if (data.diff_mode) _cloudDiffMode = data.diff_mode;
             renderStarredFiles();
             renderChangedFiles();
@@ -463,6 +467,13 @@ export async function refreshChangedFiles() {
     const titleEl = document.getElementById('changed-files-title');
     const countEl = document.getElementById('files-bar-count');
     if (!list) return;
+
+    if (_notGit) { // no comparison to choose and no count to give (#6072)
+        if (titleEl) titleEl.textContent = 'Not a git folder';
+        if (countEl) countEl.textContent = '';
+        list.innerHTML = '<div class="file-empty">Changes show once the folder is a git repository.</div>';
+        return;
+    }
 
     const files = _currentFiles.slice().sort((a, b) => a.filepath.localeCompare(b.filepath));
 
