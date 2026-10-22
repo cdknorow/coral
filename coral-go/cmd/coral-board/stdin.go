@@ -35,8 +35,8 @@ type errUsage struct{ msg string }
 func (e errUsage) Error() string { return e.msg }
 
 // readStdinText reads one message from stdin. A terminal on stdin, no text, text over the cap or
-// text that isn't UTF-8 is a usage error. Trailing newlines (a heredoc's last one) are dropped;
-// everything else is kept as written.
+// text that isn't UTF-8 is a usage error. What changes, and nothing else: a leading UTF-8 byte-order mark is
+// dropped, CRLF line ends become LF, and one final newline is dropped (a heredoc's last one).
 func readStdinText(what string) (string, error) {
 	if stdinRead {
 		return "", errUsage{"only one of the message and the --message or --body values can be '-' (stdin)"}
@@ -49,17 +49,42 @@ func readStdinText(what string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("reading the %s from stdin: %w", what, err)
 	}
+	return normalizeInputText(data, what, "on stdin")
+}
+
+// normalizeInputText turns the bytes of a message read from stdin or a file into its text: it must be UTF-8 and not over the cap, a leading
+// byte-order mark is dropped, CRLF becomes LF and one final newline is dropped. Empty text is refused.
+func normalizeInputText(data []byte, what, where string) (string, error) {
 	if len(data) > maxStdinMessage {
-		return "", errUsage{fmt.Sprintf("the %s on stdin is over %d KiB", what, maxStdinMessage>>10)}
+		return "", errUsage{fmt.Sprintf("the %s %s is over %d KiB", what, where, maxStdinMessage>>10)}
+	}
+	if len(data) >= 2 && ((data[0] == 0xFF && data[1] == 0xFE) || (data[0] == 0xFE && data[1] == 0xFF)) {
+		return "", errUsage{fmt.Sprintf("the %s %s is UTF-16 text, not UTF-8. In Windows PowerShell 5.1 set $OutputEncoding = [Text.UTF8Encoding]::new() before piping, or use --file with a UTF-8 file", what, where)}
 	}
 	if !utf8.Valid(data) {
-		return "", errUsage{fmt.Sprintf("the %s on stdin isn't UTF-8 text", what)}
+		return "", errUsage{fmt.Sprintf("the %s %s isn't UTF-8 text. In Windows PowerShell 5.1 set $OutputEncoding = [Text.UTF8Encoding]::new() before piping, or use --file with a UTF-8 file", what, where)}
 	}
-	text := strings.TrimRight(string(data), "\r\n")
+	text := strings.TrimPrefix(string(data), string(rune(0xFEFF))) // a UTF-8 byte-order mark (a file saved by Notepad or Windows PowerShell)
+	text = strings.ReplaceAll(text, "\r\n", "\n")
+	text = strings.TrimSuffix(text, "\n")
 	if strings.TrimSpace(text) == "" {
-		return "", errUsage{fmt.Sprintf("the %s on stdin is empty; nothing was sent", what)}
+		return "", errUsage{fmt.Sprintf("the %s %s is empty; nothing was sent", what, where)}
 	}
 	return text, nil
+}
+
+// readFileText reads a message from the UTF-8 file at path (the --file option), with the same rules as stdin.
+func readFileText(path, what string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", errUsage{fmt.Sprintf("cannot read the %s from %s: %v", what, path, err)}
+	}
+	defer f.Close()
+	data, err := io.ReadAll(io.LimitReader(f, maxStdinMessage+1))
+	if err != nil {
+		return "", errUsage{fmt.Sprintf("cannot read the %s from %s: %v", what, path, err)}
+	}
+	return normalizeInputText(data, what, "in "+path)
 }
 
 // stdinTextOrExit is readStdinText for the commands that exit on error: 2 for a usage error, 1

@@ -36,7 +36,7 @@ type sendIdentity struct {
 // twice. --attach (repeatable, at most 4) sends files the sender uploaded with the message
 // (#4379; the usage text says what it may send and what it is not).
 func runSend(args []string, id sendIdentity, out io.Writer) error {
-	var target, to, address, replyTo, messageID string
+	var target, to, address, replyTo, messageID, file string
 	var attach []string
 	var msgParts []string
 	literal := false
@@ -46,7 +46,7 @@ func runSend(args []string, id sendIdentity, out io.Writer) error {
 			msgParts = append(msgParts, args[i+1:]...)
 			literal = true
 			i = len(args)
-		case "--board", "--to", "--address", "--reply-to", "--message-id", "--attach":
+		case "--board", "--to", "--address", "--reply-to", "--message-id", "--attach", "--file":
 			if i+1 >= len(args) || args[i+1] == "" {
 				return fmt.Errorf("%s needs a value", args[i])
 			}
@@ -61,6 +61,8 @@ func runSend(args []string, id sendIdentity, out io.Writer) error {
 				replyTo = args[i+1]
 			case "--attach":
 				attach = append(attach, args[i+1])
+			case "--file":
+				file = args[i+1]
 			default:
 				messageID = args[i+1]
 			}
@@ -73,7 +75,16 @@ func runSend(args []string, id sendIdentity, out io.Writer) error {
 		}
 	}
 	var message string
-	if !literal && len(msgParts) == 1 && msgParts[0] == "-" {
+	if file != "" {
+		if len(msgParts) > 0 {
+			return fmt.Errorf("--file can't be combined with message text")
+		}
+		text, err := readFileText(file, "message")
+		if err != nil {
+			return err
+		}
+		message = text
+	} else if !literal && len(msgParts) == 1 && msgParts[0] == "-" {
 		text, err := readStdinText("message")
 		if err != nil {
 			return err

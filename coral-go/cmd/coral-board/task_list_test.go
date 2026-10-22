@@ -27,7 +27,7 @@ func captureTaskListStdout(t *testing.T, st *boardState) string {
 	os.Stdout = w
 	done := make(chan string)
 	go func() { b, _ := io.ReadAll(r); done <- string(b) }()
-	cmdTaskList(st)
+	cmdTaskList(st, false)
 	w.Close()
 	os.Stdout = old
 	return <-done
