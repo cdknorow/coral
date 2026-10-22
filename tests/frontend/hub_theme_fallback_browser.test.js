@@ -8,7 +8,10 @@ const BASE = require('./test_base').BASE;
 const HOST = new URL(BASE).host;
 const CSP = ["default-src 'self'", "script-src 'self'", "style-src 'self'", "style-src-attr 'unsafe-inline'", "font-src 'self'", "img-src 'self' data: blob:", `connect-src 'self' ws://${HOST}`, "object-src 'none'", "base-uri 'none'", "form-action 'self'", "frame-ancestors 'none'"].join('; ');
 
+// coral-hub's production answer for GET /api/themes/Dark (base "dark", 79 values, a flat object, not our {name, theme: {...}}): the page must show readable bubbles with it too (#6087).
+const HUB_DARK = JSON.parse(require('node:fs').readFileSync(require('node:path').join(__dirname, 'fixtures', 'hub_theme_dark.json'), 'utf8'));
 const ANSWERS = {
+    "the hub's real Dark answer": { status: 200, body: HUB_DARK },
     '404 for every theme': { status: 404, body: { error: 'theme not found' } },
     'a theme with empty variables': { status: 200, body: { name: 'Dark', theme: { base: 'GhostV3', description: 'x', variables: { '--bg-tertiary': '', '--bg-primary': '  ', '--text-primary': '', '--chat-human-bg': '', '--chat-assistant-bg': '', '--accent': '' } } } },
     'no answer at all (the request fails)': null,
