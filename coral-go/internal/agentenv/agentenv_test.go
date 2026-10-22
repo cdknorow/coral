@@ -89,3 +89,25 @@ func TestSessionAuthFileEnvPassesCodexExcludes(t *testing.T) {
 	assert.True(t, Keep(SessionAuthFileEnv))
 	assert.Contains(t, IdentityVars, SessionAuthFileEnv)
 }
+
+// A server started inside a Claude Code session does not hand that session's markers to its agents (QA's #311: "Transcript saving is off: inherited CLAUDE_CODE_CHILD_SESSION"),
+// and the credentials, the provider switches and a person's own settings still pass.
+func TestClaudeCodeSessionMarkersAreNotPassed(t *testing.T) {
+	markers := []string{"CLAUDECODE=1", "CLAUDE_CODE_CHILD_SESSION=1", "CLAUDE_CODE_ENTRYPOINT=cli", "CLAUDE_CODE_EXECPATH=C:\\x\\claude.exe",
+		"CLAUDE_CODE_MESSAGING_SOCKET=\\\\.\\pipe\\x", "CLAUDE_CODE_MESSAGING_TOKEN=secret", "CLAUDE_CODE_SESSION_ATTENDED=1", "CLAUDE_CODE_SESSION_ID=abc",
+		"CLAUDE_CODE_SSE_PORT=5555", "CLAUDE_PID=4242"}
+	kept := []string{"PATH=/usr/bin", "ANTHROPIC_API_KEY=sk-x", "ANTHROPIC_AUTH_TOKEN=t", "CLAUDE_CODE_OAUTH_TOKEN=o", "CLAUDE_CODE_USE_BEDROCK=1",
+		"CLAUDE_CODE_USE_VERTEX=1", "CLAUDE_CODE_USE_FOUNDRY=1", "CLAUDE_CONFIG_DIR=/c", "CLAUDE_CODE_MAX_OUTPUT_TOKENS=8000", "CLAUDE_EFFORT=high", "CORAL_URL=http://127.0.0.1:8420"}
+	got := Filter(append(append([]string{}, markers...), kept...))
+	for _, m := range markers {
+		assert.NotContains(t, got, m, "a session marker is removed")
+	}
+	for _, k := range kept {
+		assert.Contains(t, got, k, "kept: "+k)
+	}
+	// any case, as Windows reads a variable whatever case it was set in
+	lower := Filter([]string{"claudecode=1", "Claude_Code_Child_Session=1", "claude_pid=9", "Claude_Code_Oauth_Token=o"})
+	assert.Equal(t, []string{"Claude_Code_Oauth_Token=o"}, lower)
+	assert.False(t, Keep("CLAUDECODE"))
+	assert.True(t, Keep("CLAUDE_CODE_OAUTH_TOKEN"))
+}
