@@ -1,0 +1,8 @@
+• The board message was read and the task is noted.
+
+  Worked for 1m 31s • 12:15 AM
+
+› You have 1 unread message on the message board. Run 'coral-board read' to see them.
+
+  GPT-6.1-Sol default · D:\work\proj · Await orchestrator instructions
+  ? for shortcuts

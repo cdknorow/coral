@@ -38,6 +38,8 @@ type HealthNudges struct {
 	now      func() time.Time
 	// heldDialogs: since when each session's automated input waits at a dialog (health_held.go).
 	heldDialogs func() map[string]time.Time
+	// heldDrafts: since when each session's automated input waits behind text in its input box that isn't Coral's (#247).
+	heldDrafts func() map[string]time.Time
 
 	Interval   time.Duration
 	TeamBudget int // automatic actions per board per hour
@@ -72,7 +74,7 @@ func hookSignal(ts *store.TaskStore) func(ctx context.Context, sessionID string)
 func NewHealthNudges(bs *board.Store, ts *store.TaskStore, rt AgentRuntime, discover func(context.Context) ([]AgentInfo, error)) *HealthNudges {
 	h := &HealthNudges{
 		store: bs, runtime: rt, logger: slog.Default(), discover: discover, now: time.Now,
-		Interval: 5 * time.Minute, TeamBudget: 20, heldDialogs: ptymanager.HeldAtDialog,
+		Interval: 5 * time.Minute, TeamBudget: 20, heldDialogs: ptymanager.HeldAtDialog, heldDrafts: ptymanager.HeldAtDraft,
 	}
 	h.signal = hookSignal(ts)
 	h.deliver = func(ctx context.Context, a AgentInfo, key, text string) error {

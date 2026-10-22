@@ -361,3 +361,25 @@ func (p *PTYSessionTerminal) AttachCommand(_ string) string {
 // Verify interface compliance at compile time.
 var _ SessionTerminal = (*PTYSessionTerminal)(nil)
 var _ SessionTerminal = (*TmuxSessionTerminal)(nil)
+
+// RepaintSession makes the agent draw its whole screen again (Repainter, #247): one column narrower and back, which a TUI answers
+// with a full redraw. The rendered screen is a replay of the session's last ReplayBytes of output; after a long reply that replay
+// no longer holds the terminal state the agent set up when it started (Codex's scroll region), so its input box and footer are
+// drawn in the wrong place or not at all until the agent redraws.
+func (p *PTYSessionTerminal) RepaintSession(_ context.Context, name, _, sessionID string) error {
+	key, err := p.keyFor(name, sessionID)
+	if err != nil {
+		return err
+	}
+	cols, rows, err := p.backend.PaneSize(key)
+	if err != nil {
+		return err
+	}
+	if cols < 2 {
+		return nil
+	}
+	if err := p.backend.Resize(key, uint16(cols-1), uint16(rows)); err != nil {
+		return err
+	}
+	return p.backend.Resize(key, uint16(cols), uint16(rows))
+}

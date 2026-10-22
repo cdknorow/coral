@@ -1,0 +1,275 @@
+package ptymanager
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/subgentic/coral/internal/terminalinput"
+	"github.com/subgentic/coral/internal/tmux"
+)
+
+func codexCapture(t *testing.T, name string) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("testdata", name))
+	require.NoError(t, err)
+	return string(b)
+}
+
+// #247: Codex's working line is read just above its input box (captures from Codex 0.161 on Windows): working there, not
+// on the idle screen or the screen with Coral's nudge left in the box, and not for the same words further up (a reply).
+func TestCodexWorkingLineIsReadOnlyAboveTheBox(t *testing.T) {
+	line, busy := codexWorkingOnScreen(codexCapture(t, "codex_working.txt"))
+	assert.True(t, busy)
+	assert.Equal(t, "• Working (1s • esc to interrupt)", line)
+	for _, f := range []string{"codex_idle.txt", "codex_leftover.txt"} {
+		_, busy := codexWorkingOnScreen(codexCapture(t, f))
+		assert.False(t, busy, f)
+	}
+	quoted := "• Working (3s • esc to interrupt)\n" + strings.Repeat("• a line of the reply\n", 10) + codexCapture(t, "codex_idle.txt")
+	_, busy = codexWorkingOnScreen(quoted)
+	assert.False(t, busy, "the words far above the box are output, not the status")
+}
+
+// codexTerm draws a Codex screen: the working line while busy, and its input box (the placeholder when empty).
+type codexTerm struct {
+	mu        sync.Mutex
+	busy      bool
+	streaming bool // the rendered screen as Codex streams a reply: output only, no working line, no box (#247's reproduction)
+	box       string
+	pasted    []string
+	submitted []string
+}
+
+func (c *codexTerm) AgentScreen(context.Context, string, string, string) (string, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.streaming {
+		return "  ## 6. Eddystone and the Challenge of Building Offshore\n\n  Few sites illustrate lighthouse engineering better than the Eddystone Rocks.\n  Henry Winstan\n\n\n", nil
+	}
+	s := "  Worked for 6s • 2:23 AM\n\n"
+	if c.busy {
+		s = "• Working (4s • esc to interrupt)\n\n"
+	}
+	box := c.box
+	if box == "" {
+		box = "Ask Codex to do anything"
+	}
+	return s + "› " + box + "\n\n  GPT-6.1-Sol default · D:\\work\\proj\n  ? for shortcuts\n", nil
+}
+func (c *codexTerm) HasRenderedScreen() bool { return true }
+func (c *codexTerm) SendPrompt(ctx context.Context, _ terminalinput.Origin, _, text, _, _ string) error {
+	c.mu.Lock()
+	c.pasted = append(c.pasted, text)
+	c.box = text
+	c.mu.Unlock()
+	if !tmux.EnterAllowed(ctx) {
+		return tmux.ErrEnterWithheld
+	}
+	return c.SendEnter(ctx, "", "", "")
+}
+func (c *codexTerm) SendEnter(context.Context, string, string, string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.box != "" {
+		c.submitted = append(c.submitted, c.box)
+		c.box = ""
+	}
+	return nil
+}
+func (c *codexTerm) state() (pasted, submitted []string, box string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]string(nil), c.pasted...), append([]string(nil), c.submitted...), c.box
+}
+
+func codexInput(term *codexTerm, name, key, text string, mention bool) AutomatedInput {
+	return AutomatedInput{Term: term, Name: name, AgentType: "codex", SessionID: strings.TrimPrefix(name, "codex-"),
+		Key: key, Text: text, What: "board nudge", Paste: true, Mention: mention,
+		Send: func(context.Context) error { return nil }}
+}
+
+// Nothing is typed into a working Codex, a mention included (Codex keeps it, and the gate later took Coral's own text in its
+// box for a draft): held as busy, and typed once its working line is gone.
+func TestNothingIsTypedIntoAWorkingCodex(t *testing.T) {
+	dialogGate(t, time.Hour)
+	term := &codexTerm{busy: true}
+	name := "codex-composer-busy"
+	t.Cleanup(func() { DropHeld(name, "test") })
+	d, err := DeliverAutomated(context.Background(), codexInput(term, name, "", "[board] Orchestrator: @Codex Tester please look", true))
+	require.NoError(t, err)
+	assert.Equal(t, Held, d)
+	pasted, _, _ := term.state()
+	assert.Empty(t, pasted, "not typed while Codex works")
+
+	term.mu.Lock()
+	term.busy = false
+	term.mu.Unlock()
+	waitFor(t, "the held mention typed once Codex is idle", func() bool { return HeldCount(name) == 0 })
+	pasted, submitted, box := term.state()
+	assert.Len(t, pasted, 1)
+	assert.Equal(t, []string{"[board] Orchestrator: @Codex Tester please look"}, submitted)
+	assert.Empty(t, box)
+}
+
+// The live case: Coral's own nudge, typed earlier and kept by Codex, is in its box when the next message comes. It was taken for
+// a person's draft and everything behind it was held for two hours. Now it is recognised as Coral's: its Enter goes first, then
+// the new message.
+func TestCoralsOwnNudgeLeftInCodexsBoxIsSubmitted(t *testing.T) {
+	dialogGate(t, time.Hour)
+	name := "codex-composer-leftover"
+	t.Cleanup(func() { DropHeld(name, "test"); gate.forgetOwnTexts(name) })
+	old := "You have 1 unread message on the message board. Run 'coral-board read' to see them."
+	gate.noteOwnText(name, old) // typed by the gate; its Enter was seen to empty the box, so lastPasted forgot it
+	term := &codexTerm{box: old}
+
+	d, err := DeliverAutomated(context.Background(), codexInput(term, name, "", "[Wait resolved] \"Orchestrator\" posted on 'team'.", false))
+	require.NoError(t, err)
+	assert.Equal(t, Sent, d)
+	_, submitted, _ := term.state()
+	assert.Equal(t, []string{old, "[Wait resolved] \"Orchestrator\" posted on 'team'."}, submitted)
+}
+
+// Several of Coral's texts piled up in the box (pasted while the box couldn't be read, as on the reproduction): still all
+// Coral's, submitted together. A person's edit, or the texts out of order, is a draft: nothing pressed or pasted.
+func TestCoralsStackedTextsAreItsOwnButAnEditIsADraft(t *testing.T) {
+	dialogGate(t, time.Hour)
+	a := "[Task #1 available] Run 'coral-board task claim 1' to claim it when your current task is done."
+	b := "[Task #2 available] Run 'coral-board task claim 2' to claim it when your current task is done."
+	next := "[Task #3 available] Run 'coral-board task claim 3' to claim it when your current task is done."
+
+	name := "codex-composer-stacked"
+	t.Cleanup(func() { DropHeld(name, "test"); gate.forgetOwnTexts(name) })
+	gate.noteOwnText(name, a)
+	gate.noteOwnText(name, b)
+	term := &codexTerm{box: a + b}
+	d, err := DeliverAutomated(context.Background(), codexInput(term, name, "", next, false))
+	require.NoError(t, err)
+	assert.Equal(t, Sent, d)
+	_, submitted, _ := term.state()
+	assert.Equal(t, []string{a + b, next}, submitted)
+
+	for i, box := range []string{a + b + " and my own words", b + a} {
+		name := "codex-composer-draft-" + string(rune('a'+i))
+		t.Cleanup(func() { DropHeld(name, "test"); gate.forgetOwnTexts(name) })
+		gate.noteOwnText(name, a)
+		gate.noteOwnText(name, b)
+		person := &codexTerm{box: box}
+		d, err := DeliverAutomated(context.Background(), codexInput(person, name, "", next, false))
+		require.NoError(t, err)
+		assert.Equal(t, Held, d, box)
+		pasted, submitted, left := person.state()
+		assert.Empty(t, pasted, box)
+		assert.Empty(t, submitted, box)
+		assert.Equal(t, box, left)
+	}
+}
+
+// Once Coral's leftover was submitted its texts are forgotten: the same words in the box later are a person's.
+func TestCoralsTextsAreForgottenOnceSubmitted(t *testing.T) {
+	dialogGate(t, time.Hour)
+	name := "codex-composer-forget"
+	t.Cleanup(func() { DropHeld(name, "test"); gate.forgetOwnTexts(name) })
+	old := "You have 1 unread message on the message board. Run 'coral-board read' to see them."
+	gate.noteOwnText(name, old)
+	require.True(t, gate.ownLeftover(name, old))
+	gate.forgetOwnTexts(name)
+	assert.False(t, gate.ownLeftover(name, old))
+}
+
+// A text is Coral's for ownTextMaxAge; after that the same words are a draft. Spaces and line wraps don't matter.
+func TestOwnTextsAgeOutAndIgnoreWrapping(t *testing.T) {
+	dialogGate(t, time.Hour)
+	name := "codex-composer-age"
+	t.Cleanup(func() { gate.forgetOwnTexts(name) })
+	now := time.Now()
+	setNow(t, gate, func() time.Time { return now })
+	gate.noteOwnText(name, "You have 2 unread messages on the message board.")
+	assert.True(t, gate.ownLeftover(name, "You have 2 unread messages on the\n  message board."))
+	now = now.Add(ownTextMaxAge + time.Minute)
+	assert.False(t, gate.ownLeftover(name, "You have 2 unread messages on the message board."))
+}
+
+// Codex in its turn by its own signals: every send is held, a mention too, even when the screen shows an idle box (the screen
+// rule alone would type it), and typed once the turn ends.
+func TestCodexInTurnBySignalsHoldsEverySend(t *testing.T) {
+	dialogGate(t, time.Hour)
+	set := withState(t, AgentState{State: StateInTurn, Since: time.Now()}, true)
+	term := &codexTerm{}
+	name := "codex-composer-signals"
+	t.Cleanup(func() { DropHeld(name, "test") })
+	d, err := DeliverAutomated(context.Background(), codexInput(term, name, "", "[board] Orchestrator: @Codex Tester stop and read", true))
+	require.NoError(t, err)
+	assert.Equal(t, Held, d)
+	pasted, _, _ := term.state()
+	assert.Empty(t, pasted)
+
+	set(AgentState{State: StateIdle, Since: time.Now()})
+	waitFor(t, "typed once the turn ended", func() bool { return HeldCount(name) == 0 })
+	_, submitted, _ := term.state()
+	assert.Equal(t, []string{"[board] Orchestrator: @Codex Tester stop and read"}, submitted)
+}
+
+// With no input box on the rendered screen (Codex streaming its reply: the reproduction's capture), nothing is pasted blind:
+// held, and pasted once the box shows again.
+func TestNothingIsPastedBlindIntoCodex(t *testing.T) {
+	dialogGate(t, time.Hour)
+	term := &codexTerm{streaming: true}
+	name := "codex-composer-blind"
+	t.Cleanup(func() { DropHeld(name, "test") })
+	d, err := DeliverAutomated(context.Background(), codexInput(term, name, "", "[Task #3 available] Run 'coral-board task claim 3' to claim it.", false))
+	require.NoError(t, err)
+	assert.Equal(t, Held, d)
+	time.Sleep(100 * time.Millisecond) // a few retries of the loop
+	pasted, _, _ := term.state()
+	assert.Empty(t, pasted, "never pasted while the box can't be seen")
+
+	term.mu.Lock()
+	term.streaming = false
+	term.mu.Unlock()
+	waitFor(t, "pasted once the box shows", func() bool { return HeldCount(name) == 0 })
+	pasted, submitted, _ := term.state()
+	assert.Len(t, pasted, 1)
+	assert.Len(t, submitted, 1)
+}
+
+// repaintTerm is a codexTerm whose rendered screen misses its box until it is asked to redraw (the reproduction after a long
+// reply: the replay lost Codex's scroll region, and a one-column resize brought the box back).
+type repaintTerm struct {
+	codexTerm
+	repaints int
+}
+
+func (r *repaintTerm) RepaintSession(context.Context, string, string, string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.repaints++
+	r.streaming = false
+	return nil
+}
+
+// An idle Codex whose box the rendered screen lost after a long reply: Coral asks it to redraw (once), and the held send then
+// goes; it is never pasted blind meanwhile.
+func TestAMissingCodexBoxIsRedrawnAndTheSendGoes(t *testing.T) {
+	dialogGate(t, time.Hour)
+	term := &repaintTerm{codexTerm: codexTerm{streaming: true}}
+	name := "codex-composer-repaint"
+	t.Cleanup(func() { DropHeld(name, "test") })
+	in := codexInput(&term.codexTerm, name, "", "[Task #5 available] Run 'coral-board task claim 5'.", false)
+	in.Term = term // the repainting terminal
+	d, err := DeliverAutomated(context.Background(), in)
+	require.NoError(t, err)
+	assert.Equal(t, Held, d, "held, not pasted blind, until the box shows")
+	waitFor(t, "delivered after the redraw", func() bool { return HeldCount(name) == 0 })
+	term.mu.Lock()
+	defer term.mu.Unlock()
+	assert.Equal(t, 1, term.repaints, "asked to redraw once")
+	assert.Equal(t, []string{"[Task #5 available] Run 'coral-board task claim 5'."}, term.submitted)
+}

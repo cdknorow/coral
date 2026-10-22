@@ -567,14 +567,13 @@ func (g *inputGate) enterAndConfirm(ctx context.Context, in AutomatedInput, sr S
 }
 
 // submitLeftover handles a box holding text that isn't this send's (#4104): when it is exactly
-// the text Coral last pasted for the session (nothing typed since: a person's edit is a draft,
-// the Orchestrator's condition), its Enter is pressed first and confirmed. own is false for
+// Coral's own (the text it last pasted, or one or more of its recent texts in order, #247; nothing
+// typed since: a person's edit is a draft, the Orchestrator's condition), its Enter is pressed first and confirmed. own is false for
 // anyone else's text (a draft, never touched). held: its Enter didn't submit it, so this send
 // waits behind it.
 func (g *inputGate) submitLeftover(ctx context.Context, in AutomatedInput, sr ScreenReader, screen, agentType, sessionID string) (held bool, err error, own bool) {
-	left := g.lastPastedFor(in.Name)
 	box, ok := inputBoxText(screen)
-	if left == "" || !ok || squeeze(box) != left {
+	if !ok || !g.ownLeftover(in.Name, box) {
 		return false, nil, false
 	}
 	es, ok := in.Term.(EnterSender)
@@ -585,7 +584,7 @@ func (g *inputGate) submitLeftover(ctx context.Context, in AutomatedInput, sr Sc
 	if err := es.SendEnter(ctx, in.Name, agentType, sessionID); err != nil {
 		return false, err, true
 	}
-	if !in.enterSubmitted(ctx, sr, agentType, sessionID, left) {
+	if !in.enterSubmitted(ctx, sr, agentType, sessionID, box) {
 		kind := ""
 		if s, err := sr.AgentScreen(ctx, in.Name, agentType, sessionID); err == nil {
 			if open, why := PromptOnScreen(s); open {
@@ -596,6 +595,7 @@ func (g *inputGate) submitLeftover(ctx context.Context, in AutomatedInput, sr Sc
 		return true, nil, true
 	}
 	g.setLastPasted(in.Name, "")
+	g.forgetOwnTexts(in.Name)
 	return false, nil, true
 }
 

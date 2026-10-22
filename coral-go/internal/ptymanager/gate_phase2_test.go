@@ -145,6 +145,12 @@ func TestPhase2OnlyForClaudeAndOnlyWhenOn(t *testing.T) {
 		a := &fakeAgent{screen: idleInputBox}
 		d, err := DeliverAutomated(ctx, a.input(c.name, "k", "nudge", false))
 		require.NoError(t, err, c.name)
+		if strings.HasPrefix(c.name, "codex-") {
+			// Codex's own in-turn signal holds every send whatever the screen (#247: it keeps what is typed mid-turn).
+			assert.Equal(t, Held, d, "%s: Codex in turn by its signals", c.name)
+			DropHeld(c.name, "test")
+			continue
+		}
 		assert.Equal(t, Sent, d, "%s: the screen rule decides", c.name)
 	}
 	SetSignalsSettingFunc(nil)
