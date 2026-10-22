@@ -22,11 +22,10 @@ var Ignore = []goleak.Option{
 	goleak.IgnoreAnyFunction("github.com/shirou/gopsutil/v4/load.loadAvgGoroutine"),
 }
 
-// Check returns code, or 1 when the tests passed but left goroutines running (they are printed).
+// Check returns code, or 1 when the tests passed but left goroutines running (they are printed). It looks for leaks even when
+// some test failed (code != 0), and prints what it finds, so a package whose tests always fail somewhere (as on a machine with
+// known failures) is not hidden from the check; the failure code is returned as it was.
 func Check(code int, extra ...goleak.Option) int {
-	if code != 0 {
-		return code
-	}
 	// Keep-alive connections idle in the default client's pool are the pool, not a leak: closed
 	// first, so what is left is what the tests started and never stopped.
 	if t, ok := http.DefaultTransport.(*http.Transport); ok {
@@ -38,7 +37,10 @@ func Check(code int, extra ...goleak.Option) int {
 		// at this moment is the only way to find who held it (#146).
 		buf := make([]byte, 1<<20)
 		fmt.Fprintf(os.Stderr, "testleak: every goroutine at this moment:\n%s\n", buf[:runtime.Stack(buf, true)])
-		return 1
+		if code == 0 {
+			return 1
+		}
+		fmt.Fprintf(os.Stderr, "testleak: (the tests had failed already, so the exit code stays %d; a failing test can leave goroutines of its own)\n", code)
 	}
 	return code
 }
