@@ -19,6 +19,7 @@ import (
 
 	"golang.org/x/sys/windows"
 
+	"github.com/subgentic/coral/internal/safego"
 	"github.com/subgentic/coral/internal/windowmark"
 )
 
@@ -409,6 +410,7 @@ func (w *WindowsMSI) Notify(title, text string) {
 	}
 	done := make(chan struct{})
 	go func() {
+		defer safego.Recover("updater/apply:Notify")
 		defer close(done)
 		t, _ := windows.UTF16PtrFromString(title)
 		m, _ := windows.UTF16PtrFromString(text)
