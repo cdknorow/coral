@@ -9,7 +9,7 @@ const { launch } = await importUi('launch_state');
 const { LOCAL_SERVER } = await importUi('server_base');
 assert.deepEqual({ ...launch, existingTeamBoardNames: [...launch.existingTeamBoardNames] }, {
     mode: null, existingTeamBoardNames: [], teamAgentModalRow: null,
-    server: LOCAL_SERVER, serverLocked: false, quickServer: LOCAL_SERVER, addAgentServer: LOCAL_SERVER,
+    server: LOCAL_SERVER, serverLocked: false, addAgentServer: LOCAL_SERVER,
     teamAgentCounter: 0, skipDefaultTeamAgents: false,
 }, 'the chooser, every launch target local, nothing pending');
 launch.mode = 'agent';
