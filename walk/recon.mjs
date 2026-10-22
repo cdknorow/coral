@@ -13,8 +13,11 @@ await Page.enable();
 let n = 100;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const ev = async (expr) => (await Runtime.evaluate({ expression: expr, returnByValue: true, awaitPromise: true })).result.value;
-const redact = async () => ev(`(() => { const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT); let t; while ((t = w.nextNode())) { if (t.nodeValue.includes('runneradmin')) t.nodeValue = t.nodeValue.replaceAll('runneradmin', 'user-name'); } document.querySelectorAll('input').forEach(i => { if (i.value && i.value.includes('runneradmin')) { i.value = i.value.replaceAll('runneradmin', 'user-name'); } }); return 1; })()`);
-const shot = async (name) => { await redact(); const r = await Page.captureScreenshot({ format: 'png' }); fs.writeFileSync(`${out}/${++n}-${name}.png`, Buffer.from(r.data, 'base64')); console.log('SHOT', n, name); };
+// The screenshot hides the runner's user name, then puts everything back: the walk never launches from a path it changed.
+const redact = async () => ev(`(() => { window.__undo = []; const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT); let t; while ((t = w.nextNode())) { if (t.nodeValue.includes('runneradmin')) { const o = t.nodeValue, n = t; window.__undo.push(() => { n.nodeValue = o; }); t.nodeValue = t.nodeValue.replaceAll('runneradmin', 'user-name'); } }
+  document.querySelectorAll('input').forEach(i => { if (i.value && i.value.includes('runneradmin')) { const o = i.value, n = i; window.__undo.push(() => { n.value = o; }); i.value = i.value.replaceAll('runneradmin', 'user-name'); } }); return window.__undo.length; })()`);
+const unredact = async () => ev(`(() => { (window.__undo || []).forEach(f => f()); window.__undo = []; return 1; })()`);
+const shot = async (name) => { await redact(); const r = await Page.captureScreenshot({ format: 'png' }); await unredact(); fs.writeFileSync(`${out}/${++n}-${name}.png`, Buffer.from(r.data, 'base64')); console.log('SHOT', n, name); };
 const dump = async (label) => {
     const d = await ev(`(() => { const vis = e => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
       const dlg = [...document.querySelectorAll('dialog[open], [role=dialog], .modal, .modal-overlay')].filter(vis).map(e => e.innerText.replace(/\\s+/g, ' ').slice(0, 700));
@@ -92,7 +95,11 @@ await step('7 team: name it, launch it', async () => {
 await step('8 the team after launch', async () => {
     await sleep(6000);
     await shot('B4-team-later'); await dump('B4-team-later');
-    await clickText(/first-team/); await sleep(3500);
-    await shot('B5-team-opened'); await dump('B5-team-opened');
+    await clickText(/^Orchestrator$/); await sleep(3500);
+    await shot('B5-orchestrator'); await dump('B5-orchestrator');
+});
+await step('9 the team view', async () => {
+    await clickText(/Open team view for first-team/); await sleep(3500);
+    await shot('B6-team-view'); await dump('B6-team-view');
 });
 await client.close(); chrome.kill();
