@@ -52,6 +52,10 @@ func (t identityTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 			return nil, errRedirectRefused
 		}
 		r.Header.Del(SessionTokenHeader)
+	} else if t.plainHTTPOffThisComputer(r.URL) && (t.token != "" || r.Header.Get(SessionTokenHeader) != "") {
+		// The agent's own Coral, but over plain http to an address that is not this computer: the token would cross the
+		// network in clear text. Refused with a reason rather than sent without it, which the server would only refuse (#224).
+		return nil, &PlainHTTPTokenError{Host: r.URL.Host}
 	} else if !t.tokenAllowed(r.URL) {
 		r.Header.Del(SessionTokenHeader)
 	} else if t.token != "" && r.Header.Get(SessionTokenHeader) == "" {
@@ -103,7 +107,18 @@ func inSessionTokens(p string) bool {
 	return got == want
 }
 
-// tokenAllowed: the request goes to this agent's own Coral.
+// PlainHTTPTokenError: the agent's session token was not sent to its Coral because the address is plain http and not this
+// computer (#224).
+type PlainHTTPTokenError struct{ Host string }
+
+func (e *PlainHTTPTokenError) Error() string {
+	return "coral: not sending this agent's session token over plain http to " + e.Host + ", which is not this computer: " +
+		"the token would cross the network unencrypted. Use an https:// CORAL_URL, or a loopback address (127.0.0.1) for a Coral on this computer"
+}
+
+// tokenAllowed: the request goes to this agent's own Coral, over a channel that keeps the token on this computer or encrypted:
+// loopback, https to a configured host, or plain http to a configured host that is an address of this computer itself (a
+// Coral started with --host on one LAN address gives its agents that address, and the traffic never leaves the computer).
 func (t identityTransport) tokenAllowed(u *url.URL) bool {
 	if u == nil || (u.Scheme != "http" && u.Scheme != "https") {
 		return false
@@ -112,8 +127,56 @@ func (t identityTransport) tokenAllowed(u *url.URL) bool {
 	if isLoopback(host) {
 		return true
 	}
+	if !t.configured(host) {
+		return false
+	}
+	return u.Scheme == "https" || localInterfaceIP(host)
+}
+
+// plainHTTPOffThisComputer: an http request to a configured Coral host that is neither loopback nor an address of this
+// computer, which tokenAllowed refuses and RoundTrip reports.
+func (t identityTransport) plainHTTPOffThisComputer(u *url.URL) bool {
+	if u == nil || u.Scheme != "http" {
+		return false
+	}
+	host := u.Hostname()
+	return !isLoopback(host) && t.configured(host) && !localInterfaceIP(host)
+}
+
+// configured: host is one Coral named in the agent's environment.
+func (t identityTransport) configured(host string) bool {
 	for _, h := range t.hosts {
 		if strings.EqualFold(host, h) {
+			return true
+		}
+	}
+	return false
+}
+
+// interfaceAddrs is net.InterfaceAddrs; a test replaces it.
+var interfaceAddrs = net.InterfaceAddrs
+
+// localInterfaceIP reports whether host is an IP literal assigned to one of this computer's network interfaces. A name is
+// not looked up (it could resolve elsewhere by the time the request dials): a Coral on this computer reached by a name needs
+// https, or its IP address.
+func localInterfaceIP(host string) bool {
+	ip := net.ParseIP(strings.Trim(host, "[]"))
+	if ip == nil {
+		return false
+	}
+	addrs, err := interfaceAddrs()
+	if err != nil {
+		return false
+	}
+	for _, a := range addrs {
+		var local net.IP
+		switch v := a.(type) {
+		case *net.IPNet:
+			local = v.IP
+		case *net.IPAddr:
+			local = v.IP
+		}
+		if local != nil && local.Equal(ip) {
 			return true
 		}
 	}
