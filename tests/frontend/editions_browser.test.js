@@ -147,8 +147,11 @@ async function run() {
             // An explicit URL (--cloud-url / CORAL_CLOUD_URL): the server offers it, as with the flag.
             await put({ welcome_pending: 'True', welcome_choice: '' });
             await load({ ...PROD, hub_url: 'https://hub.example.com', offer_at_launch: true });
-            await until(`!!document.querySelector('#editions-modal [data-cloud="connect"]:not([hidden])')`, 'the screen for an explicit URL');
-            check(`${label}: an explicit URL: the first-launch screen opens`, ((await screen()) || {}).title === 'Connect to Coral Hub');
+            // Wait for the SCREEN, not for a button inside it: the Connect button turns up in the markup a moment before the modal is shown, and a point-in-time read right then saw no screen on a phone (a
+            // 1-in-461 flake of the 154 gate). The check says what it saw when it fails.
+            await until(`(() => { const m = document.getElementById('editions-modal'); return !!m && m.style.display !== 'none' && !!m.querySelector('#editions-title') && !!m.querySelector('[data-cloud="connect"]:not([hidden])'); })()`, 'the screen for an explicit URL');
+            const shown = await screen();
+            check(`${label}: an explicit URL: the first-launch screen opens`, !!shown && shown.title === 'Connect to Coral Hub', JSON.stringify(shown));
             await escape();
             await until(`document.getElementById('editions-modal').style.display === 'none'`, 'closed');
             // With the flag, a dev build (no hub configured) still asks nothing.
