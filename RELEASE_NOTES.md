@@ -23,7 +23,7 @@
 
 - Windows: the updater's install answer is one object on every platform (`status.Install`) and `trigger.Preflight` reads it; a signature can be required on a Windows package and the signer pinned to the whole certificate, switched off until the first signed release; a Linuxbrew path test no longer depends on the machine's separator.
 - Docs: the cross-team documentation tells linked-team defaults from explicit local opt-ins.
-- Tests: the startup request golden gains the updater's one status read; a suite pins the server's answer that turns the update UI on; the static budget for the embedded front end is 6 MiB + 128 KiB.
+- Tests: the startup request golden gains the updater's one status read; a suite pins the server's answer that turns the update UI on; the static budget for the embedded front end is 6 MiB + 128 KiB; the feed-reconnect stability suite takes its node baseline after the page's one-time interface is built, and the first-time agent suite waits for the New Agent dialog's template to exist (both failed now and then under load).
 
 ## v1.4.155 — A Mode button that reads Claude's real modes, @mentions on the board, and the Windows updater built (switched off)
 
