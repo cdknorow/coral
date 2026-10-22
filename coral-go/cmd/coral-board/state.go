@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/subgentic/coral/internal/cliauth"
+	"github.com/subgentic/coral/internal/clierr"
 	"github.com/subgentic/coral/internal/hooks"
 	"github.com/subgentic/coral/internal/testguard"
 	"github.com/subgentic/coral/internal/tmux"
@@ -173,6 +174,12 @@ func resolveViaPID() *pidResolution {
 	}
 
 	resp, err := http.Get(serverURL + "/api/sessions/resolve?pids=" + strings.Join(pidStrs, ","))
+	if msg, ok := withheldMessage(err); ok {
+		// The token was withheld (#99): no request of this command can reach Coral, and the caller's "Not subscribed to any
+		// board. Run: coral-board join …" would send the agent the wrong way (#279). Say why, and exit refused (5).
+		fmt.Fprintln(os.Stderr, msg)
+		clierr.Exit1()
+	}
 	if err != nil || resp.StatusCode != http.StatusOK {
 		return nil
 	}
