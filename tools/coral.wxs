@@ -133,26 +133,36 @@
     <ui:WixUI Id="WixUI_Minimal" />
     <WixVariable Id="WixUILicenseRtf" Value="$(var.BuildDir)\license.rtf" />
 
-    <!-- The last screen offers to start Coral, ticked (#151): coral-tray.exe, as the Start Menu shortcut does. It runs from the
-         Finish button, in the installer's client (UI) process, as an immediate action: Coral starts with the token of the person
-         who ran the installer, never the elevated one that installed the files (a deferred or no-impersonate action would run
-         it as SYSTEM or elevated). ExitDialog shows the checkbox only on a first install or an upgrade (NOT Installed), and
-         the launch has the same condition plus NOT REMOVE~="ALL", so a repair or an uninstall starts nothing. A silent or
-         basic-UI install (/qn, /passive) shows no ExitDialog and starts nothing.
-         From an ELEVATED client (msiexec run as administrator) that same token would start Coral elevated, with its server, agents and
-         tools running as an administrator (#5883): the from-installer flag below makes coral-tray.exe start nothing when its own token is
-         elevated (cmd/coral-tray/installer_launch.go), before it spawns its background process.
-         The action is Directory-based, so coral-tray starts in its install folder, not in the folder the installer was run from
-         (often Downloads). It is SYNCHRONOUS (Return="ignore"): in the client, Windows Installer fails an asynchronous EXE custom
-         action (asyncNoWait or asyncWait) with 1631 and never creates the process, elevated client or not, so the checkbox never
-         started Coral (#199, measured on Windows 11). coral-tray's launcher returns as soon as its background process is started,
-         so Finish waits only a moment, and its exit code is not checked. -->
+    <!-- The last screen offers to start Coral, ticked (#151): coral-tray.exe, as the Start Menu shortcut does, however the person ran
+         the installer (#205: by double-click or from an elevated prompt). It runs from the Finish button, in the installer's client (UI)
+         process, as an immediate action, never as a deferred or no-impersonate one (those would run it as SYSTEM or elevated).
+         ExitDialog shows the checkbox only on a first install or an upgrade (NOT Installed), and the launch has the same condition plus
+         NOT REMOVE~="ALL", so a repair or an uninstall starts nothing. A silent or basic-UI install (/qn, /passive, the update's /qb!-)
+         shows no ExitDialog and starts nothing.
+         Both actions are SYNCHRONOUS (Return="ignore"): in the client, Windows Installer fails an asynchronous EXE custom action
+         (asyncNoWait or asyncWait) with 1631 and never creates the process, elevated client or not (#199, measured on Windows 11).
+         What they start returns at once (coral-tray's launcher once its background process is started, explorer.exe once it has
+         handed the program on), so Finish waits only a moment, and the exit code is not checked.
+         They are Directory-based, so coral-tray starts in its install folder, not in the folder the installer was run from (often
+         Downloads). Exactly one runs, by MsiRunningElevated, which the installer sets in an elevated client and not in a normal one:
+         - LaunchCoral, a normal client: coral-tray with the from-installer flag, as the person who ran the installer.
+         - LaunchCoralUnelevated, an ELEVATED client (msiexec run as administrator, whose token would start Coral with its server,
+           agents and tools as an administrator): explorer.exe, by its full path, is handed coral-tray.exe and passes it to its
+           Elevated-Unelevated Explorer Factory ({75dff2b7-6936-4c06-a8bb-676a7b00b24b}), a COM server whose AppID runs as the
+           Interactive User. Coral starts with the signed-in desktop user's own token, Medium integrity, unelevated (#194, #199).
+           explorer.exe passes no arguments, and coral-tray needs none. With no Explorer shell (Shell Launcher, Assigned Access)
+           nothing starts, and the person starts Coral from the Start Menu.
+         The backstop stays: coral-tray.exe started with the from-installer flag and an elevated token starts nothing
+         (cmd/coral-tray/installer_launch.go, #5883), so a LaunchCoral that ever ran elevated would not start Coral as an administrator. -->
     <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Launch $(var.ProductName)" />
     <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
     <CustomAction Id="LaunchCoral" Directory="INSTALLFOLDER" ExeCommand="&quot;[INSTALLFOLDER]coral-tray.exe&quot; --from-installer" Execute="immediate" Return="ignore" />
+    <CustomAction Id="LaunchCoralUnelevated" Directory="INSTALLFOLDER" ExeCommand="&quot;[WindowsFolder]explorer.exe&quot; &quot;[INSTALLFOLDER]coral-tray.exe&quot;" Execute="immediate" Return="ignore" />
     <UI>
       <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchCoral"
-        Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 AND NOT Installed AND NOT REMOVE~=&quot;ALL&quot;" />
+        Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 AND NOT Installed AND NOT REMOVE~=&quot;ALL&quot; AND NOT MsiRunningElevated" />
+      <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchCoralUnelevated"
+        Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 AND NOT Installed AND NOT REMOVE~=&quot;ALL&quot; AND MsiRunningElevated" />
     </UI>
 
     <!-- Coral's dialog art in place of WiX's stock bitmaps (tools/make_installer_art.py) -->

@@ -48,6 +48,35 @@ func TestMSILaunchPassesTheInstallerFlag(t *testing.T) {
 	assert.Equal(t, "&quot;[INSTALLFOLDER]coral-tray.exe&quot; --"+installerLaunchFlag, string(m[1]))
 }
 
+// #205: Launch Coral works however the person ran the installer, and exactly one action runs, by MsiRunningElevated: a normal client
+// starts coral-tray (with the from-installer backstop), an elevated one hands coral-tray to explorer.exe, which starts it unelevated
+// through its Elevated-Unelevated Explorer Factory (#199). Both share the checkbox, first-install and not-uninstall conditions.
+func TestMSILaunchHasOneActionPerElevation(t *testing.T) {
+	wxs, err := os.ReadFile("../../../tools/coral.wxs")
+	require.NoError(t, err)
+	actions := map[string]string{} // action -> its ExeCommand
+	for _, m := range regexp.MustCompile(`<CustomAction Id="(LaunchCoral[A-Za-z]*)"[^>]*ExeCommand="([^"]*)"[^>]*/>`).FindAllSubmatch(wxs, -1) {
+		actions[string(m[1])] = string(m[2])
+	}
+	conditions := map[string]string{} // action -> its Finish condition
+	for _, m := range regexp.MustCompile(`<Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="([^"]+)"\s+Condition="([^"]*)"`).FindAllSubmatch(wxs, -1) {
+		conditions[string(m[1])] = string(m[2])
+	}
+	assert.Len(t, conditions, 2, "two launch actions on Finish: one per elevation")
+	assert.Equal(t, "&quot;[INSTALLFOLDER]coral-tray.exe&quot; --"+installerLaunchFlag, actions["LaunchCoral"])
+	assert.Equal(t, "&quot;[WindowsFolder]explorer.exe&quot; &quot;[INSTALLFOLDER]coral-tray.exe&quot;", actions["LaunchCoralUnelevated"],
+		"explorer.exe by its full path, never searched for")
+	const common = `WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 AND NOT Installed AND NOT REMOVE~=&quot;ALL&quot;`
+	assert.Equal(t, common+" AND NOT MsiRunningElevated", conditions["LaunchCoral"])
+	assert.Equal(t, common+" AND MsiRunningElevated", conditions["LaunchCoralUnelevated"])
+	for _, id := range []string{"LaunchCoral", "LaunchCoralUnelevated"} {
+		ca := regexp.MustCompile(`<CustomAction Id="` + id + `"[^>]*/>`).Find(wxs)
+		require.NotNil(t, ca, id)
+		assert.Contains(t, string(ca), `Directory="INSTALLFOLDER"`, "%s starts in the install folder", id)
+		assert.Contains(t, string(ca), `Execute="immediate"`, "%s runs in the client, as the person (never deferred)", id)
+	}
+}
+
 // #199: the Finish button runs LaunchCoral in the installer's client, where Windows Installer fails an asynchronous EXE custom action
 // with 1631 and starts nothing (asyncNoWait and asyncWait alike, elevated client or not; measured on Windows 11). Every EXE custom
 // action the Finish button publishes must be synchronous.
