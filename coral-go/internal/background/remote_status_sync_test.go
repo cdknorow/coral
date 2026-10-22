@@ -202,11 +202,13 @@ func TestHub_ProxyFailureBurstIsCoalesced(t *testing.T) {
 	require.Eventually(t, onlineEverywhere(h, reg, "a"), 3*time.Second, 10*time.Millisecond)
 	before, _ := a.counts()
 
-	for i := 0; i < 50; i++ {
+	// One failure wakes the worker; it takes that wake and holds off until MinBackoff has passed on the clock. Waiting for that event (the worker asleep on the clock) is what makes the rest of the
+	// burst arrive while it holds off: sent all at once, on a slow machine the worker could take its first wake only after the whole burst, and there would be no second wake to coalesce (#6076).
+	h.ReportFailure(context.Background(), "a", store.RemoteStatusUnreachable, "connect failed")
+	require.Eventually(t, func() bool { return clock.Sleepers() == 1 }, 3*time.Second, time.Millisecond, "the worker waits out MinBackoff")
+	for i := 0; i < 49; i++ {
 		h.ReportFailure(context.Background(), "a", store.RemoteStatusUnreachable, "connect failed")
 	}
-	// The worker took the first wake and is holding off until MinBackoff has passed on the clock.
-	require.Eventually(t, func() bool { return clock.Sleepers() == 1 }, 3*time.Second, time.Millisecond, "the worker waits out MinBackoff")
 	afterBurst, _ := a.counts()
 	assert.Equal(t, before, afterBurst, "no probe while MinBackoff has not passed, however many failures")
 
