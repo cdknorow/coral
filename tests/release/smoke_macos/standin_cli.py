@@ -15,6 +15,10 @@ import sys
 import termios
 import tty
 
+if len(sys.argv) > 1 and sys.argv[1] == "auth":  # Coral's sign-in check after a launch (#5838): answered like the CLI does, never taken for a launch
+    print('{"loggedIn": true}')
+    sys.exit(0)
+
 LABELS = ["Feels like a slideshow", "Doesn't show the game", "Tone/story is off", "Looks cheap/amateur", "Type something"]
 QUESTION = "What's not working about the trailer? (Pick everything that applies.)"
 checked = [False] * 5

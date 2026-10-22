@@ -43,7 +43,7 @@ async function launchStandIn(api, { workingDir = '/tmp', displayName = 'Stand-in
     // "no token" flake, not a slow shell. "ran" marks the launched invocation (it has --session-id).
     fs.writeFileSync(cli, [
         '#!/bin/sh',
-        'case "$1" in --version) echo "0.0.0 (stand-in)"; exit 0;; esac',
+        'case "$1" in --version) echo "0.0.0 (stand-in)"; exit 0;; auth) echo \'{"loggedIn": true}\'; exit 0;; esac', // the version probe and the sign-in check (#5838) are answered like the CLI's, never a launch
         `: > '${ranFile}'`,
         `[ -n "$CORAL_SESSION_TOKEN" ] || { echo "stand-in: no CORAL_SESSION_TOKEN" >&2; : > '${tokenFile}.none'; exec sleep 600; }`,
         `printf '%s' "$CORAL_SESSION_TOKEN" > '${tokenFile}.tmp' && mv '${tokenFile}.tmp' '${tokenFile}'`,
