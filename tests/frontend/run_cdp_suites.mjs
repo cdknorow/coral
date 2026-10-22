@@ -542,6 +542,9 @@ async function startShard(n, gen = 0, strict = false, backend = MAIN_BACKEND) {
   const chromeArgs = ['--headless=new', '--remote-debugging-port=0', `--user-data-dir=${profile}`,
     '--no-first-run', '--no-default-browser-check', '--disable-gpu', '--window-size=1400,900',
     ...(process.env.CI ? ['--no-sandbox', '--disable-dev-shm-usage'] : []),
+    // A Windows runner has Animation effects off, so the browser answers prefers-reduced-motion: reduce on its own; the suites' own motion checks
+    // assume the default (no preference) and emulate "reduce" when they want it.
+    ...(process.platform === 'win32' ? ['--force-prefers-no-reduced-motion'] : []),
     // CDP_NETLOG=1: Chrome writes its network log to <shard>/netlog.json, to see why a request failed.
     ...(process.env.CDP_NETLOG ? [`--log-net-log=${path.join(dir, 'netlog.json')}`] : []), 'about:blank'];
   const chrome = spawn(chromePath, chromeArgs, { stdio: ['ignore', 'ignore', 'pipe'], detached: DETACH });
