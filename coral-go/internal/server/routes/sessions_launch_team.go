@@ -244,7 +244,7 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 func allConfigurationFailures(categories []string) bool {
 	for _, c := range categories {
 		switch c {
-		case tracking.FailProviderUnavailable, tracking.FailBackendUnavailable, tracking.FailWorkdirUnavailable:
+		case tracking.FailProviderMissing, tracking.FailProviderUnrunnable, tracking.FailBackendUnavailable, tracking.FailWorkdirUnavailable:
 		case "": // a saved default model that is not a model ID (launchTeamMember gives that failure no analytics category): a Settings problem
 		default:
 			return false

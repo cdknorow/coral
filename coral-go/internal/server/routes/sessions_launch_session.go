@@ -507,12 +507,12 @@ func classifyLaunchError(err error) string {
 	// has for an answer through Coral Hub rather than by name, so this compiles with or without that type.
 	var forHub interface{ HubText() string }
 	if errors.As(err, &forHub) {
-		return tracking.FailProviderUnavailable
+		return tracking.FailProviderUnrunnable
 	}
 	msg := strings.ToLower(err.Error())
 	switch {
 	case strings.Contains(msg, "cli not found"):
-		return tracking.FailProviderUnavailable
+		return tracking.FailProviderMissing
 	case strings.Contains(msg, "tmux is required") || strings.Contains(msg, "terminal backend"):
 		return tracking.FailBackendUnavailable
 	case strings.Contains(msg, "directory not found") || strings.Contains(msg, "no such file") || strings.Contains(msg, "not a directory") || strings.Contains(msg, "working directory"):

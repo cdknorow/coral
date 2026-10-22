@@ -17,17 +17,20 @@ const (
 	PrereqMissing     = "missing"      // not found
 	PrereqProbeFailed = "probe_failed" // found, but the version probe failed
 	PrereqTimeout     = "timeout"      // found, but the version probe timed out
+	PrereqSignedIn    = "signed_in"    // Claude or Codex: its own status command said it is signed in
+	PrereqSignedOut   = "signed_out"   // Claude or Codex: its own status command said it is signed out
 
 	SourceSystemStatus = "system_status" // GET /api/system/status
 	SourceCLICheck     = "cli_check"     // GET /api/system/cli-check
 	SourceCLIRecheck   = "cli_recheck"   // the same check, requested by a user re-check
+	SourceLaunchProbe  = "launch_probe"  // the CLI's own sign-in status command, wherever Coral already runs it (#6062)
 )
 
 func init() {
 	eventSpecs[EventPrerequisiteCheck] = map[string]propSpec{
 		"tool":   enum(ToolTmux, ToolClaude, ToolCodex),
-		"status": enum(PrereqAvailable, PrereqMissing, PrereqProbeFailed, PrereqTimeout),
-		"source": enum(SourceSystemStatus, SourceCLICheck, SourceCLIRecheck),
+		"status": enum(PrereqAvailable, PrereqMissing, PrereqProbeFailed, PrereqTimeout, PrereqSignedIn, PrereqSignedOut),
+		"source": enum(SourceSystemStatus, SourceCLICheck, SourceCLIRecheck, SourceLaunchProbe),
 	}
 }
 

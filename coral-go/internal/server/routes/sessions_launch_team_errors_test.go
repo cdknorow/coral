@@ -234,8 +234,8 @@ func (brokenCLIPathError) Error() string   { return "claude CLI path \"x\" can't
 func (brokenCLIPathError) HubText() string { return "the claude CLI path set in Settings can't be run" }
 
 func TestAConfiguredCLIPathThatCantBeRunIsASetupProblem(t *testing.T) {
-	assert.Equal(t, tracking.FailProviderUnavailable, classifyLaunchError(brokenCLIPathError{}))
-	assert.Equal(t, tracking.FailProviderUnavailable, classifyLaunchError(fmt.Errorf("launching: %w", brokenCLIPathError{})), "wrapped too")
-	assert.NotEqual(t, tracking.FailProviderUnavailable, classifyLaunchError(errors.New("something else broke")))
+	assert.Equal(t, tracking.FailProviderUnrunnable, classifyLaunchError(brokenCLIPathError{}))
+	assert.Equal(t, tracking.FailProviderUnrunnable, classifyLaunchError(fmt.Errorf("launching: %w", brokenCLIPathError{})), "wrapped too")
+	assert.NotEqual(t, tracking.FailProviderUnrunnable, classifyLaunchError(errors.New("something else broke")))
 	assert.True(t, allConfigurationFailures([]string{classifyLaunchError(brokenCLIPathError{})}))
 }

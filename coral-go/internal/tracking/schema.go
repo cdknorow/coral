@@ -62,15 +62,16 @@ const (
 	OutcomePartial = "partial" // team: some agents started, some did not
 	OutcomeFailed  = "failed"  // task outcome
 
-	FailInvalidRequest      = "invalid_request"
-	FailUnsupportedOption   = "unsupported_option"
-	FailLimitReached        = "limit_reached"
-	FailWorkdirUnavailable  = "workdir_unavailable"
-	FailBackendUnavailable  = "backend_unavailable"
-	FailProviderUnavailable = "provider_unavailable"
-	FailSpawnFailed         = "spawn_failed"
-	FailWorktreeFailed      = "worktree_failed"
-	FailInternal            = "internal"
+	FailInvalidRequest     = "invalid_request"
+	FailUnsupportedOption  = "unsupported_option"
+	FailLimitReached       = "limit_reached"
+	FailWorkdirUnavailable = "workdir_unavailable"
+	FailBackendUnavailable = "backend_unavailable"
+	FailProviderMissing    = "provider_missing"    // no CLI of that provider was found
+	FailProviderUnrunnable = "provider_unrunnable" // a CLI path set in Settings that cannot be run
+	FailSpawnFailed        = "spawn_failed"
+	FailWorktreeFailed     = "worktree_failed"
+	FailInternal           = "internal"
 )
 
 type propKind int
@@ -100,7 +101,7 @@ var (
 	backendEnu  = enum("tmux", "pty", "unknown")
 	kindEnu     = enum(KindAgent, KindTeam)
 	failureEnu  = enum(FailInvalidRequest, FailUnsupportedOption, FailLimitReached, FailWorkdirUnavailable,
-		FailBackendUnavailable, FailProviderUnavailable, FailSpawnFailed, FailWorktreeFailed, FailInternal)
+		FailBackendUnavailable, FailProviderMissing, FailProviderUnrunnable, FailSpawnFailed, FailWorktreeFailed, FailInternal)
 	agentCount = intRange(0, 64)
 )
 

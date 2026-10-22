@@ -218,9 +218,9 @@ func TestTeamLaunchRequestErrorsAreFailures(t *testing.T) {
 }
 
 func TestClassifyLaunchErrorReturnsOnlyControlledCategories(t *testing.T) {
-	allowed := map[string]bool{"provider_unavailable": true, "backend_unavailable": true, "workdir_unavailable": true, "spawn_failed": true, "internal": true}
+	allowed := map[string]bool{"provider_missing": true, "provider_unrunnable": true, "backend_unavailable": true, "workdir_unavailable": true, "spawn_failed": true, "internal": true}
 	for msg, want := range map[string]string{
-		"claude CLI not found. Install it: npm i -g x":        "provider_unavailable",
+		"claude CLI not found. Install it: npm i -g x":        "provider_missing",
 		"tmux is required to launch agents but was not found": "backend_unavailable",
 		"chdir /Users/a/b: no such file or directory":         "workdir_unavailable",
 		"directory not found: /Users/a/missing":               "workdir_unavailable",

@@ -53,7 +53,7 @@ func TestACLINotFoundErrorNamesTheCLIAndTheSetting(t *testing.T) {
 	e := &agent.CLINotFoundError{AgentType: at.Claude, Binary: "claude", InstallCommand: "npm i -g x", InstallURL: "https://example.invalid/x"}
 	require.Contains(t, e.Error(), "claude CLI not found. Install it: npm i -g x (the vendor's page: https://example.invalid/x)")
 	assert.Contains(t, e.Error(), "Settings > CLI paths (the setting cli_path_claude)")
-	assert.Equal(t, "provider_unavailable", classifyLaunchError(e), "the analytics category is unchanged")
+	assert.Equal(t, "provider_missing", classifyLaunchError(e), "a CLI found nowhere is counted apart from a path that cannot be run (#6062)")
 	e.InstallURL = ""
 	assert.NotContains(t, e.Error(), "vendor's page")
 }

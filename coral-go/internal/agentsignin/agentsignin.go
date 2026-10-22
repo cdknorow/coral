@@ -30,6 +30,7 @@ import (
 	"github.com/subgentic/coral/internal/agent"
 	"github.com/subgentic/coral/internal/agentenv"
 	"github.com/subgentic/coral/internal/executil"
+	"github.com/subgentic/coral/internal/tracking"
 )
 
 // State is what a status check found.
@@ -316,6 +317,7 @@ func ask(ctx context.Context, agentType, bin, dir string, fresh bool) error {
 	e.state = st
 	e.checkedAt = now()
 	e.snap.Unlock()
+	reportState(agentType, st)
 	switch st {
 	case SignedOut:
 		e.signedOut++
@@ -333,6 +335,18 @@ func ask(ctx context.Context, agentType, bin, dir string, fresh bool) error {
 		e.until = now().Add(positiveTTL)
 	}
 	return e.verdict(agentType)
+}
+
+// reportState counts a clear answer for telemetry (#6062): only the closed status (signed_in or signed_out) and the tool name are passed on, never the CLI's output, which holds the
+// account's email, plan and organisation. An answer that was not clear (Unknown, TimedOut) reports nothing: a slow or unreadable CLI is not a signed-out user. This is the one place the
+// check's answer is read, so it counts exactly where Coral already runs the check and probes nothing of its own.
+func reportState(agentType string, st State) {
+	switch st {
+	case SignedIn:
+		tracking.TrackPrerequisite(agentType, tracking.PrereqSignedIn, tracking.SourceLaunchProbe)
+	case SignedOut:
+		tracking.TrackPrerequisite(agentType, tracking.PrereqSignedOut, tracking.SourceLaunchProbe)
+	}
 }
 
 func (e *entry) verdict(agentType string) error {

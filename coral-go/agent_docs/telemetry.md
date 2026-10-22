@@ -18,9 +18,9 @@ The runtime disclosure is generated from `internal/tracking/events.go`. New funn
 | `installation_active_week` | This install ran Coral during an ISO week (UTC). Sent at most once per install per week: at startup, and the first time that week the dashboard is open for a day, an agent or team is launched, or a task is completed (so a Coral that runs for weeks counts every week it is used) | — |
 | `session_launched` | Individual launch handler created/submitted the agent process | — |
 | `team_launched` | Team launch with at least one member started | `agent_count`, `requested_agents`, `started_agents`, `failed_agents` |
-| `prerequisite_check` | Coral checked tmux or a supported agent CLI prerequisite | `tool`, `status`, `source` |
+| `prerequisite_check` | Coral checked tmux or a supported agent CLI prerequisite: whether it is installed and, for Claude and Codex, whether it is signed in | `tool`, `status`, `source` |
 | `launch_requested` | Server received an individual or team launch attempt | `kind`, `attempt_id`, `provider`, `backend`, `requested_agents`, `resume` |
-| `launch_result` | Result of that attempt; success, failure, or partial team success | Request properties plus `outcome`, `failure_category`, `duration_ms`, `started_agents`, `failed_agents` |
+| `launch_result` | Result of that attempt; success, failure, or partial team success. `failure_category` `provider_missing` is a CLI that was not found; `provider_unrunnable` is a CLI path set in Settings that cannot be run. A CLI that is installed but signed out is not a launch failure: `prerequisite_check` counts it | Request properties plus `outcome`, `failure_category`, `duration_ms`, `started_agents`, `failed_agents` |
 | `dashboard_ready` | A dashboard page completed initialization, loaded/rendered sessions, and observed server startup completion | `page_id` |
 | `dashboard_failed` | An observed dashboard initialization or initial-fetch failure | `code` |
 | `dashboard_active_day` | An initialized dashboard was visible during a UTC date | — |
@@ -45,9 +45,11 @@ Update telemetry (#5952): the update check itself (an anonymous request to GitHu
 
 `prerequisite_check` reports `tmux`, `claude`, or `codex` with a controlled availability status and check source. Repeated identical observations are deduplicated within a server run. Explicit CLI rechecks use `cli_recheck`; ordinary checks use `cli_check`, and tmux discovery in server status uses `system_status`. Custom binary paths are not recorded in this event.
 
+Claude and Codex also report `signed_in` or `signed_out` (source `launch_probe`), only when the CLI's own non-interactive status command gives a clear answer, and only where Coral already runs that command (the first launch, background jobs, and a person's Check again). Coral reads one fact from the answer, signed in or not, and discards the rest before the event is built; the CLI's output is never logged or sent. A CLI that errors, times out, or answers in a form Coral cannot read reports nothing: a slow start is not a signed-out user. Antigravity and Pi have no such command and report no sign-in status.
+
 For tmux, `available` means discovery found an executable; `missing` means discovery did not find one. Routine discovery is cached for 30 seconds; an explicit recheck bypasses the cache. Claude/Codex checks also report `probe_failed` or `timeout` if the discovered executable's version check fails. Version checks have a three-second deadline and retain at most 8 KiB of stdout. The existing API `found` field stays true when discovery succeeds, even if the probe fails. No executable path, version output, command, or raw error is sent as analytics.
 
-These observations identify missing prerequisites and later availability. Coral currently provides installation instructions and does not execute these installers. A missing executable is not proof that an installation command failed, and an available executable does not prove provider authentication. Installer exit codes and failures before Coral starts remain unobserved.
+These observations identify missing prerequisites and later availability. Coral currently provides installation instructions and does not execute these installers. A missing executable is not proof that an installation command failed, and an available executable does not prove provider authentication: that is what `signed_in` and `signed_out` add for Claude and Codex. Installer exit codes and failures before Coral starts remain unobserved.
 
 ## Properties and identifiers
 
