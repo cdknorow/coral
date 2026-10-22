@@ -93,7 +93,7 @@ func (s *procSnap) tree(root member, tag string) []member {
 	}
 	want := runTagEnv + "=" + tag
 	for pid, p := range s.byPID {
-		if members[pid] {
+		if members[pid] || tag == "" { // no tag (a tmux pane has none): descent only
 			continue
 		}
 		if env, err := p.Environ(); err == nil {
