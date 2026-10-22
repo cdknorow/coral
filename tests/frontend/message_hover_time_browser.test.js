@@ -10,6 +10,7 @@ const BASE = require('./test_base').BASE;
 (async()=>{
     const { client, Page, Emulation, ev, waitFor, PRELOAD, install, select } = await connect();
     const before = process.env.TIME_CAPTURE_BEFORE === '1';
+    const longChat = process.env.TIME_LONG_CHAT === '1';
     const shot = async name => {
         if (!process.env.SHOT_DIR) return;
         await ev(framesJs(2));
@@ -33,15 +34,18 @@ const BASE = require('./test_base').BASE;
                 const a=window.__m.add('Timestamp demo','',0,{sleeping:false,session_id:'11111111-2222-4333-8444-555555556063'});
                 a.msgs=[{type:'user',content:'Please check the release notes.',key:'00000000000000000001',timestamp:window.__sent[0]},
                 {type:'assistant',text:'The release notes are ready. The build and the focused checks passed.',key:'00000000000000000002',timestamp:window.__sent[1]}];
+                if(${longChat}) for(let i=0;i<12;i++) a.msgs.push({type:i%2?'assistant':'user',content:'Please check the next release item.',text:'The next release item is ready for review.',key:String(i+3).padStart(20,'0'),timestamp:window.__sent[i%2]});
                 const original=window.fetch;window.fetch=(url,opts={})=>{
                     if(String(url).includes('/api/board/b-hover-time/'))return Promise.resolve(new Response(JSON.stringify(String(url).includes('/messages/all')?{messages:[{id:1,job_title:'Orchestrator',subscriber_id:'Orchestrator',content:'Please check the release notes.',created_at:window.__sent[0]},{id:2,job_title:'QA Engineer',subscriber_id:'QA Engineer',content:'The release notes and checks are ready.',created_at:window.__sent[1]}],total:2,before_count:0}:[]),{headers:{'Content-Type':'application/json'}}));
                     return original(url,opts);
                 };
             })()`);
             await select('Timestamp demo','11111111-2222-4333-8444-555555556063');
-            await waitFor(`document.querySelectorAll('#live-history-messages .chat-bubble').length===2`,'chat fixture');
+            await waitFor(`document.querySelectorAll('#live-history-messages .chat-bubble').length===${longChat?14:2}`,'chat fixture');
             await swapTheme(ev,theme);
+            await ev(`document.querySelector('#live-history-messages').scrollTop=0;true`);
             if(!before){
+                assert.equal(await ev(`(()=>{const b=document.querySelector('#live-history-messages .chat-bubble.assistant');return getComputedStyle(b).marginBottom})()`),width===390?'46px':'22px','existing prose action row reserves the same spacing');
                 await client.Input.dispatchMouseEvent({type:'mouseMoved',x:0,y:0});
                 await ev(`document.activeElement?.blur();true`);
                 assert.equal(await ev(`getComputedStyle(document.querySelector('#live-history-messages .chat-bubble.assistant .message-time')).opacity`),width===390?'1':'0','hidden until mouse actions, visible on touch');
@@ -50,7 +54,7 @@ const BASE = require('./test_base').BASE;
             await hover('#live-history-messages .chat-bubble.assistant');
             if(!before){
                 const times=await ev(`[...document.querySelectorAll('#live-history-messages .message-time')].map(t=>({text:t.textContent,title:t.title,datetime:t.dateTime,opacity:getComputedStyle(t).opacity}))`);
-                assert.equal(times.length,2);assert.equal(times[0].text,'17:30');assert.match(times[1].text,/17:30/);assert.notEqual(times[1].text,'17:30');
+                assert.equal(times.length,longChat?14:2);assert.equal(times[0].text,'17:30');assert.match(times[1].text,/17:30/);assert.notEqual(times[1].text,'17:30');
                 assert.equal(times[1].datetime,(await ev(`window.__sent[1]`)));assert.equal(times[1].title,await ev(`new Intl.DateTimeFormat(undefined,{dateStyle:'full',timeStyle:'long'}).format(new Date(window.__sent[1]))`));
                 assert.equal(times[1].opacity,'1');
                 assert.equal(await ev(`(()=>{const b=document.querySelector('#live-history-messages .chat-bubble.assistant');const t=b.querySelector('.message-time').getBoundingClientRect(),s=b.querySelector('.chat-save-btn').getBoundingClientRect(),c=b.querySelector('.chat-copy-btn').getBoundingClientRect();return t.right<=s.left+1&&s.right<=c.left+1})()`),true,'timestamp and actions do not overlap');
