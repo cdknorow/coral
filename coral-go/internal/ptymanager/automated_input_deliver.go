@@ -91,6 +91,9 @@ func (g *inputGate) sendChecked(ctx context.Context, in AutomatedInput) (enterHe
 		if held, err, done := g.pasteChecked(ctx, in); done {
 			return held, err
 		}
+		// Not pasted (bracketed paste off or unconfirmed, or a terminal that only types): the text is typed below and its Enter is not
+		// confirmed from the screen, so it is Coral's only for ownTypedMaxAge, whatever told the gate to type (#112).
+		g.markTyped(in.Name, in.Text)
 	}
 	var footerOnly atomic.Bool // the prompt seen was only a footer (isPromptHold)
 	check := func(ctx context.Context) bool {
@@ -300,9 +303,6 @@ func (g *inputGate) pasteAndEnter(ctx context.Context, in AutomatedInput, ps Pro
 		}
 	}
 	g.setLastPasted(in.Name, in.Text) // Coral's, until its Enter is seen to submit it (#4104)
-	if on, known := BracketedPasteHint(pctx); known && !on {
-		g.markTyped(in.Name, in.Text) // it is typed: no screen confirms the Enter, so it is Coral's only for ownTypedMaxAge
-	}
 	err = ps.SendPrompt(tmux.WithBeforeEnter(pctx, check), terminalinput.Coral, in.Name, in.Text, agentType, sessionID)
 	if err == nil {
 		held, err := g.confirmSubmitted(ctx, in, sr, rendered, agentType, sessionID)

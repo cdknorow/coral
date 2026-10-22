@@ -417,3 +417,35 @@ func TestTypedSendsLastPastedIsOwnOnlyForTwoMinutes(t *testing.T) {
 	now = now.Add(time.Hour)
 	assert.True(t, g.ownLeftover("p", text))
 }
+
+// typedTerm takes no bracketed paste (PromptSender says so, as the PTY backend and tmux do when the hint is off or unknown): the gate types.
+type typedTerm struct{ codexTerm }
+
+func (c *typedTerm) SendPrompt(context.Context, terminalinput.Origin, string, string, string, string) error {
+	return ErrBracketedPasteUnavailable
+}
+
+// The path QA's live run took: a board notice (no paste hint) goes to a terminal that can't take a paste, so it is typed, and its Enter is never seen to empty
+// the box. Coral's record of it must lapse after ownTypedMaxAge, so a person's identical draft is theirs.
+func TestATypedFallbackSendIsCoralsOwnOnlyForTwoMinutes(t *testing.T) {
+	dialogGate(t, time.Hour)
+	name := "codex-composer-typed-fallback"
+	text := "You have 1 unread message on the message board. Run 'coral-board read' to see them."
+	t.Cleanup(func() {
+		DropHeld(name, "test")
+		gate.forgetOwnTexts(name)
+		gate.setLastPasted(name, "")
+		gate.nowFn.Store(nil)
+	})
+	term := &typedTerm{}
+	in := codexInput(&term.codexTerm, name, "", text, false)
+	in.Term = term
+	in.Send = func(context.Context) error { term.mu.Lock(); term.box = text; term.mu.Unlock(); return nil }
+	_, _ = DeliverAutomated(context.Background(), in)
+
+	assert.True(t, gate.ownLeftover(name, text), "right after the send it is Coral's")
+	later := time.Now().Add(ownTypedMaxAge + time.Minute)
+	fn := func() time.Time { return later }
+	gate.nowFn.Store(&fn)
+	assert.False(t, gate.ownLeftover(name, text), "150 s later an identical text is a person's draft")
+}
