@@ -52,11 +52,12 @@ Subcommands:
 	case "claim":
 		cmdTaskClaim(st, taskArgs...)
 	case "current":
-		cmdTaskCurrent(st)
+		cmdTaskCurrent(st, hasFlag(taskArgs, "--json"))
 	case "detail":
+		wantJSON := hasFlag(taskArgs, "--json")
 		taskArgs = withoutFlag(taskArgs, "--json") // task detail always prints JSON; --json is accepted so a script can say so
 		if len(taskArgs) == 0 {
-			cmdTaskCurrent(st)
+			cmdTaskCurrent(st, wantJSON)
 			return
 		}
 		id, err := strconv.ParseInt(taskArgs[0], 10, 64)
@@ -376,7 +377,8 @@ func cmdTaskClaim(st *boardState, args ...string) {
 	}
 }
 
-func cmdTaskCurrent(st *boardState) {
+// cmdTaskCurrent prints the task in progress; with asJSON the task as JSON, or null when there is none.
+func cmdTaskCurrent(st *boardState, asJSON bool) {
 	subscriberID := resolveSubscriberID()
 	body := map[string]string{"subscriber_id": subscriberID}
 
@@ -387,6 +389,10 @@ func cmdTaskCurrent(st *boardState) {
 	}
 
 	if status == http.StatusNotFound {
+		if asJSON {
+			fmt.Println("null")
+			return
+		}
 		fmt.Println("No active task")
 		return
 	}
@@ -397,6 +403,11 @@ func cmdTaskCurrent(st *boardState) {
 
 	var task map[string]any
 	json.Unmarshal(data, &task)
+	if asJSON {
+		pretty, _ := json.MarshalIndent(task, "", "  ")
+		fmt.Println(string(pretty))
+		return
+	}
 	id, _ := task["id"].(float64)
 	title, _ := task["title"].(string)
 	taskBody, _ := task["body"].(string)

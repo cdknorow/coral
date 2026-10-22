@@ -126,3 +126,41 @@ func TestTaskListRefusesUnknownOptionsAndHasJSON(t *testing.T) {
 	assert.Equal(t, 0, code)
 	assert.Contains(t, stdout, "ID", "the table is still the default")
 }
+
+func TestTaskCurrentJSONAgent(t *testing.T) {
+	have := true
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !have {
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte(`{"error":"No active task"}`))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"id":4,"title":"t","priority":"low","status":"in_progress","workflow":{}}`))
+	}))
+	defer srv.Close()
+	code, stdout, stderr := runAgent(t, srv.URL, "task", "current", "--json")
+	require.Equal(t, 0, code, stderr)
+	var got map[string]any
+	require.NoError(t, json.Unmarshal([]byte(stdout), &got), stdout)
+	assert.EqualValues(t, 4, got["id"])
+	_, stdout, _ = runAgent(t, srv.URL, "task", "current")
+	assert.Contains(t, stdout, "Task #4")
+	have = false
+	code, stdout, _ = runAgent(t, srv.URL, "task", "current", "--json")
+	assert.Equal(t, 0, code)
+	assert.Equal(t, "null", strings.TrimSpace(stdout))
+}
+
+// --output at a folder, or in a folder that is not there, says so in words (#241).
+func TestDownloadOutputProblemsAreExplained(t *testing.T) {
+	srv, id := artifactServer(t, []byte("x"))
+	dir := t.TempDir()
+	_, err := downloadArtifactOpts(srv.URL, id, dir, false)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "is a folder")
+	_, err = downloadArtifactOpts(srv.URL, id, filepath.Join(dir, "nope", "x.txt"), false)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "does not exist")
+	assert.NotContains(t, err.Error(), "The system cannot find")
+}

@@ -92,9 +92,9 @@ func checkFreeText(args []string) error {
 				continue
 			}
 			if clihelp.IsFlagLike(rest[i]) {
-				return fmt.Errorf("unknown option %q for post (put -- before message text that starts with '-')", rest[i])
+				return fmt.Errorf("unknown option %q for post (put -- before message text that has '-word' in it)", rest[i])
 			}
-			break
+			// (not a stop at the first word of the text: "post hello --too Lead" has a misspelt --to after it, and would post "hello --too Lead")
 		}
 	}
 	if args[0] == "send" {
