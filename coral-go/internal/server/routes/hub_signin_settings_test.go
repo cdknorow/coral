@@ -45,16 +45,16 @@ func TestPutSettingsRefusesHubTrustSettings(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close()
 	h := NewSystemHandler(db, nil)
-	keys := []string{MaxModeSetting, AllowHubAutoAcceptSetting, RedactTokensSetting, HubRelaunchSetting}
+	keys := []string{MaxModeSetting, AllowHubAutoAcceptSetting, RedactTokensSetting, HubRelaunchSetting, CodexTrustHooksSetting}
 	assert.Len(t, hubTrustSettingRoutes, len(keys), "the census: every trust key is listed here")
-	for _, k := range append(keys, "CLOUD_MAX_MODE", " hub_redact_tokens ", " HUB_RELAUNCH_UPDATES ") {
+	for _, k := range append(keys, "CLOUD_MAX_MODE", " hub_redact_tokens ", " HUB_RELAUNCH_UPDATES ", " Codex_Trust_Coral_Hooks ") {
 		body := fmt.Sprintf(`{"theme":"dark",%q:"launch"}`, k)
 		r := httptest.NewRequest("PUT", "/api/settings", strings.NewReader(body))
 		r.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
 		h.PutSettings(rec, r)
 		assert.Equal(t, 400, rec.Code, k)
-		assert.Contains(t, rec.Body.String(), "/api/cloud/", k)
+		assert.Regexp(t, `/api/(cloud|system)/`, rec.Body.String(), k)
 	}
 	s, _ := store.NewSessionStore(db).GetSettings(t.Context())
 	for _, k := range keys {

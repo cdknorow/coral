@@ -546,6 +546,7 @@ async function _fillMachineSettings(s) {
         const autoAttach = document.getElementById('settings-board-auto-attach');
         // Off unless the Operator turned it on (#3563); an empty value is unset.
         if (autoAttach) autoAttach.checked = settingBool(s.board_auto_attach || undefined, false);
+        loadCodexTrustHooks(); // its own local route, saved when it changes (#153)
         const healthMonitor = document.getElementById('settings-board-health-monitor');
         // On unless the Operator turned it off (#5128).
         if (healthMonitor) healthMonitor.checked = settingBool(s.board_health_monitor || undefined, true);
@@ -1069,4 +1070,44 @@ export async function applySettings() {
         if (!(await tb.applyTerminalBackendChange())) return; // cancelled: the dialog stays open
     } catch { /* the rest is saved */ }
     hideSettingsModal();
+}
+
+// "Trust Coral's hooks in Codex" (#153): written only by its own route on this computer (never PUT /api/settings, never
+// through Coral Hub), so it is saved as soon as it changes and is not part of the Save payload. The line under it says
+// whether Coral trusts its hooks now, and why not (a tools folder this user can change, a platform other than Windows).
+async function loadCodexTrustHooks() {
+    const box = document.getElementById('settings-codex-trust-hooks');
+    if (!box) return;
+    let status = document.getElementById('settings-codex-trust-hooks-status');
+    if (!status) {
+        status = document.createElement('span');
+        status.id = 'settings-codex-trust-hooks-status';
+        status.className = 'toggle-desc';
+        document.getElementById('settings-codex-trust-hooks-desc')?.after(status);
+    }
+    const show = (s) => {
+        box.checked = !!s.trust;
+        status.textContent = s.trusted ? "Now: new Codex agents start with Coral's hooks trusted."
+            : (s.trust && s.why ? `Now: Codex will ask (${s.why}).` : '');
+    };
+    try {
+        const r = await fetch('/api/system/codex-trust-hooks');
+        if (r.ok) show(await r.json());
+    } catch { /* the box stays as drawn */ }
+    if (box.dataset.wired) return;
+    box.dataset.wired = '1';
+    box.addEventListener('change', async () => {
+        try {
+            const r = await fetch('/api/system/codex-trust-hooks', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ trust: box.checked }),
+            });
+            if (!r.ok) throw new Error(String(r.status));
+            show(await r.json());
+        } catch {
+            box.checked = !box.checked;
+            showToast("Couldn't change whether Coral trusts its hooks in Codex", 'error');
+        }
+    });
 }

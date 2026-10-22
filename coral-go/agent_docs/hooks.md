@@ -235,6 +235,16 @@ The hook programs come from the folder Coral puts first on the agent's PATH: `CO
 | `coral-hook-agentic-state` | PostToolUse, Stop, Notification | Updates agent state in Coral UI |
 | `coral-hook-message-check` | PostToolUse | Checks for new board messages |
 
+### Codex: trusting Coral's hooks
+
+Codex gets `coral-hook-agentic-state` for SessionStart, UserPromptSubmit, PreToolUse, PostToolUse and Stop on its command line (`-c hooks.<Event>=...`). Codex 0.161 and later runs a hook only after the person trusts it: until then a new agent opens on **Hooks need review** (1. Review hooks / 2. Trust all and continue / 3. Continue without trusting), and Coral gets no hook events from it.
+
+With the setting **Trust Coral's hooks in Codex** on (the default), Coral gives that trust itself, for each Codex it launches. It passes `-c hooks.state={...}` with a `trusted_hash` for exactly the five hook entries it passes, computed the way Codex computes it, so Codex starts without the dialog. It never writes the person's `CODEX_HOME`, and it never uses Codex's `--dangerously-bypass-hook-trust`. Every other hook Codex loads (your own, a repository's `.codex` hooks, a plugin's) still asks.
+
+It does that only on Windows, and only while nobody but SYSTEM, Administrators or TrustedInstaller can change the hook tool or its folder: an installed Coral under Program Files. In a portable or dev build anything running as you, another agent included, could replace a hook program that Codex would then run outside its sandbox, so there Codex keeps asking. On macOS and Linux an app folder is owned by its user, so no check can tell an installed Coral from one you can change, and Codex keeps asking there too. A Codex version that hashes hooks differently makes the trust not match, and Codex asks again.
+
+The setting can only be changed on this computer: in Settings, which also shows whether the trust applies now and why not, or with `PUT /api/system/codex-trust-hooks {"trust": bool}` from the dashboard or the signed command line. `GET` on the same route reads it. Neither `PUT /api/settings` nor Coral Hub can change it. It applies to Codex agents launched after the change.
+
 ---
 
 ## Validation Rules

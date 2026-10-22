@@ -167,6 +167,7 @@ c GET /api/system/editors
 b GET /api/system/hooks-status
 c GET /api/system/hub-mode
 c GET /api/system/hub-operator
+b GET /api/system/codex-trust-hooks
 b GET /api/system/identity-report
 c GET /api/system/network-info
 c GET /api/system/privacy
@@ -396,6 +397,7 @@ b PUT /api/settings
 b PUT /api/settings/git-diff-mode
 b PUT /api/system/database-security
 b PUT /api/system/hub-mode
+b PUT /api/system/codex-trust-hooks
 b PUT /api/system/hub-operator
 b PUT /api/system/terminal-backend
 b PUT /api/teams/detail/{name}/knowledge/{agentName}
