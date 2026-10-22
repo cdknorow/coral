@@ -31,13 +31,16 @@
             <dl id="reported" class="cloud-facts"></dl>
             <label for="label">Name for this machine</label>
             <input id="label" type="text" maxlength="100" autocomplete="off">
-            <div class="cloud-warn"><strong>Only approve a machine you control.</strong> Approving gives that machine access to your account on this hub, and lets you (and anyone signed in as you) open its terminals and files from the web.</div>
-            <p class="cloud-access-note">Connecting from Coral's dashboard asks what Coral Hub may do on that computer. A machine connected from the command line starts in View (read-only) until you change that in Coral on it; you can limit access further in <a href="/servers">Servers</a>.</p>
+            <div class="cloud-warn"><strong>Only approve a machine you control.</strong>
+                <details class="cloud-more"><summary aria-label="What approving allows">?</summary>
+                    <p>Approving gives that machine access to your account on this hub, and lets you (and anyone signed in as you) open its terminals and files from the web.</p>
+                    <p class="cloud-access-note">Connecting from Coral's dashboard asks what Coral Hub may do on that computer. A machine connected from the command line starts in View (read-only) until you change that in Coral on it; you can limit access further in <a href="/servers">Servers</a>.</p>
+                </details></div>
             <button id="approve" class="cloud-btn primary" type="button">Approve this machine</button>
             <button id="cancel" class="cloud-btn" type="button">Cancel</button>
         </section>
         <section id="done" hidden>
-            <p><strong>Connected.</strong> Your machine will appear in the dashboard when it connects.</p>
+            <p><strong>Connected.</strong> It appears in the dashboard when it connects.</p>
             <a class="cloud-btn primary" href="/">Open the dashboard</a>
             <a class="cloud-btn" href="/servers">Open Servers</a>
         </section>

@@ -154,3 +154,10 @@ body.cloud-mode .settings-cloud-note { margin: 0 0 12px; }
 .hub-nav[hidden] { display: none; }
 .hub-nav-link { color: var(--accent); text-decoration: none; font-size: var(--fs-md, 13px); }
 .hub-nav-link:hover, .hub-nav-link:focus-visible { text-decoration: underline; }
+.cloud-more { display: inline-block; vertical-align: top; margin-left: 6px; }
+.cloud-more > summary { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; cursor: pointer; font-weight: 600; list-style: none; border: 1px solid var(--border); border-radius: var(--radius-md); }
+.cloud-more > summary::-webkit-details-marker { display: none; }
+.cloud-more > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.cloud-more[open] { display: block; margin: 8px 0 0; }
+.cloud-more > p { margin: 8px 0 0; }
+
