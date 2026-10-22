@@ -61,7 +61,8 @@ func (k Kind) Code() int {
 // Table is the exit-code table as help text.
 const Table = `Exit codes: 0 ok; 1 any other failure; 2 usage (nothing was sent); 3 cannot reach the
 server; 4 the server did not answer in time; 5 refused (HTTP 401 or 403); 6 not found (404).
-CORAL_TIMEOUT (a duration such as 30s, 1s to 10m) sets how long a request waits.`
+CORAL_TIMEOUT (a duration such as 30s, 1s to 10m, never more) sets how long a request waits. A command with its
+own long wait (coral-board wait) keeps its own timing; CORAL_TIMEOUT does not shorten or extend it.`
 
 // last is the kind of the most recent failed request this process saw, for Exit1.
 var last atomic.Int32
