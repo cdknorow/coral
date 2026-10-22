@@ -454,3 +454,62 @@ func TestTheRunningBoundCoversALegitimateTeamLaunch(t *testing.T) {
 	assert.GreaterOrEqual(t, idempotencyRunningMax, longest, "a launch of a team of 60 is still running at the bound")
 	assert.Less(t, idempotencyRunningMax, idempotencyTTL, "and the bound is under the time to live")
 }
+
+// teamBody is a launch-team body with n members.
+func teamBody(n int) string {
+	agents := make([]string, n)
+	for k := range agents {
+		agents[k] = `{"name":"a` + strconv.Itoa(k) + `"}`
+	}
+	return `{"board_name":"t","agents":[` + strings.Join(agents, ",") + `]}`
+}
+
+// #5859 (Security's note on #5855): a team launch that is bigger than the 8-minute bound covers gets a bound from its own member count, the time its handler is given
+// (lifecycleTimeout plus lifecyclePerSession each) and a minute; every other route and a body that does not parse get the least; nothing passes the cap.
+func TestRunningBoundGrowsWithATeamLaunchesMemberCount(t *testing.T) {
+	team := func(n int) time.Duration { return runningBound("/api/sessions/launch-team", []byte(teamBody(n))) }
+	assert.Equal(t, idempotencyRunningMax, team(1))
+	assert.Equal(t, idempotencyRunningMax, team(60), "a team of 60: the least")
+	assert.Equal(t, lifecycleTimeout+72*lifecyclePerSession+time.Minute, team(72), "72 members: what its handler is given and a minute")
+	assert.Greater(t, team(100), idempotencyRunningMax, "100 members need longer than 8 minutes")
+	assert.Equal(t, lifecycleTimeout+100*lifecyclePerSession+time.Minute, team(100))
+	assert.Equal(t, idempotencyRunningCap, team(5000), "never more than the cap")
+	for _, path := range []string{"/api/sessions/launch", "/api/sessions/live/x/resume", "/api/sessions/live/x/wake", "/api/tasks/run"} {
+		assert.Equal(t, idempotencyRunningMax, runningBound(path, []byte(teamBody(100))), path+": only a team launch is by its members")
+	}
+	assert.Equal(t, idempotencyRunningMax, runningBound("/api/sessions/launch-team", []byte(`not json`)))
+	assert.Equal(t, idempotencyRunningMax, runningBound("/api/sessions/launch-team", []byte(`{"agents":"x"}`)))
+	assert.Equal(t, idempotencyRunningMax, runningBound("/api/sessions/launch-team", nil))
+	assert.Less(t, idempotencyRunningMax, idempotencyRunningCap)
+}
+
+// The record of a big team's launch is held for that longer bound: a retry within it is still "in progress", after it the key is free.
+func TestABigTeamLaunchKeepsItsKeyBusyForItsOwnBound(t *testing.T) {
+	i := NewIdempotency()
+	clock := time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC)
+	i.now = func() time.Time { return clock }
+	release, started := make(chan struct{}), make(chan struct{})
+	var runs atomic.Int32
+	h := i.Wrap(func(w http.ResponseWriter, r *http.Request) {
+		if runs.Add(1) == 1 {
+			close(started)
+			<-release
+		}
+		w.WriteHeader(200)
+	})
+	body := teamBody(100)
+	bound := lifecycleTimeout + 100*lifecyclePerSession + time.Minute
+	stuck := make(chan struct{})
+	go func() {
+		defer close(stuck)
+		idemDo(h, idemReq("/api/sessions/launch-team", body, "hub-user-1234abcd", idemKey))
+	}()
+	<-started
+	clock = clock.Add(idempotencyRunningMax + time.Second) // past the least bound, within this team's
+	assert.Equal(t, http.StatusConflict, idemDo(h, idemReq("/api/sessions/launch-team", body, "hub-user-1234abcd", idemKey)).Code, "a 100-member team may still be starting")
+	clock = clock.Add(bound - idempotencyRunningMax) // past its own bound
+	assert.Equal(t, 200, idemDo(h, idemReq("/api/sessions/launch-team", body, "hub-user-1234abcd", idemKey)).Code, "past its own bound the key is free")
+	assert.EqualValues(t, 2, runs.Load())
+	close(release)
+	<-stuck
+}

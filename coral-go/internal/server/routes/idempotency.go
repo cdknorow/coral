@@ -15,6 +15,7 @@ package routes
 import (
 	"bytes"
 	"crypto/sha256"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
@@ -28,10 +29,12 @@ import (
 
 const (
 	idempotencyTTL = 10 * time.Minute
-	// idempotencyRunningMax bounds a record that is still running: past it the key is free again, so a handler that never returns does not leave every retry on 409 for the
-	// whole time to live. The longest a launch route legitimately runs is its lifecycle bound, lifecycleTimeout (2 minutes) plus lifecyclePerSession (5 seconds) for each member of
-	// a team: 8 minutes covers a team of 72 members; it is under the time to live (a test pins both).
+	// idempotencyRunningMax is the least a record that is still running is bound to: past it the key is free again, so a handler that never returns does not leave every retry on 409
+	// for the whole time to live. The longest a launch route legitimately runs is its lifecycle bound, lifecycleTimeout (2 minutes) plus lifecyclePerSession (5 seconds) for each member of
+	// a team (runningBound): 8 minutes covers a team of 72 members and is under the time to live (a test pins both); a bigger team gets a longer bound, from its own member count.
 	idempotencyRunningMax = 8 * time.Minute
+	// idempotencyRunningCap is the most any running record is held: a team so big that its own bound would pass it is not protected beyond it.
+	idempotencyRunningCap = time.Hour
 	idempotencyMaxKeys    = 2000
 	idempotencyMaxPerUser = 200
 	idempotencyMaxBody    = 1 << 20  // a request body bigger than this is not deduplicated; an answer bigger than this is not kept (a repeat is answered 409 request_already_done)
@@ -43,7 +46,8 @@ var idempotencyKeyRe = regexp.MustCompile(`^[A-Za-z0-9_-]{16,128}$`)
 type idemEntry struct {
 	user     string
 	bodyHash [sha256.Size]byte
-	at       time.Time // when it was started, then when it finished
+	at       time.Time     // when it was started, then when it finished
+	bound    time.Duration // how long it may run before its key is free again (runningBound)
 	done     bool
 	status   int
 	ctype    string
@@ -77,6 +81,24 @@ func (i *Idempotency) Middleware(next http.Handler) http.Handler {
 		}
 		wrapped(w, r)
 	})
+}
+
+// runningBound is how long a request may run before its key is free again: idempotencyRunningMax, and for a team launch the time its own handler is given, lifecycleTimeout plus
+// lifecyclePerSession for each member (the bound of lifecycleCtxN, which LaunchTeam sets from the same count), and a minute for what it does before that, when that is longer; never more
+// than idempotencyRunningCap. A body that does not parse gets the least.
+func runningBound(path string, body []byte) time.Duration {
+	bound := idempotencyRunningMax
+	if path == "/api/sessions/launch-team" {
+		var team struct {
+			Agents []json.RawMessage `json:"agents"`
+		}
+		if json.Unmarshal(body, &team) == nil {
+			if need := lifecycleTimeout + time.Duration(len(team.Agents))*lifecyclePerSession + time.Minute; need > bound {
+				bound = need
+			}
+		}
+	}
+	return min(bound, idempotencyRunningCap)
 }
 
 // hubStampedUser is the Coral Hub user label of a request: exactly one X-Coral-Hub-User value of the stamp's form; ok is false otherwise.
@@ -120,7 +142,7 @@ func (i *Idempotency) Wrap(next http.HandlerFunc) http.HandlerFunc {
 		scope := sha256.Sum256([]byte(r.Method + "\x00" + r.URL.Path + "\x00" + user + "\x00" + keys[0]))
 		// The query string is part of what the request asks for: the same key with another query is another request (#5855).
 		hash := sha256.Sum256(append([]byte(r.URL.RawQuery+"\x00"), raw...))
-		e, replay, refuse := i.begin(scope, user, hash)
+		e, replay, refuse := i.begin(scope, user, hash, runningBound(r.URL.Path, raw))
 		switch {
 		case refuse == "key_reuse":
 			writeError(w, http.StatusUnprocessableEntity, "idempotency_key_reuse", "this Idempotency-Key was used for a different request: use a new key for a new request")
@@ -161,12 +183,12 @@ func (i *Idempotency) Wrap(next http.HandlerFunc) http.HandlerFunc {
 }
 
 // begin takes the record for scope: a new in-progress one (e), the finished one to replay, or a reason to refuse. When no room can be made, the request runs unrecorded.
-func (i *Idempotency) begin(scope [sha256.Size]byte, user string, hash [sha256.Size]byte) (e *idemEntry, replay *idemEntry, refuse string) {
+func (i *Idempotency) begin(scope [sha256.Size]byte, user string, hash [sha256.Size]byte, bound time.Duration) (e *idemEntry, replay *idemEntry, refuse string) {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 	now := i.now()
 	if old, ok := i.entries[scope]; ok {
-		if (old.done && now.Sub(old.at) > idempotencyTTL) || (!old.done && now.Sub(old.at) > idempotencyRunningMax) {
+		if (old.done && now.Sub(old.at) > idempotencyTTL) || (!old.done && now.Sub(old.at) > old.bound) {
 			if !old.done {
 				slog.Warn("[cloud] a request with an Idempotency-Key ran longer than any launch route should: its key is free again", "hub_user", user, "ran", now.Sub(old.at).Round(time.Second))
 			}
@@ -186,7 +208,7 @@ func (i *Idempotency) begin(scope [sha256.Size]byte, user string, hash [sha256.S
 	if len(i.entries) >= idempotencyMaxKeys && !i.evictOldestDoneLocked("") {
 		return &idemEntry{}, nil, ""
 	}
-	e = &idemEntry{user: user, bodyHash: hash, at: now}
+	e = &idemEntry{user: user, bodyHash: hash, at: now, bound: bound}
 	i.entries[scope] = e
 	i.perUser[user]++
 	return e, nil, ""
