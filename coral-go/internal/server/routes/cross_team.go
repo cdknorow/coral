@@ -638,10 +638,21 @@ func (h *BoardHandler) postRelayedExternalMessage(w http.ResponseWriter, r *http
 	var recipients []string
 	var admitted bool
 	var err error
+	mode := doorOld // which door took it, for the shadow count below (the board's server list is read only by the old one)
 	if h.allowlistOn(ctx) {
 		recipients, settings, admitted, err = h.crossTeamDoor(ctx, target, sender, strings.TrimSpace(body.To))
 	} else {
-		recipients, settings, admitted, err = h.relayedDoor(ctx, target, src, strings.TrimSpace(body.To))
+		// The door follows what the connection's hub advertised (#5862): cross_team_links/1 admits by the hub's link snapshot; a hub that advertised it before and no longer does is refused
+		// (never sent back to the old door); a hub that never did keeps the board's server list as it always was.
+		mode = h.DoorMode(ctx, r)
+		switch mode {
+		case doorLinks:
+			recipients, settings, admitted, err = h.linksDoor(ctx, target, src, hubSourceTeam(r), strings.TrimSpace(body.To), false)
+		case doorRefuse:
+			recipients, settings, admitted, err = h.linksDoor(ctx, target, src, hubSourceTeam(r), strings.TrimSpace(body.To), true)
+		default:
+			recipients, settings, admitted, err = h.relayedDoor(ctx, target, src, strings.TrimSpace(body.To))
+		}
 	}
 	if err != nil {
 		errInternalServer(w, err.Error())
@@ -655,7 +666,7 @@ func (h *BoardHandler) postRelayedExternalMessage(w http.ResponseWriter, r *http
 		writeRelayedRefused(w)
 		return
 	}
-	if !h.allowlistOn(ctx) && !sender.listed(settings) {
+	if !h.allowlistOn(ctx) && mode == doorOld && !sender.listed(settings) {
 		// Shadow (#5508): what the list would have refused, counted, not acted on.
 		h.noteDoor(ctx, target, board.LogWouldRefuse, sender)
 	}
