@@ -329,7 +329,7 @@ jobs:
           $buildDir = (Resolve-Path "dist\windows").Path
           Copy-Item "tools\license.rtf" $buildDir
           $msiPath = Join-Path $buildDir "Coral-$version-x64.msi"
-          wix build tools\coral.wxs -ext WixToolset.UI.wixext -d "Version=$version" -d "BinDir=$binDir" -d "BuildDir=$buildDir" -o $msiPath
+          wix build tools\coral.wxs -arch x64 -ext WixToolset.UI.wixext -d "Version=$version" -d "BinDir=$binDir" -d "BuildDir=$buildDir" -o $msiPath
           echo "MSI_PATH=$msiPath" >> $env:GITHUB_ENV
           echo "VERSION=$version" >> $env:GITHUB_ENV
 

@@ -220,6 +220,12 @@ try {
 
     # ── the MSI: a silent install into scratch, the programs, a version, the uninstall ──
     if ($Msi) {
+        # The package's platform is the template in its summary information: "x64;..." for a 64-bit package, "Intel;..." for a 32-bit one, which installs into
+        # Program Files (x86) (the walk of v1.4.155, #6004's W1). The programs are 64-bit, so the package is too.
+        $msiText = [Text.Encoding]::GetEncoding(28591).GetString([IO.File]::ReadAllBytes($Msi))
+        if ($msiText.Contains('Intel;') -and -not $msiText.Contains('x64;')) { Fail "the MSI is a 32-bit package (template Intel): it would install into Program Files (x86); build it with wix build -arch x64" }
+        elseif ($msiText.Contains('x64;')) { Pass "the MSI is an x64 package (it installs into Program Files)" }
+        else { Fail "the MSI's platform could not be read from its summary information" }
         $msiDir = Join-Path $root 'msi'
         $msiLog = Join-Path $root 'msi-install.log'
         $inst = Start-Process -FilePath 'msiexec.exe' -Wait -PassThru -ArgumentList '/i', "`"$Msi`"", '/qn', '/norestart', "INSTALLFOLDER=`"$msiDir`"", '/l*v', "`"$msiLog`""
