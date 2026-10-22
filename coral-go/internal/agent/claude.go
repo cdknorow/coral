@@ -122,7 +122,7 @@ func (a *ClaudeAgent) LaunchCommand(params LaunchParams) (string, error) {
 		parts = append(parts, params.Flags...)
 	}
 
-	parts = appendPermissionMode(parts, params)
+	parts = appendPermissionMode(parts, params, true)
 
 	// Pass the prompt as a CLI positional argument so the agent starts immediately
 	// without relying on fragile tmux send-keys delivery.
@@ -219,22 +219,27 @@ func claudeSettingsFile(files *launchFiles, params LaunchParams, effectiveID str
 	return files.write("settings", effectiveID, "json", append(data, '\n'))
 }
 
-// appendPermissionMode adds --permission-mode from the settings unless Flags already has it.
-func appendPermissionMode(parts []string, params LaunchParams) []string {
-	if params.PermissionMode != "" && params.PermissionMode != "default" {
-		hasPermMode := false
-		for _, f := range params.Flags {
-			if f == "--permission-mode" {
-				hasPermMode = true
-				break
-			}
-		}
-		if !hasPermMode {
-			parts = append(parts, "--permission-mode", params.PermissionMode)
+// appendPermissionMode adds --permission-mode from the settings unless Flags already has a permission mode (the flag, its = form, or a bypass). An interactive launch always carries one
+// (#5894): where Coral means "ask" (the default mode, or none) it says so with --permission-mode default, because Claude Code 2.1.283 and later starts an interactive session in Auto when
+// no mode is given, and a launch that meant to keep asking (a Coral Hub launch with the auto-accept switch off, an agent started by another agent, a restart or wake restoring a stored
+// default) would then start in the mode the Hub gate and the agent-launch limits refuse to hand out. A print-mode run starts in Manual without a flag, so it is left as it was.
+func appendPermissionMode(parts []string, params LaunchParams, interactive bool) []string {
+	mode := params.PermissionMode
+	if mode == "" && interactive {
+		mode = "default"
+	}
+	if mode == "default" && !interactive {
+		mode = ""
+	}
+	if mode == "" {
+		return parts
+	}
+	for _, f := range params.Flags {
+		if f == "--permission-mode" || strings.HasPrefix(f, "--permission-mode=") || f == "--dangerously-skip-permissions" {
+			return parts // a mode of its own in the flags wins
 		}
 	}
-
-	return parts
+	return append(parts, "--permission-mode", mode)
 }
 
 // PrintArgs is the argument list for a non-interactive "claude --print" run with the same
@@ -251,7 +256,7 @@ func (a *ClaudeAgent) PrintArgs(params LaunchParams) (args []string, settingsFil
 	}
 	args = []string{"--print", "--no-session-persistence", "--settings", settingsFile}
 	args = append(args, params.Flags...)
-	return appendPermissionMode(args, params), settingsFile, nil
+	return appendPermissionMode(args, params, false), settingsFile, nil
 }
 
 func (a *ClaudeAgent) PrepareResume(sessionID, workingDir string) {

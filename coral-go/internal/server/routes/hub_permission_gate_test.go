@@ -35,7 +35,15 @@ var hubGateCases = []hubGateCase{
 			return map[string]any{"agent_type": "claude", "flags": []string{"--permission-mode=acceptEdits"}}
 		},
 		safe: func(string) any {
+			return map[string]any{"agent_type": "claude", "flags": []string{"--permission-mode", "default"}}
+		}},
+	// Claude's Plan mode runs the commands its classifier approves instead of asking (Anthropic's permission-modes page), so it needs the switch like Auto does (#5894).
+	{name: "launch: Claude Plan",
+		skips: func(string) any {
 			return map[string]any{"agent_type": "claude", "flags": []string{"--permission-mode", "plan"}}
+		},
+		safe: func(string) any {
+			return map[string]any{"agent_type": "claude", "flags": []string{"--permission-mode", "default"}}
 		}},
 	{name: "launch: an unknown flag",
 		skips: func(string) any {
@@ -62,7 +70,7 @@ var hubGateCases = []hubGateCase{
 		safe:  func(string) any { return team("t1", "", nil, []string{"--approval-mode", "plan"}) }},
 	{name: "launch-team: the team's flags",
 		skips: func(string) any { return team("t2", "claude", []string{"--dangerously-skip-permissions"}, nil) },
-		safe:  func(string) any { return team("t2", "claude", []string{"--permission-mode", "plan"}, nil) }},
+		safe:  func(string) any { return team("t2", "claude", []string{"--permission-mode", "default"}, nil) }},
 	{name: "restart: extra flags", restart: true,
 		skips: func(sid string) any {
 			return map[string]any{"session_id": sid, "agent_type": "claude", "extra_flags": "--allowedTools Bash(*)"}
@@ -323,7 +331,7 @@ func TestHubTeamLaunchChecksEachMemberWhenItsTurnComes(t *testing.T) {
 			body, _ := json.Marshal(map[string]any{"board_name": "recheck", "new_board": true, "working_dir": t.TempDir(), "agent_type": "claude",
 				"flags": []string{"--dangerously-skip-permissions"}, // the team's flags: A and B take them, C has its own that keep the prompts
 				"agents": []map[string]any{
-					{"name": "A"}, {"name": "B"}, {"name": "C", "flags": []string{"--permission-mode", "plan"}},
+					{"name": "A"}, {"name": "B"}, {"name": "C", "flags": []string{"--permission-mode", "default"}},
 				}})
 			req := stamp(httptest.NewRequest(http.MethodPost, "/api/sessions/launch-team", bytes.NewReader(body)))
 			rec := httptest.NewRecorder()

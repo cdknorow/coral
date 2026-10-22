@@ -83,7 +83,8 @@ func TestAClaudeLaunchWithNoChosenPermissionModeStartsInAuto(t *testing.T) {
 	assert.Equal(t, "bypassPermissions", stored)
 	require.NoError(t, rig.ss.SetSetting(ctx, "default_permission_mode", "default"))
 	cmd, stored = launch(map[string]any{"agent_type": at.Claude})
-	assert.NotContains(t, cmd, "--permission-mode", "a saved 'default' is the CLI's own prompts")
+	assert.Contains(t, cmd, "--permission-mode default", "a saved 'default' asks, and says so: Claude 2.1.283+ starts in Auto when no mode is given (#5894)")
+	assert.NotContains(t, cmd, "--permission-mode auto")
 	assert.Equal(t, "default", stored)
 
 	// another CLI with nothing chosen starts as it did: no Auto
@@ -116,14 +117,14 @@ func TestAnAutoAcceptingTaskRunStartsClaudeInAuto(t *testing.T) {
 	assert.Equal(t, "--model x", taskRunFlags("claude", " --model x ", false), "no auto-accept: the caller's flags only")
 }
 
-// Through the hub, Auto in the flags counts as skipping the prompts, as Windows round 4 decided (agent.SkipsPermissionPrompts: only default and plan keep them): an explicit
-// --permission-mode auto needs the owner's switch, Launch mode and the dashboard's provenance; the default and plan do not.
+// Through the hub, Auto in the flags counts as skipping the prompts, as Windows round 4 decided (agent.SkipsPermissionPrompts: only default keeps them for Claude): an explicit
+// --permission-mode auto needs the owner's switch, Launch mode and the dashboard's provenance; the default does not (Claude's Plan needs them too, #5894).
 func TestAutoModeThroughTheHubCountsAsSkippingPrompts(t *testing.T) {
 	assert.True(t, agent.SkipsPermissionPrompts("claude", []string{"--permission-mode", "auto"}), "Auto is the classifier approving for the agent")
 	assert.True(t, agent.SkipsPermissionPrompts("claude", []string{"--permission-mode=auto"}))
 	assert.True(t, agent.SkipsPermissionPrompts("claude", strings.Fields(taskRunFlags("claude", "", true))), "an auto-accepting task run's own flags")
 	assert.False(t, agent.SkipsPermissionPrompts("claude", []string{"--permission-mode", "default"}))
-	assert.False(t, agent.SkipsPermissionPrompts("claude", []string{"--permission-mode", "plan"}))
+	assert.True(t, agent.SkipsPermissionPrompts("claude", []string{"--permission-mode", "plan"}), "Claude's Plan runs classifier-approved commands without asking (#5894)")
 }
 
 // #5836, Security's FIX 2: the Auto default must not get past the Hub gate. A Hub-stamped launch or team member with no permission mode starts Claude in Auto only when the
