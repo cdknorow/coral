@@ -199,6 +199,14 @@ try {
     foreach ($v in 'CORAL_SESSION_NAME', 'CORAL_SESSION_ID', 'CORAL_SESSION_TOKEN', 'CORAL_SUBSCRIBER_ID', 'CORAL_CLOUD_URL') {
         Remove-Item "env:$v" -ErrorAction SilentlyContinue
     }
+
+    # The updater program ships and is inert: its status says the apply is off (applyEnabled is a compile-time false until a platform passes its upgrade tests).
+    $upd = Join-Path $extract 'coral-update.exe'
+    if (Test-Path -LiteralPath $upd) {
+        $st = (& $upd status --json 2>&1 | Out-String)
+        if ($st -match '"apply_enabled":\s*false') { Pass "coral-update status says apply_enabled false (the updater ships inert)" }
+        else { Fail "coral-update status: $st" }
+    } else { Fail "coral-update.exe not in the ZIP" }
     New-Item -ItemType Directory -Force -Path (Join-Path $root '.coral') | Out-Null
     Set-Content -LiteralPath (Join-Path $root '.coral\.eula-accepted') -Value "accepted`n" -NoNewline
 

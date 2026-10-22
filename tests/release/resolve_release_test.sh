@@ -20,7 +20,7 @@ check v1.4.69-forDropbox fts5,dropboxers true
 check v1.4.69-dev-forDropbox fts5,dropboxers true   # -forDropbox wins, as the old if/elif did
 check v1.4.69-beta-dev fts5,beta true               # -beta before -dev
 out=$(bash "$here/resolve_release.sh" v1.4.69)
-[ "$(sed -n 's/^commands=//p' <<<"$out")" = "coral launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-session-start coral-hook-task-sync" ] || { echo "FAIL commands list changed"; fail=1; }
+[ "$(sed -n 's/^commands=//p' <<<"$out")" = "coral launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-session-start coral-hook-task-sync coral-update" ] || { echo "FAIL commands list changed"; fail=1; }
 [ "$(sed -n 's/^gui_commands=//p' <<<"$out")" = "coral-tray coral-app" ] || { echo "FAIL gui list changed"; fail=1; }
 [ "$fail" = 0 ] && echo "PASS resolve_release: 8 tags, both program lists"
 exit "$fail"

@@ -10,3 +10,4 @@ coral-hook-agentic-state
 coral-hook-message-check
 coral-hook-session-start
 coral-hook-task-sync
+coral-update
