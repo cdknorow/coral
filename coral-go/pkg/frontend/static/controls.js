@@ -1020,7 +1020,6 @@ export async function uploadAndInsertImage(file, session = state.currentSession)
         formData.append("session_id", sid); // the agent this image is for: its artifact copy goes on that agent's record (#5284)
 
         try {
-            showToast(`Uploading ${file.name}...`);
             // The path is typed into the agent, so the file must land on the agent's own server.
             const resp = await serverFetch(sessionServer(targetSession), "/api/upload", {
                 method: "POST",
@@ -1054,7 +1053,10 @@ export async function uploadAndInsertImage(file, session = state.currentSession)
                 renderAttachments(targetSession);
                 document.getElementById("command-input")?.focus();
             }
-            showToast(result.artifact_error ? `Attached: ${result.filename} (not shared: ${artifactErrorText(result)})` : `Attached: ${result.filename}`);
+            // The chip says what was attached (a toast per file covered Send on a phone, #6160): a screen reader is told in a hidden status line; only a copy that could not be shared is a toast, as it is news the chip does not carry.
+            const status = document.getElementById("image-attach-status");
+            if (status) status.textContent = list.length === 1 ? `Attached ${result.filename}` : `${list.length} images attached`;
+            if (result.artifact_error) showToast(`Attached ${result.filename}, not shared: ${artifactErrorText(result)}`, true);
             return true;
         } catch (e) {
             showToast(UPLOAD_UNFINISHED, true, 10000, { action: { label: "Retry", onClick: () => uploadAndInsertImage(file, targetSession) } });
@@ -1066,6 +1068,7 @@ export async function uploadAndInsertImage(file, session = state.currentSession)
     const activeList = activeUploadPromisesBySession.get(sid) || [];
     activeList.push(uploadPromise);
     activeUploadPromisesBySession.set(sid, activeList);
+    if (state.currentSession?.session_id === sid) renderAttachments(targetSession); // "Uploading" shows in the chip row, not as a toast per file (#6160)
 
     try {
         return await uploadPromise;
@@ -1077,6 +1080,7 @@ export async function uploadAndInsertImage(file, session = state.currentSession)
         } else {
             activeUploadPromisesBySession.delete(sid);
         }
+        if (state.currentSession?.session_id === sid) renderAttachments(targetSession);
     }
 }
 
@@ -1088,19 +1092,22 @@ export function renderAttachments(session = state.currentSession) {
     if (!container) return;
 
     const list = getPendingAttachments(session);
-    if (list.length === 0) {
+    const uploading = (activeUploadPromisesBySession.get(session?.session_id) || []).length;
+    if (list.length === 0 && uploading === 0) {
         container.innerHTML = "";
         container.style.display = "none";
         return;
     }
 
     container.style.display = "flex";
+    const uploadingText = `Uploading ${uploading === 1 ? "image" : `${uploading} images`}…`;
+    const pending = uploading ? `<div class="image-uploading">${escapeHtml(uploadingText)}</div>` : "";
     container.innerHTML = list.map((att, i) => `
         <div class="image-attachment" title="${escapeAttr(att.filename)}">
             <img src="${escapeAttr(att.previewUrl)}" alt="${escapeAttr(imageName(i, list.length))}" />
             <button type="button" class="image-attachment-remove" data-on-click="attachment-remove" data-index="${Number(i)}" aria-label="Remove ${escapeAttr(imageName(i, list.length).toLowerCase())}" title="Remove ${escapeAttr(att.filename)}">&times;</button>
         </div>
-    `).join("");
+    `).join("") + pending;
 }
 
 export function removeAttachment(index, session = state.currentSession) {
