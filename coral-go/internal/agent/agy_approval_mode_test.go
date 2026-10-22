@@ -108,3 +108,21 @@ func TestAConfiguredPathThatIsTheRealGeminiCLIIsRefused(t *testing.T) {
 	assert.False(t, isRealGeminiHelp("Usage of agy:\n Gemini CLI mentioned in a flag's text"), "agy's own help is never the real one")
 	assert.True(t, isRealGeminiHelp(realGemini))
 }
+
+// The --help probe runs with a minimal environment and keeps only the first 4 KiB of what is printed (#5901, Security's follow-up).
+func TestHelpProbeHasAMinimalEnvironmentAndABoundedOutput(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the stand-in program is a shell script")
+	}
+	t.Setenv("CORAL_SECRET_KEY", "must-not-reach-the-probe")
+	prog := filepath.Join(t.TempDir(), "tool")
+	require.NoError(t, os.WriteFile(prog, []byte("#!/bin/sh\necho \"secret=$CORAL_SECRET_KEY\"\nyes 0123456789 | head -c 200000\n"), 0o755))
+	got := cliHelp(prog)
+	assert.Contains(t, got, "secret=\n", "Coral's own environment is not passed")
+	assert.NotContains(t, got, "must-not-reach-the-probe")
+	assert.LessOrEqual(t, len(got), 4096, "bounded")
+	assert.Contains(t, got, "0123456789", "the head of the output is kept")
+	for _, kv := range helpEnv() {
+		assert.True(t, strings.HasPrefix(kv, "PATH=") || strings.HasPrefix(kv, "HOME=") || strings.HasPrefix(kv, "USERPROFILE=") || strings.HasPrefix(kv, "SystemRoot=") || strings.HasPrefix(kv, "LOCALAPPDATA="), kv)
+	}
+}
