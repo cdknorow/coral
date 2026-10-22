@@ -396,7 +396,7 @@ async function _refreshCallMetrics() {
         const rows = data.rows || [];
         // Metrics past the raw-row cap are not stored (#5359): say so, so a gap after a burst is not read as quiet (#5368).
         const dropped = data.cap_dropped > 0 ? `<p class="cost-empty">${Number(data.cap_dropped)} calls were not recorded since Coral started: the call metrics table was full.</p>` : '';
-        if (!rows.length) { emptyState(el, 'No call metrics yet', 'cost-empty'); if (dropped) el.insertAdjacentHTML('beforeend', dropped); return; }
+        if (!rows.length) { emptyState(el, 'No metrics', 'cost-empty'); if (dropped) el.insertAdjacentHTML('beforeend', dropped); return; }
         el.innerHTML = dropped + `<table class="cost-table"><thead><tr><th>Operation</th><th>Type</th><th>Agent</th><th>Team</th><th>Calls</th><th>Errors</th><th>Avg ms</th></tr></thead><tbody>${rows.map(r => `<tr><td>${escapeHtml(r.operation)}</td><td>${escapeHtml(r.call_type)}</td><td>${escapeHtml(r.agent_name || '—')}</td><td>${escapeHtml(r.board_name || '—')}</td><td>${r.calls}</td><td>${r.errors}</td><td>${Math.round(r.avg_duration_ms || 0)}</td></tr>`).join('')}</tbody></table>`;
     } catch { emptyState(el, 'Call metrics unavailable', 'cost-empty'); }
 }
@@ -557,7 +557,7 @@ function _renderProviderTable(rows) {
     const filtered = _applyColFilters(rows, 'provider', { agent_type: r => r.agent_type || '' });
     const sorted = _sortRows(filtered, 'provider', (r, f) => f === 'agent_type' ? (r.agent_type || '') : (r[f] || 0));
     if (sorted.length === 0) {
-        emptyState(container, 'No usage data yet', 'cost-empty');
+        emptyState(container, 'No data', 'cost-empty');
         return;
     }
     let html = `<table class="cost-table">
@@ -603,7 +603,7 @@ function _renderModelTable(rows) {
     });
 
     if (sorted.length === 0) {
-        emptyState(container, 'No usage data yet', 'cost-empty');
+        emptyState(container, 'No data', 'cost-empty');
         return;
     }
 
@@ -658,7 +658,7 @@ function _renderThinkingTable(rows) {
         return r[f] || 0;
     });
     if (sorted.length === 0) {
-        emptyState(container, 'No usage data yet', 'cost-empty');
+        emptyState(container, 'No data', 'cost-empty');
         return;
     }
     let html = `<table class="cost-table">
@@ -714,7 +714,7 @@ function _renderAgentTable(rows) {
     });
 
     if (sorted.length === 0) {
-        emptyState(container, 'No usage data yet', 'cost-empty');
+        emptyState(container, 'No data', 'cost-empty');
         return;
     }
 
@@ -897,7 +897,7 @@ function _renderTaskTable(tasks) {
     _costTaskCache = sorted;
 
     if (sorted.length === 0) {
-        emptyState(container, 'No task data yet', 'cost-empty');
+        emptyState(container, 'No data', 'cost-empty');
         return;
     }
 
@@ -1026,7 +1026,7 @@ function _renderSpendChart(buckets) {
     if (!container) return;
 
     if (buckets.length < 2) {
-        emptyState(container, 'Not enough data for chart', 'cost-empty');
+        emptyState(container, 'Not enough data', 'cost-empty');
         return;
     }
 
@@ -1175,7 +1175,7 @@ function _renderTeamTable(teams) {
     });
 
     if (sorted.length === 0) {
-        emptyState(container, 'No team data yet', 'cost-empty');
+        emptyState(container, 'No data', 'cost-empty');
         return;
     }
 
@@ -1237,7 +1237,7 @@ function _renderBranchTable(branches) {
     });
 
     if (sorted.length === 0) {
-        emptyState(container, 'No branch data yet', 'cost-empty');
+        emptyState(container, 'No data', 'cost-empty');
         return;
     }
 
