@@ -191,8 +191,12 @@ async function waitHttp(url, ms = 30000) {
   throw new Error('timeout waiting for ' + url);
 }
 const alive = p => p && p.exitCode === null && p.signalCode === null;
+// Windows has no process groups to signal: the child and everything it started are ended by taskkill /T, and the children are not
+// 'detached' there (DETACHED_PROCESS leaves coral with no console, so each console program it starts opens a visible window of its own).
+const DETACH = process.platform !== 'win32';
 const killTree = (p, sig = 'SIGKILL') => {
   if (!p || !p.pid) return;
+  if (!DETACH) { spawnSync('taskkill', ['/PID', String(p.pid), '/T', '/F'], { stdio: 'ignore' }); return; }
   try { process.kill(-p.pid, sig); } catch { try { p.kill(sig); } catch { /* gone */ } }
 };
 
@@ -434,7 +438,7 @@ async function startShard(n, gen = 0, strict = false) {
   }
   const coral = spawn(bin, ['--home', data, '--host', '127.0.0.1', '--port', String(port), '--no-browser', '--cloud-url', 'off',
     ...(strict ? ['--strict-local-auth'] : ['--strict-local-auth=false']), ...(process.env.CORAL_BACKEND ? ['--backend', process.env.CORAL_BACKEND] : [])],
-    { env: serverEnv, stdio: ['ignore', fs.openSync(log, 'w'), fs.openSync(log, 'a')], detached: true });
+    { env: serverEnv, stdio: ['ignore', fs.openSync(log, 'w'), fs.openSync(log, 'a')], detached: DETACH });
   track(coral);
   allLogs.push(log);
   let coralExit = null;
@@ -479,7 +483,7 @@ async function startShard(n, gen = 0, strict = false) {
     ...(process.env.CI ? ['--no-sandbox', '--disable-dev-shm-usage'] : []),
     // CDP_NETLOG=1: Chrome writes its network log to <shard>/netlog.json, to see why a request failed.
     ...(process.env.CDP_NETLOG ? [`--log-net-log=${path.join(dir, 'netlog.json')}`] : []), 'about:blank'];
-  const chrome = spawn(chromePath, chromeArgs, { stdio: ['ignore', 'ignore', 'pipe'], detached: true });
+  const chrome = spawn(chromePath, chromeArgs, { stdio: ['ignore', 'ignore', 'pipe'], detached: DETACH });
   track(chrome);
   let chromeErr = '';
   chrome.stderr.on('data', d => { chromeErr = (chromeErr + d).slice(-8000); });
@@ -615,7 +619,7 @@ async function runAttempt(t, shard) {
   const started = Date.now();
   return await new Promise(resolve => {
     // helpers/keep_page_visible.js keeps each suite's pages visible (a hidden page runs no animation frames, #3707).
-    const p = spawn('node', ['--require', path.join(here, 'helpers', 'keep_page_visible.js'), t], { cwd: here, env: shard.env, detached: true });
+    const p = spawn('node', ['--require', path.join(here, 'helpers', 'keep_page_visible.js'), t], { cwd: here, env: shard.env, detached: DETACH });
     track(p);
     let out = ''; p.stdout.on('data', d => out += d); p.stderr.on('data', d => out += d);
     let timedOut = false;
