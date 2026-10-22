@@ -2,7 +2,10 @@
 
 package main
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // What the page may paint the title bar with: CSS colours with plain numbers, nothing else (#313).
 func TestParseCSSColor(t *testing.T) {
@@ -27,6 +30,9 @@ func TestParseCSSColor(t *testing.T) {
 		{"rgb(1, 2)", 0, 0, 0, false},
 		{"url(javascript:alert(1))", 0, 0, 0, false},
 		{"#111114; background: red", 0, 0, 0, false},
+		{"rgb(" + strings.Repeat(" ", 80) + "1, 2, 3)", 0, 0, 0, false}, // over 64 bytes: refused before the pattern
+		{"rgb(1, 2, 3" + strings.Repeat(" ", 80) + ")", 0, 0, 0, false},
+		{"rgba(255, 255, 255, 0.123456)", 255, 255, 255, true}, // the longest honest colour still passes
 	} {
 		r, g, b, ok := parseCSSColor(c.in)
 		if ok != c.ok || (ok && (r != c.r || g != c.g || b != c.b)) {

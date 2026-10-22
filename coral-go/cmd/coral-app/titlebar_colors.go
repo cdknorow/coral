@@ -15,8 +15,14 @@ var (
 	rgbColor = regexp.MustCompile(`^rgba?\(\s*(\d{1,3})\s*[, ]\s*(\d{1,3})\s*[, ]\s*(\d{1,3})\s*(?:[,/]\s*[0-9.]+%?\s*)?\)$`)
 )
 
+// maxColorText is the longest text taken for a colour (the longest valid one is "rgba(255, 255, 255, 0.123456)" with spaces: under 40).
+const maxColorText = 64
+
 // parseCSSColor reads a CSS colour as red, green and blue; ok is false for anything else.
 func parseCSSColor(s string) (r, g, b uint8, ok bool) {
+	if len(s) > maxColorText { // a computed style is short: a long string is a misbehaving caller, and is not run through the patterns
+		return 0, 0, 0, false
+	}
 	s = strings.TrimSpace(s)
 	if m := hexColor.FindStringSubmatch(s); m != nil {
 		h := m[1]
