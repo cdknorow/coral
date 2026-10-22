@@ -5,7 +5,7 @@
 import { serverFetch } from './server_base.js';
 import { showToast, escapeAttr, escapeHtml } from './utils.js';
 import { readModelsCache, writeModelsCache, clearModelsCache } from './model_labels.js';
-import { familyOf, addCustomModel, addModelForm } from './custom_model_add.js';
+import { familyOf, addCustomModel, addModelForm, probeCanAdd, peekCanAdd } from './custom_model_add.js';
 import { importOnce } from './import_once.js';
 const { _acfServer } = await importOnce('./launch_models.js');
 
@@ -47,7 +47,7 @@ function fill(container, agentType, data) {
     select.innerHTML = `<option value="">Default</option>`
         + models.map(m => `<option value="${escapeAttr(m.value)}">${escapeHtml((m.display_name || m.value) + (m.custom === true ? ' (custom)' : ''))}</option>`).join('')
         + `<option value="${escapeAttr(OTHER)}">Other…</option>`
-        + (familyOf(agentType) ? `<option value="${escapeAttr(ADD)}">Add a model…</option>` : '');
+        + (familyOf(agentType) && peekCanAdd(_acfServer(container)) !== false ? `<option value="${escapeAttr(ADD)}">Add a model…</option>` : '');
     wrap.hidden = false;
     if (note) note.textContent = data && data.error ? data.error : (data && data.refreshing ? 'Updating the list…' : '');
     syncModelPicker(container);
@@ -112,6 +112,8 @@ export async function loadModelPicker(container, agentType) {
     if (agentType === 'terminal') { wrap.hidden = true; container._thinkingLevels = []; syncThinking(container); return; }
     const cached = readModelsCache(_acfServer(container), agentType);
     if (cached) fill(container, agentType, cached); else { wrap.hidden = true; if (input) input.hidden = false; }
+    const server = _acfServer(container); // #5996: a hub grantee cannot add models
+    if (familyOf(agentType)) probeCanAdd(server, () => { if (container._modelToken === token && container.isConnected) select.querySelector(`option[value="${ADD}"]`)?.remove(); });
     for (let i = 0; i <= POLL_MAX; i++) {
         let refreshing = false;
         try { refreshing = applyAnswer(container, agentType, await fetchList(container, agentType)); } catch { /* keep what is shown */ }

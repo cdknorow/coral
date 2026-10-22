@@ -7,6 +7,15 @@ import { importOnce } from './import_once.js';
 const ROUTE = '/api/custom-models';
 const FAMILIES = { claude: 'claude', codex: 'codex', agy: 'agy', antigravity: 'agy', gemini: 'agy', pi: 'pi' };
 
+// #5996: through Coral Hub a non-owner's read of the list is refused (403): one read a minute per server tells it; only a refusal says no.
+const _canAdd = new Map();
+export const peekCanAdd = server => { const e = _canAdd.get(server || ''); return e && Date.now() - e.at < 6e4 ? e.ok : undefined; };
+/** Once the machine says no, `onNo()` runs (once per ask); with an answer kept it does nothing. */
+export function probeCanAdd(server, onNo) {
+    if (peekCanAdd(server) !== undefined) return;
+    serverFetch(server, ROUTE).then(r => r.status !== 401 && r.status !== 403, () => true).then(ok => { _canAdd.set(server || '', { at: Date.now(), ok }); if (!ok) onNo(); });
+}
+
 /** The provider whose custom models an agent type's CLI reads (the server's agentmodels families), '' for a type that has none. */
 export function familyOf(agentType) { return FAMILIES[agentType] || ''; }
 

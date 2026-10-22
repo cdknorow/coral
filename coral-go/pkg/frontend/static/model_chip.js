@@ -7,7 +7,7 @@
 import { serverFetch } from './server_base.js';
 import { escapeHtml, escapeAttr, showToast } from './utils.js';
 import { importOnce } from './import_once.js';
-import { familyOf, addCustomModel } from './custom_model_add.js';
+import { familyOf, addCustomModel, probeCanAdd, peekCanAdd } from './custom_model_add.js';
 import { modelLabel, readModelsCache, writeModelsCache, clearModelsCache, levelName } from './model_labels.js';
 import { setText, setHidden, setTitle, setData, setAttr } from './dom_write.js';
 
@@ -110,6 +110,8 @@ async function _askList(agentType) {
 async function _loadList() {
     const s = _cur && _cur.session;
     if (!s) return null;
+    const server = _cur.server;
+    if (familyOf(s.agent_type)) probeCanAdd(server, () => { if (_open === 'model' && _cur && _cur.server === server) _renderMenu('model'); });
     const key = `${_cur.server}:${s.agent_type}`;
     if (_dataKey === key && _data) return _data;
     if (_dataKey !== key) { _data = null; _dataKey = ''; }
@@ -151,6 +153,7 @@ function _levelsFor(modelId) { return levelsFor(_data, modelId); }
 /** The end of the model menu: "Add a model…", or its form. A person whose model is missing adds it here and picks it, instead of going to Settings. */
 function _addHtml(s) {
     if (!familyOf(s.agent_type) || _loading) return '';
+    if (!_add && _cur && peekCanAdd(_cur.server) === false) return ''; // a hub grantee cannot add models (#5996)
     if (!_add) return '<div class="model-chip-add-row"><button type="button" role="menuitem" class="model-chip-item model-chip-add" data-add><span class="model-chip-item-label">Add a model…</span><span class="material-icons" aria-hidden="true">add</span></button></div>';
     const a = _add, dis = a.busy ? ' disabled' : '';
     return `<form class="model-chip-add-form" role="group" aria-label="Add a model" aria-busy="${escapeAttr(String(a.busy))}" novalidate>`
