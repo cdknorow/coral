@@ -125,8 +125,19 @@ func (wr *WorkflowRunner) executeShellStep(ctx context.Context, runID int64, ste
 		result.ErrorTail = msg
 		return serr
 	}
+	startDir, derr := executil.StartDir(repoPath) // Windows: CreateProcess refuses a working folder of 259+ characters
+	if derr != nil {
+		msg := "coral: " + derr.Error() + "\n"
+		sf.writeNew("stderr.txt", []byte(msg))
+		sf.writeNew("stdout.txt", nil)
+		code := 1
+		result.ExitCode = &code
+		sf.writeNew("exit_code", []byte("1"))
+		result.ErrorTail = msg
+		return derr
+	}
 	cmd := exec.CommandContext(stepCtx, shell, "-c", expandedCmd)
-	cmd.Dir = repoPath
+	cmd.Dir = startDir
 	cmd.Env = withShellDirs(append(agentenv.Filter(os.Environ()), env...), shell) // #3389: no server-only settings
 	executil.NoCwdSearch(cmd)                                                     // Windows: a `cmd /c` in a step must not run a program planted in the repository (#183)
 	executil.HideWindow(cmd)                                                      // Windows: a console program started by a Coral with no console of its own would open a visible window (#211); its output still comes through the pipes
@@ -347,9 +358,13 @@ func (wr *WorkflowRunner) executeAgentPrint(ctx context.Context, runID int64, st
 		}
 	}
 
+	startDir, derr := executil.StartDir(repoPath) // Windows: CreateProcess refuses a working folder of 259+ characters
+	if derr != nil {
+		return fmt.Errorf("step %q: %w", step.Name, derr)
+	}
 	cmd := exec.CommandContext(ctx, binPath, args...)
 	cmd.Stdin = stdin
-	cmd.Dir = repoPath
+	cmd.Dir = startDir
 	cmd.Env = agent.CLIEnv(append(agentenv.Filter(os.Environ()), env...), binPath) // #3389: no server-only settings; an npm-installed CLI runs with its own node (#5899)
 	configureChildProcess(cmd)
 

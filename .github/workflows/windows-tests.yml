@@ -144,7 +144,7 @@ jobs:
       - name: routes (auto-attach, UNC and device paths, links, symlinks, saving files)
         if: ${{ !cancelled() && matrix.shard == 'slow-2' }} # report the routes results even when the slow tests failed
         env:
-          ROUTES_RUN: "AutoAttach|Attach|UNC|Device|HardLink|Symlink|Junction|EvalSymlinks|NeverFollow|SaveFileContent|PathInside|SearchFilesDir|ImportTeam|Upload|WindowsFileURLs|FileIdentity|ShellRiskOnWindows"
+          ROUTES_RUN: "AutoAttach|Attach|UNC|Device|HardLink|Symlink|Junction|EvalSymlinks|NeverFollow|SaveFileContent|PathInside|SearchFilesDir|ImportTeam|Upload|WindowsFileURLs|FileIdentity|ShellRiskOnWindows|LaunchDirError"
         run: |
           # Every Windows-only test in routes must match the filter (a new one outside it would never run here).
           bash ../tests/windows/windows_only_tests.sh --check-routes "$ROUTES_RUN"

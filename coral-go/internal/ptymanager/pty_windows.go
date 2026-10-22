@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/subgentic/coral/internal/agentprio"
+	"github.com/subgentic/coral/internal/executil"
 	"github.com/subgentic/coral/internal/safego"
 	"github.com/subgentic/coral/internal/winshell"
 	"strings"
@@ -56,7 +57,12 @@ func startPTYProcess(name string, args []string, dir string, env []string, cols,
 		conpty.ConPtyEnv(windowsEnvBlock(env)),
 	}
 	if dir != "" {
-		opts = append(opts, conpty.ConPtyWorkDir(dir))
+		// CreateProcess refuses a working folder of 259+ characters ("The directory name is invalid"): its short path, or a plain error.
+		startDir, err := executil.StartDir(dir)
+		if err != nil {
+			return nil, err
+		}
+		opts = append(opts, conpty.ConPtyWorkDir(startDir))
 	}
 
 	cpty, err := conpty.Start(cmdLine, opts...)
