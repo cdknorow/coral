@@ -60,12 +60,13 @@ var notAStarter = map[string]string{
 	"tools/make_windows_icon.py":     "icon generator",
 	// Inspect the bundle's files; do not execute Coral (file/otool/readelf, or a self-test on a
 	// from-source, keyless build so it cannot send).
-	"tests/release/verify_standard_bundle.sh":   "inspects the package (file, lists expected binaries); does not run Coral",
-	"tests/release/verify_encrypted_bundle.sh":  "runs the from-source (keyless) bundle's --encryption-self-test, which carries no PostHog key and sends nothing",
-	"tests/release/verify_encrypted_bundle.ps1": "Windows counterpart: runs the from-source (keyless) bundle's --encryption-self-test, which carries no PostHog key and sends nothing",
-	"tests/release/resolve_release_test.sh":     "unit-tests resolve_release.sh; no Coral",
-	"tests/release/gate_check_test.py":          "unit-tests the required-check logic with fake run lists; the repository name subgentic/coral is only a string, no Coral starts",
-	"tests/release/release_provenance_test.py":  "unit-tests the release provenance record with fake run lists; the repository name subgentic/coral is only a string, no Coral starts",
+	"tests/release/verify_standard_bundle.sh":    "inspects the package (file, lists expected binaries); does not run Coral",
+	"tests/release/verify_encrypted_bundle.sh":   "runs the from-source (keyless) bundle's --encryption-self-test, which carries no PostHog key and sends nothing",
+	"tests/release/verify_encrypted_bundle.ps1":  "Windows counterpart: runs the from-source (keyless) bundle's --encryption-self-test, which carries no PostHog key and sends nothing",
+	"tests/release/resolve_release_test.sh":      "unit-tests resolve_release.sh; no Coral",
+	"tests/release/gate_check_test.py":           "unit-tests the required-check logic with fake run lists; the repository name subgentic/coral is only a string, no Coral starts",
+	"tests/release/release_provenance_test.py":   "unit-tests the release provenance record with fake run lists; the repository name subgentic/coral is only a string, no Coral starts",
+	"tests/release/windows_build_census_test.py": "reads windows-tests.yml and release.yml as text (their build lines name coral-tray); no Coral starts",
 	// Sourced by run_agent_tasks.sh / run.sh (the parent exports the opt-out); not a top-level runner.
 	"tests/stress/agent_task_assignment.sh":   "sourced by run_agent_tasks.sh",
 	"tests/stress/agent_task_workflows.sh":    "sourced by run_agent_tasks.sh",
