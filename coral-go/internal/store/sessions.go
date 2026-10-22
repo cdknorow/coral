@@ -55,7 +55,7 @@ type LiveSession struct {
 	Prompt       *string `db:"prompt" json:"prompt,omitempty"`
 	BoardName    *string `db:"board_name" json:"board_name,omitempty"`
 	BoardServer  *string `db:"board_server" json:"board_server,omitempty"`
-	Backend      *string `db:"backend" json:"backend,omitempty"`
+	Backend      *string `db:"backend" json:"launch_path,omitempty"` // the launch path ("pty" means through the TerminalBackend, tmux's included), not the terminal the agent runs on (#6146)
 	Icon         *string `db:"icon" json:"icon,omitempty"`
 	NameColor    *string `db:"name_color" json:"name_color,omitempty"`
 	IsSleeping   int     `db:"is_sleeping" json:"is_sleeping"`

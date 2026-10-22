@@ -257,13 +257,14 @@ $ curl -H "Authorization: Bearer $(coral api-key)" -s -X POST http://127.0.0.1:8
     -H "Content-Type: application/json" \
     -d '{"working_dir":"/path/to/repo","agent_type":"claude",
          "display_name":"first-agent","prompt":"...your task..."}'
-{"backend":"pty","ok":true,"terminal":"tmux",
+{"launch_path":"pty","ok":true,"terminal":"tmux",
  "session_id":"3ea283fc-...","session_name":"claude-3ea283fc-..."}
 ```
 
-> `terminal` reports what the session actually runs on (`tmux` or `pty`). `backend`
-> names the launch path and reads `pty` even for tmux sessions, so use `terminal` (or
-> `tmux_session` in `/api/sessions/live`). Other fields are omitted above.
+> `terminal` reports what the session actually runs on (`tmux` or `pty`). `launch_path`
+> names the launch path ("through the terminal backend") and reads `pty` even for tmux
+> sessions, so use `terminal` (or `tmux_session` in `/api/sessions/live`). Other fields
+> are omitted above.
 
 ### If your first agent is waiting for input
 

@@ -42,11 +42,9 @@ func NewUpdateRelaunchHandler(ss *store.SessionStore, dataDir string, backend fu
 				if l.IsSleeping == 1 || l.IsArchived == 1 {
 					continue
 				}
-				b := backend()
-				if l.Backend != nil && *l.Backend != "" {
-					b = *l.Backend
-				}
-				if b != "pty" {
+				// Decided by the terminal this Coral runs, not by the stored launch path: on a tmux Coral every agent's launch path reads "pty" (it goes through the TerminalBackend), and a tmux agent survives a
+				// relaunch. Only an agent that was started the legacy tmux way (launch path "tmux") survives on a pty Coral too (#6146).
+				if backend() != "pty" || (l.Backend != nil && *l.Backend == "tmux") {
 					continue
 				}
 				name := l.AgentName
