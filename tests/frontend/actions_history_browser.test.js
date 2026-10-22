@@ -37,7 +37,7 @@ const PATHS = ["src/a&b <x>.go", "docs/it's here.md"];
             const json = b => Promise.resolve(new Response(JSON.stringify(b), { headers: { 'content-type': 'application/json' } }));
             window.fetch = (url, opts = {}) => {
                 const u = String(url && url.url || url).replace(/^https?:\\/\\/[^/]+/, ''), m = (opts.method || 'GET').toUpperCase();
-                if (u.includes('/files')) return json({ files: ${JSON.stringify(PATHS)}.map((p, i) => ({ filepath: p, status: i ? 'A' : 'M', additions: 1, deletions: 0 })) });
+                if (u.includes('/files')) return json({ files: window.__emptyFiles ? [] : ${JSON.stringify(PATHS)}.map((p, i) => ({ filepath: p, status: i ? 'A' : 'M', additions: 1, deletions: 0 })) });
                 if (u.includes('/file-content')) { window.__req.push(m + ' ' + u); return json({ content: 'x', exists: true }); }
                 if (u.includes('/api/settings/git-diff-mode') || (u === '/api/settings' && m === 'PUT' && String(opts.body || '').includes('git_diff_mode'))) { window.__req.push(m + ' ' + u + ' ' + (opts.body || '')); return json({ ok: true }); }
                 return inner(url, opts);
@@ -133,6 +133,12 @@ const PATHS = ["src/a&b <x>.go", "docs/it's here.md"];
         await until(`window.__req.some(r => r.includes('git_diff_mode') || r.includes('git-diff-mode'))`, 'the diff mode save', 3000);
         const modeReqs = (await ev(`window.__req`)).filter(r => r.includes('git_diff_mode') || r.includes('git-diff-mode'));
         check('the diff mode select saves a mode it offers, and never one it doesn\'t', sel && modeReqs.length === 1 && !modeReqs[0].includes('evil') && modeReqs[0].includes(sel.picked), JSON.stringify({ sel, modeReqs }));
+
+        await ev(`(async () => { window.__emptyFiles=true; window.__req.length=0; const m=await import(${MOD}+'changed_files.js'); await m.loadChangedFiles('${NAME}','${SID}'); })()`);
+        check('the empty Files panel keeps one comparison selector', await ev(`document.querySelectorAll('#agentic-panel-files select[data-on-change="diff-mode"]').length===1 && document.getElementById('changed-files-list').textContent.includes('No changed files')`));
+        await ev(`(() => {const s=document.querySelector('#agentic-panel-files select[data-on-change="diff-mode"]');s.value='main_head';s.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+        await until(`window.__req.some(r=>r.includes('main_head'))`, 'the empty panel comparison save', 3000);
+        check('the remaining comparison selector still saves the selected mode when empty', await ev(`window.__req.some(r=>r.includes('main_head'))`));
 
         const inline = await ev(`[...document.querySelectorAll('#history-session-view *, #changed-files-list *, #changed-files-title *, .starred-files *')].flatMap(el => [...el.attributes].filter(a => /^on/i.test(a.name)).map(a => el.tagName + '.' + el.className + ' ' + a.name))`);
         check('no inline handler left in the History view or the file lists', inline.length === 0, JSON.stringify(inline.slice(0, 5)));
