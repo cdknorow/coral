@@ -101,6 +101,9 @@ var authPageTmpl = template.Must(template.New("auth").Parse(`{{define "hubwarn"}
   .link { color: var(--accent); font-size: 0.8125rem; background: none; border: 0; padding: 0; cursor: pointer; text-decoration: none; }
   [data-theme="light"] .link { color: var(--accent-dim); }   /* the light theme's accent is 4.4:1 on the card: the dim accent passes AA */
   .hubquiet { margin: 14px 0 0; }
+  .linkcol { flex-direction: column; align-items: flex-start; justify-content: flex-start; gap: 0; } /* the two quiet ways in are one short list under the form, on its left edge (#6042) */
+  .linkcol .link { padding-left: 0; text-align: left; }
+  @media (pointer: fine) and (min-width: 768px) { .linkcol .link { min-height: 28px; } } /* a mouse needs no 44 px row; touch keeps its own rule */
   .linkrow { margin-top: 16px; font-size: 0.8125rem; color: var(--text-secondary); display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
   .check { display: flex; align-items: flex-start; gap: 9px; font-size: 0.875rem; margin: 4px 0 18px; }
   .check input { margin-top: 3px; width: 16px; height: 16px; flex: none; padding: 0; appearance: auto; -webkit-appearance: checkbox; background: none; accent-color: var(--accent); }
@@ -182,7 +185,7 @@ var authPageTmpl = template.Must(template.New("auth").Parse(`{{define "hubwarn"}
     </form>
     <p class="note">Your password manager can save it. There is no email: if you forget it, run coral reset-password on this computer.</p>
 {{template "hubquiet" .}}
-    <div class="linkrow">{{if eq .HubSignin "unpaired"}}<button type="button" class="link" id="hub-link-open">Link this computer to Coral Hub and sign in</button>{{else}}<span></span>{{end}}<button type="button" class="link" id="show-key">Use an API key instead</button></div>
+    <div class="linkrow linkcol">{{if eq .HubSignin "unpaired"}}<button type="button" class="link" id="hub-link-open">Link this computer to Coral Hub and sign in</button>{{end}}<button type="button" class="link" id="show-key">Use an API key instead</button></div>
   </section>
 {{end}}
 {{if eq .HubSignin "unpaired"}}

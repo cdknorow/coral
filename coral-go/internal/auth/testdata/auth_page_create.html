@@ -31,6 +31,9 @@
   .link { color: var(--accent); font-size: 0.8125rem; background: none; border: 0; padding: 0; cursor: pointer; text-decoration: none; }
   [data-theme="light"] .link { color: var(--accent-dim); }    
   .hubquiet { margin: 14px 0 0; }
+  .linkcol { flex-direction: column; align-items: flex-start; justify-content: flex-start; gap: 0; }  
+  .linkcol .link { padding-left: 0; text-align: left; }
+  @media (pointer: fine) and (min-width: 768px) { .linkcol .link { min-height: 28px; } }  
   .linkrow { margin-top: 16px; font-size: 0.8125rem; color: var(--text-secondary); display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
   .check { display: flex; align-items: flex-start; gap: 9px; font-size: 0.875rem; margin: 4px 0 18px; }
   .check input { margin-top: 3px; width: 16px; height: 16px; flex: none; padding: 0; appearance: auto; -webkit-appearance: checkbox; background: none; accent-color: var(--accent); }
@@ -90,7 +93,7 @@
 
 
 
-    <div class="linkrow"><span></span><button type="button" class="link" id="show-key">Use an API key instead</button></div>
+    <div class="linkrow linkcol"><button type="button" class="link" id="show-key">Use an API key instead</button></div>
   </section>
 
 
