@@ -60,6 +60,7 @@ func runOpen(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "usage: coral open [--print] [--path /page] [--url http://localhost:8420] [--home DIR]")
 		return 2
 	}
+	*base = runningServerURL(fs, *base, *home)
 	if !loginlink.ValidPage(*page) {
 		fmt.Fprintln(stderr, "coral open: --path must be a page of the dashboard, like /chats or /team/<board>")
 		return 2

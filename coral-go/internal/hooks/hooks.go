@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/subgentic/coral/internal/config"
 	"github.com/subgentic/coral/internal/executil"
 	"github.com/subgentic/coral/internal/tmux"
 	"io"
@@ -15,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -28,7 +30,9 @@ func CoralBase() string {
 	}
 	port := os.Getenv("CORAL_PORT")
 	if port == "" {
-		port = "8420"
+		// The platform's own default (8450 on Windows, 8420 elsewhere): 8420 on Windows sent a command typed in a plain terminal
+		// to the wrong port, where this platform's Coral never listens (#235).
+		port = strconv.Itoa(config.DefaultPort)
 	}
 	return "http://localhost:" + port
 }

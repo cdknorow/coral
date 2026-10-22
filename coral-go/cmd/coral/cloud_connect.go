@@ -73,6 +73,7 @@ func runCloud(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if err := fs.Parse(args[1:]); err != nil {
 		return usage()
 	}
+	*base = runningServerURL(fs, *base, *home)
 	if fs.NArg() > 0 {
 		fmt.Fprintf(stderr, "coral cloud %s: unexpected argument %q (a credential is never taken from the command line; use --ticket-file)\n", cmd, fs.Arg(0))
 		return 2
