@@ -1684,25 +1684,19 @@
 .chat-attachment-image > .chat-attachment-unshare:hover { background: var(--bg-hover); }
 @media (max-width: 767px) { .chat-attachment-image > .chat-attachment-unshare { min-width: 44px; } }
 
-/* A message's existing sent time shares the Save/Copy footer (#6063). Reserve its
-   space so revealing the text never covers a message or moves the next turn. */
-.chat-bubble:has(> .message-time),
-.chat-prose.chat-messages .chat-bubble:has(> .message-time) { margin-bottom: 32px; }
-.chat-bubble:has(> .message-time) .chat-copy-btn,
-.chat-bubble:has(> .message-time) .chat-save-btn { top: 100%; margin-top: 1px; }
+/* The sent time shares the existing Save/Copy row (#6063). Keep its reserved
+   height and message spacing unchanged when the text is revealed. */
 .chat-bubble > .message-time {
-    position: absolute; top: 100%; right: 62px; margin-top: 1px;
+    position: absolute; top: 6px; right: 62px;
     display: inline-flex; align-items: center; min-height: 22px;
     white-space: nowrap; color: var(--text-secondary); font-size: var(--fs-sm); opacity: 0;
 }
 .chat-bubble.human > .message-time { right: 34px; }
-.chat-prose.chat-messages .chat-bubble > .message-time { right: 54px; }
+.chat-prose.chat-messages .chat-bubble > .message-time { top: 100%; margin-top: 1px; right: 54px; }
 .chat-prose.chat-messages .chat-bubble.human > .message-time { right: 22px; }
 .chat-bubble:hover > .message-time,
 .chat-bubble:focus-within > .message-time { opacity: 1; }
 @media (hover: none) {
-    .chat-bubble:has(> .message-time),
-.chat-prose.chat-messages .chat-bubble:has(> .message-time) { margin-bottom: 48px; }
     .chat-bubble > .message-time { opacity: 1; min-height: 44px; right: 102px; }
     .chat-bubble.human > .message-time { right: 54px; }
     .chat-bubble.assistant:has(> .message-time) .chat-save-btn { right: 54px; }
