@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"sync/atomic"
 	"time"
 
@@ -22,42 +23,68 @@ type exitItems struct {
 	shutTip  string
 }
 
-// agentsCount says "1 agent" or "3 agents".
-func agentsCount(n int) string {
-	if n == 1 {
-		return "1 agent"
-	}
-	return fmt.Sprintf("%d agents", n)
+// wakeRule is Settings > Terminal "Wake agents after a restart" and its cap: Coral wakes the agents it stopped only when the setting is on and no more than cap were running (above the cap it asks first).
+type wakeRule struct {
+	on  bool
+	cap int
 }
 
-// quitNote is what Quit tells the person once it has stopped Coral on the built-in terminal: how many agents will wake next time.
-func quitNote(agents int) string {
+// defaultWakeRule is what Coral does when the setting was never saved: on, up to 8.
+var defaultWakeRule = wakeRule{on: true, cap: 8}
+
+// wakes says whether the agents running now will wake by themselves next time. Over the cap Coral asks first, so the tray says "stop" there, not "wake".
+func (w wakeRule) wakes(agents int) bool { return w.on && agents <= w.cap }
+
+// wakeRuleFrom reads the rule from a GET /api/settings answer; a missing or odd value is the default.
+func wakeRuleFrom(body []byte) (wakeRule, bool) {
+	var a struct {
+		Settings map[string]string `json:"settings"`
+	}
+	if json.Unmarshal(body, &a) != nil || a.Settings == nil {
+		return defaultWakeRule, false
+	}
+	r := defaultWakeRule
+	if a.Settings["auto_wake_after_restart"] == "false" {
+		r.on = false
+	}
+	if n, err := strconv.Atoi(a.Settings["auto_wake_cap"]); err == nil && n >= 1 && n <= 50 {
+		r.cap = n
+	}
+	return r, true
+}
+
+// quitNote is what Quit tells the person once it has stopped Coral on the built-in terminal: how many agents will wake next time, or that they stopped.
+func quitNote(agents int, wakes bool) string {
 	switch {
 	case agents <= 0:
 		return "Coral quit."
+	case !wakes && agents == 1:
+		return "Coral quit. 1 agent stopped. Wake it from Coral when you want it back."
+	case !wakes:
+		return fmt.Sprintf("Coral quit. %d agents stopped. Wake them from Coral when you want them back.", agents)
 	case agents == 1:
 		return "Coral quit. 1 agent will wake next time you open Coral."
 	}
 	return fmt.Sprintf("Coral quit. %d agents will wake next time you open Coral.", agents)
 }
 
-// exitItemsFor builds the tray's exit items; agents is how many agents are running now (the pty Quit names them).
-func exitItemsFor(goos, backend string, agents int) exitItems {
+// exitItemsFor builds the tray's exit items; agents is how many agents are running now and wakes whether they wake by themselves next time (the pty Quit says which).
+func exitItemsFor(goos, backend string, agents int, wakes bool) exitItems {
 	if goos == "windows" || backend != "tmux" {
 		it := exitItems{oneExit: true, quit: "Quit Coral", quitTip: "Exit Coral",
 			shutdown: "Quit Coral", shutTip: "Exit Coral"}
-		if agents > 0 {
-			verb := "wake"
-			if agents == 1 {
-				verb = "wakes"
-			}
-			it.quit = fmt.Sprintf("Quit Coral (%s %s next time)", agentsCount(agents), verb)
-			it.quitTip = fmt.Sprintf("%s stop now and %s next time you open Coral", agentsCount(agents), verb)
-			if agents == 1 {
-				it.quitTip = "1 agent stops now and wakes next time you open Coral"
-			}
-			it.shutdown, it.shutTip = it.quit, it.quitTip
+		switch {
+		case agents <= 0:
+		case wakes && agents == 1:
+			it.quit, it.quitTip = "Quit Coral (1 agent wakes next time)", "1 agent stops now and wakes next time you open Coral"
+		case wakes:
+			it.quit, it.quitTip = fmt.Sprintf("Quit Coral (%d agents wake next time)", agents), fmt.Sprintf("%d agents stop now and wake next time you open Coral", agents)
+		case agents == 1:
+			it.quit, it.quitTip = "Quit Coral (1 agent stops)", "1 agent stops now. Wake it from Coral when you want it back."
+		default:
+			it.quit, it.quitTip = fmt.Sprintf("Quit Coral (%d agents stop)", agents), fmt.Sprintf("%d agents stop now. Wake them from Coral when you want them back.", agents)
 		}
+		it.shutdown, it.shutTip = it.quit, it.quitTip
 		return it
 	}
 	return exitItems{quit: "Quit Coral", quitTip: "Exit Coral. The agents keep running (tmux terminal backend).",
@@ -151,32 +178,54 @@ func agentsClient(dataDir string) *http.Client {
 	return client
 }
 
-// runningAgentsNow counts the agents running right now, for the note Quit shows after it stops Coral.
-func runningAgentsNow(baseURL, dataDir string) int {
-	return runningAgents(agentsClient(dataDir), baseURL)
+// wakeRuleNow reads the wake setting from the server; the default when it does not answer.
+func wakeRuleNow(client *http.Client, baseURL string) wakeRule {
+	resp, err := client.Get(baseURL + "/api/settings")
+	if err != nil {
+		return defaultWakeRule
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return defaultWakeRule
+	}
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	r, _ := wakeRuleFrom(body)
+	return r
 }
 
-// watchAgents keeps count current for Quit's title: it asks how many agents run and calls onChange when the number changes.
-func watchAgents(stop <-chan struct{}, baseURL, dataDir string, count *atomic.Int64, onChange func()) {
+// agentsNow is what the tray says about the agents: how many run and whether they wake next time.
+type agentsNow struct {
+	count int
+	wakes bool
+}
+
+// readAgentsNow asks the server for both.
+func readAgentsNow(baseURL, dataDir string) agentsNow {
 	client := agentsClient(dataDir)
+	n := runningAgents(client, baseURL)
+	return agentsNow{count: n, wakes: wakeRuleNow(client, baseURL).wakes(n)}
+}
+
+// watchAgents keeps cur current for Quit's title: it asks every 10 seconds and calls onChange when the answer changes.
+func watchAgents(stop <-chan struct{}, baseURL, dataDir string, cur *atomic.Value, onChange func()) {
 	for {
 		select {
 		case <-stop:
 			return
 		case <-time.After(10 * time.Second):
 		}
-		if n := int64(runningAgents(client, baseURL)); n != count.Swap(n) {
+		if n := readAgentsNow(baseURL, dataDir); n != cur.Swap(n).(agentsNow) {
 			onChange()
 		}
 	}
 }
 
-// quitKeepingAgentsPlace is Quit on the built-in terminal (#6131): it counts the running agents, closes the app window, stops the server the normal way (each running agent is marked and wakes next
-// time; there is no kill call), says how many will wake, and exits the tray.
+// quitKeepingAgentsPlace is Quit on the built-in terminal (#6131): it reads the running agents and whether they wake, closes the app window, stops the server the normal way (each running agent is
+// marked and wakes next time when the setting allows; there is no kill call), says what happened, and exits the tray.
 func quitKeepingAgentsPlace(baseURL, dataDir string, closeApp, stopServer func(), notify func(string), exit func()) {
-	running := runningAgentsNow(baseURL, dataDir)
+	a := readAgentsNow(baseURL, dataDir)
 	closeApp()
 	stopServer()
-	notify(quitNote(running))
+	notify(quitNote(a.count, a.wakes))
 	exit()
 }

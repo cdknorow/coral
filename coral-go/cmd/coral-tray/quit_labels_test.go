@@ -23,7 +23,7 @@ func TestExitItemsFollowTheBackend(t *testing.T) {
 		{"darwin", "tmux", false, "Quit Coral"},
 		{"linux", "tmux", false, "Quit Coral"},
 	} {
-		got := exitItemsFor(c.goos, c.backend, 0)
+		got := exitItemsFor(c.goos, c.backend, 0, true)
 		if got.oneExit != c.oneExit || got.quit != c.quit {
 			t.Errorf("%s/%s: %+v", c.goos, c.backend, got)
 		}
@@ -31,30 +31,58 @@ func TestExitItemsFollowTheBackend(t *testing.T) {
 			t.Errorf("%s/%s: no agents running, nothing to say about them: %q", c.goos, c.backend, got.quitTip)
 		}
 	}
-	if tmux := exitItemsFor("linux", "tmux", 5); tmux.quit != "Quit Coral" || tmux.quitTip != "Exit Coral. The agents keep running (tmux terminal backend)." || tmux.shutdown != "Quit and stop all agents" {
+	if tmux := exitItemsFor("linux", "tmux", 5, true); tmux.quit != "Quit Coral" || tmux.quitTip != "Exit Coral. The agents keep running (tmux terminal backend)." || tmux.shutdown != "Quit and stop all agents" {
 		t.Errorf("tmux keeps its two exits and says nothing about waking: %+v", tmux)
 	}
 }
 
-// On the built-in terminal Quit names the agents and says they wake next time; 1 is singular (#6131).
+// On the built-in terminal Quit names the agents and says what happens next: they wake (setting on, within the cap) or they stop (setting off, or over the cap); 1 is singular (#6131).
 func TestPtyQuitNamesTheAgents(t *testing.T) {
 	for _, c := range []struct {
+		name      string
 		agents    int
+		wakes     bool
 		quit, tip string
 		note      string
 	}{
-		{0, "Quit Coral", "Exit Coral", "Coral quit."},
-		{1, "Quit Coral (1 agent wakes next time)", "1 agent stops now and wakes next time you open Coral", "Coral quit. 1 agent will wake next time you open Coral."},
-		{3, "Quit Coral (3 agents wake next time)", "3 agents stop now and wake next time you open Coral", "Coral quit. 3 agents will wake next time you open Coral."},
+		{"none", 0, true, "Quit Coral", "Exit Coral", "Coral quit."},
+		{"none, setting off", 0, false, "Quit Coral", "Exit Coral", "Coral quit."},
+		{"on, 1", 1, true, "Quit Coral (1 agent wakes next time)", "1 agent stops now and wakes next time you open Coral", "Coral quit. 1 agent will wake next time you open Coral."},
+		{"on, 3", 3, true, "Quit Coral (3 agents wake next time)", "3 agents stop now and wake next time you open Coral", "Coral quit. 3 agents will wake next time you open Coral."},
+		{"off, 1", 1, false, "Quit Coral (1 agent stops)", "1 agent stops now. Wake it from Coral when you want it back.", "Coral quit. 1 agent stopped. Wake it from Coral when you want it back."},
+		{"off or over the cap, 3", 3, false, "Quit Coral (3 agents stop)", "3 agents stop now. Wake them from Coral when you want them back.", "Coral quit. 3 agents stopped. Wake them from Coral when you want them back."},
 	} {
 		for _, goos := range []string{"darwin", "linux", "windows"} {
-			got := exitItemsFor(goos, "pty", c.agents)
+			got := exitItemsFor(goos, "pty", c.agents, c.wakes)
 			if !got.oneExit || got.quit != c.quit || got.quitTip != c.tip || got.shutdown != c.quit {
-				t.Errorf("%s, %d agents: %+v", goos, c.agents, got)
+				t.Errorf("%s, %s: %+v", c.name, goos, got)
 			}
 		}
-		if got := quitNote(c.agents); got != c.note {
-			t.Errorf("quitNote(%d) = %q", c.agents, got)
+		if got := quitNote(c.agents, c.wakes); got != c.note {
+			t.Errorf("%s: quitNote = %q", c.name, got)
+		}
+	}
+}
+
+// "Wake next time" is said only for what will wake: the setting on, and no more than the cap running (above it Coral asks first).
+func TestWakeRule(t *testing.T) {
+	for _, c := range []struct {
+		body   string
+		agents int
+		wakes  bool
+	}{
+		{`{"settings":{}}`, 3, true}, // never saved: on, up to 8
+		{`{"settings":{}}`, 8, true},
+		{`{"settings":{}}`, 9, false},
+		{`{"settings":{"auto_wake_after_restart":"true","auto_wake_cap":"2"}}`, 2, true},
+		{`{"settings":{"auto_wake_after_restart":"true","auto_wake_cap":"2"}}`, 3, false}, // over the cap
+		{`{"settings":{"auto_wake_after_restart":"false"}}`, 1, false},                    // off
+		{`{"settings":{"auto_wake_cap":"99"}}`, 9, false},                                 // an odd cap is the default 8
+		{`not json`, 3, true},
+	} {
+		r, _ := wakeRuleFrom([]byte(c.body))
+		if got := r.wakes(c.agents); got != c.wakes {
+			t.Errorf("%s with %d agents: wakes = %v, want %v", c.body, c.agents, got, c.wakes)
 		}
 	}
 }
@@ -100,6 +128,10 @@ func TestPtyQuitDoesNotKillAgents(t *testing.T) {
 		mu.Lock()
 		seen = append(seen, r.Method+" "+r.URL.Path)
 		mu.Unlock()
+		if r.URL.Path == "/api/settings" {
+			io.WriteString(w, `{"settings":{"auto_wake_after_restart":"true"}}`)
+			return
+		}
 		io.WriteString(w, `[{"name":"a","sleeping":false},{"name":"b","sleeping":false}]`)
 	}))
 	defer srv.Close()
@@ -113,7 +145,7 @@ func TestPtyQuitDoesNotKillAgents(t *testing.T) {
 		t.Errorf("steps: %q", steps)
 	}
 	for _, r := range seen {
-		if r != "GET /api/sessions/live" {
+		if r != "GET /api/sessions/live" && r != "GET /api/settings" {
 			t.Errorf("Quit sent %q: it must not end agents", r)
 		}
 	}

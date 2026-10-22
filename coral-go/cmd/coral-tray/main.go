@@ -400,18 +400,20 @@ func runForeground(host string, port int, noBrowser, debugMode bool, backendType
 		systray.AddSeparator()
 		var mShutdown, mQuit *systray.MenuItem
 		var runningBackend atomic.Value // "tmux" or "pty": what the server runs (watchBackend)
-		var runningCount atomic.Int64   // agents running now, for what Quit says (#6131)
+		var runningNow atomic.Value     // agentsNow: agents running and whether they wake, for what Quit says (#6131)
+		runningNow.Store(agentsNow{wakes: true})
 		// The built-in terminal (pty) is the default (#6064), and always on Windows: Quit stops the server the normal way, so the agents wake next time and there is one exit; with tmux
 		// there are two. The server says which it runs.
 		runningBackend.Store("pty")
-		items := exitItemsFor(runtime.GOOS, runningBackend.Load().(string), 0)
+		items := exitItemsFor(runtime.GOOS, runningBackend.Load().(string), 0, true)
 		mShutdown = systray.AddMenuItem(items.shutdown, items.shutTip)
 		mQuit = systray.AddMenuItem(items.quit, items.quitTip)
 		if items.oneExit {
 			mShutdown.Hide()
 		}
 		refreshExit := func() {
-			it := exitItemsFor(runtime.GOOS, runningBackend.Load().(string), int(runningCount.Load()))
+			a := runningNow.Load().(agentsNow)
+			it := exitItemsFor(runtime.GOOS, runningBackend.Load().(string), a.count, a.wakes)
 			mShutdown.SetTitle(it.shutdown)
 			mShutdown.SetTooltip(it.shutTip)
 			mQuit.SetTitle(it.quit)
@@ -428,7 +430,7 @@ func runForeground(host string, port int, noBrowser, debugMode bool, backendType
 		}()
 		go func() {
 			defer safego.Recover("coral-tray/main:watchAgents")
-			watchAgents(ctx.Done(), url, dataDir, &runningCount, refreshExit)
+			watchAgents(ctx.Done(), url, dataDir, &runningNow, refreshExit)
 		}()
 
 		go func() {
@@ -468,7 +470,7 @@ func runForeground(host string, port int, noBrowser, debugMode bool, backendType
 						systray.Quit()
 					}()
 				case <-mQuit.ClickedCh:
-					if exitItemsFor(runtime.GOOS, runningBackend.Load().(string), 0).oneExit {
+					if exitItemsFor(runtime.GOOS, runningBackend.Load().(string), 0, true).oneExit {
 						// On the built-in terminal Quit stops the server the normal way, with no kill: each running agent is marked and wakes next time (#6131). Ending one for good is its own Kill.
 						go func() {
 							defer safego.Recover("coral-tray/main:quitKeepsAgentsPlace")
