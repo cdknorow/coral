@@ -45,6 +45,10 @@ func main() {
 	os.Exit(run(os.Args[1:], os.Getenv, os.Stdout))
 }
 
+// keepsRollback: on a Windows MSI install the installed version's own package is kept, verified, for the rollback (#162 (b)); a portable
+// install and the other platforms keep none.
+func keepsRollback(goos string, portable bool) bool { return goos == "windows" && !portable }
+
 // assetName is the package this platform stages, as release.yml names it in SHA256SUMS.txt. Windows stages the portable zip when the folder the
 // program runs from is one the user can write to, else the MSI.
 func assetName(goos, goarch string, portable bool) func(version string) string {
@@ -123,8 +127,7 @@ func run(args []string, getenv func(string) string, stdout io.Writer) int {
 		Fetcher:        &verify.Fetcher{Client: newClient()},
 		Asset:          assetName(runtime.GOOS, runtime.GOARCH, portable),
 		BytesPerSecond: bytesPerSecond,
-		// On a Windows MSI install the installed version's own package is kept, verified, for the rollback (#162 (b)).
-		Rollback: runtime.GOOS == "windows" && !portable,
+		Rollback:       keepsRollback(runtime.GOOS, portable),
 	})
 	print(stdout, output{Result: res.Result, Installed: res.Installed, Version: res.Version, FailedStage: res.FailedStage, NextAttempt: res.NextAttempt, Trust: string(source)})
 	return 0
