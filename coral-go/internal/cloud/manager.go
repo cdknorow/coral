@@ -169,15 +169,16 @@ type Manager struct {
 	// local is the current tunnel's handler, so that lowering this computer's mode can end the streams it allowed above the new mode (#5918).
 	local atomic.Pointer[tunnel.LocalHandler]
 	// The mode the hub is told about (#5918): lastMode is the mode as of the last dial or change (a lowering is a change below it), announced is what the hub last learned (by Hello or by
-	// a local_mode message), modeAt when the last message went, pendingMode and modeTimer the one message held back to keep to one a second; modeGap is that second (a test's own).
-	modeMu      sync.Mutex
-	lastMode    tunnel.Mode
-	announced   tunnel.Mode
-	modeAt      time.Time
-	pendingMode tunnel.Mode
-	modeTimer   *time.Timer
-	modeGap     time.Duration
-	closeAbove  func(tunnel.Mode) int // ends the streams allowed above a lowered mode (the current tunnel's handler); a test sets its own to see when it runs
+	// a local_mode message), modeAt when the last message went, wantMode the latest mode asked for, worker whether the one goroutine that sends them is running (so at most one message is
+	// in flight, and a change made meanwhile is the latest wanted, never a second send); modeGap is the least time between two messages (a test's own).
+	modeMu     sync.Mutex
+	lastMode   tunnel.Mode
+	announced  tunnel.Mode
+	modeAt     time.Time
+	wantMode   tunnel.Mode
+	worker     bool
+	modeGap    time.Duration
+	closeAbove func(tunnel.Mode) int // ends the streams allowed above a lowered mode (the current tunnel's handler); a test sets its own to see when it runs
 }
 
 // New creates a Manager. Nothing runs until Run.
@@ -708,56 +709,68 @@ func (m *Manager) ModeChanged(ctx context.Context) {
 			}
 		}
 	}
-	m.sendMode(conn, mode)
+	m.modeMu.Lock()
+	m.wantMode = mode
+	start := !m.worker
+	m.worker = true
+	m.modeMu.Unlock()
+	if start {
+		go func() { defer safego.Recover("cloud/manager:m.modeWorker"); m.modeWorker(conn) }()
+	}
 }
 
-// sendMode tells the hub mode, now or (within modeGap of the last message) once the gap has passed, with only the latest value. An identical value is not sent.
-func (m *Manager) sendMode(conn *store.CloudConnection, mode tunnel.Mode) {
-	m.modeMu.Lock()
-	if m.modeTimer != nil { // one is held: it will send the latest
-		m.pendingMode = mode
-		m.modeMu.Unlock()
-		return
-	}
-	if wait := m.modeGap - m.o.Now().Sub(m.modeAt); !m.modeAt.IsZero() && wait > 0 {
-		m.pendingMode = mode
-		m.modeTimer = time.AfterFunc(wait, func() {
-			defer safego.Recover("cloud/manager:m.flushMode")
-			m.modeMu.Lock()
-			m.modeTimer = nil
-			mode := m.pendingMode
+// modeWorker sends the latest wanted mode to the hub, one message at a time and no faster than modeGap: a change made while one is in flight, or inside the gap, is not a second send but the
+// new wanted value, and it goes out when the worker gets to it (so the hub never sees two at once or out of order, and an identical value is never sent). Anything but the hub's 204, and a tunnel
+// that is gone or no longer advertises the capability, ends in the reconnect (the next Hello carries the mode); the worker then stops.
+func (m *Manager) modeWorker(conn *store.CloudConnection) {
+	for {
+		m.modeMu.Lock()
+		mode := m.wantMode
+		if mode == m.announced {
+			m.worker = false
 			m.modeMu.Unlock()
-			m.deliverMode(conn, mode)
-		})
+			return // the hub already has it: coalesced
+		}
+		wait := m.modeGap - m.o.Now().Sub(m.modeAt)
+		if m.modeAt.IsZero() || wait < 0 {
+			wait = 0
+		}
 		m.modeMu.Unlock()
-		return
+		if wait > 0 {
+			select {
+			case <-time.After(wait):
+			case <-m.root.Done():
+				m.modeMu.Lock()
+				m.worker = false
+				m.modeMu.Unlock()
+				return
+			}
+			continue // the wanted mode may have changed meanwhile: look again
+		}
+		cs := m.session.Load()
+		if cs == nil || !cs.CanSendLocalMode() {
+			m.modeWorkerEnds()
+			m.startTunnel(conn) // the tunnel was replaced meanwhile: its Hello carries the mode
+			return
+		}
+		ctx, cancel := context.WithTimeout(m.root, 5*time.Second)
+		err := cs.SendLocalMode(ctx, mode)
+		cancel()
+		if err != nil {
+			m.o.Logger.Info("[cloud] the hub did not take the local mode message: reconnecting so the next hello carries it", "error", err.Error())
+			m.modeWorkerEnds()
+			m.startTunnel(conn)
+			return
+		}
+		m.modeMu.Lock()
+		m.announced, m.modeAt = mode, m.o.Now()
+		m.modeMu.Unlock()
 	}
-	m.modeMu.Unlock()
-	m.deliverMode(conn, mode)
 }
 
-// deliverMode sends the message, or reconnects when it cannot be sent or is not taken (a 429 included).
-func (m *Manager) deliverMode(conn *store.CloudConnection, mode tunnel.Mode) {
+func (m *Manager) modeWorkerEnds() {
 	m.modeMu.Lock()
-	same := mode == m.announced
-	m.modeMu.Unlock()
-	if same {
-		return // the hub already has it: coalesced
-	}
-	cs := m.session.Load()
-	if cs == nil || !cs.CanSendLocalMode() {
-		m.startTunnel(conn) // the tunnel was replaced meanwhile: its Hello carries the mode
-		return
-	}
-	ctx, cancel := context.WithTimeout(m.root, 5*time.Second)
-	defer cancel()
-	if err := cs.SendLocalMode(ctx, mode); err != nil {
-		m.o.Logger.Info("[cloud] the hub did not take the local mode message: reconnecting so the next hello carries it", "error", err.Error())
-		m.startTunnel(conn)
-		return
-	}
-	m.modeMu.Lock()
-	m.announced, m.modeAt = mode, m.o.Now()
+	m.worker = false
 	m.modeMu.Unlock()
 }
 
