@@ -156,7 +156,12 @@ func CannotReach(url string, err error, waited time.Duration) error {
 	case "withheld":
 		var w interface{ TokenWithheld() bool }
 		errors.As(err, &w)
-		msg = fmt.Sprintf("refused before anything was sent to %s: %v", url, w)
+		// The agent tools' refusals say what was refused, why and what to do, in whole sentences starting "Refused:" (#99, #279);
+		// anything else gets that start here.
+		msg = fmt.Sprint(w)
+		if !strings.HasPrefix(msg, "Refused:") {
+			msg = fmt.Sprintf("Refused: nothing was sent to %s. %s", url, msg)
+		}
 	case "refused":
 		msg = fmt.Sprintf("cannot reach Coral server at %s: the connection was refused. Is Coral running? Check the tray icon, and that the port in CORAL_URL (or CORAL_PORT) is the one Coral listens on.", url)
 	case "timeout":
