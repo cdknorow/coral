@@ -523,7 +523,7 @@ func TestHumanSendIsSubmittedOrSaysSo(t *testing.T) {
 	t.Run("no hook events, a long multi-line message echoed wrapped: its first line is found, sent once", func(t *testing.T) {
 		h := setup(t, "codex", false)
 		h.term.show(codexReady(t, ""))
-		msg := "Please review the change to the retry logic in the uploader, and tell me whether the backoff can overflow"+"\n"+"Second line with more detail."
+		msg := "Please review the change to the retry logic in the uploader, and tell me whether the backoff can overflow" + "\n" + "Second line with more detail."
 		h.term.onType = func(text string) {
 			h.term.show("> Please review the change to the retry\n  logic in the uploader, and tell me whether\n  the backoff can overflow Second line" + "\n" + codexReady(t, ""))
 		}
