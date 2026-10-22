@@ -148,11 +148,20 @@ func TestEveryListenerIsCensused(t *testing.T) {
 		"internal/startup/startup_listen.go:listenAll": "the server's listeners, one per ListenHosts(): the host is cfg.Host after applyPrivacySettings, " +
 			"which is loopback unless remote_access_enabled or --remote (TestRemoteOffBindsLoopbackOnly drives it on real sockets)",
 		"internal/startup/pprof.go:startPprofOn": "CORAL_PPROF_ADDR, refused unless a loopback IP (checkLoopbackAddr)",
+		"internal/startup/listen_tcp.go:listenTCP": "the helper Coral's own listeners open their socket through (exclusive on Windows, #224): it takes " +
+			"the caller's address as given, so each caller of listenTCP is censused here by name too",
 	}
 	found := map[string]bool{}
 	for _, src := range productionSources(t) {
 		spans := spansOf(src.file)
 		ast.Inspect(src.file, func(n ast.Node) bool {
+			// listenTCP opens a socket for its caller (#224): a call to it counts as one, so its callers stay in the table.
+			if call, ok := n.(*ast.CallExpr); ok {
+				if id, ok := call.Fun.(*ast.Ident); ok && id.Name == "listenTCP" {
+					found[src.rel+":"+spans.at(call.Pos())] = true
+				}
+				return true
+			}
 			sel, ok := n.(*ast.SelectorExpr)
 			if !ok || !opens[sel.Sel.Name] {
 				return true
