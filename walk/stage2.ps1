@@ -8,13 +8,14 @@ if ($lnk) { $sh = New-Object -ComObject WScript.Shell; $l = $sh.CreateShortcut($
 $env:CORAL_DATA_DIR = 'C:\walk\data'; $env:CORAL_CLOUD_URL = 'off'
 New-Item -ItemType Directory -Force -Path C:\walk\data | Out-Null
 $env:PATH = 'C:\walk\bin;' + $env:PATH
+$env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--remote-debugging-port=9333 --remote-allow-origins=*'  # lets the walk drive the app's own window
 $sw = [Diagnostics.Stopwatch]::StartNew()
 Start-Process $lnk.FullName
 "launched the Start Menu entry"
 $up = $false
-for ($i = 0; $i -lt 60; $i++) {
+for ($i = 0; $i -lt 40; $i++) {
     Start-Sleep -Seconds 1
-    try { $r = Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:8420/api/health' -TimeoutSec 2; if ($r.StatusCode -eq 200) { $up = $true; break } } catch {}
+    try { $r = Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:8450/api/health' -TimeoutSec 2; if ($r.StatusCode -eq 200) { $up = $true; break } } catch {}
 }
 "[{0:n1}s] server answers /api/health: {1}" -f $sw.Elapsed.TotalSeconds, $up
 Start-Sleep -Seconds 4; Shot 'after-start-4s'
