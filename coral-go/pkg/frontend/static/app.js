@@ -648,6 +648,18 @@ function notFound(message, listRoute) {
 // The query the page was opened with, read before anything rewrites the URL (a link to one saved message, #4596, is in it).
 const START_SEARCH = location.search;
 
+/** The tray's "Update to vX available" opens /?settings=updates: Settings on its Updates tab. That one value and no other (anything else is ignored), only when the server says the updater is on
+ *  (the caller is that answer), and the parameter is removed from the address so a reload does not open it again (#5280 step 3 D). */
+function openUpdatesFromLink() {
+    const p = new URLSearchParams(START_SEARCH);
+    const v = p.getAll('settings');
+    if (v.length !== 1 || v[0] !== 'updates') return;
+    p.delete('settings');
+    const rest = p.toString();
+    try { history.replaceState(history.state, '', location.pathname + (rest ? '?' + rest : '') + location.hash); } catch { /* an address that cannot be rewritten stays */ }
+    window.showSettingsModal('updates');
+}
+
 // Settles once the first live list has loaded (or failed): an agent link needs the list.
 let _liveListLoaded;
 const liveListReady = new Promise(r => { _liveListLoaded = r; });
@@ -821,7 +833,7 @@ function loadInitialData(popout) {
     initAgentUI();
     connectCoralWs();
     if (!popout) checkForUpdates();
-    if (!popout) loadUpdatesFlag().then(on => on && importOnce('./update_ui.js').then(m => m.startUpdateUi())).catch(() => {}); // the auto-update control, shown when the server says the updater is on (#5275, #5280)
+    if (!popout) loadUpdatesFlag().then(on => on && importOnce('./update_ui.js').then(m => { m.startUpdateUi(); openUpdatesFromLink(); })).catch(() => {}); // the auto-update control, shown when the server says the updater is on (#5275, #5280)
     pollStartupStatus();
     if (!popout) {
         populateHfTagSelect().then(() => {

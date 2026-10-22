@@ -387,6 +387,13 @@ func runForeground(host string, port int, noBrowser, debugMode bool, backendType
 		mOpenApp := systray.AddMenuItem("Open in App", "Open Coral in native window")
 		mOpenBrowser := systray.AddMenuItem("Open in Browser", "Open Coral in web browser")
 		mUpdate := systray.AddMenuItem("Check for Updates", "Check for new versions")
+		// "Update to vX available": shown only while the server reports a newer approved release and the update feature is on (updater D, #6006)
+		mUpdateAvail := systray.AddMenuItem("", "A newer release of Coral is out")
+		mUpdateAvail.Hide()
+		upd := &updateItem{item: mUpdateAvail, track: trackTrayNotice,
+			ask:    func() (updateAnswer, error) { return askServerForUpdate(url, dataDir, false) },
+			status: func() (updaterStatus, error) { return askServerForUpdaterStatus(url, dataDir) }}
+		go func() { defer safego.Recover("coral-tray/main:updateItem"); upd.run(context.Background()) }()
 		systray.AddSeparator()
 		var mShutdown, mQuit *systray.MenuItem
 		if runtime.GOOS == "windows" {
@@ -412,6 +419,11 @@ func runForeground(host string, port int, noBrowser, debugMode bool, backendType
 					go func() { defer safego.Recover("coral-tray/main:launchCoralApp"); launchCoralApp(url, mintLink) }()
 				case <-mOpenBrowser.ClickedCh:
 					executil.OpenBrowser(loginlink.Or(url, mintLink))
+				case <-mUpdateAvail.ClickedCh:
+					go func() {
+						defer safego.Recover("coral-tray/main:updateItemOpen")
+						upd.open(func() { executil.OpenBrowser(loginlink.OnPage(loginlink.Or(url, mintLink), updatesPaneLink)) }, executil.OpenBrowser, trackTrayOffer)
+					}()
 				case <-mUpdate.ClickedCh:
 					go func() { defer safego.Recover("coral-tray/main:checkForUpdates"); checkForUpdates(url, dataDir) }()
 				case <-mLog.ClickedCh:
