@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -43,6 +44,7 @@ func TestTheFixtureBuildHasTheRelaunchRoutesOnAndAFakeUpdater(t *testing.T) {
 }
 
 func TestAValidFixtureIsAcceptedAndBecomesTheStatus(t *testing.T) {
+	skipFixtureOnWindows(t)
 	fixtureFolder(t, goodFixture)
 	require.NoError(t, CheckRelaunchFixture())
 	rec, err := (&fixtureUpdater{}).Record(t.Context())
@@ -61,6 +63,7 @@ func TestAValidFixtureIsAcceptedAndBecomesTheStatus(t *testing.T) {
 
 // Security's condition 4 and 6: the folder is owner-only, owned by this user and not a link; the file is a regular 0600 file; nothing else.
 func TestTheFixtureIsRefusedInAFolderOrFileThatIsNotPrivate(t *testing.T) {
+	skipFixtureOnWindows(t)
 	dir := fixtureFolder(t, goodFixture)
 	require.NoError(t, CheckRelaunchFixture())
 
@@ -110,6 +113,7 @@ func TestTheFixtureIsRefusedInAFolderOrFileThatIsNotPrivate(t *testing.T) {
 
 // Security's condition 4: strict JSON, the vocabularies of the real status, no path, URL, command or free text, a size cap.
 func TestTheFixtureRefusesAnUnknownKeyAPathShapedValueAndAnOversizedFile(t *testing.T) {
+	skipFixtureOnWindows(t)
 	bad := map[string]string{
 		"an unknown key":              `{"installed":"1.4.133","command":"rm -rf /"}`,
 		"a nested unknown key":        `{"installed":"1.4.133","staged":{"version":"1.4.134","staged_at":"2026-10-20T10:00:00Z","verified":true,"path":"/tmp/x"}}`,
@@ -138,6 +142,7 @@ func TestTheFixtureRefusesAnUnknownKeyAPathShapedValueAndAnOversizedFile(t *test
 
 // Apply writes the marker (operation id, the acknowledged version, the hub pseudonym) and nothing else; it ends the process only if the fixture says so.
 func TestApplyWritesTheMarkerAndEndsTheProcessOnlyWhenTheFixtureSaysSo(t *testing.T) {
+	skipFixtureOnWindows(t)
 	dir := fixtureFolder(t, goodFixture)
 	exited := make(chan int, 1)
 	old := exitProcess
@@ -196,6 +201,7 @@ func TestApplyWritesTheMarkerAndEndsTheProcessOnlyWhenTheFixtureSaysSo(t *testin
 
 // Security's condition 5: the checks of a release all run; the fixture only stands in for coral-update. The same harness as the real relaunch tests, with the fixture updater.
 func TestTheFullRelaunchPathRunsOverTheFixtureWithEveryCheckOfARelease(t *testing.T) {
+	skipFixtureOnWindows(t)
 	dir := fixtureFolder(t, goodFixture)
 	e := newRelaunchEnv(t)
 	e.h.Updater = &fixtureUpdater{}
@@ -227,4 +233,23 @@ func TestTheFullRelaunchPathRunsOverTheFixtureWithEveryCheckOfARelease(t *testin
 	code, st = e.status(hubHdr(ownerA))
 	assert.Equal(t, 200, code)
 	assert.Equal(t, "already_relaunched", st["relaunch"].(map[string]any)["reason"])
+}
+
+// skipFixtureOnWindows skips a test of the fixture's own checks on Windows, where a fixture build refuses to start at all (errFixtureUnixOnly, #175).
+func skipFixtureOnWindows(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("the relaunch fixture is for macOS and Linux (Windows refuses a relaunch from Coral Hub)")
+	}
+}
+
+// #175: on Windows a fixture build refuses, with the reason, whatever the folder: Windows never takes the relaunch path the fixture proves.
+func TestTheFixtureRefusesOnWindowsWithTheReason(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows only")
+	}
+	t.Setenv(fixtureDirEnv, t.TempDir())
+	err := CheckRelaunchFixture()
+	require.ErrorIs(t, err, errFixtureUnixOnly)
+	assert.Contains(t, err.Error(), "macOS and Linux")
 }

@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sync"
 	"time"
 
@@ -73,8 +74,17 @@ type fixtureDoc struct {
 	} `json:"apply"`
 }
 
-// fixtureDir is the folder named by CORAL_RELAUNCH_FIXTURE_DIR, checked: absolute, not a link, a folder, mode 0700, owned by this user.
+// errFixtureUnixOnly: the relaunch fixture proves Coral Hub's relaunch path, which Windows never takes. There is no in-place apply on Windows, and
+// a relaunch from Coral Hub is refused there (local_approval_needed: the MSI install needs a person at the computer). Its folder checks are
+// POSIX mode bits besides. So a fixture build refuses to start on Windows, saying why, instead of checking bits Windows doesn't have (#175).
+var errFixtureUnixOnly = errors.New("the relaunch fixture is for macOS and Linux: Windows never relaunches from Coral Hub for an update (it needs a person at the computer to approve the install)")
+
+// fixtureDir is the folder named by CORAL_RELAUNCH_FIXTURE_DIR, checked: absolute, not a link, a folder, mode 0700, owned by this user. Never on
+// Windows (errFixtureUnixOnly).
 func fixtureDir() (string, error) {
+	if runtime.GOOS == "windows" {
+		return "", errFixtureUnixOnly
+	}
 	d := os.Getenv(fixtureDirEnv)
 	if d == "" {
 		return "", fmt.Errorf("%s is not set", fixtureDirEnv)
