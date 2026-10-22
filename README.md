@@ -197,7 +197,7 @@ Coral uses its built-in terminal by default, so agents stop when Coral stops; to
 Run Coral in an interactive terminal for the first start so you can accept the Terms of Service and answer the remote-access question. With Docker, allocate a TTY (`docker run -it`) and publish port 8420 (`-p 8420:8420`). Inside the container or your SSH session, run:
 
 ```bash
-coral --host 0.0.0.0 --port 8420 --no-browser
+coral --host 0.0.0.0 --port 8420 --no-browser   # asks about remote access
 ```
 
 Answer **y** to enable remote access. Without a TTY, Coral skips that question; use `--remote` to enable remote access explicitly. Open `http://<server>:8420` in your browser. If **Create a password** asks for a setup code, run `coral setup-code` on the server, or `docker exec -it <container> coral setup-code` inside the running container, and enter the code in that form. Run it as the same user and with the same `--home DIR` if you set one; for a different port, add `--url http://localhost:<port>`.
