@@ -3,6 +3,7 @@ package install
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -102,6 +103,9 @@ func TestTheMetadataHasToNameThisAppAndThisAppHasToSitInAnAppdir(t *testing.T) {
 }
 
 func TestAPrefixTheEnvironmentNamesIsLookedInAndTheDefaultsAreAlways(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the macOS classifier's paths (/opt/homebrew, /Applications) are not absolute paths on Windows, where it never runs")
+	}
 	o := MacOptions("/home/someone", "")
 	assert.Equal(t, []string{"/opt/homebrew", "/usr/local"}, o.Prefixes, "a Finder-launched Coral has no variable: the defaults are looked in anyway")
 	assert.Equal(t, []string{"/Applications", "/home/someone/Applications"}, o.Appdirs)
