@@ -95,7 +95,7 @@ func TestRestartOfALivePTYSessionStartsItUnderItsNewName(t *testing.T) {
 			require.NotNil(t, ls, "the store has the new session")
 			assert.Eventually(t, func() bool {
 				replay, _ := pty.Replay(out.SessionName)
-				return launched() > before || typedStart(replay)
+				return ran(launched() > before, replay)
 			}, 5*time.Second, 50*time.Millisecond, "the start command ran in the new session")
 		})
 	}
@@ -128,10 +128,19 @@ func TestRestartOfALivePTYSessionStartsItUnderItsNewName(t *testing.T) {
 			assert.False(t, pty.IsRunning(name), "the old terminal is ended")
 			assert.Eventually(t, func() bool {
 				replay, _ := pty.Replay(out.SessionName)
-				return launched() > before || typedStart(replay)
+				return ran(launched() > before, replay)
 			}, 5*time.Second, 50*time.Millisecond, "the start command ran in the new session")
 		})
 	}
+}
+
+// ran says the start command ran: where the stand-in records its runs, that record alone (a typed line proves nothing about delivery, and Coral's own --help probe of a configured
+// CLI must not count, so the stand-in ignores probes); on Windows, which has no recorder, the replay.
+func ran(recorded bool, replay []byte) bool {
+	if runtime.GOOS == "windows" {
+		return typedStart(replay)
+	}
+	return recorded
 }
 
 // launchRecorderCLI is the stand-in CLI for a test that must see the start command run. The quiet launch (#5911)
@@ -144,7 +153,7 @@ func launchRecorderCLI(t *testing.T, dir string) (string, func() int) {
 		return stubCLI(t), func() int { return 0 }
 	}
 	marker := filepath.Join(dir, "launched")
-	script := stubScript(t, filepath.Join(dir, "recorder"), "#!/bin/sh\necho run >> "+marker+"\n")
+	script := stubScript(t, filepath.Join(dir, "recorder"), "#!/bin/sh\ncase \"$1\" in --help|--version|-h|-v) exit 0;; esac\necho run >> "+marker+"\n")
 	return script, func() int {
 		b, _ := os.ReadFile(marker)
 		return bytes.Count(b, []byte("\n"))
