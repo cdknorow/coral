@@ -3,6 +3,7 @@ package background
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -65,4 +66,25 @@ func TestIndexerPassWritesEverySessionInBatches(t *testing.T) {
 	known, err := ss.GetIndexedMtimes(ctx)
 	require.NoError(t, err)
 	assert.Len(t, known, n, "every session has its search row now: none is read again")
+}
+
+// #6098: a pass forgets the exclusion rows of rollout files that no longer exist, and only those: one whose file is there keeps keeping the file out of later passes.
+func TestIndexerPassPrunesExclusionsOfFilesThatAreGone(t *testing.T) {
+	ctx := context.Background()
+	db, err := store.OpenWithKey(ctx, filepath.Join(t.TempDir(), "sessions.db"), "")
+	require.NoError(t, err)
+	defer db.Close()
+	ss := store.NewSessionStore(db)
+	dir := t.TempDir()
+	kept := filepath.Join(dir, "rollout-kept.jsonl")
+	require.NoError(t, os.WriteFile(kept, []byte("x"), 0o600))
+	gone := filepath.Join(dir, "rollout-gone.jsonl") // never created: Codex deleted it
+	for _, f := range []string{kept, gone} {
+		require.NoError(t, ss.RemoveExcludedSessionSource(ctx, "codex", f, 1, 1))
+	}
+	idx := NewSessionIndexer(ss, []agent.HistoryScanner{&fakeScanner{}}, time.Hour, 0)
+	require.NoError(t, idx.RunOnce(ctx))
+	var left []string
+	require.NoError(t, db.SelectContext(ctx, &left, `SELECT source_file FROM history_exclusions`))
+	assert.Equal(t, []string{kept}, left)
 }

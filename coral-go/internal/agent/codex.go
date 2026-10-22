@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/subgentic/coral/internal/transcriptlink"
@@ -17,6 +18,54 @@ import (
 // CodexAgent implements the Agent interface for OpenAI Codex CLI.
 type CodexAgent struct {
 	openHistory func(string) (*os.File, error) // nil uses the regular-file-only history opener
+
+	// failures counts, per rollout file, the passes in a row that could not parse it (#6098): after codexParseGiveUp the file is left alone until its mtime changes.
+	mu       sync.Mutex
+	failures map[string]parseFailure
+}
+
+type parseFailure struct {
+	mtime float64
+	n     int
+}
+
+// codexParseGiveUp is how many passes in a row may fail to parse one file before it is left alone until it changes: a file that cannot be read (a permission, a half-written
+// rollout) was opened again on every pass, forever.
+const codexParseGiveUp = 3
+
+// noteParseFailure records a failed parse of path at mtime and reports whether this was the pass that gave it up.
+func (a *CodexAgent) noteParseFailure(path string, mtime float64) (gaveUp bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.failures == nil {
+		a.failures = map[string]parseFailure{}
+	}
+	f := a.failures[path]
+	if f.mtime != mtime {
+		f = parseFailure{mtime: mtime}
+	}
+	f.n++
+	a.failures[path] = f
+	return f.n == codexParseGiveUp
+}
+
+// givenUp reports whether path, at this mtime, failed enough passes in a row to be left alone.
+func (a *CodexAgent) givenUp(path string, mtime float64) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	f, ok := a.failures[path]
+	return ok && f.mtime == mtime && f.n >= codexParseGiveUp
+}
+
+// forgetFailures drops the marks of files a pass did not see (deleted since): the map never outgrows the rollouts that exist.
+func (a *CodexAgent) forgetFailures(seen map[string]bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for path := range a.failures {
+		if !seen[path] {
+			delete(a.failures, path)
+		}
+	}
 }
 
 const codexHistoryIndexVersion = 1
@@ -45,6 +94,8 @@ func (a *CodexAgent) ExtractSessions(basePath string, knownMtimes map[string]flo
 	}
 	// Codex stores sessions in YYYY/MM/DD/rollout-*.jsonl
 	var sessions []IndexedSession
+	seen := map[string]bool{}
+	defer func() { a.forgetFailures(seen) }()
 	err := filepath.Walk(basePath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil // skip errors
@@ -56,8 +107,12 @@ func (a *CodexAgent) ExtractSessions(basePath string, knownMtimes map[string]flo
 			return nil
 		}
 		mtime := float64(info.ModTime().Unix())
+		seen[path] = true
 		if prev, ok := knownMtimes[path]; ok && prev == mtime {
 			return nil // file unchanged since last index
+		}
+		if a.givenUp(path, mtime) {
+			return nil // it failed to parse enough passes in a row, and has not changed since (#6098)
 		}
 		open := a.openHistory
 		if open == nil {
@@ -66,6 +121,9 @@ func (a *CodexAgent) ExtractSessions(basePath string, knownMtimes map[string]flo
 		sess, err := parseCodexSessionWithOpen(path, mtime, open)
 		if err != nil {
 			slog.Debug("codex: failed to parse session file", "path", logsafe.Dir(path), "error", err)
+			if a.noteParseFailure(path, mtime) {
+				slog.Info("codex: a rollout failed to parse in several passes in a row; it is left alone until it changes", "file", logsafe.Dir(path))
+			}
 			return nil
 		}
 		if sess != nil {

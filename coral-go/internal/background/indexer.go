@@ -2,7 +2,9 @@ package background
 
 import (
 	"context"
+	"errors"
 	"github.com/subgentic/coral/internal/logsafe"
+	"io/fs"
 	"log/slog"
 	"os"
 	"time"
@@ -162,12 +164,25 @@ func (idx *SessionIndexer) RunOnce(ctx context.Context) error {
 	}
 	flush()
 
+	// Exclusion marks of rollout files that are gone are dropped (#6098); only a file known not to exist counts as gone.
+	if n, err := idx.store.PruneHistoryExclusions(ctx, rolloutStillThere); err != nil {
+		idx.logger.Warn("pruning history exclusions failed", "error", err)
+	} else if n > 0 {
+		idx.logger.Info("forgot history exclusions of rollout files that no longer exist", "count", n)
+	}
+
 	if os.Getenv("CORAL_DEBUG_PHASES") == "1" {
 		idx.logger.Info("indexer pass complete", "indexed", indexed, "scanners", len(idx.scanners), "sessions", len(allSessions), "duration_ms", time.Since(started).Milliseconds())
 	} else {
 		idx.logger.Info("indexer pass complete", "indexed", indexed, "duration_ms", time.Since(started).Milliseconds())
 	}
 	return nil
+}
+
+// rolloutStillThere reports whether a history file exists: false only when it is known to be gone, so a file that cannot be checked keeps its exclusion row.
+func rolloutStillThere(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil || !errors.Is(err, fs.ErrNotExist)
 }
 
 // BatchSummarizer polls summarizer_queue for pending sessions.

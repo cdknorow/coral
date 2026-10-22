@@ -114,3 +114,27 @@ func TestHistoryMtimesRechecksLegacyCodexOnceAndRemembersExclusions(t *testing.T
 	require.NoError(t, db.GetContext(ctx, &exclusions, `SELECT count(*) FROM history_exclusions`))
 	assert.Zero(t, exclusions)
 }
+
+// #6098: the exclusion mark of a rollout file that no longer exists is forgotten; one whose file is there, or cannot be checked, stays.
+func TestPruneHistoryExclusionsForgetsOnlyFilesKnownToBeGone(t *testing.T) {
+	db := openTestDB(t)
+	s := NewSessionStore(db)
+	ctx := context.Background()
+	for _, f := range []string{"/h/kept.jsonl", "/h/gone-1.jsonl", "/h/gone-2.jsonl", "/h/unreadable.jsonl"} {
+		require.NoError(t, s.RemoveExcludedSessionSource(ctx, "codex", f, 100, 1))
+	}
+	exists := func(path string) bool { return path == "/h/kept.jsonl" || path == "/h/unreadable.jsonl" } // the last: a file that cannot be checked counts as there
+	n, err := s.PruneHistoryExclusions(ctx, exists)
+	require.NoError(t, err)
+	assert.Equal(t, 2, n)
+	var left []string
+	require.NoError(t, db.SelectContext(ctx, &left, `SELECT source_file FROM history_exclusions ORDER BY source_file`))
+	assert.Equal(t, []string{"/h/kept.jsonl", "/h/unreadable.jsonl"}, left)
+	known, err := s.GetHistoryMtimes(ctx)
+	require.NoError(t, err)
+	assert.Contains(t, known, "/h/kept.jsonl", "a kept exclusion still keeps the file out of the next pass")
+	assert.NotContains(t, known, "/h/gone-1.jsonl")
+	n, err = s.PruneHistoryExclusions(ctx, exists)
+	require.NoError(t, err)
+	assert.Zero(t, n, "nothing left to prune")
+}

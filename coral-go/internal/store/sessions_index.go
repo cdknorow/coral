@@ -176,6 +176,29 @@ func (s *SessionStore) RemoveExcludedSessionSource(ctx context.Context, sourceTy
 	})
 }
 
+// PruneHistoryExclusions forgets the exclusion marks of rollout files that no longer exist (#6098): a guardian rollout Codex deleted left its row behind for good. exists says whether a file
+// is still there; only a file known to be gone is pruned (a file that cannot be checked keeps its row). It returns how many rows it removed.
+func (s *SessionStore) PruneHistoryExclusions(ctx context.Context, exists func(path string) bool) (int, error) {
+	var rows []struct {
+		SourceType string `db:"source_type"`
+		SourceFile string `db:"source_file"`
+	}
+	if err := s.reader().SelectContext(ctx, &rows, `SELECT source_type, source_file FROM history_exclusions`); err != nil {
+		return 0, err
+	}
+	removed := 0
+	for _, r := range rows {
+		if exists(r.SourceFile) {
+			continue
+		}
+		if _, err := s.db.ExecContext(ctx, `DELETE FROM history_exclusions WHERE source_type = ? AND source_file = ?`, r.SourceType, r.SourceFile); err != nil {
+			return removed, err
+		}
+		removed++
+	}
+	return removed, nil
+}
+
 // GetHistoryMtimes skips files checked by the current parser. Legacy Codex rows
 // are parsed once even with unchanged mtimes; excluded files keep only this
 // derived stat cache, so a later pass needn't reopen guardian rollouts either.
