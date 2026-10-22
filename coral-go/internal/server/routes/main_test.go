@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/subgentic/coral/internal/ptymanager"
 	"github.com/subgentic/coral/internal/secfile/secfiletest"
 	"github.com/subgentic/coral/internal/testleak"
 	"github.com/subgentic/coral/internal/tmux"
@@ -34,6 +35,7 @@ func TestMain(m *testing.M) {
 	before := packageArtifactFiles()
 	code := m.Run()
 	cleanupTemp()
+	ptymanager.StopGate(10 * time.Second) // the gate's retry loop, asleep after a held send: a short run ends before its 2 s sleep does (#4167)
 	// A test whose Config has no data folder writes artifacts and diffs under "artifacts" here,
 	// in the package folder, shared by every test in the run (#3566: the hourly upload cap then
 	// failed under -count). Such a test must use its own folder (cfg.UseCoralDir or config.Load).
