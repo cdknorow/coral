@@ -27,9 +27,10 @@ const FIELD_DEFAULT = { artifact_retention_kinds: 'diffs', artifact_retention_da
  * changedSettings returns the part of payload (what the dialog's fields hold now) that differs from baseline (the
  * settings the dialog opened with). With no baseline (the dialog was never opened) it returns all of payload.
  * themeValue is the theme select's value ('dark', 'custom:<name>'), which becomes the pair theme and custom_theme.
+ * defaultTheme is what the theme control shows when nothing is stored ('dark' here, 'system' on the Cloud Hub).
  * edited names settings whose field the person typed in, even if what they typed equals what it showed: those are sent.
  */
-export function changedSettings(payload, baseline, themeValue, edited) {
+export function changedSettings(payload, baseline, themeValue, edited, defaultTheme = 'dark') {
     if (!baseline) return { ...payload };
     const skip = new Set(), force = new Set(edited || []);
     for (const [a, b] of SHARED_INPUT) {
@@ -38,7 +39,7 @@ export function changedSettings(payload, baseline, themeValue, edited) {
         if (norm(payload[a]) === (norm(baseline[a]) || norm(baseline[b]))) { skip.add(a); skip.add(b); }
     }
     if ('theme' in payload && themeValue !== undefined) {
-        const shown = baseline.custom_theme ? 'custom:' + baseline.custom_theme : (baseline.theme || 'dark');
+        const shown = baseline.custom_theme ? 'custom:' + baseline.custom_theme : (baseline.theme || defaultTheme); // nothing stored shows the default the page follows (#6114)
         // One control, two settings: either both stay as they are or both are written.
         const keep = themeValue === shown ? skip : force;
         keep.add('theme'); keep.add('custom_theme');

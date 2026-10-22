@@ -9,6 +9,7 @@ import { fetchSystemStatus } from './system_status.js';
 import { updateTerminalTheme } from './xterm_renderer.js';
 import { browserLocal } from './safe_storage.js';
 import { onBuilt } from './lazy_dom.js';
+import { isCloud } from './server_base.js';
 // What Save sends: only the fields the person changed (here so the module is loaded at startup, import_hygiene).
 export { changedSettings } from './settings_diff.js';
 
@@ -193,9 +194,8 @@ export async function loadSettings() {
 
         // Apply theme from settings (default to Dark if no theme configured)
         // No custom theme (or the retired default) is the built-in one the page already has (theme_init.js): nothing is fetched or overlaid, so a hub that stores no theme leaves the stylesheet's own tokens (#6087).
-        const noCustom = !s.custom_theme || s.custom_theme === "GhostV3";
-        if (noCustom) state.settings.custom_theme = "Dark";
-        else await applyCustomThemeByName(s.custom_theme, { remember: false }); // the page load applies the person's stored theme; it does not rewrite the browser's saved choice
+        // Nothing is written into the settings here (#6114): a stored theme the person never picked would be saved back by the next Save.
+        if (s.custom_theme && s.custom_theme !== "GhostV3") await applyCustomThemeByName(s.custom_theme, { remember: false }); // the page load applies the person's stored theme; it does not rewrite the browser's saved choice
         // A partner build names itself in the settings menu
         _loadTierBadge();
     } catch (e) {
@@ -229,6 +229,9 @@ onBuilt('top-bar-settings-menu', () => { _loadTierBadge(); });
     }
     return theme;
 }
+
+/** What the theme control shows when no theme is stored: this computer starts dark, the Cloud Hub follows the system (theme_init.js). */
+export function defaultThemeChoice() { return isCloud() ? "system" : "dark"; }
 
 /** Apply a theme to the document */
 export function applyTheme(theme, { remember = true } = {}) {

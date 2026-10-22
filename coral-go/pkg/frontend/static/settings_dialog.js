@@ -12,7 +12,7 @@ import { applyCloudSettingsDialog, filterSettingsPayload } from './cloud_setting
 import { isCloud } from './server_base.js';
 import { requestJson } from './api.js';
 import { NOTHING_TO_SAVE } from './settings_diff.js';
-import { settingBool, changedSettings, renderRemoteAccessStatus, renderDebugInputLogStatus, renderToolsFolderStatus, applyTheme, clearCustomThemeVars, applyCustomThemeByName } from './settings_core.js';
+import { settingBool, changedSettings, renderRemoteAccessStatus, renderDebugInputLogStatus, renderToolsFolderStatus, applyTheme, clearCustomThemeVars, applyCustomThemeByName, defaultThemeChoice } from './settings_core.js';
 import { attachDialogFocus } from './dialog_focus.js';
 import { browserLocal } from './safe_storage.js';
 import { openSettingsGroup } from './settings_nav.js';
@@ -636,7 +636,7 @@ async function _fillThemeSelect(s) {
         themeSelect.innerHTML = options;
 
         // Set current value
-        const currentTheme = s.custom_theme ? `custom:${s.custom_theme}` : (s.theme || "dark");
+        const currentTheme = s.custom_theme ? `custom:${s.custom_theme}` : (s.theme || defaultThemeChoice()); // nothing stored shows what the page follows, never a theme that was not picked (#6114)
         themeSelect.value = currentTheme;
     }
 }
@@ -979,11 +979,11 @@ function readSettingsForm() {
 
     // Only what the person changed since the dialog opened: a field this dialog never touched (a CLI path another
     // tab saved meanwhile) is not written back with the value this page opened with.
-    payload = changedSettings(dropUnfilledCLIPaths(payload), _settingsAtOpen, themeValue, editedCLIPathKeys());
+    payload = changedSettings(dropUnfilledCLIPaths(payload), _settingsAtOpen, themeValue, editedCLIPathKeys(), defaultThemeChoice());
     // The hub accepts only the per-user keys (anything else refuses the whole request); the machine ones are hidden.
     if (isCloud()) payload = filterSettingsPayload(payload).kept;
 
-    return { themeValue, theme, customTheme, payload, checkUpdates, fitPaneWidth, terminalFontSize, terminalScrollback, showScrollbars, gitDiffMode, remoteAccessEnabled, debugInputLog };
+    return { themeValue, themeSaved: 'theme' in payload, theme, customTheme, payload, checkUpdates, fitPaneWidth, terminalFontSize, terminalScrollback, showScrollbars, gitDiffMode, remoteAccessEnabled, debugInputLog };
 }
 
 /** Sends the payload (nothing, when nothing changed) and takes it into state.settings and the privacy status. Returns true when there was nothing to save; throws when the server refuses. */
@@ -1029,19 +1029,22 @@ async function saveSettings({ payload, remoteAccessEnabled, debugInputLog }) {
 }
 
 /** Puts the saved settings on the page: the theme, the open session's capture, the terminal, the scrollbars, the changed files. */
-async function applySettingsEffects({ theme, customTheme, fitPaneWidth, terminalFontSize, terminalScrollback, showScrollbars, gitDiffMode }, oldGitDiffMode) {
+async function applySettingsEffects({ themeSaved, theme, customTheme, fitPaneWidth, terminalFontSize, terminalScrollback, showScrollbars, gitDiffMode }, oldGitDiffMode) {
     // Defaults may have changed — force next ACF open to re-fetch.
     _invalidateDefaultModels();
 
-    // Clear any previously applied custom CSS variables
-    clearCustomThemeVars();
+    // The theme only when the person changed it (#6114): a Save that left the control alone changes nothing on the page and writes no theme.
+    if (themeSaved) {
+        // Clear any previously applied custom CSS variables
+        clearCustomThemeVars();
 
-    if (customTheme) {
-        // Load and apply the custom theme (sets base + variables)
-        await applyCustomThemeByName(customTheme);
-    } else {
-        // Apply built-in theme
-        applyTheme(theme);
+        if (customTheme) {
+            // Load and apply the custom theme (sets base + variables)
+            await applyCustomThemeByName(customTheme);
+        } else {
+            // Apply built-in theme
+            applyTheme(theme);
+        }
     }
 
     // If a live session is selected, force re-render with new default

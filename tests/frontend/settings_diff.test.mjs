@@ -13,6 +13,11 @@ const base = { cli_path_claude: '/opt/claude', cli_path_codex: '/opt/codex', ter
 // Nothing changed: nothing is sent, CLI paths included.
 assert.deepEqual(changedSettings({ ...base, fit_pane_width: true, theme: 'dark', custom_theme: '' }, base, 'dark'), {});
 
+// No theme stored: the control shows the default the page follows ('dark' on this computer, 'system' on the Cloud Hub), and a Save that leaves it alone writes no theme (#6114).
+assert.deepEqual(changedSettings({ terminal_font_size: '13', theme: 'dark', custom_theme: '' }, { terminal_font_size: '13' }, 'dark'), {});
+assert.deepEqual(changedSettings({ terminal_font_size: '13', theme: 'system', custom_theme: '' }, { terminal_font_size: '13' }, 'system', [], 'system'), {});
+assert.deepEqual(changedSettings({ terminal_font_size: '13', theme: 'light', custom_theme: '' }, { terminal_font_size: '13' }, 'light', [], 'system'), { theme: 'light', custom_theme: '' }, 'picking one writes it');
+
 // A stale dialog (it opened before the path was saved elsewhere) holds an empty path and did not touch it: not sent.
 const stale = { terminal_font_size: '13', fit_pane_width: 'True', theme: 'dark' };
 assert.deepEqual(changedSettings({ cli_path_claude: '', cli_path_codex: '', terminal_font_size: '15', fit_pane_width: true, theme: 'dark', custom_theme: '' }, stale, 'dark'), { terminal_font_size: '15' });
