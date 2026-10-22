@@ -96,7 +96,7 @@ func (s *Store) AdvanceReadCursor(ctx context.Context, project, subscriberID str
 func (s *Store) ListSubscribers(ctx context.Context, project string) ([]Subscriber, error) {
 	var subs []Subscriber
 	err := s.reader().SelectContext(ctx, &subs,
-		"SELECT * FROM board_subscribers WHERE project = ? AND is_active = 1 ORDER BY subscribed_at", project)
+		"SELECT * FROM board_subscribers WHERE project = ? AND is_active = 1 ORDER BY subscribed_at, id", project)
 	return subs, err
 }
 
@@ -118,7 +118,7 @@ func (s *Store) GetSubscription(ctx context.Context, subscriberID string) (*Subs
 func (s *Store) GetProjectSubscription(ctx context.Context, project, subscriberID string) (*Subscriber, error) {
 	var sub Subscriber
 	err := s.reader().GetContext(ctx, &sub,
-		"SELECT * FROM board_subscribers WHERE project = ? AND subscriber_id = ? AND is_active = 1 ORDER BY subscribed_at DESC LIMIT 1", project, subscriberID)
+		"SELECT * FROM board_subscribers WHERE project = ? AND subscriber_id = ? AND is_active = 1 ORDER BY subscribed_at DESC, id DESC LIMIT 1", project, subscriberID)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}

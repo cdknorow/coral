@@ -361,7 +361,7 @@ func (s *Store) ActiveTaskForSubscriber(ctx context.Context, project, subscriber
 	err := s.reader().GetContext(ctx, &task,
 		`SELECT id, revision, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens
 		 FROM board_tasks WHERE board_id = ? AND assigned_to = ? AND status = 'in_progress'
-		 ORDER BY claimed_at DESC LIMIT 1`, project, subscriberID)
+		 ORDER BY claimed_at DESC, id DESC LIMIT 1`, project, subscriberID)
 	if err != nil {
 		return nil
 	}

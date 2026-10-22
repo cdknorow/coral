@@ -441,7 +441,7 @@ func (s *TaskStore) ListAgentNotes(ctx context.Context, agentName string, sessio
 	var notes []AgentNote
 	err := s.reader().SelectContext(ctx, &notes,
 		`SELECT id, agent_name, content, created_at, updated_at
-		 FROM agent_notes WHERE agent_name = ?`+filter+` ORDER BY created_at DESC`,
+		 FROM agent_notes WHERE agent_name = ?`+filter+` ORDER BY created_at DESC, id DESC`,
 		args...)
 	return notes, err
 }
@@ -603,7 +603,7 @@ func (s *TaskStore) ListAgentEvents(ctx context.Context, agentName string, limit
 	var events []AgentEvent
 	err := s.reader().SelectContext(ctx, &events,
 		`SELECT id, agent_name, session_id, event_type, tool_name, summary, detail_json, created_at, duration_ms, ref_id
-		 FROM agent_events`+where+` ORDER BY created_at DESC LIMIT ?`,
+		 FROM agent_events`+where+` ORDER BY created_at DESC, id DESC LIMIT ?`,
 		args...)
 	return events, err
 }
@@ -978,6 +978,6 @@ func (s *TaskStore) ListNotesBySession(ctx context.Context, sessionID string) ([
 	var notes []AgentNote
 	err := s.reader().SelectContext(ctx, &notes,
 		`SELECT id, agent_name, content, created_at, updated_at
-		 FROM agent_notes WHERE session_id = ? ORDER BY created_at DESC`, sessionID)
+		 FROM agent_notes WHERE session_id = ? ORDER BY created_at DESC, id DESC`, sessionID)
 	return notes, err
 }

@@ -203,7 +203,7 @@ func (s *ScheduleStore) UpdateScheduledRun(ctx context.Context, runID int64, fie
 func (s *ScheduleStore) GetRunsForJob(ctx context.Context, jobID int64, limit int) ([]ScheduledRun, error) {
 	var runs []ScheduledRun
 	err := s.db.SelectContext(ctx, &runs,
-		"SELECT * FROM scheduled_runs WHERE job_id = ? ORDER BY scheduled_at DESC LIMIT ?",
+		"SELECT * FROM scheduled_runs WHERE job_id = ? ORDER BY scheduled_at DESC, id DESC LIMIT ?",
 		jobID, limit)
 	return runs, err
 }
@@ -212,7 +212,7 @@ func (s *ScheduleStore) GetRunsForJob(ctx context.Context, jobID int64, limit in
 func (s *ScheduleStore) GetLastRunForJob(ctx context.Context, jobID int64) (*ScheduledRun, error) {
 	var run ScheduledRun
 	err := s.db.GetContext(ctx, &run,
-		"SELECT * FROM scheduled_runs WHERE job_id = ? ORDER BY scheduled_at DESC LIMIT 1", jobID)
+		"SELECT * FROM scheduled_runs WHERE job_id = ? ORDER BY scheduled_at DESC, id DESC LIMIT 1", jobID)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -224,7 +224,7 @@ func (s *ScheduleStore) GetActiveRunForJob(ctx context.Context, jobID int64) (*S
 	var run ScheduledRun
 	err := s.db.GetContext(ctx, &run,
 		`SELECT * FROM scheduled_runs WHERE job_id = ? AND status IN ('pending', 'running')
-		 ORDER BY scheduled_at DESC LIMIT 1`, jobID)
+		 ORDER BY scheduled_at DESC, id DESC LIMIT 1`, jobID)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -237,7 +237,7 @@ func (s *ScheduleStore) ListAllRecentRuns(ctx context.Context, limit int) ([]Sch
 	err := s.db.SelectContext(ctx, &runs,
 		`SELECT r.*, `+runJobNameSQL+` as job_name
 		 FROM scheduled_runs r JOIN scheduled_jobs j ON j.id = r.job_id
-		 ORDER BY r.scheduled_at DESC LIMIT ?`, limit)
+		 ORDER BY r.scheduled_at DESC, r.id DESC LIMIT ?`, limit)
 	return runs, err
 }
 
@@ -304,7 +304,7 @@ func (s *ScheduleStore) ListActiveRuns(ctx context.Context) ([]ScheduledRun, err
 		`SELECT r.*, `+runJobNameSQL+` as job_name
 		 FROM scheduled_runs r LEFT JOIN scheduled_jobs j ON j.id = r.job_id
 		 WHERE r.status IN ('pending', 'running')
-		 ORDER BY r.scheduled_at DESC`)
+		 ORDER BY r.scheduled_at DESC, r.id DESC`)
 	return runs, err
 }
 
@@ -340,7 +340,7 @@ func (s *ScheduleStore) ListOneshotRuns(ctx context.Context, limit int, status *
 		query += " AND status = ?"
 		args = append(args, *status)
 	}
-	query += " ORDER BY scheduled_at DESC LIMIT ?"
+	query += " ORDER BY scheduled_at DESC, id DESC LIMIT ?"
 	args = append(args, limit)
 	err := s.db.SelectContext(ctx, &runs, query, args...)
 	return runs, err

@@ -164,7 +164,7 @@ func (s *Store) ResetHealthCounters(ctx context.Context, project, rule, target s
 // HealthEscalations lists the escalated counters of a board, for the orchestrator's check.
 func (s *Store) HealthEscalations(ctx context.Context, project string) ([]HealthEscalation, error) {
 	var out []HealthEscalation
-	err := s.db.SelectContext(ctx, &out, `SELECT rule, target, subject, last_at FROM health_counters WHERE project = ? AND escalated = 1 ORDER BY last_at`, project)
+	err := s.db.SelectContext(ctx, &out, `SELECT rule, target, subject, last_at FROM health_counters WHERE project = ? AND escalated = 1 ORDER BY last_at, rowid`, project)
 	return out, err
 }
 

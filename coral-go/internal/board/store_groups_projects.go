@@ -133,13 +133,13 @@ func (s *Store) ListProjectsEnriched(ctx context.Context) ([]EnrichedProject, er
 		     (SELECT created_at FROM board_messages m WHERE m.project = p.project ORDER BY m.id DESC LIMIT 1) as last_message_at,
 		     (SELECT GROUP_CONCAT(s.job_title, ', ')
 		      FROM board_subscribers s WHERE s.project = p.project AND s.is_active = 1
-		      ORDER BY s.subscribed_at LIMIT 5) as participant_names
+		      ORDER BY s.subscribed_at, s.id LIMIT 5) as participant_names
 		 FROM (
 		     SELECT DISTINCT project FROM board_subscribers WHERE is_active = 1
 		     UNION
 		     SELECT DISTINCT project FROM board_messages
 		 ) p
-		 ORDER BY last_message_at DESC`)
+		 ORDER BY last_message_at DESC, p.project`)
 	if err == nil {
 		ids := make([]string, len(projects))
 		for i := range projects {

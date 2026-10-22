@@ -139,12 +139,12 @@ func (s *TeamStore) ListTeams(ctx context.Context, statusFilter string) ([]Team,
 	if statusFilter != "" {
 		err := s.db.SelectContext(ctx, &teams,
 			`SELECT id, name, config_json, status, working_dir, is_worktree, created_at, updated_at, stopped_at
-			 FROM teams WHERE status = ? ORDER BY updated_at DESC`, statusFilter)
+			 FROM teams WHERE status = ? ORDER BY updated_at DESC, id DESC`, statusFilter)
 		return teams, err
 	}
 	err := s.db.SelectContext(ctx, &teams,
 		`SELECT id, name, config_json, status, working_dir, is_worktree, created_at, updated_at, stopped_at
-		 FROM teams ORDER BY updated_at DESC`)
+		 FROM teams ORDER BY updated_at DESC, id DESC`)
 	for i := range teams {
 		teams[i].HydrateConfig()
 	}

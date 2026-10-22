@@ -160,7 +160,7 @@ func (s *SessionStore) GetAllLiveSessions(ctx context.Context) ([]LiveSession, e
 	err := s.reader().SelectContext(ctx, &sessions,
 		`SELECT session_id, agent_type, agent_name, working_dir, display_name,
 		 resume_from_id, flags, is_job, prompt, board_name, board_server, backend, icon, name_color, is_sleeping, is_archived, sleep_reason, board_type, capabilities, model, thinking, observed_model, context_window, tools, pid, worktree_path, worktree_repo, team_id, created_at, stopped_at, permission_mode
-		 FROM live_sessions WHERE status = 'active' ORDER BY created_at`)
+		 FROM live_sessions WHERE status = 'active' ORDER BY created_at, rowid`)
 	return sessions, err
 }
 
@@ -178,7 +178,7 @@ func (s *SessionStore) GetBoardSessions(ctx context.Context, boardName string) (
 	err := s.reader().SelectContext(ctx, &sessions,
 		`SELECT session_id, agent_type, agent_name, working_dir, display_name,
 		 resume_from_id, flags, is_job, prompt, board_name, board_server, backend, icon, is_sleeping, is_archived, board_type, capabilities, model, thinking, tools, pid, worktree_path, worktree_repo, team_id, created_at, stopped_at, permission_mode
-		 FROM live_sessions WHERE board_name = ? AND status = 'active' ORDER BY created_at`, boardName)
+		 FROM live_sessions WHERE board_name = ? AND status = 'active' ORDER BY created_at, rowid`, boardName)
 	return sessions, err
 }
 
