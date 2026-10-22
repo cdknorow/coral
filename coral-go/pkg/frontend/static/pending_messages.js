@@ -385,6 +385,8 @@ export function syncPendingBubbles(container, sessionId) {
 const SEND_GRACE_MS = 90 * 1000;
 const lastSendAt = new Map(); // session_id -> ms of the last send with no agent output since
 
+state.lastSendAt = lastSendAt; // read by the sleeping view: a message sent and nothing back since (#6058)
+
 export function noteAgentActivity(sessionId, msg) {
     dropStaleSentPending(sessionId, msg);
     const sent = lastSendAt.get(sessionId);
@@ -406,11 +408,30 @@ function agentIsWorking(session) {
 // Busy for queueing purposes: working, or still on a message just sent
 const agentIsBusy = agentIsWorking;
 
+/** "12 s", "1 min 05 s": the elapsed time as short digits. */
+export function workingElapsedText(secs) {
+    if (secs < 60) return `${secs} s`;
+    return `${Math.floor(secs / 60)} min ${String(secs % 60).padStart(2, "0")} s`;
+}
+
+/** One second of the Working row: the quiet digits from 5 s; at 30 s the "Still working" line with its terminal link and one polite status; then a status once a minute. A row that left the page stops its own timer. */
+export function tickWorking(el) {
+    if (!el.isConnected) { clearInterval(el._tick); return; }
+    const secs = Math.max(0, Math.floor((Date.now() - Number(el.dataset.since)) / 1000));
+    el.querySelector(".chat-working-time").textContent = secs >= 5 ? ` · ${workingElapsedText(secs)}` : "";
+    if (secs < 30) return;
+    el.querySelector(".chat-working-still").hidden = false;
+    const live = el.querySelector(".chat-working-live");
+    const minutes = Math.floor(secs / 60);
+    const said = secs >= 60 ? `Still working, ${minutes} ${minutes === 1 ? "minute" : "minutes"}` : "Still working, 30 seconds";
+    if (live.textContent !== said && (secs === 30 || secs % 60 === 0 || !live.textContent)) live.textContent = said;
+}
+
 export function syncWorkingIndicator(container, session) {
     let el = container.querySelector(":scope > .chat-working");
     // A card asking for input replaces the Working row
     if (!agentIsWorking(session) || container.querySelector(":scope > .chat-needs-input")) {
-        if (el) el.remove();
+        if (el) { clearInterval(el._tick); el.remove(); }
         return;
     }
     if (!el) {
@@ -418,7 +439,12 @@ export function syncWorkingIndicator(container, session) {
         el.className = "chat-working";
         el.setAttribute("role", "status");
         // Just the state: the latest step is already the group summary above
-        el.innerHTML = `<span class="chat-working-dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="chat-working-label">Working</span>`;
+        el.innerHTML = `<span class="chat-working-dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="chat-working-label">Working</span>`
+            + `<span class="chat-working-time" aria-hidden="true"></span><span class="chat-working-live sr-only"></span>`
+            + `<span class="chat-working-still" hidden>Still working. <button type="button" class="chat-working-link" data-on-click="terminal-view-open">Open the terminal</button> to see what it is doing.</span>`;
+        // How long it has been (#6058): quiet digits from 5 s, a polite status at 30 s and then once a minute, and a way to look after 30 s. Counted from the send when there was one, else from when the row first showed.
+        el.dataset.since = String(lastSendAt.get(session.session_id) || Date.now());
+        el._tick = setInterval(() => tickWorking(el), 1000); // interval-ok: one second of the Working row; tickWorking clears it when the row leaves the page, and syncWorkingIndicator clears it when it removes the row
     }
     // Below what the agent is working on (including Sent messages), above
     // anything Queued behind it
