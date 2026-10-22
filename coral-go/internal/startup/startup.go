@@ -18,6 +18,7 @@ import (
 	"github.com/subgentic/coral/internal/background"
 	"github.com/subgentic/coral/internal/config"
 	"github.com/subgentic/coral/internal/dbcrypt"
+	"github.com/subgentic/coral/internal/logsafe"
 	"github.com/subgentic/coral/internal/naming"
 	"github.com/subgentic/coral/internal/ptymanager"
 	"github.com/subgentic/coral/internal/safego"
@@ -333,15 +334,15 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 // logStartup writes the startup line: version, tier, backend asked for, process, executable and environment.
 func logStartup(opts Options) {
 	exe, exeErr := os.Executable()
-	log.Printf("[STARTUP] version=%q tier=%s backend=%s pid=%d exe=%q exe_err=%v path=%q shell=%q coral_tmux_bin=%q",
+	log.Printf("[STARTUP] version=%q tier=%s backend=%s pid=%d exe=%q exe_err=%v path_entries=%d shell=%q coral_tmux_bin_set=%t",
 		config.ReportedVersion(),
 		config.TierName,
 		opts.BackendType,
 		os.Getpid(),
 		exe,
 		exeErr,
-		os.Getenv("PATH"),
-		os.Getenv("SHELL"),
-		os.Getenv("CORAL_TMUX_BIN"),
+		logsafe.Count(),
+		filepath.Base(os.Getenv("SHELL")),
+		os.Getenv("CORAL_TMUX_BIN") != "",
 	)
 }
