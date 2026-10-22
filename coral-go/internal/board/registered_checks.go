@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/subgentic/coral/internal/executil"
 	"github.com/subgentic/coral/internal/gitutil"
 )
 
@@ -185,6 +186,7 @@ func runBoundedCommand(ctx context.Context, workdir string, args ...string) boun
 	}
 	var stdout, stderr boundedBuffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	executil.HideWindow(cmd) // Windows: no console window of its own when Coral has none (#211); the output still comes through the pipes
 	err := cmd.Run()
 	if ctx.Err() != nil {
 		err = ctx.Err()
