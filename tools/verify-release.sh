@@ -443,9 +443,12 @@ if [ "$NOPREV" = 0 ] && [ -n "$meta" ]; then
 fi
 
 # The growth guard is 25% of the previous release. 1.4.153 ships coral-update, whose libraries add about 175 third-party licence entries to the Linux
-# tarballs and about 110 to the Windows ZIP (+51% and +47%, read and explained in the release notes): its limit is 155%.
+# tarballs and about 110 to the Windows ZIP (+51% and +47%, read and explained in the release notes): its limit is 155%. The same entries are in
+# 1.4.154 to 1.4.156: at --stage approved the previous release is the last APPROVED one (1.4.147, before coral-update), so each of them still
+# shows that jump until 1.4.153 or a later release is approved. Remove this case once an approved release carries coral-update (the next
+# release then compares with it and the guard is 25% again).
 growth_limit=125
-case "$want_ver" in 1.4.153) growth_limit=155 ;; esac
+case "$want_ver" in 1.4.153|1.4.154|1.4.155|1.4.156) growth_limit=155 ;; esac
 compare_count() { # file count countfn
   local f="$1" n="$2" fn="$3" pf pn
   pf="$PREVDIR/$(sed "s/$want_ver/${PREV#v}/" <<<"$f")"
