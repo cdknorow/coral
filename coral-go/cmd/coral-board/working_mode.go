@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/subgentic/coral/internal/clierr"
 	"net/url"
 	"os"
 )
@@ -11,7 +12,7 @@ import (
 func cmdWorkingMode(args []string) {
 	if err := runWorkingMode(args); err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		clierr.Exit1()
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/subgentic/coral/internal/clierr"
 	"github.com/subgentic/coral/internal/clitext"
 	"github.com/subgentic/coral/internal/hooks"
 	"io"
@@ -62,12 +63,14 @@ func apiCall(method, path string, body any) (map[string]any, int, error) {
 		req.Header.Set("Content-Type", "application/json")
 	}
 
-	client := &http.Client{Timeout: 10 * time.Second}
+	wait := clierr.Timeout(10 * time.Second)
+	client := &http.Client{Timeout: wait}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, 0, fmt.Errorf("cannot reach Coral server at %s: %v", redactedServerURL(), err)
+		return nil, 0, clierr.CannotReach(redactedServerURL(), err, wait)
 	}
 	defer resp.Body.Close()
+	clierr.NoteStatus(resp.StatusCode)
 
 	respData, _ := readServer(resp.Body)
 	var result map[string]any
@@ -93,6 +96,7 @@ func serverError(status int, result map[string]any) error {
 			detail = http.StatusText(status)
 		}
 	}
+	clierr.NoteStatus(status)
 	out := fmt.Sprintf("Error: Coral at %s answered %d: %s", redactedServerURL(), status, detail)
 	if status == http.StatusUnauthorized && !isLoopbackServer() {
 		out += "\nthis Coral needs auth from non-local addresses; agents should use the loopback address"
@@ -122,14 +126,20 @@ func isLoopbackServer() bool {
 
 // boardClient is the client for reads: the same 10 s as apiCall. http.Get has no timeout at all, so read and check waited for ever on a server
 // that accepted the connection and never answered.
-var boardClient = &http.Client{Timeout: 10 * time.Second}
+var boardClient *http.Client // nil: a 10 s client (or CORAL_TIMEOUT), made per call
 
 // getBoard does a GET to a /api/board path and returns the cleaned body, erroring on a transport
 // failure or a non-2xx status (#3589), so a refused read is never printed as "no messages".
 func getBoard(path string) ([]byte, error) {
-	resp, err := boardClient.Get(serverURL + "/api/board" + path)
+	client, wait := boardClient, clierr.Timeout(10*time.Second)
+	if client == nil {
+		client = &http.Client{Timeout: wait}
+	} else {
+		wait = client.Timeout
+	}
+	resp, err := client.Get(serverURL + "/api/board" + path)
 	if err != nil {
-		return nil, fmt.Errorf("cannot reach Coral server at %s: %v", redactedServerURL(), err)
+		return nil, clierr.CannotReach(redactedServerURL(), err, wait)
 	}
 	defer resp.Body.Close()
 	data, _ := readServer(resp.Body)
@@ -150,6 +160,7 @@ func apiCallRaw(method, path string, body any) ([]byte, int, error) {
 // apiCallRawTimeout is apiCallRaw with its own timeout (a message relayed to another
 // Coral can take up to about 30 s: the hub waits up to 20 s for the target, #3489).
 func apiCallRawTimeout(method, path string, body any, timeout time.Duration) ([]byte, int, error) {
+	timeout = clierr.Timeout(timeout) // CORAL_TIMEOUT, when set, replaces the command's own
 	client := &http.Client{Timeout: timeout}
 	var lastErr error
 	for i, endpoint := range requestURLs(serverURL + "/api/board" + path) {
@@ -174,10 +185,11 @@ func apiCallRawTimeout(method, path string, body any, timeout time.Duration) ([]
 			continue
 		}
 		defer resp.Body.Close()
+		clierr.NoteStatus(resp.StatusCode)
 		respData, _ := readServer(resp.Body)
 		return respData, resp.StatusCode, nil
 	}
-	return nil, 0, fmt.Errorf("cannot reach Coral server at %s: %v", redactedServerURL(), lastErr)
+	return nil, 0, clierr.CannotReach(redactedServerURL(), lastErr, timeout)
 }
 
 // retryLoopbackTransport permits fallback only for idempotent GET requests and
@@ -208,7 +220,7 @@ func requestURLs(endpoint string) []string {
 func failFromServer(data []byte, status int, err error) {
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	var errResp map[string]string
 	if json.Unmarshal(data, &errResp) == nil && errResp["error"] != "" {
@@ -216,7 +228,7 @@ func failFromServer(data []byte, status int, err error) {
 	} else {
 		fmt.Fprintf(os.Stderr, "Error: HTTP %d: %s\n", status, string(data))
 	}
-	os.Exit(1)
+	clierr.Exit1()
 }
 
 // failFromRefusal is failFromServer for a refusal whose reply carries numbers and flags beside its words (the 413
@@ -224,19 +236,19 @@ func failFromServer(data []byte, status int, err error) {
 func failFromRefusal(data []byte, status int, err error) {
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	var errResp map[string]any
 	if json.Unmarshal(data, &errResp) == nil {
 		if text, _ := errResp["message"].(string); text != "" {
 			fmt.Fprintf(os.Stderr, "Error: %s\n", text)
-			os.Exit(1)
+			clierr.Exit1()
 		}
 		if text, _ := errResp["error"].(string); text != "" {
 			fmt.Fprintf(os.Stderr, "Error: %s\n", text)
-			os.Exit(1)
+			clierr.Exit1()
 		}
 	}
 	fmt.Fprintf(os.Stderr, "Error: HTTP %d: %s\n", status, string(data))
-	os.Exit(1)
+	clierr.Exit1()
 }

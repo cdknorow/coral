@@ -4,6 +4,7 @@ package main
 import (
 	"fmt"
 	"github.com/subgentic/coral/internal/cliauth"
+	"github.com/subgentic/coral/internal/clierr"
 	"github.com/subgentic/coral/internal/clitext"
 	"github.com/subgentic/coral/internal/hooks"
 	"os"
@@ -29,7 +30,7 @@ func main() {
 	os.Args, rawOutput = clitext.TakeRaw(os.Args)
 	if len(os.Args) < 2 {
 		printUsage()
-		os.Exit(1)
+		clierr.Exit1()
 	}
 
 	// Help and flag-shaped text are handled before any command runs, so
@@ -70,7 +71,7 @@ func main() {
 	case "status":
 		if err := runBoardStatus(os.Args[2:], os.Stdout); err != nil {
 			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
+			clierr.Exit1()
 		}
 	case "working-mode":
 		cmdWorkingMode(os.Args[2:])
@@ -206,7 +207,7 @@ Windows:
   and turns non-ASCII text (accents, symbols, emoji) into '?' when you pipe it to one.
   For text with quotes or non-ASCII, use  post --file <path>  with a UTF-8 file, or
   pipe to  post -  after  $OutputEncoding = [Text.UTF8Encoding]::new()  (PowerShell 7
-  and cmd.exe do not need it). Options coral-board does not know are refused (exit 2).`
+  and cmd.exe do not need it). Options coral-board does not know are refused (exit 2).` + "\n\n" + clierr.Table
 
 // exitFn is os.Exit, replaced in tests that check a refused command.
 var exitFn = os.Exit

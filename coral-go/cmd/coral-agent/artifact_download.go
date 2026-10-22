@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/subgentic/coral/internal/clierr"
 	"io"
 	"io/fs"
 	"mime"
@@ -60,7 +61,7 @@ func downloadArtifactOpts(base, ref, output string, force bool) (string, error) 
 	if err != nil {
 		return "", err
 	}
-	client := &http.Client{Timeout: 30 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return fmt.Errorf("artifact redirects are not supported") }}
+	client := &http.Client{Timeout: clierr.Timeout(30 * time.Second), CheckRedirect: func(*http.Request, []*http.Request) error { return fmt.Errorf("artifact redirects are not supported") }}
 	var src io.Reader
 	var mediaType, localObject string
 	resp, err := client.Get(strings.TrimRight(base, "/") + "/api/artifacts/" + id)

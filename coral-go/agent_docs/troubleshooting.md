@@ -678,3 +678,21 @@ source=Notarized Developer ID
 
 If you do get a warning, you likely have a modified or partially-downloaded copy. Verify
 with the command above rather than bypassing it.
+
+## Command-line tools: exit codes and timeouts
+
+`coral-board`, `coral-agent` and `coral` exit with a code that says what went wrong, so a script can tell "Coral is not running" from "refused" from "no such task":
+
+| Code | Meaning |
+|---|---|
+| 0 | ok |
+| 1 | any other failure (the message says which) |
+| 2 | usage: an option or argument the command does not take, or a value it cannot use. Nothing was sent. |
+| 3 | cannot reach the server: the connection was refused or the host cannot be found. Is Coral running, and is `CORAL_URL` (or `CORAL_PORT`) the address it listens on? |
+| 4 | the server did not answer in time. It may be busy: try again, or set `CORAL_TIMEOUT`. |
+| 5 | refused for want of authority (HTTP 401 or 403) |
+| 6 | not found (HTTP 404) |
+
+A request waits 10 seconds by default (15 for docs and auto-accept, 30 for an artifact download, 5 minutes for an upload). `CORAL_TIMEOUT` replaces that: a duration such as `30s` or `2m`, kept between 1 second and 10 minutes; a value that is not a duration is ignored with a note. `coral-board wait` is a long poll and keeps its own timing.
+
+JSON output (`--json`, `status`, `task detail`) is unchanged by any of this: a failure prints its message on stderr and nothing on stdout.

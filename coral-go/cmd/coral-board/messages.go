@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/subgentic/coral/internal/clierr"
 	"io"
 	"net/http"
 	"net/url"
@@ -13,7 +14,7 @@ import (
 func cmdJoin() {
 	if len(os.Args) < 3 {
 		fmt.Fprintln(os.Stderr, "Usage: coral-board join <project> --as <role>")
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	project := os.Args[2]
 	jobTitle := "Agent"
@@ -27,7 +28,7 @@ func cmdJoin() {
 	sessionName := resolveSessionName()
 	if sessionName == "" {
 		fmt.Fprintln(os.Stderr, "coral-board: not in a Coral agent session (CORAL_SESSION_NAME is not set and Coral doesn't know this process), so there is nothing to join the board with")
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	result, status, err := apiCall("POST", "/"+url.PathEscape(project)+"/subscribe", map[string]string{
 		"subscriber_id": subscriberID,
@@ -36,7 +37,7 @@ func cmdJoin() {
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	// Any non-2xx exits non-zero and names the status (a 401 from a key-protected Coral, a 500),
 	// never a silent success; a refusal that has extra guidance (an ambiguous board name, a
@@ -46,7 +47,7 @@ func cmdJoin() {
 		if msg := joinProblem(project, result); msg != "" {
 			fmt.Fprint(os.Stderr, msg)
 		}
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	// The server answers with the board's id (#3536): a name that is a board's label joins
 	// that board, and the state file keeps its id, so a later rename or another board taking
@@ -98,11 +99,11 @@ func cmdPost() {
 	st := loadState()
 	if st == nil {
 		fmt.Fprintln(os.Stderr, "Not subscribed to any board. Run: coral-board join <project> --as <role>")
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	if len(os.Args) < 3 {
 		fmt.Fprintln(os.Stderr, commandUsage("post", nil))
-		os.Exit(1)
+		clierr.Exit1()
 	}
 
 	// Parse --to flag and collect remaining args as the message
@@ -147,7 +148,7 @@ func cmdPost() {
 		message = strings.Join(msgParts, " ")
 		if err := checkShellSyntax(os.Stderr, "post", message); err != nil {
 			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
+			clierr.Exit1()
 		}
 	}
 
@@ -173,18 +174,18 @@ func cmdPost() {
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	if e := serverError(status, result); e != nil {
 		fmt.Fprintln(os.Stderr, e)
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	if id, ok := result["id"]; ok {
 		fmt.Printf("Message #%.0f posted to '%s'\n", id, st.Project)
 		printMentionWarnings(os.Stderr, result)
 	} else {
 		fmt.Fprintln(os.Stderr, "Error: Coral accepted the request but returned no message id")
-		os.Exit(1)
+		clierr.Exit1()
 	}
 }
 
@@ -263,14 +264,14 @@ func cmdRead() {
 	st := loadState()
 	if st == nil {
 		fmt.Fprintln(os.Stderr, "Not subscribed to any board.")
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	r := parseReadArgs(os.Args)
 	subscriberID := resolveSubscriberID()
 	data, err := getBoard(readPath(r, st.Project, subscriberID))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	var messages []map[string]any
 	json.Unmarshal(data, &messages)
@@ -278,7 +279,7 @@ func cmdRead() {
 	if len(messages) == 0 {
 		if r.messageID > 0 {
 			fmt.Fprintf(os.Stderr, "Message #%d not found.\n", r.messageID)
-			os.Exit(1)
+			clierr.Exit1()
 		}
 		fmt.Println("No new messages.")
 		return
@@ -350,12 +351,12 @@ func cmdPeek() {
 	st := loadState()
 	if st == nil {
 		fmt.Fprintln(os.Stderr, "Not subscribed to any board.")
-		os.Exit(1)
+		clierr.Exit1()
 	}
 
 	if len(os.Args) < 3 {
 		fmt.Fprintln(os.Stderr, "Usage: coral-board peek \"<agent-name>\" [--lines N]")
-		os.Exit(1)
+		clierr.Exit1()
 	}
 
 	target := os.Args[2]
@@ -373,7 +374,7 @@ func cmdPeek() {
 	resp, err := http.Get(serverURL + "/api/board" + path)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	defer resp.Body.Close()
 
@@ -383,13 +384,13 @@ func cmdPeek() {
 		var errResp map[string]string
 		json.Unmarshal(data, &errResp)
 		fmt.Fprintf(os.Stderr, "Permission denied: %s\n", errResp["error"])
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	if resp.StatusCode != http.StatusOK {
 		var errResp map[string]string
 		json.Unmarshal(data, &errResp)
 		fmt.Fprintf(os.Stderr, "Error: %s\n", errResp["error"])
-		os.Exit(1)
+		clierr.Exit1()
 	}
 
 	var result map[string]any
@@ -406,17 +407,17 @@ func cmdCheck() {
 	st := loadState()
 	if st == nil {
 		fmt.Fprintln(os.Stderr, "Not subscribed to any board.")
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	subscriberID := resolveSubscriberID()
 	result, status, err := apiCall("GET", fmt.Sprintf("/%s/messages/check?subscriber_id=%s", url.PathEscape(st.Project), url.QueryEscape(subscriberID)), nil)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	if e := serverError(status, result); e != nil {
 		fmt.Fprintln(os.Stderr, e)
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	unread, _ := result["unread"].(float64)
 
@@ -437,7 +438,7 @@ func cmdProjects() {
 	data, err := getBoard("/projects")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	var projects []map[string]any
 	json.Unmarshal(data, &projects)
@@ -459,13 +460,13 @@ func cmdSubscribers() {
 	st := loadState()
 	if st == nil {
 		fmt.Fprintln(os.Stderr, "Not subscribed to any board.")
-		os.Exit(1)
+		clierr.Exit1()
 	}
 
 	data, err := getBoard("/" + url.PathEscape(st.Project) + "/subscribers")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	var subs []map[string]any
 	json.Unmarshal(data, &subs)
@@ -486,7 +487,7 @@ func cmdLeave() {
 	st := loadState()
 	if st == nil {
 		fmt.Fprintln(os.Stderr, "Not subscribed to any board.")
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	subscriberID := resolveSubscriberID()
 	result, status, err := apiCall("DELETE", "/"+url.PathEscape(st.Project)+"/subscribe", map[string]string{
@@ -494,11 +495,11 @@ func cmdLeave() {
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	if e := serverError(status, result); e != nil {
 		fmt.Fprintln(os.Stderr, e)
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	deleteState()
 	fmt.Printf("Left '%s'\n", st.Project)
@@ -508,16 +509,16 @@ func cmdDelete() {
 	st := loadState()
 	if st == nil {
 		fmt.Fprintln(os.Stderr, "Not subscribed to any board.")
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	result, status, err := apiCall("DELETE", "/"+url.PathEscape(st.Project), nil)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	if e := serverError(status, result); e != nil {
 		fmt.Fprintln(os.Stderr, e)
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	deleteState()
 	fmt.Printf("Deleted board '%s'\n", st.Project)

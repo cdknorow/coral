@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/subgentic/coral/internal/clierr"
 	"net/url"
 	"os"
 	"regexp"
@@ -142,7 +143,7 @@ func cmdExport() {
 	st := loadState()
 	if st == nil {
 		fmt.Fprintln(os.Stderr, "Not subscribed to any board.")
-		os.Exit(1)
+		clierr.Exit1()
 	}
 
 	// Parse flags
@@ -173,7 +174,7 @@ func cmdExport() {
 	messages, err := fetchAllMessages(st.Project, getBoard)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		clierr.Exit1()
 	}
 
 	// Convert board messages to exportEntry
@@ -201,7 +202,7 @@ func cmdExport() {
 		sideEntries, err := parseMergeFile(mergeFile)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error reading merge file: %v\n", err)
-			os.Exit(1)
+			clierr.Exit1()
 		}
 		entries = append(entries, sideEntries...)
 		fmt.Fprintf(os.Stderr, "Merged %d side-chat entries\n", len(sideEntries))
@@ -268,7 +269,7 @@ func cmdExport() {
 	if outputFile != "" {
 		if err := writeExport(outputFile, buf.Bytes()); err != nil {
 			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
+			clierr.Exit1()
 		}
 		fmt.Printf("Exported %d messages (%s) to %s\n", len(entries), format, outputFile)
 	} else {

@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"flag"
 	"fmt"
+	"github.com/subgentic/coral/internal/clierr"
 	"html"
 	"net/http"
 	"net/url"
@@ -27,7 +28,7 @@ See agent_docs/agent-ui.md for the full handoff rule.`
 func cmdUI(args []string) {
 	if err := runUI(args); err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		clierr.Exit1()
 	}
 }
 func runUI(args []string) error {
