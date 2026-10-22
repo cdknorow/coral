@@ -1,4 +1,5 @@
 import { historyFetch } from './history_source.js';
+import { isCloud } from './server_base.js';
 /* Session tags: CRUD, tag pills, dropdown picker */
 
 import { state } from './state.js';
@@ -19,7 +20,7 @@ export async function loadAllTags(forHistory = false) {
         allTags = [];
     }
     // Expose cache for cross-module access (folder_tags.js)
-    if (!forHistory) window._allTagsCache = allTags;
+    if (!forHistory || !isCloud()) window._allTagsCache = allTags;
     return allTags;
 }
 
