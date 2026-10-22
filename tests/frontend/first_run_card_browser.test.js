@@ -79,14 +79,32 @@ const SESSIONS = [{ name: 'first-agent', display_name: 'Agent', agent_type: 'cla
 
         // #6070 (a): no status answer yet (a fresh install: no background check has run), so the card asks the CLI's own status command and shows the sign-in card at once, as Codex's does
         console.log('4. a signed-out Claude with no status answer yet gets the sign-in card from the CLI check');
-        await ev(`const t0 = Date.now.bind(Date); Date.now = () => t0() + 60000; window.__sessions[0].server = undefined; window.__cli = false; window.__cliAsks = 0; window._coralSetLiveSessions(JSON.parse(JSON.stringify(window.__sessions))); true`);
-        await withStatus(undefined);
+        // A fresh page: nothing known yet about Claude's sign-in, as on a fresh install (the page keeps the newest answer it was given for
+        // its life, so the earlier steps' answers would otherwise still count). The CLI says "not signed in"; the status says nothing.
+        await Page.addScriptToEvaluateOnNewDocument({ source: 'window.__cli = false;' });
+        await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired();
+        await ev(`window.__coralReady.startup('liveList', 'liveListLoaded', 'settings')`);
+        await ev(`window.switchNavTab('agents'); window._coralSetLiveSessions(JSON.parse(JSON.stringify(window.__sessions))); true`);
+        await ev(`Promise.resolve(window.selectLiveSession('first-agent', 'claude', ${JSON.stringify(SID)})).then(() => { window.setLiveViewMode('chat'); return true; })`);
         await waitFor(`/Claude is not signed in/.test((document.querySelector('#live-history-messages > .chat-needs-input') || {}).textContent || '')`, 'the sign-in card from the CLI check alone', 10000);
         c = await card();
         assert.match(c.text, /Sign-in needed.*Claude is not signed in.*Open the terminal and sign in, then check again./); assert.ok(c.open, 'Open terminal stays');
         assert.equal(await ev(`window.__cliAsks`), 1, 'the CLI is asked once, not on every look');
         for (let i = 0; i < 3; i++) await ev(`import((window.__coralStatic || '/static/') + 'live_chat.js').then(m => m.refreshLiveHistory()).then(() => true)`);
         assert.equal(await ev(`window.__cliAsks`), 1, 'later looks at the card do not ask again');
+
+        // The race (the Orchestrator on #307): a status that does not say whether Claude is signed in (a fresh install's, before the server's
+        // first check) arrives after the CLI's "not signed in". It used to replace that answer with "not known", so the card went back to the
+        // generic words until the CLI was asked again 30 s later. The newest known answer stays.
+        console.log('4b. a status that does not say keeps the CLI\'s "not signed in"');
+        for (let i = 0; i < 3; i++) {
+            await withStatus(undefined);
+            for (let j = 0; j < 2; j++) await ev(`import((window.__coralStatic || '/static/') + 'live_chat.js').then(m => m.refreshLiveHistory()).then(() => true)`);
+            c = await card();
+            assert.match(c.text, /Claude is not signed in/, `status ${i + 1} without the field: the card stays on the sign-in state`);
+        }
+        assert.equal(await ev(`(async () => (await import((window.__coralStatic || '/static/') + 'signin_line.js')).claudeSignedIn())()`), false, 'the newest known answer is kept');
+        assert.equal(await ev(`!document.getElementById('claude-signin-line').hidden`), true, 'and the sign-in line agrees with the card');
 
         // #6070 (c): the "Claude is not signed in" line is about Claude: not on a Codex agent's page, nor an agent on another computer; on a Claude agent's page and off agent pages it stays
         console.log('5. the Claude sign-in line shows on Claude, not on a Codex agent');
