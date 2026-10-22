@@ -129,6 +129,7 @@ func (wr *WorkflowRunner) executeShellStep(ctx context.Context, runID int64, ste
 	cmd.Dir = repoPath
 	cmd.Env = withShellDirs(append(agentenv.Filter(os.Environ()), env...), shell) // #3389: no server-only settings
 	executil.NoCwdSearch(cmd)                                                     // Windows: a `cmd /c` in a step must not run a program planted in the repository (#183)
+	executil.HideWindow(cmd)                                                      // Windows: a console program started by a Coral with no console of its own would open a visible window (#211); its output still comes through the pipes
 	// Set process group for clean kill
 	configureChildProcess(cmd)
 
@@ -361,6 +362,7 @@ func (wr *WorkflowRunner) executeAgentPrint(ctx context.Context, runID int64, st
 	output.attach(cmd)
 
 	executil.NoCwdSearch(cmd) // Windows: a claude.cmd shim looks for node in the current folder first, so a repository's node.exe would run
+	executil.HideWindow(cmd)  // Windows: a console program started by a Coral with no console of its own would open a visible window (#211); its output still comes through the pipes
 	if err := cmd.Start(); err != nil {
 		output.release()
 		return fmt.Errorf("start agent: %w", err)
