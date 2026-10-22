@@ -45,7 +45,7 @@ func cmdTaskQueueVerb(st *boardState, args []string, action string) {
 	case "attach":
 		if *manifest == "" {
 			fmt.Fprintln(os.Stderr, "--artifacts manifest.json is required")
-			clierr.Exit1()
+			os.Exit(2) // usage
 		}
 		data, err := os.ReadFile(*manifest)
 		if err != nil {
@@ -61,12 +61,12 @@ func cmdTaskQueueVerb(st *boardState, args []string, action string) {
 	case "mark-landed":
 		if len(digests) == 0 {
 			fmt.Fprintln(os.Stderr, "--digest D is required (repeat it for each patch that landed)")
-			clierr.Exit1()
+			os.Exit(2) // usage
 		}
 		for _, d := range digests {
 			if !digestRe.MatchString(d) {
 				fmt.Fprintf(os.Stderr, "--digest %q is not 64 hex characters (with or without the sha256: prefix)\n", d)
-				exitFn(1)
+				exitFn(2)
 				return
 			}
 		}
@@ -79,13 +79,13 @@ func cmdTaskQueueVerb(st *boardState, args []string, action string) {
 	case "send-back":
 		if strings.TrimSpace(*note) == "" {
 			fmt.Fprintln(os.Stderr, `--note "why" is required`)
-			clierr.Exit1()
+			os.Exit(2) // usage
 		}
 		body["note"] = *note
 	}
 	data, status, err := apiCallRaw("POST", fmt.Sprintf("/%s/tasks/%d/%s", url.PathEscape(st.Project), id, action), body)
 	if err != nil || status != http.StatusOK {
-		fmt.Fprintln(os.Stderr, "Task", action, "failed:", err, string(data))
+		fmt.Fprintln(os.Stderr, "Task "+action+" failed: "+clierr.Describe(err, status, data))
 		exitFn(1)
 		return
 	}

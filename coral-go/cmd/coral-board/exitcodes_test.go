@@ -61,3 +61,31 @@ func TestHelpHasTheExitCodeTable(t *testing.T) {
 	assert.Equal(t, 0, res.code)
 	assert.True(t, strings.Contains(res.stdout, "Exit codes:") && strings.Contains(res.stdout, "CORAL_TIMEOUT"), res.stdout)
 }
+
+// The review verbs end with the code of what failed (QA's live check of #101): a 404 is 6, a missing --to or --note is a usage error (2), and the message
+// carries the server's words, not "<nil>".
+func TestReviewVerbsExitCodes(t *testing.T) {
+	status := 404
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		w.Write([]byte(`{"error":"Task not found"}`))
+	}))
+	defer srv.Close()
+	dir := subscribedDataDir(t, srv.URL)
+	for _, verb := range []string{"approve", "reject"} {
+		res := runBoard(t, srv.URL, dir, "task", verb, "999", "--note", "x")
+		assert.Equal(t, 6, res.code, "%s: %q", verb, res.stderr)
+		assert.Contains(t, res.stderr, "Coral answered HTTP 404: Task not found", verb)
+		assert.NotContains(t, res.stderr, "<nil>", verb)
+	}
+	status = 403
+	res := runBoard(t, srv.URL, dir, "task", "review", "999", "--to", "QA Engineer")
+	assert.Equal(t, 5, res.code, res.stderr)
+	res = runBoard(t, srv.URL, dir, "task", "review", "999")
+	assert.Equal(t, 2, res.code, "a missing --to is a usage error: %q", res.stderr)
+	res = runBoard(t, srv.URL, dir, "task", "reject", "999")
+	assert.Equal(t, 2, res.code, "a missing --note is a usage error: %q", res.stderr)
+	res = runBoard(t, srv.URL, dir, "task", "send-back", "999")
+	assert.Equal(t, 2, res.code, res.stderr)
+}

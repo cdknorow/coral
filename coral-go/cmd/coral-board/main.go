@@ -210,4 +210,10 @@ Windows:
   and cmd.exe do not need it). Options coral-board does not know are refused (exit 2).` + "\n\n" + clierr.Table
 
 // exitFn is os.Exit, replaced in tests that check a refused command.
-var exitFn = os.Exit
+// exitFn ends the program with code; a failure (1) takes the code of the request that failed (clierr.Exit1). Tests replace it.
+var exitFn = func(code int) {
+	if code == 1 {
+		clierr.Exit1()
+	}
+	os.Exit(code)
+}
