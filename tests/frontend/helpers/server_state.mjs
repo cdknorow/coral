@@ -3,7 +3,7 @@
 // settings_modal_trace then showed (#4813). The runner takes snapshot() of the SHARED, GLOBAL state before a suite and after it, reports what changed (diff), and puts the settings back
 // (restoreSettings: the server reads user_settings on every request, so a row put back in the database is the value the next suite sees). Per-board data (messages, tasks, subscribers: messageboard.db) is counted per board (#4920): a board a suite
 // made is removed by the runner like a team, and rows added to a board that was there already are a leak. Uses the sqlite3 command line, which the runner already needs to seed cli_path (#4354).
-import { execFileSync } from 'node:child_process';
+import { execFileSync } from './child_process.js';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import fs from 'node:fs';

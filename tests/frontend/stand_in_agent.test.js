@@ -58,7 +58,7 @@ function makeApi(initialCliPath) {
                 if (p === '/api/sessions/launch') return { status: 200, data: { session_id: 's1', session_name: 'n' } };
                 return { status: 200, data: {} }; };
             launchStandIn(api, { deadlineMs: 50 }).then(h => { fs.writeFileSync(${JSON.stringify(file + '.during')}, JSON.parse(fs.readFileSync(${JSON.stringify(file)}, 'utf8')).cli_path_claude + '|' + h.sid); throw new Error('no stop()'); }).catch(e => { process.exitCode = 1; });`;
-        const r = require('node:child_process').spawnSync(process.execPath, ['-e', child], { encoding: 'utf8' });
+        const r = require('./helpers/child_process.js').spawnSync(process.execPath, ['-e', child], { encoding: 'utf8' });
         if (r.stderr) console.error(r.stderr);
         const during = fs.readFileSync(file + '.during', 'utf8').split('|');
         assert.notEqual(during[0], '/custom/claude', 'the stand-in replaced the path while the process ran');

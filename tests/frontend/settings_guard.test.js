@@ -7,7 +7,7 @@ const http = require('node:http');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { execFileSync } = require('node:child_process');
+const { execFileSync, spawnSync } = require('./helpers/child_process.js');
 
 (async () => {
     const store = { theme: 'dark', cli_path_claude: '/mock' };
@@ -39,7 +39,7 @@ const { execFileSync } = require('node:child_process');
         assert.equal(store.cli_path_claude, '/mock', 'the other key was still put back');
 
         // The two database checks below need the sqlite3 command-line tool, which a Windows machine has not by default.
-        if (require("node:child_process").spawnSync("sqlite3", ["-version"]).error) {
+        if (spawnSync("sqlite3", ["-version"]).error) {
             console.log("settings_guard: the API checks passed; the database checks were SKIPPED, the sqlite3 command-line tool is not on PATH");
             return;
         }

@@ -97,7 +97,7 @@ const HOOK = `(() => {
     };
     let standIn = null;
     const BOARD = 'pwn-' + Date.now().toString(36);
-    const fs = require('fs'), path = require('path'), os = require('os'), cp = require('child_process');
+    const fs = require('fs'), path = require('path'), os = require('os'), cp = require('./helpers/child_process.js');
     // A working folder an agent could have made: a file, a folder and a branch named with markup (a name may hold < > " ' and =, not a slash or a
     // space: the tag is written as <img/data-pwn=.../src=x>), a commit message and a markdown file with the payload in it.
     const T = f => `<img data-pwn="${f}" src=x>`;                // a file or folder name may hold a space

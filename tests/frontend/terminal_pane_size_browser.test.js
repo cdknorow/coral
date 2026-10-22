@@ -21,7 +21,7 @@
 // Drives Chrome over CDP (chrome-remote-interface); run_cdp_suites.mjs finds CDP suites by that name.
 const assert = require('node:assert/strict');
 const { safePaused } = require('./helpers/paused');
-const { execFileSync } = require('node:child_process');
+const { execFileSync } = require('./helpers/child_process.js');
 const CDP = require('chrome-remote-interface');
 
 const BASE = require('./test_base').BASE;

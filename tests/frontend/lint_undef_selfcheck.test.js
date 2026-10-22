@@ -1,6 +1,6 @@
 // The no-undef lint must actually bite: a name used without an import is exactly what jsdom
 // suites (which stub modules) cannot see and real Chrome reports as a ReferenceError.
-const { spawnSync } = require('child_process');
+const { spawnSync } = require('./helpers/child_process.js');
 const path = require('path');
 const assert = require('assert');
 

@@ -6,7 +6,7 @@
 //
 //   node run_runner_folder_loss.mjs      (also: npm run test:runner-folder-loss)
 // Needs Go and Chrome like the CDP runner itself, so it is not part of test:cloud.
-import { spawn } from 'node:child_process';
+import { spawn } from './helpers/child_process.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';

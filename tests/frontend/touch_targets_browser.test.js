@@ -5,7 +5,7 @@
 //     Close and Escape both close it and return focus to the Expand button.
 const assert = require('node:assert/strict');
 const { safePaused } = require('./helpers/paused');
-const { execFileSync } = require('node:child_process');
+const { execFileSync } = require('./helpers/child_process.js');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');

@@ -50,7 +50,7 @@ async function httpJson(method, path, body) {
             // the stand-ins stopped first, the board kept by name so the second attempt removes it, and the stall stays in this log.
             console.error('RETRY heap_growth: once more on a fresh page');
             await Promise.race([Promise.all(standIns.map(si => si.stop().catch(() => {}))), bound(10000)]);
-            const r = require('node:child_process').spawnSync(process.execPath, [__filename], { stdio: 'inherit', env: { ...process.env, HEAP_RETRIED: '1', HEAP_BOARD: boardName } });
+            const r = require('./helpers/child_process.js').spawnSync(process.execPath, [__filename], { stdio: 'inherit', env: { ...process.env, HEAP_RETRIED: '1', HEAP_BOARD: boardName } });
             process.exit(r.status === null ? 1 : r.status);
         }
         console.error(`FAIL heap_growth: it stalled twice`);
