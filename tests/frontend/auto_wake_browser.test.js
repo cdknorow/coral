@@ -79,7 +79,7 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
         const row = await ev(`({ on: document.getElementById('tb-autowake-on').checked, cap: document.getElementById('tb-autowake-cap').value,
             text: document.getElementById('tb-autowake').textContent.replace(/\\s+/g, ' ') })`);
         check('on pty, Settings shows the wake setting, on, cap 8, and says bypass-permission agents resume as they ran',
-            row.on && row.cap === '8' && /Wake agents that were running when Coral stopped/.test(row.text) && /bypassed permissions/.test(row.text), JSON.stringify(row));
+            row.on && row.cap === '8' && /Wake agents after a restart/.test(row.text) && /running when Coral stopped/.test(row.text) && /bypassed permissions/.test(row.text), JSON.stringify(row));
         await ev(`document.getElementById('tb-autowake-on').checked = false; document.getElementById('tb-autowake-cap').value = '12'; window.applySettings(); true`);
         await until(`window.__aw.puts.some(b => b.includes('auto_wake_cap'))`, 'the save');
         const put = await ev(`JSON.parse(window.__aw.puts.find(b => b.includes('auto_wake_cap')))`);

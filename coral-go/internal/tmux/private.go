@@ -2,6 +2,7 @@ package tmux
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -68,6 +69,38 @@ func PrivateAgentSessions(ctx context.Context, socket string) []string {
 		}
 	}
 	return names
+}
+
+// noServer reports tmux's own words for "there is no server on this socket": the socket is stale or nobody listens on it.
+func noServer(stderr string) bool {
+	s := strings.ToLower(stderr)
+	return strings.Contains(s, "no server running") || strings.Contains(s, "no such file or directory") || strings.Contains(s, "connection refused")
+}
+
+// PrivateAgentSessionsChecked is PrivateAgentSessions that says whether it could tell. known is false when a tmux server may be there and could not be asked (a timeout, a client/server version
+// mismatch, an unreadable answer): the caller must not take that for "none" (#6064: hiding agents that are still running is the one thing the backend choice must never do). No socket, no server
+// and no tmux to ask are known, and none.
+func PrivateAgentSessionsChecked(ctx context.Context, socket string) (names []string, known bool) {
+	if !privateSocketOK(socket) {
+		return nil, true
+	}
+	out, err := privateTmux(ctx, socket, "list-sessions", "-F", "#{session_name}")
+	if err != nil {
+		var ee *exec.ExitError
+		switch {
+		case errors.Is(err, exec.ErrNotFound):
+			return nil, true // no tmux to ask: its agents cannot be reached by tmux either
+		case errors.As(err, &ee) && noServer(string(ee.Stderr)):
+			return nil, true
+		}
+		return nil, false
+	}
+	for _, line := range strings.Split(out, "\n") {
+		if name := strings.TrimSpace(line); agentSessionRE.MatchString(name) {
+			names = append(names, name)
+		}
+	}
+	return names, true
 }
 
 // HasPrivateAgentSession reports whether the agent session name still runs on the tmux server

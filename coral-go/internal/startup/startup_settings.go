@@ -38,13 +38,17 @@ func applyStartupSettings(ctx context.Context, db *store.DB, cfg *config.Config,
 		savedBackend = setreg.Raw(settings, routes.TerminalBackendSetting)
 	}
 	var backendForced, keptForAgents bool
-	opts.BackendType, backendForced, keptForAgents = backendchoice.Resolve(backendFlag, savedBackend, runtime.GOOS, func() int {
-		return len(tmux.PrivateAgentSessions(ctx, tmux.PrivateSocketPath(cfg.CoralDir())))
+	opts.BackendType, backendForced, keptForAgents = backendchoice.Resolve(backendFlag, savedBackend, runtime.GOOS, func() (int, bool) {
+		names, known := tmux.PrivateAgentSessionsChecked(ctx, tmux.PrivateSocketPath(cfg.CoralDir()))
+		if !known {
+			log.Printf("[startup] Coral's tmux server could not be asked which agents it runs; keeping tmux for this start so none are hidden")
+		}
+		return len(names), known
 	})
 	cfg.TerminalBackend, cfg.TerminalBackendForced = opts.BackendType, backendForced
 	log.Printf("[STARTUP] terminal backend=%s (%s)", opts.BackendType, map[bool]string{true: "--backend", false: "Settings > Terminal backend, or the default"}[backendForced])
 	if keptForAgents {
-		log.Printf("[startup] Coral agents are still running in Coral's tmux server, so this start keeps tmux to leave them reachable; the first start without them runs the built-in terminal")
+		log.Printf("[startup] Coral agents may still be running in Coral's tmux server, so this start keeps tmux to leave them reachable; the first start that finds none runs the built-in terminal")
 	}
 	owedDefaultNotice(ctx, store.NewSessionStore(db), savedBackend, opts.BackendType, backendForced, runtime.GOOS)
 	if opts.BackendType == "tmux" {
