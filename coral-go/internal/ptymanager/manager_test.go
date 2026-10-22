@@ -533,7 +533,7 @@ func TestPTYBackendAttachFanOut(t *testing.T) {
 
 	// All subscribers should receive
 	for i, ch := range channels {
-		got := readFromChan(ch, 2*time.Second)
+		got := readUntil(ch, "broadcast", 2*time.Second) // until the marker has come: the first chunk may not hold it all on a loaded machine
 		if !strings.Contains(got, "broadcast") {
 			t.Errorf("subscriber %d expected 'broadcast', got %q", i, got)
 		}
@@ -544,35 +544,6 @@ func TestPTYBackendAttachFanOut(t *testing.T) {
 		backend.Unsubscribe("fanout-test", fmt.Sprintf("ws-%d", i))
 	}
 	backend.Kill("fanout-test")
-}
-
-// readFromChan reads all available data from a channel until timeout.
-func readFromChan(ch <-chan []byte, timeout time.Duration) string {
-	var buf strings.Builder
-	timer := time.After(timeout)
-	for {
-		select {
-		case data, ok := <-ch:
-			if !ok {
-				return buf.String()
-			}
-			buf.Write(data)
-			// Check if we have meaningful content
-			if buf.Len() > 0 {
-				// Give a tiny bit more time for remaining data
-				select {
-				case data, ok := <-ch:
-					if ok {
-						buf.Write(data)
-					}
-				case <-time.After(200 * time.Millisecond):
-				}
-				return buf.String()
-			}
-		case <-timer:
-			return buf.String()
-		}
-	}
 }
 
 func TestParseCommand(t *testing.T) {
