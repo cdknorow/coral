@@ -1,5 +1,32 @@
 # Release Notes
 
+## v1.4.152 — First run that guides you, Claude starts in Auto mode, and safer launches through Coral Hub
+
+### Features
+
+- **A first run that guides you:** after Launch the new agent opens (before, the page stayed on the home screen and the agent was a row to find in the list); a missing CLI is said under the working folder, with **Check again** (and the Not Found dialog has it too); an agent that has not started shows a readable card that says what to do, and "Claude is not signed in" when it is not (Coral checks Claude's sign-in once, in the background, after the first Claude launch). A launch whose CLI is installed nowhere answers `422 cli_not_found`, naming the setting that points at an existing install.
+- **Claude agents start in Auto permission mode:** where nothing chose a mode, a Claude launch is `--permission-mode auto` instead of skipping every prompt, so Coral does not scare new users. Codex, Antigravity and Pi keep the mode they always had (Codex's Auto cannot reach the board on localhost, Antigravity has no mode between edits-only and skip-permissions, Pi has none). A saved default, or a mode you pick, wins; an agent that launches an agent does not start it in Auto. Through Coral Hub a launch starts in Auto only when the owner's "Coral Hub can turn on auto-accept" switch is on and the launch has Launch access; otherwise the agent asks. If you saved a default permission mode (for example Bypass) in Settings, it still wins; choose Auto there to switch.
+- **Idempotency-Key through Coral Hub:** a launch, launch-team, resume, wake or task run that reaches Coral through the Hub with an `Idempotency-Key` (and a Hub user label) runs once per route, user and key: a repeat while the first runs is 409 `request_in_progress`, a repeat after it succeeded gets the first answer and starts nothing, the same key with a different body is 422. Coral's hello to the Hub now carries a boot id and a start time, so the Hub can tell a restart from a reconnect.
+- **The Windows installer offers Launch Coral:** its last screen has a ticked "Launch Coral" box that starts Coral when you click Finish (a silent install does not start it).
+- **Settings shows who last changed "Coral Hub can turn on auto-accept":** "Turned on from Coral Hub by <user>, <time>" or "Turned off on this computer, <time>", under the switch.
+
+### Changes
+
+- **Cross-team messages and files follow the Hub's link snapshot:** from this release a relayed message or file is accepted only when Coral Hub's current links say so. With a stale or missing snapshot nothing is admitted, and the Messaging tab says "Waiting for Coral Hub: messages from other teams are refused until this computer reconnects" with when the Hub was last heard.
+- **A saved team template matches by the type the member will run as:** a saved member with no agent type, sent unchanged to a team of another CLI, no longer matches its saved key, so its allow rules cannot translate into that CLI's bypass without the Hub auto-accept switch. A team saved under the Auto or Bypass default needs the switch through the Hub.
+- **The publisher is Subgentic LLC:** the Windows installer's publisher, the four Windows programs' version information and the LICENSE copyright holder say Subgentic LLC (the installer's UpgradeCode is unchanged, so an installed Coral still upgrades).
+- **Workflows on Windows:** local step files are served, steps run an absolute `sh`, Git's folders join a step's and a hook's PATH, and a step's children join the kill job before they run.
+- **Escape on the first-launch Coral Hub screen answers "Skip for now"** wherever the focus is.
+- **A view-only agent keeps its words:** the composer keeps "View only through Coral Hub" when you select the agent again and on every live update.
+
+### Fixes
+
+- **The Coral Dropbox edition ships no installer package:** its release has no MSI, its checksums name none and its notes link none; a production release still builds, signs and links the MSI.
+
+### Internal
+
+- A test names the stop gate's retry loop and leak checks print every goroutine when they fail; the first-run flow has a browser suite that walks a brand-new install; `settings_switch_names` waits for the Hub block's status read.
+
 ## v1.4.151 — A shared Inbox, Coral Hub controls its auto-accept, Windows round 4, and faster Saved
 
 ### Features
