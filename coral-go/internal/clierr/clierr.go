@@ -118,6 +118,9 @@ func classify(err error) (Kind, string) {
 	var dns *net.DNSError
 	var ne net.Error
 	var errno syscall.Errno
+	if withheld(err) {
+		return Refused, "withheld"
+	}
 	switch {
 	case errors.Is(err, context.DeadlineExceeded), errors.As(err, &ne) && ne.Timeout():
 		return TimedOut, "timeout"
@@ -131,6 +134,15 @@ func classify(err error) (Kind, string) {
 	return Other, ""
 }
 
+// withheld reports whether err is the agent tools' own refusal to send this agent's token (an error with TokenWithheld, from the
+// hooks transport, #99): a foreign program on Coral's port, or plain http to another computer. Nothing was sent, and Coral
+// may well be running, so it is "refused" (5), never "cannot reach" (3): a script that restarts Coral on 3 would start a second
+// one beside the foreign listener (Security's #260 pass). A method, so this package needs no import of hooks.
+func withheld(err error) bool {
+	var w interface{ TokenWithheld() bool }
+	return errors.As(err, &w) && w.TokenWithheld()
+}
+
 // CannotReach turns a failed request into the error a CLI prints: it always begins "cannot reach Coral server at <url>" and then says which
 // of refused, no answer in time and host not found it was, with what to try, instead of Go's raw message. url must already be free of
 // credentials; waited is the timeout the request had.
@@ -138,6 +150,10 @@ func CannotReach(url string, err error, waited time.Duration) error {
 	kind, why := classify(err)
 	var msg string
 	switch why {
+	case "withheld":
+		var w interface{ TokenWithheld() bool }
+		errors.As(err, &w)
+		msg = fmt.Sprintf("refused before anything was sent to %s: %v", url, w)
 	case "refused":
 		msg = fmt.Sprintf("cannot reach Coral server at %s: the connection was refused. Is Coral running? Check the tray icon, and that the port in CORAL_URL (or CORAL_PORT) is the one Coral listens on.", url)
 	case "timeout":

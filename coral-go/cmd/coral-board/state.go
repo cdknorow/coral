@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/subgentic/coral/internal/cliauth"
+	"github.com/subgentic/coral/internal/clierr"
 	"github.com/subgentic/coral/internal/hooks"
 	"github.com/subgentic/coral/internal/testguard"
 	"github.com/subgentic/coral/internal/tmux"
@@ -173,6 +174,11 @@ func resolveViaPID() *pidResolution {
 	}
 
 	resp, err := http.Get(serverURL + "/api/sessions/resolve?pids=" + strings.Join(pidStrs, ","))
+	if err != nil && clierr.KindOf(err) == clierr.Refused {
+		// The token was withheld (a foreign program on Coral's port, #99): the command that then fails ("Not subscribed to any
+		// board") exits refused (5), as coral-agent does, not 1 (Security's #260 pass).
+		clierr.Note(clierr.Refused)
+	}
 	if err != nil || resp.StatusCode != http.StatusOK {
 		return nil
 	}
