@@ -97,13 +97,16 @@ func TestMessagesAreHeldToOneASecondWithOnlyTheLatestAndNoRepeats(t *testing.T) 
 	set(tunnel.TierInteract)
 	time.Sleep(700 * time.Millisecond)
 	assert.Equal(t, []tunnel.Mode{tunnel.TierInteract}, log.all(), "held, then coalesced away: the hub already had it")
-	// a held message that differs is sent once the gap has passed
-	set(tunnel.TierLaunch)
-	set(tunnel.TierView)
+	// one that is not within the gap of the last is sent at once
 	set(tunnel.TierLaunch)
 	require.Eventually(t, func() bool { return len(log.all()) == 2 }, 5*time.Second, 5*time.Millisecond)
+	// three inside the gap: only where they end up is sent, once, after the gap
+	set(tunnel.TierView)
+	set(tunnel.TierInteract)
+	set(tunnel.TierView)
+	require.Eventually(t, func() bool { return len(log.all()) == 3 }, 5*time.Second, 5*time.Millisecond)
 	time.Sleep(500 * time.Millisecond)
-	assert.Equal(t, []tunnel.Mode{tunnel.TierInteract, tunnel.TierLaunch}, log.all(), "the latest value, once")
+	assert.Equal(t, []tunnel.Mode{tunnel.TierInteract, tunnel.TierLaunch, tunnel.TierView}, log.all(), "the latest value, once")
 	assert.Equal(t, tunnels, e.hub.tunnels.Load(), "never a reconnect")
 }
 
@@ -153,4 +156,48 @@ func TestALoweringEndsTheStreamsAboveTheNewModeBeforeTheHubIsTold(t *testing.T) 
 	mu.Lock()
 	defer mu.Unlock()
 	assert.Equal(t, []string{"told:launch", "close:interact", "told:interact"}, events, "no close on a raise; on a lowering the close comes first")
+}
+
+// One message is in flight at a time (Security's note on #5918): a change made while one is being answered waits for it, and only the latest goes out, so the hub never sees two at once and
+// never in the wrong order.
+func TestAChangeWhileOneIsInFlightWaitsForItAndOnlyTheLatestFollows(t *testing.T) {
+	e, m, log := modeEnv(t, 150*time.Millisecond)
+	var mu sync.Mutex
+	inflight, maxInflight := 0, 0
+	release := make(chan struct{})
+	first := true
+	e.hub.onMode.Store(func(md tunnel.Mode) {
+		mu.Lock()
+		inflight++
+		maxInflight = max(maxInflight, inflight)
+		wait := first
+		first = false
+		mu.Unlock()
+		if wait {
+			<-release // the first message is not answered yet
+		}
+		log.add(md)
+		mu.Lock()
+		inflight--
+		mu.Unlock()
+	})
+	tunnels := e.hub.tunnels.Load()
+	set := func(md tunnel.Mode) { e.mode.Store(int32(md)); m.ModeChanged(context.Background()) }
+	set(tunnel.TierInteract)
+	require.Eventually(t, func() bool { mu.Lock(); defer mu.Unlock(); return inflight == 1 }, 5*time.Second, 5*time.Millisecond, "the first message is in flight")
+	set(tunnel.TierView)   // asked for and then changed again: never sent
+	set(tunnel.TierLaunch) // the latest, which is not what the hub has
+	time.Sleep(300 * time.Millisecond)
+	mu.Lock()
+	assert.Equal(t, 1, inflight, "no second message while the first is unanswered")
+	mu.Unlock()
+	assert.Empty(t, log.all())
+	close(release)
+	require.Eventually(t, func() bool { return len(log.all()) == 2 }, 10*time.Second, 5*time.Millisecond)
+	time.Sleep(400 * time.Millisecond)
+	assert.Equal(t, []tunnel.Mode{tunnel.TierInteract, tunnel.TierLaunch}, log.all(), "in order, and only the latest of the changes made meanwhile")
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Equal(t, 1, maxInflight, "never two at once")
+	assert.Equal(t, tunnels, e.hub.tunnels.Load(), "no second send reached the hub inside its gap (a 429 would have reconnected)")
 }
