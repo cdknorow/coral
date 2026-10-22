@@ -27,7 +27,7 @@ const SID = require('crypto').randomUUID();
         await waitFor(`(() => { const b = document.getElementById('waiting-banner'); return !!b && !b.hidden && b.getBoundingClientRect().height > 0; })()`, 'the pill for a not-started codex agent', 15000);
         // Claude is not signed in on this computer: a codex agent's pill must stay
         await ev(`import((window.__coralStatic || '/static/') + 'signin_line.js').then(m => { m.applySigninStatus({ claude_signed_in: false }); return true; })`);
-        await new Promise(r => setTimeout(r, 300));
+        await require('./helpers/wait').nextFrame(ev); // the pill is hidden at once (setPill), so two frames are enough to see it go if it were going to
         const shown = await ev(`(() => { const b = document.getElementById('waiting-banner'); return !!b && !b.hidden && b.getBoundingClientRect().height > 0; })()`);
         assert.equal(shown, true, 'a Codex agent keeps its pill when Claude is not signed in');
         console.log('PASS another agent keeps its pill');
