@@ -223,8 +223,10 @@ HTTP …`) and **Settings › Privacy › Remote access** all say so. Pick one o
 
 ## 3. Open the dashboard
 
-Open the address printed at startup (normally **http://localhost:8420**). If the
-browser shows **Create a password**, enter and confirm a password, then choose
+Open the address printed at startup: normally **http://localhost:8420** on
+macOS/Linux or **http://localhost:8450** on Windows. On Windows, replace `8420` with `8450` in these examples, or pass `--port` to choose another port. The app and tray open the correct address themselves.
+
+If the browser shows **Create a password**, enter and confirm a password, then choose
 **Create password and open Coral**. Later, sign in with that password. The desktop
 app can open a signed-in browser directly; `coral open` does the same from your own
 terminal on the server. For a second instance, pass its `--home` and `--url` to

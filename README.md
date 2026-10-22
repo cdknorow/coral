@@ -163,6 +163,8 @@ First install and sign in to at least one agent CLI: [Claude Code](https://code.
 
 On first launch, review the Terms of Service and accept them if you agree. For a terminal launch, keep the terminal open while Coral runs. Open the local address printed at startup. If the browser shows **Create a password**, enter and confirm a password, then choose **Create password and open Coral**. The app can open a signed-in browser directly; you can also run `coral open` from a terminal on the server.
 
+By default, open **http://localhost:8420** on macOS/Linux or **http://localhost:8450** on Windows. On Windows, replace `8420` with `8450` in these examples, or pass `--port` to choose another port. The app and tray open the correct address themselves.
+
 In the dashboard, choose **Launch agent**, enter an existing project folder on the computer running Coral (or use **Browse**), and choose **Launch**. To choose an agent CLI, open **More options > Agent** first. In the agent's **Terminal**, answer any folder-trust or sign-in prompt, then send a task from **Chat** with Enter. Use **Launch team** on Home to start several agents together.
 
 See [Getting started](https://subgentic.github.io/coral/getting-started/) for the full installation and first-agent walkthrough.

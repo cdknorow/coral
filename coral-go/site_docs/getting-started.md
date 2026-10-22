@@ -77,7 +77,7 @@ coral --no-browser
 
 On Linux without tmux, use `coral --backend pty --no-browser`. Keep the terminal open while the server runs. On first launch, review the Terms of Service and accept them if you agree.
 
-By default Coral stores data in `~/.coral`, uses port **8420**, and listens on this computer only (`127.0.0.1`). Open `http://localhost:8420`.
+By default Coral stores data in `~/.coral` and listens on this computer only (`127.0.0.1`). Open **http://localhost:8420** on macOS/Linux or **http://localhost:8450** on Windows. On Windows, replace `8420` with `8450` in these examples, or pass `--port` to choose another port. The app and tray open the correct address themselves.
 
 Use the address printed at startup if it differs from the default. If the browser shows **Create a password**, enter and confirm a password, then choose **Create password and open Coral**. Later, sign in with that password. The desktop app can open a signed-in browser directly; `coral open` does the same from a terminal on the server. For a server on another computer, follow [Remote access](remote-access.md).
 
@@ -86,7 +86,7 @@ Use the address printed at startup if it differs from the default. If the browse
 | `--home <dir>` | Data directory (default `~/.coral`; also `CORAL_DATA_DIR`) |
 | `--host <addr>` | Address to bind (also `CORAL_HOST`). Only honored for network addresses when [remote access](remote-access.md) is enabled. |
 | `--remote` | Allow remote access for this run without saving the setting (see [remote access](remote-access.md)). With no `--host`, Coral then listens on every interface. |
-| `--port <n>` | Port (default 8420; also `CORAL_PORT`) |
+| `--port <n>` | Port (default 8420 on macOS/Linux, 8450 on Windows; also `CORAL_PORT`) |
 | `--backend tmux\|pty` | Terminal backend. Default `tmux` on macOS/Linux; `pty` on Windows. |
 | `--no-browser` | Do not open a browser on startup |
 
