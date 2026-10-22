@@ -22,7 +22,12 @@ var ErrRealGeminiCLI = errors.New("this is the Gemini CLI, but Coral's gemini ty
 
 // cliHelp is the start of what a program prints for --help; a variable so a test does not run a program.
 var cliHelp = func(path string) string {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	return cliHelpWithTimeout(path, 5*time.Second)
+}
+
+// Content tests allow scheduling headroom without changing the setup deadline.
+func cliHelpWithTimeout(path string, timeout time.Duration) string {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	var out cliHelpOutput
 	cmd := exec.CommandContext(ctx, path, "--help")
