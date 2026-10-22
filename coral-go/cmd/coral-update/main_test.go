@@ -69,3 +69,11 @@ func TestAssetNamesAreTheOnesReleaseYmlUploads(t *testing.T) {
 	assert.Equal(t, "coral-linux-amd64-1.4.126.tar.gz", assetName("linux", "amd64", false)("1.4.126"))
 	assert.Equal(t, "coral-linux-arm64-1.4.126.tar.gz", assetName("linux", "arm64", true)("1.4.126"))
 }
+
+// #162: Windows has its own off switch, whatever macOS and Linux have: the MSI apply stays off until the coral-go-team has reviewed it.
+func TestWindowsApplyHasItsOwnOffSwitch(t *testing.T) {
+	assert.Equal(t, windowsApplyEnabled, applyOn("windows"))
+	assert.Equal(t, applyEnabled, applyOn("darwin"))
+	assert.Equal(t, applyEnabled, applyOn("linux"))
+	assert.False(t, windowsApplyEnabled, "off in this build")
+}

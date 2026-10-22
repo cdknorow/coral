@@ -36,6 +36,11 @@ func runApply(ctx context.Context, stdout io.Writer, dataDir string, trust root.
 		platform = &apply.Mac{Run: apply.NewRunner(), TeamIDs: pins.MacTeamIDs, Parent: parentAtStart, Self: os.Getpid(), DataDir: dataDir}
 	case "linux":
 		platform = &apply.Linux{DataDir: dataDir, Parent: parentAtStart, Self: os.Getpid(), Arch: runtime.GOARCH}
+	case "windows":
+		// A per-machine MSI: a major upgrade by Windows Installer, not a build-and-swap (#162, apply_msi.go).
+		res := runApplyWindows(ctx, dataDir, trust, pins)
+		print(stdout, output{Result: res.Result, Installed: res.From, Version: res.To, FailedStage: res.FailedStage, RestartFailed: res.RestartFailed, Trust: string(source)})
+		return 0
 	default:
 		print(stdout, output{Result: "unsupported_platform", Installed: config.Version, Trust: string(source)})
 		return 0
