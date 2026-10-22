@@ -158,7 +158,7 @@ class CloudPanel {
             if (!left) { clearInterval(this.retryTick); if (el) el.remove(); }
         };
         paint();
-        this.retryTick = setInterval(paint, 1000);
+        this.retryTick = setInterval(paint, 1000); // interval-ok: a one-second on-screen countdown (it asks nothing), cleared when it ends, on a redraw and on stop
     }
 
     // The expired text with the access page as a link (Connect, shown when idle, is the retry).
@@ -232,12 +232,16 @@ class CloudPanel {
             // A computer that never chose (max_mode_saved false) is at View until it connects, but the Connect screen offers Launch: Settings says "Not chosen yet" instead of a plain View that contradicts it.
             // Once a choice is saved both show it. The placeholder is an option of its own, taken away as soon as a choice is saved.
             let ph = sel.querySelector('option[data-unchosen]');
-            if (unchosen && !ph) { ph = document.createElement('option'); ph.value = ''; ph.dataset.unchosen = '1'; ph.textContent = 'Not chosen yet (View until you connect)'; sel.insertBefore(ph, sel.firstChild); }
+            // A computer connected from the command line never chose either (no answer was sent): it is connected, so the words are not "until you connect".
+            const linked = st.state !== 'idle' && st.state !== 'off';
+            const phText = linked ? 'Not chosen yet (View)' : 'Not chosen yet (View until you connect)';
+            if (unchosen && !ph) { ph = document.createElement('option'); ph.value = ''; ph.dataset.unchosen = '1'; sel.insertBefore(ph, sel.firstChild); }
             else if (!unchosen && ph) ph.remove();
+            if (ph) ph.textContent = phText;
             sel.value = unchosen ? '' : mode;
         }
         const desc = this.part('mode-desc');
-        if (desc) desc.textContent = unchosen ? 'You choose this when you connect to Coral Hub (the Connect screen offers View, Interact or Launch). Until then Coral Hub can only view.' : MODE_HELP[mode];
+        if (desc) desc.textContent = unchosen ? (st.state !== 'idle' && st.state !== 'off' ? 'Coral Hub can only view until you choose here.' : 'You choose this when you connect to Coral Hub (the Connect screen offers View, Interact or Launch). Until then Coral Hub can only view.') : MODE_HELP[mode];
         // Auto-accept from the hub (#3182): a local kill switch, shown only with Launch (the owner's opt-in),
         // on unless the owner turned it off here. Only changeable on this computer.
         show('auto-accept-row', mode === 'launch');

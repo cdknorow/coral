@@ -42,6 +42,12 @@ const { connect } = require('./agent_view_harness');
         assert.equal(b.shown, 'Interact'); assert.ok(!b.options.some(o => /Not chosen/.test(o)));
         console.log('   ok');
 
+        // connected from the command line (no answer was sent, so no cap is saved): connected, so not "until you connect"
+        await ev(`(async () => { window.__st = { configured: true, state: 'connected', hub_url: 'https://hub.example', max_mode: 'view', max_mode_saved: false, allow_hub_auto_accept: true }; await window.__cc.loadCloudStatus(); return true; })()`);
+        b = await sel();
+        assert.equal(b.shown, 'Not chosen yet (View)'); assert.equal(b.desc, 'Coral Hub can only view until you choose here.', 'a connected computer is not told "until you connect"');
+        console.log('   ok (connected, never chosen)');
+
         console.log('B. an unreachable hub: a sentence, a countdown beside it, Connect off until it is over');
         await ev(`(async () => { window.__st = { configured: true, state: 'idle', hub_url: 'https://hub.example', max_mode: 'view', max_mode_saved: true, last_error: 'could not reach the hub to start enrollment', last_error_code: 'hub_unreachable', retry_in_s: 3 }; await window.__cc.loadCloudStatus(); return true; })()`);
         const r = () => ev(`(() => { const st = document.getElementById('settings-cloud-status'), rt = document.querySelector('#settings-cloud-status + [data-cloud="retry"]'), c = document.querySelector('#settings-cloud-hub [data-cloud="connect"], [data-cloud="connect"]'); return { status: st.textContent, retry: rt ? rt.textContent : null, retryLive: rt ? rt.getAttribute('aria-live') : null, connectOff: c ? c.disabled : null, statusLive: st.getAttribute('aria-live') }; })()`);
