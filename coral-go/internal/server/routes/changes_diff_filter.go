@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/subgentic/coral/internal/gitutil"
+	"github.com/subgentic/coral/internal/logsafe"
 )
 
 // Persisted and tunneled changes diffs (#3555; Security's answer on it). A diff Coral stores
@@ -241,7 +242,7 @@ func (h *SessionsHandler) generatePersistedDiff(ctx context.Context, workdir str
 	droppedByCount := 0 // new files past the one-at-a-time path's file limit
 	if err != nil {
 		// An older git (no --pathspec-from-file before 2.26): one file at a time, as before, but bounded.
-		slog.Debug("changes diff: new files in one git diff failed; diffing them one at a time", "workdir", workdir, "error", err)
+		slog.Debug("changes diff: new files in one git diff failed; diffing them one at a time", "workdir", logsafe.Dir(workdir), "error", err)
 		if newDiff, droppedByCount, err = diffNewFilesOneByOne(ctx, workdir, files); err != nil {
 			return nil, err
 		}
