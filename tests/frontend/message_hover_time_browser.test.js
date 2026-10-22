@@ -43,12 +43,16 @@ const BASE = require('./test_base').BASE;
             await select('Timestamp demo','11111111-2222-4333-8444-555555556063');
             await waitFor(`document.querySelectorAll('#live-history-messages .chat-bubble').length===${longChat?14:2}`,'chat fixture');
             await swapTheme(ev,theme);
+            // Headless Chrome can report hover:none at desktop width too.
+            // Visibility follows that capability; width alone doesn't give a mouse.
+            const noHover = await ev(`matchMedia('(hover: none)').matches`);
+            console.log(`timestamps ${width} ${theme}: hover ${noHover?'none':'available'}`);
             await ev(`document.querySelector('#live-history-messages').scrollTop=0;true`);
             if(!before){
                 assert.equal(await ev(`(()=>{const b=document.querySelector('#live-history-messages .chat-bubble.assistant');return getComputedStyle(b).marginBottom})()`),width===390?'46px':'22px','existing prose action row reserves the same spacing');
                 await client.Input.dispatchMouseEvent({type:'mouseMoved',x:0,y:0});
                 await ev(`document.activeElement?.blur();true`);
-                assert.equal(await ev(`getComputedStyle(document.querySelector('#live-history-messages .chat-bubble.assistant .message-time')).opacity`),width===390?'1':'0','hidden until mouse actions, visible on touch');
+                await waitFor(`getComputedStyle(document.querySelector('#live-history-messages .chat-bubble.assistant .message-time')).opacity === '${noHover?'1':'0'}'`,'time follows the current hover capability after leaving the message');
                 assert.equal(await ev(`(()=>{const a=document.querySelector('#live-history-messages .chat-bubble.human .chat-save-btn').getBoundingClientRect();const b=document.querySelector('#live-history-messages .chat-bubble.assistant').getBoundingClientRect();return a.bottom<=b.top+1})()`),true,'footer never covers the next message');
             }
             await hover('#live-history-messages .chat-bubble.assistant');
