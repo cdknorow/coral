@@ -19,14 +19,15 @@ const idle = (over = {}) => ({ enabled: true, installed: '1.4.125', state: 'none
         await Page.enable(); await Page.addScriptToEvaluateOnNewDocument({ source: PRELOAD });
         await Emulation.setDeviceMetricsOverride({ width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
         await Page.navigate({ url: process.env.CORAL_TEST_URL + '/' }); await Page.loadEventFired(); await install();
-        await ev(`localStorage.clear(); localStorage.setItem('coral-updates-ui', 'on'); true`);
+        await ev(`localStorage.clear(); true`);
         await Page.navigate({ url: process.env.CORAL_TEST_URL + '/' }); await Page.loadEventFired(); await install();
         await ev(`window.__coralReady.then(() => true)`);
+        await ev(`import((window.__coralStatic || '/static/') + 'update_flag.js').then(m => { m.setUpdatesEnabled(true); return true; })`);
         await ev(`(() => { const R = window.fetch; window.__st = null; window.__relaunch = { status: 202, body: { ok: true } };
             const json = (b, s = 200) => Promise.resolve(new Response(JSON.stringify(b), { status: s, headers: { 'content-type': 'application/json' } }));
             window.fetch = (u, o = {}) => { const p = new URL(String(u), location.origin).pathname;
                 if (p === '/api/system/update') return window.__st ? json(window.__st) : json({ error: 'x' }, 404);
-                if (p === '/api/system/update/relaunch') return json(window.__relaunch.body, window.__relaunch.status);
+                if (p === '/api/system/update/relaunch-local') return json(window.__relaunch.body, window.__relaunch.status);
                 if (p === '/api/cloud/status') return json({ connected: false, hub_relaunch_updates: true });
                 return R(u, o); }; return true; })()`);
         const setStatus = async st => { await ev(`window.__st = ${JSON.stringify(st)}; import(${S} + 'update_ui.js').then(m => m.startUpdateUi && m.startUpdateUi()).then(() => import(${S} + 'update_ui.js')).then(m => m.refreshUpdateStatus()).then(() => true)`); };
@@ -59,9 +60,9 @@ const idle = (over = {}) => ({ enabled: true, installed: '1.4.125', state: 'none
         for (const [name, st, want, not] of [
             ['unknown', idle(), /Nothing is ready to install/, /up to date/i],
             ['up_to_date', idle({ not_ready_reason: 'up_to_date' }), /Coral is up to date/, null],
-            ['not_promoted', idle({ not_ready_reason: 'not_promoted', latest: '1.4.130' }), /Coral 1\.4\.130 is out.*install automatically once it is ready/, /up to date/i],
+            ['not_promoted', idle({ not_ready_reason: 'not_promoted', latest: '1.4.130' }), /Coral 1\.4\.130 is out.*Installing it is up to you/, /up to date/i],
             ['check_failed', idle({ not_ready_reason: 'check_failed' }), /could not check for updates/, /up to date/i],
-            ['switch_off', idle({ not_ready_reason: 'switch_off' }), /Automatic installs are off/, /up to date/i],
+            ['switch_off', idle({ not_ready_reason: 'switch_off' }), /Automatic update checks are off/, /up to date/i],
         ]) {
             await setStatus(st); const p = await pane();
             check(`${name}: "${p.title}"`, want.test(p.text) && (!not || !not.test(p.text)));
@@ -102,6 +103,7 @@ const idle = (over = {}) => ({ enabled: true, installed: '1.4.125', state: 'none
         const vt = await ev(`document.querySelector('#update-fail-banner').textContent.replace(/\\s+/g, ' ').trim()`);
         check(`a failed verification has the docs' words (${vt.slice(0, 120)})`, /Coral found an update \(v1\.4\.126\) it could not verify, so it was not installed\. Your version is unchanged\./.test(vt));
         const againShown = async () => ev(`!document.querySelector('#update-fail-banner .update-fail-again').hidden`);
+        await ev(`import(${S} + 'update_api.js').then(m => { m.serverHas.check = false; return true; })`); await setStatus(idle({ state: 'failed', last_result: { at: '2026-10-19T10:00:30Z', from: '1.4.125', to: '1.4.126', result: 'refused', by: 'local' } })); // a server without the check route
         check('Try again is not offered when there is no way to check', (await againShown()) === false);
         await ev(`import(${S} + 'update_api.js').then(m => { m.serverHas.check = true; return true; })`); await setStatus(idle({ state: 'failed', last_result: { at: '2026-10-19T10:01:00Z', from: '1.4.125', to: '1.4.126', result: 'refused', by: 'local' } }));
         check('and is offered when the server can check', (await againShown()) === true);

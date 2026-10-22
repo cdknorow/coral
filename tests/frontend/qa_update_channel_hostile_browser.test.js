@@ -31,9 +31,10 @@ const base = { enabled: true, installed: '1.4.141', state: 'none', staged: null,
     const load = async (status) => {
         await Emulation.setDeviceMetricsOverride({ width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
         await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired();
-        await ev(`localStorage.clear(); localStorage.setItem('coral-updates-ui', 'on'); true`);
+        await ev(`localStorage.clear(); true`);
         await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired(); await install();
         await ev(`window.__coralReady.then(() => true)`);
+        await ev(`import((window.__coralStatic || '/static/') + 'update_flag.js').then(m => { m.setUpdatesEnabled(true); return true; })`);
         await ev(STUB);
         await ev(`window.__ch.status = ${JSON.stringify(status)}; import(${S} + 'update_ui.js').then(m => m.startUpdateUi && m.startUpdateUi()).then(() => import(${S} + 'update_ui.js')).then(m => m.refreshUpdateStatus()).then(() => true)`);
         await ev(`window.showSettingsModal('updates'); true`);

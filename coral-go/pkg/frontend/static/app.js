@@ -1,6 +1,6 @@
 import './update_banner.js'; // first: it wraps fetch before the other modules ask for anything (#3751)
 import { importOnce } from './import_once.js';
-import { updatesUiOn } from './update_flag.js';
+import { loadUpdatesFlag } from './update_flag.js';
 import { startChatPrefetch } from './chat_page.js';
 import './hub_blocked_controls.js'; // dims controls the Hub tier does not allow (#3769)
 // Load order only (#4996): the imports below with no names are loaded for what the module registers at load, in the order this module imported them before the split (the startup-sequence golden records it).
@@ -814,7 +814,7 @@ function loadInitialData(popout) {
     initAgentUI();
     connectCoralWs();
     if (!popout) checkForUpdates();
-    if (!popout && updatesUiOn()) importOnce('./update_ui.js').then(m => m.startUpdateUi()).catch(() => {}); // the auto-update control, behind its flag (#5275)
+    if (!popout) loadUpdatesFlag().then(on => on && importOnce('./update_ui.js').then(m => m.startUpdateUi())).catch(() => {}); // the auto-update control, shown when the server says the updater is on (#5275, #5280)
     pollStartupStatus();
     if (!popout) {
         populateHfTagSelect().then(() => {
