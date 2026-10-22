@@ -28,6 +28,7 @@ const STUB = `(() => {
             const where = await ev(`(() => { const s = document.querySelector('[data-section="jobs"]'); return { inPage: !!s.closest('#mobile-jobs-list'), inSidebar: !!s.closest('.sidebar') }; })()`);
             if (!phone) { assert.deepEqual(where, { inPage: false, inSidebar: true }, 'desktop: the list stays in the sidebar'); console.log('ok desktop'); continue; }
             assert.equal(where.inPage, true, 'phone: the Jobs list is in the Jobs page');
+            assert.equal(await ev(`[...document.querySelectorAll('#mobile-jobs-list .sidebar-section-header')].some(h => h.getClientRects().length > 0)`), false, 'phone: the moved section does not say "Jobs" a second time under the page title');
             await tap(ev, '[data-subtab="scheduled"]');
             await waitFor(`!!document.querySelector('#scheduled-jobs-list [data-on-click="job-select"]') && document.querySelector('#scheduled-jobs-list [data-on-click="job-select"]').getClientRects().length > 0`, 'the job in the list', 10000);
             await tap(ev, '#scheduled-jobs-list [data-on-click="job-select"]');
