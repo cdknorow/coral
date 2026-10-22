@@ -85,6 +85,7 @@ const MD = ['# Migration plan', '', '## Steps', '', '1. Add the new columns behi
             const at = `desktop, ${theme}`;
             // Closed until asked for, at 4 comments as at none: the document has the full width; the header's Comments (4) button says how many and opens it (aria-expanded).
             const shut = await ev(`(() => { const t = document.querySelector('.ac-toggle'), p = document.querySelector('.ac-panel'), v = document.getElementById('artifact-viewer'); return { toggle: t && !t.hidden && t.getClientRects().length > 0, text: t && t.textContent, name: t && t.getAttribute('aria-label'), expanded: t && t.getAttribute('aria-expanded'), panelShown: p.getClientRects().length > 0, wide: v.classList.contains('ac-on'), width: Math.round(v.querySelector('.artifact-viewer-content').getBoundingClientRect().width) }; })()`);
+            check(`${at}: the button names the panel it opens (aria-controls)`, await ev(`(() => { const t = document.querySelector('.ac-toggle'), id = t.getAttribute('aria-controls'); return !!id && document.getElementById(id) === document.querySelector('.ac-panel'); })()`));
             check(`${at}: closed by default with 4 comments: a "Comments (4)" button (aria-expanded false), no panel, the viewer not widened`, shut.toggle && shut.text === 'Comments (4)' && shut.name === 'Comments (4)' && shut.expanded === 'false' && !shut.panelShown && !shut.wide, JSON.stringify(shut));
             await shot(`comments-desktop-closed-${theme}`);
             await click('.ac-toggle');
