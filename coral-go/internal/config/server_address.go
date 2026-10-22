@@ -33,6 +33,16 @@ func RecordedServer(coralDir string) (pid int, addr string) {
 	return pid, addr
 }
 
+// LocalServerURL is where a command typed with no CORAL_URL, CORAL_HOST or CORAL_PORT finds this computer's Coral: the address the server for the data folder
+// (CORAL_DATA_DIR, else ~/.coral) recorded in its lock file, so a Coral on another port is found, and only then the platform's default port (8450 on Windows, 8420
+// elsewhere). The recorded address is only ever a loopback one (RecordedServer), so the command never sends its token anywhere else.
+func LocalServerURL() string {
+	if _, addr := RecordedServer(ResolveCoralDir("")); addr != "" {
+		return strings.TrimRight(addr, "/")
+	}
+	return "http://localhost:" + strconv.Itoa(DefaultPort)
+}
+
 // localServerURL: an http(s) URL with no credentials, path or query, whose host is localhost or a loopback IP.
 func localServerURL(u string) bool {
 	p, err := url.Parse(u)
