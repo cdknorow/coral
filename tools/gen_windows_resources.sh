@@ -16,9 +16,11 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 VERSION="${1:-}"
 PRODUCT="${2:-Coral}"
-COMPANY="Coral" # the MSI's Manufacturer (tools/coral.wxs)
-COPYRIGHT="$(sed -n 's/^ *Copyright \([0-9]\{4\} .*[^ ]\) *$/Copyright \1/p' "$ROOT/LICENSE" | head -1)"
-[ -n "$COPYRIGHT" ] || { echo "no copyright line in LICENSE" >&2; exit 1; }
+COMPANY="Subgentic LLC" # the publisher: the MSI's Manufacturer (tools/coral.wxs) and every exe's CompanyName
+# The year is the LICENSE's copyright line's; the holder is the publisher, not the name on that line (LICENSE text is the operator's call).
+YEAR="$(sed -n 's/^ *Copyright \([0-9]\{4\}\) .*$/\1/p' "$ROOT/LICENSE" | head -1)"
+[ -n "$YEAR" ] || { echo "no copyright line in LICENSE" >&2; exit 1; }
+COPYRIGHT="Copyright $YEAR $COMPANY"
 
 NUMERIC="0.0.0.0"
 TEXT="0.0.0.0"

@@ -30,6 +30,6 @@ func TestWindowsReadsTheVersionInfo(t *testing.T) {
 	}
 	assert.Equal(t, "Coral", query("FileDescription"))
 	assert.Equal(t, "Coral", query("ProductName"))
-	assert.Equal(t, "Coral", query("CompanyName"))
+	assert.Equal(t, "Subgentic LLC", query("CompanyName"))
 	assert.Equal(t, "coral-app.exe", query("OriginalFilename"))
 }
