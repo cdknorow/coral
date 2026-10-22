@@ -431,7 +431,7 @@ func TestAnInterruptedWindowsApplyIsFinishedByTheNext(t *testing.T) {
 	r := newMSIRig(t)
 	r.msi.registered, r.msi.regVersion = newProduct, "1.4.130"
 	st, _ := stage.LoadStaged(r.data)
-	j := msiJournal{Phase: "installed", From: "1.4.125", To: "1.4.130", Product: newProduct, Record: st.Record}
+	j := msiJournal{Phase: "installed", From: "1.4.125", To: "1.4.130", Product: newProduct, Record: st.Record, StartedAt: msiTestNow.Add(-10 * time.Minute)}
 	require.NoError(t, writeMSIJournal(filepath.Join(r.data, stage.UpdatesDir), j))
 	res := r.run()
 	assert.Equal(t, ResultRelaunched, res.Result)
@@ -468,6 +468,28 @@ func TestAnInterruptedWindowsApplyIsFinishedByTheNext(t *testing.T) {
 }
 
 var _ io.Closer = fakeHeld{}
+
+// Security's L on #80: a journal older than an apply can run (a timeout's, kept for days), from the future, or without a time is dropped,
+// never acted on. The person may have installed that new version by hand since: even when it is registered and can't be started, it is
+// not removed (no /x, no msiexec at all).
+func TestAnOldJournalNeverRollsBackAVersionInstalledByHand(t *testing.T) {
+	for name, started := range map[string]time.Time{"old": msiTestNow.Add(-maxMSIJournalAge - time.Minute), "future": msiTestNow.Add(time.Hour), "no time": {}} {
+		r := newMSIRig(t)
+		r.msi.registered, r.msi.regVersion = newProduct, "1.4.130"
+		r.cfg.Installed = "1.4.130" // installed by hand: the Coral that runs coral-update now is that version
+		st, _ := stage.LoadStaged(r.data)
+		j := msiJournal{Phase: "installing", From: "1.4.125", To: "1.4.130", Product: newProduct, Record: st.Record, StartedAt: started}
+		require.NoError(t, writeMSIJournal(filepath.Join(r.data, stage.UpdatesDir), j))
+		r.msi.startErr = []error{errors.New("can't start"), errors.New("can't start")}
+		r.msi.healthErr = []error{errors.New("down"), errors.New("down")}
+		res := r.run()
+		assert.NotEqual(t, ResultRolledBack, res.Result, name)
+		assert.NotContains(t, strings.Join(r.msi.calls, " "), "msiexec", name)
+		assert.NotContains(t, r.msi.calls, "healthy", "%s: no recovery was attempted", name)
+		_, err := os.Stat(filepath.Join(r.data, stage.UpdatesDir, msiJournalFile))
+		assert.True(t, os.IsNotExist(err), "%s: the journal is gone", name)
+	}
+}
 
 // N3: an unanswered consent prompt is bounded by coral-update's context. When it ends, msiexec is ended (exit 1), the result is failed with
 // the reason timeout, the old Coral is started again, and the journal stays for the next run to check what Windows has registered.
