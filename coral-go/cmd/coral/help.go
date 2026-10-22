@@ -129,7 +129,7 @@ var unknownCommandHints = map[string]string{
 // word people type (--stop, --status), never Go's own "flag provided but not defined: -stop"; for a bad value Go's words about it.
 func flagParseFailure(w io.Writer, err error) int {
 	if name, ok := strings.CutPrefix(err.Error(), "flag provided but not defined: -"); ok {
-		fmt.Fprintf(w, "coral: unknown option --%s\n", strings.TrimLeft(name, "-"))
+		fmt.Fprintf(w, "coral: unknown option %q\n", "--"+strings.TrimLeft(name, "-"))
 		if hint, found := unknownCommandHints[strings.ToLower(strings.TrimLeft(name, "-"))]; found {
 			fmt.Fprintln(w, hint)
 		}

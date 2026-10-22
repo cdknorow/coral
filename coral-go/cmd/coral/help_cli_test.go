@@ -91,7 +91,7 @@ func TestAnUnknownFlagGetsOneLineAndTheHintNotGoErrors(t *testing.T) {
 	code := flagParseFailure(&errb, errors.New("flag provided but not defined: -stop"))
 	assert.Equal(t, 2, code)
 	s := errb.String()
-	assert.Contains(t, s, "coral: unknown option --stop")
+	assert.Contains(t, s, "coral: unknown option \"--stop\"")
 	assert.Contains(t, s, "Ctrl+C", "the hint for stop")
 	assert.Contains(t, s, "coral --help")
 	assert.NotContains(t, s, "flag provided but not defined")
@@ -99,7 +99,7 @@ func TestAnUnknownFlagGetsOneLineAndTheHintNotGoErrors(t *testing.T) {
 
 	errb.Reset()
 	assert.Equal(t, 2, flagParseFailure(&errb, errors.New("flag provided but not defined: -frobnicate")))
-	assert.Contains(t, errb.String(), "unknown option --frobnicate")
+	assert.Contains(t, errb.String(), "unknown option \"--frobnicate\"")
 	assert.NotContains(t, errb.String(), "Ctrl+C", "no hint for a word with none")
 
 	errb.Reset()
