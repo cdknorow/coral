@@ -204,7 +204,7 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 		return nil, err
 	}
 	// Which data folder this server uses, as it uses it (#235): next to the tools line, so a test server's log names both.
-	log.Printf("[startup] data folder: %s", coralDir)
+	log.Printf("[startup] data folder: %s", logsafe.Path(coralDir)) // a data location, through logsafe (its census, #300)
 	lockPath := filepath.Join(coralDir, config.ServerLockFile)
 	instance, err := acquireInstanceLock(lockPath)
 	if errors.Is(err, errAlreadyRunning) {
