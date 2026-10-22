@@ -53,8 +53,9 @@ const BASE = require('./test_base').BASE;
         // What reached the agent: the data of the terminal_input frames, joined.
         const sent = () => ev(`window.__sent.map(f => { try { const m = JSON.parse(f); return m.type === 'terminal_input' ? m.data : ''; } catch { return f; } }).join('')`);
 
-        // The isolated server opens its first-run "set a password" dialog, whose Esc handler takes the first Esc of the page: close
-        // it first, so the Escs below are the terminal's.
+        // The first-run "set a password" dialog takes the page's first Esc. The runner sets a password so it never shows, but Coral
+        // refuses the runner's password file when other accounts can read it (on Windows, a run folder whose access list grants
+        // them, #293): then close the dialog first, so the Escs below are the terminal's.
         await ev(`document.activeElement && document.activeElement.blur(); true`);
         if (await ev(`!!document.getElementById('set-password-modal')?.getClientRects().length`)) await press('Escape');
         assert.equal(await ev(`!!document.getElementById('set-password-modal')?.getClientRects().length`), false, 'the first-run password dialog is closed');
