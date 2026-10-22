@@ -74,6 +74,27 @@ func (g *inputGate) ownLeftover(name, box string) bool {
 	return false
 }
 
+// forgetOwnText drops the newest record of text for name once its Enter is seen to have emptied the box (a normal delivery): the same words typed later by a person
+// are then a draft, never taken for Coral's and submitted. Other recorded texts stay: several of Coral's pastes can pile up in a box that can't be read.
+func (g *inputGate) forgetOwnText(name, text string) {
+	t := squeeze(text)
+	if t == "" {
+		return
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	list := g.ownTexts[name]
+	for i := len(list) - 1; i >= 0; i-- {
+		if list[i].text == t {
+			g.ownTexts[name] = append(list[:i:i], list[i+1:]...)
+			if len(g.ownTexts[name]) == 0 {
+				delete(g.ownTexts, name)
+			}
+			return
+		}
+	}
+}
+
 // forgetOwnTexts drops name's recorded texts once a leftover of them was submitted, so the same words typed later by a person
 // are never taken for Coral's.
 func (g *inputGate) forgetOwnTexts(name string) {
