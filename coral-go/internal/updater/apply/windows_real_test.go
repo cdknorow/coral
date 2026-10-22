@@ -69,9 +69,26 @@ func installReal(t *testing.T, msi string) {
 	t.Helper()
 	log := filepath.Join(t.TempDir(), "install.log")
 	code := msiexecReal(t, "/i", msi, "/qn", "/norestart", "REBOOT=ReallySuppress", "/l*v", log)
+	keepLog(t, log, "setup-install.log")
 	if code != 0 && code != 3010 {
 		b, _ := os.ReadFile(log)
 		t.Fatalf("msiexec /i %s: exit %d\n%s", msi, code, tail(string(b), 3000))
+	}
+}
+
+// keepLog copies a log into CORAL_APPLY_LOG_DIR\<test name>\ when that is set (upgrade_windows.ps1 -LogDir, which the runner workflow uploads as an artifact).
+func keepLog(t *testing.T, from, name string) {
+	dir := os.Getenv("CORAL_APPLY_LOG_DIR")
+	if dir == "" {
+		return
+	}
+	b, err := os.ReadFile(from)
+	if err != nil {
+		return
+	}
+	to := filepath.Join(dir, strings.ReplaceAll(t.Name(), "/", "_"))
+	if os.MkdirAll(to, 0o755) == nil {
+		_ = os.WriteFile(filepath.Join(to, name), b, 0o644)
 	}
 }
 
@@ -200,6 +217,13 @@ func newRealRig(t *testing.T, healthFails func(registered string) bool) *realRig
 	data := t.TempDir()
 	stageReal(t, data, p)
 	r := &realRig{t: t, p: p, data: data, install: install, msi: newRealMSI(data, p.newVersion, healthFails)}
+	// The apply's own logs (msiexec's verbose logs, apply.log) are kept before the data folder goes.
+	t.Cleanup(func() {
+		logs, _ := filepath.Glob(filepath.Join(data, stage.UpdatesDir, "*.log"))
+		for _, l := range logs {
+			keepLog(t, l, filepath.Base(l))
+		}
+	})
 	oldBytes, err := os.ReadFile(p.oldMSI)
 	require.NoError(t, err)
 	r.cfg = MSIConfig{

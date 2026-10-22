@@ -31,6 +31,8 @@
   The new release's version, e.g. 1.4.151.
 .PARAMETER SumsFile
   Optional: a SHA256SUMS.txt that lists both MSIs; their hashes must match it.
+.PARAMETER LogDir
+  Optional: a folder where the msiexec logs and the apply's logs of each scenario are kept (the runner workflow uploads it).
 .PARAMETER ThrowawayMachine
   Say that this machine may have Coral installed and removed (when it is not a GitHub Actions runner).
 .PARAMETER DryRun
@@ -46,6 +48,7 @@ param(
     [Parameter(Mandatory = $true)][string]$OldVersion,
     [Parameter(Mandatory = $true)][string]$NewVersion,
     [string]$SumsFile = '',
+    [string]$LogDir = '',
     [switch]$ThrowawayMachine,
     [switch]$DryRun
 )
@@ -110,13 +113,17 @@ $env:CORAL_APPLY_NEW_MSI = $NewMsi
 $env:CORAL_APPLY_OLD_VERSION = $OldVersion
 $env:CORAL_APPLY_NEW_VERSION = $NewVersion
 $env:CORAL_APPLY_WINDOWS_CI = '1'
+if ($LogDir -ne '') {
+    New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
+    $env:CORAL_APPLY_LOG_DIR = (Resolve-Path -LiteralPath $LogDir).Path
+}
 Push-Location (Join-Path $root 'coral-go')
 try {
     $out = & go test ./internal/updater/apply -run ($names -join '|') -count=1 -v -timeout 30m 2>&1 | Tee-Object -Variable lines
     $code = $LASTEXITCODE
 } finally {
     Pop-Location
-    Remove-Item Env:CORAL_APPLY_OLD_MSI, Env:CORAL_APPLY_NEW_MSI, Env:CORAL_APPLY_OLD_VERSION, Env:CORAL_APPLY_NEW_VERSION, Env:CORAL_APPLY_WINDOWS_CI -ErrorAction SilentlyContinue
+    Remove-Item Env:CORAL_APPLY_OLD_MSI, Env:CORAL_APPLY_NEW_MSI, Env:CORAL_APPLY_OLD_VERSION, Env:CORAL_APPLY_NEW_VERSION, Env:CORAL_APPLY_WINDOWS_CI, Env:CORAL_APPLY_LOG_DIR -ErrorAction SilentlyContinue
 }
 $text = ($lines | Out-String)
 if ($code -ne 0) { Fail "go test exited $code" }
