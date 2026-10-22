@@ -289,7 +289,9 @@ func codexHookArgs(sessionID string) []string {
 	for _, event := range codexHookEvents {
 		args = append(args, "-c", fmt.Sprintf(`hooks.%s=[{hooks=[{type="command",command=%s}]}]`, event, tomlString(command)))
 	}
-	return args
+	// Trusted for this launch when the hooks can't be changed by anyone but an administrator (#153, codex_trust.go):
+	// the hash is of this same command, so the two can't drift.
+	return append(args, codexHookTrustFor(sessionID, command)...)
 }
 
 // codexCapabilityFlags are the permission flags from the agent's capabilities, when it has them: bypass, full

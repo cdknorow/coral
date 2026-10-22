@@ -152,6 +152,7 @@ GET /api/system/artifact-store/kept never
 GET /api/system/auth-status never
 GET /api/system/auto-wake never
 GET /api/system/cli-check launch
+GET /api/system/codex-trust-hooks never
 GET /api/system/database-security never
 GET /api/system/editors never
 GET /api/system/hooks-status launch
@@ -375,6 +376,7 @@ PUT /api/sessions/live/{name}/icon interact
 PUT /api/sessions/live/{name}/name-color interact
 PUT /api/settings never
 PUT /api/settings/git-diff-mode interact
+PUT /api/system/codex-trust-hooks never
 PUT /api/system/database-security never
 PUT /api/system/hub-mode never
 PUT /api/system/hub-operator never
