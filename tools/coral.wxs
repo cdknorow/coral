@@ -143,10 +143,13 @@
          tools running as an administrator (#5883): the from-installer flag below makes coral-tray.exe start nothing when its own token is
          elevated (cmd/coral-tray/installer_launch.go), before it spawns its background process.
          The action is Directory-based, so coral-tray starts in its install folder, not in the folder the installer was run from
-         (often Downloads). -->
+         (often Downloads). It is SYNCHRONOUS (Return="ignore"): in the client, Windows Installer fails an asynchronous EXE custom
+         action (asyncNoWait or asyncWait) with 1631 and never creates the process, elevated client or not, so the checkbox never
+         started Coral (#199, measured on Windows 11). coral-tray's launcher returns as soon as its background process is started,
+         so Finish waits only a moment, and its exit code is not checked. -->
     <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Launch $(var.ProductName)" />
     <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
-    <CustomAction Id="LaunchCoral" Directory="INSTALLFOLDER" ExeCommand="&quot;[INSTALLFOLDER]coral-tray.exe&quot; --from-installer" Execute="immediate" Return="asyncNoWait" />
+    <CustomAction Id="LaunchCoral" Directory="INSTALLFOLDER" ExeCommand="&quot;[INSTALLFOLDER]coral-tray.exe&quot; --from-installer" Execute="immediate" Return="ignore" />
     <UI>
       <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchCoral"
         Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 AND NOT Installed AND NOT REMOVE~=&quot;ALL&quot;" />

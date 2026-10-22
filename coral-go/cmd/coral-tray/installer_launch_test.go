@@ -48,6 +48,23 @@ func TestMSILaunchPassesTheInstallerFlag(t *testing.T) {
 	assert.Equal(t, "&quot;[INSTALLFOLDER]coral-tray.exe&quot; --"+installerLaunchFlag, string(m[1]))
 }
 
+// #199: the Finish button runs LaunchCoral in the installer's client, where Windows Installer fails an asynchronous EXE custom action
+// with 1631 and starts nothing (asyncNoWait and asyncWait alike, elevated client or not; measured on Windows 11). Every EXE custom
+// action the Finish button publishes must be synchronous.
+func TestMSILaunchIsSynchronous(t *testing.T) {
+	wxs, err := os.ReadFile("../../../tools/coral.wxs")
+	require.NoError(t, err)
+	published := regexp.MustCompile(`<Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="([^"]+)"`).FindAllSubmatch(wxs, -1)
+	require.NotEmpty(t, published, "the Finish button's launch")
+	for _, p := range published {
+		ca := regexp.MustCompile(`<CustomAction Id="` + regexp.QuoteMeta(string(p[1])) + `"[^>]*/>`).Find(wxs)
+		require.NotNil(t, ca, "the custom action %s", p[1])
+		ret := regexp.MustCompile(`Return="([^"]*)"`).FindSubmatch(ca)
+		require.NotNil(t, ret, "%s names its Return (the default, check, would fail the install on a non-zero exit)", p[1])
+		assert.Equal(t, "ignore", string(ret[1]), "%s must be synchronous and unchecked: an async one is never started from the client", p[1])
+	}
+}
+
 // An XML comment cannot hold a double hyphen: wix build stops with WIX0104 and the release has no MSI (QA's run 39717624469 on the
 // first version of the launch comment, which quoted the flag). This runs everywhere; the Windows job builds the MSI when the file changes.
 func TestWxsCommentsHaveNoDoubleHyphen(t *testing.T) {
