@@ -252,7 +252,13 @@ func trackInstall(gen uint64) {
 	if currentVersion != "" && storedVersion != currentVersion {
 		// Version upgrade
 		secfile.WriteFileNoFollow(versionFile, []byte(currentVersion), 0600)
-		postEvent(EventUpgrade, installID, uuid.NewString(), nowUTC(), gen, standardProps())
+		props := standardProps()
+		if typed, _ := sanitizeProps(EventUpgrade, map[string]string{"from_version": storedVersion}); typed != nil {
+			for k, v := range typed { // from_version, when the stored version is a release number (#5952)
+				props[k] = v
+			}
+		}
+		postEvent(EventUpgrade, installID, uuid.NewString(), nowUTC(), gen, props)
 	}
 }
 

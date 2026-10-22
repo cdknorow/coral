@@ -15,6 +15,8 @@ var BrowserEvents = map[string]bool{
 	EventDashboardActiveDay:    true,
 	EventDashboardFailed:       true,
 	EventPromptSubmitRequested: true,
+	EventUpdateNoticeShown:     true, // the dashboard's update toast was shown (#5952)
+	EventUpdateOfferOpened:     true, // its Download link was opened
 }
 
 const (
@@ -69,6 +71,17 @@ func TrackBrowserEvent(event string, props map[string]string) {
 		TrackEvent(event, map[string]string{"code": code})
 	case EventPromptSubmitRequested:
 		TrackOnce(event, map[string]string{"source": props["source"]})
+	case EventUpdateNoticeShown, EventUpdateOfferOpened:
+		// Only the version and the channel are taken from the page; the source is the dashboard and the method the link, by construction, so the page cannot claim to be the tray.
+		version, channel, ok := updateBrowserProps(props)
+		if !ok {
+			return
+		}
+		if event == EventUpdateNoticeShown {
+			TrackUpdateNotice(version, UpdateSourceDashboard, channel)
+		} else {
+			TrackUpdateOffer(version, UpdateSourceDashboard, channel)
+		}
 	default:
 		TrackEvent(event, props)
 	}

@@ -3,6 +3,7 @@
 import { escapeHtml, showToast, escapeAttr } from './utils.js';
 import { registerActions, textOf } from './actions.js';
 import { browserLocal } from './safe_storage.js';
+import { reportUpdate } from './dashboard_analytics.js';
 
 /**
  * Fetch update info from the backend and show a toast if a new version is available.
@@ -65,7 +66,7 @@ function showUpdateToast(data) {
     }
 
     const downloadBtn = data.release_url
-        ? `<a href="${escapeHtml(data.release_url)}" target="_blank" rel="noopener" class="update-toast-download">Download v${escapeHtml(data.latest)}</a>`
+        ? `<a href="${escapeAttr(data.release_url)}" target="_blank" rel="noopener" class="update-toast-download" data-on-click="update-download" data-version="${escapeAttr(data.latest)}" data-channel="${escapeAttr(data.channel === "agentic" ? "agentic" : "approved")}">Download v${escapeHtml(data.latest)}</a>`
         : "";
 
     const toast = document.createElement("div");
@@ -86,6 +87,7 @@ function showUpdateToast(data) {
         </div>`;
 
     document.body.appendChild(toast);
+    reportUpdate('update_notice_shown', data.latest, data.channel); // the toast is on the page (#5952)
 }
 
 /**
@@ -149,4 +151,6 @@ function warningStack() {
 // The update toast's close button (#3645).
 registerActions({
     'update-dismiss': el => { const v = textOf(el.dataset.version, 100); if (v) window.dismissUpdateToast(v); },
+    // The Download link opens the release page by its own href; this only reports that it was opened (#5952).
+    'update-download': el => { const v = textOf(el.dataset.version, 100); if (v) reportUpdate('update_offer_opened', v, el.dataset.channel); },
 });

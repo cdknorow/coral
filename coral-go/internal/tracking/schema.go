@@ -12,7 +12,7 @@ import (
 
 // SchemaVersion identifies the event/property contract. Bump it when an event
 // or property changes meaning so downstream analysis can tell the versions apart.
-const SchemaVersion = 3
+const SchemaVersion = 4
 
 // runID is generated once per server process. It is random, never persisted
 // and unrelated to the install ID, so it can group one run's events without
@@ -34,6 +34,21 @@ const (
 	EventFirstPromptSubmitted  = "first_prompt_submitted"
 	EventFirstTaskSucceeded    = "first_task_succeeded"
 	EventPromptSubmitRequested = "prompt_submit_requested"
+
+	// Update telemetry (#5952, schema 4). Nothing here says an update was installed: Coral does not start or finish an update itself yet.
+	EventUpdateNoticeShown = "update_notice_shown" // the dashboard or the tray showed the notice that a newer release exists
+	EventUpdateOfferOpened = "update_offer_opened" // the person opened the release page the notice offers
+)
+
+// Update vocabulary: closed sets, like the launch ones.
+const (
+	UpdateSourceDashboard = "dashboard"
+	UpdateSourceTray      = "tray"
+
+	UpdateMethodDownloadLink = "download_link"
+
+	UpdateChannelApproved = "approved"
+	UpdateChannelAgentic  = "agentic"
 )
 
 // Launch vocabulary. Every value an event can carry is drawn from a closed
@@ -64,7 +79,8 @@ const (
 	kindEnum propKind = iota
 	kindInt
 	kindBool
-	kindSlug // short [A-Za-z0-9_.-] token
+	kindSlug    // short [A-Za-z0-9_.-] token
+	kindVersion // a release number: digits.digits.digits with an optional short suffix (versionRE)
 )
 
 type propSpec struct {
@@ -78,6 +94,7 @@ func intRange(lo, hi int) propSpec   { return propSpec{kind: kindInt, min: lo, m
 
 var (
 	slugProp    = propSpec{kind: kindSlug}
+	versionProp = propSpec{kind: kindVersion}
 	boolProp    = propSpec{kind: kindBool}
 	providerEnu = enum("claude", "codex", "gemini", "other", "mixed")
 	backendEnu  = enum("tmux", "pty", "unknown")
@@ -89,12 +106,19 @@ var (
 
 var slugRE = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,64}$`)
 
+// versionRE is a release number and nothing else: three numbers, and an optional suffix of letters, digits and dots (a beta or rc tag). A dev build's "+commit" or any other shape does not
+// match and is never sent (#5952). The length bound is checked separately.
+var versionRE = regexp.MustCompile(`^[0-9]{1,4}\.[0-9]{1,4}\.[0-9]{1,4}(-[A-Za-z0-9.]{1,16})?$`)
+
+// ValidVersionProp reports whether v may be sent as a version property.
+func ValidVersionProp(v string) bool { return len(v) <= 32 && versionRE.MatchString(v) }
+
 // eventSpecs is the closed allowlist of events and, per event, the only
 // properties it may carry beyond the standard ones. An event or property not
 // listed here cannot be sent.
 var eventSpecs = map[string]map[string]propSpec{
 	EventInstall:   {},
-	EventUpgrade:   {},
+	EventUpgrade:   {"from_version": versionProp}, // the version that last ran on this install (#5952)
 	EventAppOpened: {},
 
 	EventSessionLaunched: {},
@@ -118,6 +142,9 @@ var eventSpecs = map[string]map[string]propSpec{
 	EventDashboardFailed:        {"code": enum("sessions_fetch_http", "sessions_fetch_network", "sessions_fetch_invalid", "status_fetch_http", "status_fetch_network", "status_fetch_invalid", "init_failed")},
 	EventFirstPromptSubmitted:   {"source": enum("http_send")},
 	EventPromptSubmitRequested:  {"source": enum("dashboard_composer")},
+
+	EventUpdateNoticeShown: {"to_version": versionProp, "source": enum(UpdateSourceDashboard, UpdateSourceTray), "channel": enum(UpdateChannelApproved, UpdateChannelAgentic)},
+	EventUpdateOfferOpened: {"to_version": versionProp, "source": enum(UpdateSourceDashboard, UpdateSourceTray), "channel": enum(UpdateChannelApproved, UpdateChannelAgentic), "method": enum(UpdateMethodDownloadLink)},
 }
 
 // KnownEvent reports whether name is on the allowlist.
@@ -159,6 +186,10 @@ func sanitizeProps(event string, extra map[string]string) (map[string]any, bool)
 			}
 		case kindSlug:
 			if slugRE.MatchString(raw) {
+				out[key] = raw
+			}
+		case kindVersion:
+			if ValidVersionProp(raw) {
 				out[key] = raw
 			}
 		}

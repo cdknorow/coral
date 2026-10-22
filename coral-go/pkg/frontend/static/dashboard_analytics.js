@@ -32,6 +32,15 @@ function emit(event, props = {}) {
     } catch { /* Observability must never affect the application. */ }
 }
 
+/**
+ * Report that the update toast was shown (update_notice_shown) or its Download link opened (update_offer_opened) (#5952). Only a release number and the channel are sent; the server makes the
+ * source the dashboard and the method the link, and sends nothing when analytics is off.
+ */
+export function reportUpdate(event, version, channel) {
+    if (!enabled || (event !== 'update_notice_shown' && event !== 'update_offer_opened')) return;
+    emit(event, {to_version: String(version || '').slice(0, 40), channel: channel === 'agentic' ? 'agentic' : 'approved'});
+}
+
 export function beginDashboardAnalytics() {
     enabled = document.body.dataset.entryMode !== 'agent' && !location.pathname.startsWith('/agent/');
 }
