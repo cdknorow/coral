@@ -401,7 +401,7 @@ func runForeground(host string, port int, noBrowser, debugMode bool, backendType
 		var mShutdown, mQuit *systray.MenuItem
 		var runningBackend atomic.Value // "tmux" or "pty": what the server runs (watchBackend)
 		var runningNow atomic.Value     // agentsNow: agents running and whether they wake, for what Quit says (#6131)
-		runningNow.Store(agentsNow{wakes: true})
+		runningNow.Store(agentsNow{})   // nothing read yet: no count, and no promise to wake
 		// The built-in terminal (pty) is the default (#6064), and always on Windows: Quit stops the server the normal way, so the agents wake next time and there is one exit; with tmux
 		// there are two. The server says which it runs.
 		runningBackend.Store("pty")

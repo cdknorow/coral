@@ -150,3 +150,54 @@ func TestPtyQuitDoesNotKillAgents(t *testing.T) {
 		}
 	}
 }
+
+// When the setting cannot be read the tray does not promise waking: "stop", never "wake next time". Readable with the keys absent is the default (on, up to 8): "wake" (#6131).
+func TestUnreadableWakeSettingSaysStop(t *testing.T) {
+	for _, c := range []struct {
+		name    string
+		handler http.HandlerFunc
+		wakes   bool
+	}{
+		{"500", func(w http.ResponseWriter, r *http.Request) { settingsOr(w, r, func() { http.Error(w, "boom", 500) }) }, false},
+		{"401", func(w http.ResponseWriter, r *http.Request) {
+			settingsOr(w, r, func() { http.Error(w, "sign in", 401) })
+		}, false},
+		{"not json", func(w http.ResponseWriter, r *http.Request) {
+			settingsOr(w, r, func() { io.WriteString(w, "not json") })
+		}, false},
+		{"connection closed", func(w http.ResponseWriter, r *http.Request) {
+			settingsOr(w, r, func() {
+				conn, _, _ := w.(http.Hijacker).Hijack()
+				conn.Close()
+			})
+		}, false},
+		{"settings with no keys", func(w http.ResponseWriter, r *http.Request) {
+			settingsOr(w, r, func() { io.WriteString(w, `{"settings":{}}`) })
+		}, true},
+	} {
+		srv := httptest.NewServer(c.handler)
+		got := readAgentsNow(srv.URL, t.TempDir())
+		srv.Close()
+		if got.count != 3 || got.wakes != c.wakes {
+			t.Errorf("%s: %+v, want 3 agents, wakes %v", c.name, got, c.wakes)
+		}
+		it := exitItemsFor("darwin", "pty", got.count, got.wakes)
+		want := "Quit Coral (3 agents stop)"
+		note := "Coral quit. 3 agents stopped. Wake them from Coral when you want them back."
+		if c.wakes {
+			want, note = "Quit Coral (3 agents wake next time)", "Coral quit. 3 agents will wake next time you open Coral."
+		}
+		if it.quit != want || quitNote(got.count, got.wakes) != note {
+			t.Errorf("%s: %q / %q", c.name, it.quit, quitNote(got.count, got.wakes))
+		}
+	}
+}
+
+// settingsOr answers the live list with three running agents and hands /api/settings to settings.
+func settingsOr(w http.ResponseWriter, r *http.Request, settings func()) {
+	if r.URL.Path == "/api/settings" {
+		settings()
+		return
+	}
+	io.WriteString(w, `[{"name":"a","sleeping":false},{"name":"b","sleeping":false},{"name":"c","sleeping":false}]`)
+}

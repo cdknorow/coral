@@ -178,19 +178,18 @@ func agentsClient(dataDir string) *http.Client {
 	return client
 }
 
-// wakeRuleNow reads the wake setting from the server; the default when it does not answer.
-func wakeRuleNow(client *http.Client, baseURL string) wakeRule {
+// wakeRuleNow reads the wake setting from the server. ok is false when it could not be read (no answer, not signed in, a refusal, not JSON): the tray then does not promise waking.
+func wakeRuleNow(client *http.Client, baseURL string) (wakeRule, bool) {
 	resp, err := client.Get(baseURL + "/api/settings")
 	if err != nil {
-		return defaultWakeRule
+		return defaultWakeRule, false
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return defaultWakeRule
+		return defaultWakeRule, false
 	}
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	r, _ := wakeRuleFrom(body)
-	return r
+	return wakeRuleFrom(body)
 }
 
 // agentsNow is what the tray says about the agents: how many run and whether they wake next time.
@@ -203,7 +202,8 @@ type agentsNow struct {
 func readAgentsNow(baseURL, dataDir string) agentsNow {
 	client := agentsClient(dataDir)
 	n := runningAgents(client, baseURL)
-	return agentsNow{count: n, wakes: wakeRuleNow(client, baseURL).wakes(n)}
+	rule, ok := wakeRuleNow(client, baseURL)
+	return agentsNow{count: n, wakes: ok && rule.wakes(n)}
 }
 
 // watchAgents keeps cur current for Quit's title: it asks every 10 seconds and calls onChange when the answer changes.
