@@ -334,7 +334,7 @@ var reviewedOrigins = map[string]bool{
 	"internal/ptymanager/session_terminal_pty.go	PTYSessionTerminal.SendPrompt	SendPrompt	o":                         true,
 	"internal/ptymanager/session_terminal_pty.go	PTYSessionTerminal.SendRawInput	SendInput	o":                        true,
 	"internal/ptymanager/session_terminal_pty.go	PTYSessionTerminal.SendTerminalInput	SendInput	o":                   true,
-	"internal/ptymanager/session_terminal_pty.go	PTYSessionTerminal.SendToTarget	SendLine	o":                         true,
+	"internal/ptymanager/session_terminal_pty.go	PTYSessionTerminal.sendLaunch	SendLine	o":                           true,
 	"internal/ptymanager/session_terminal_tmux.go	TmuxSessionTerminal.SendInput	SendKeys	o":                          true,
 	"internal/ptymanager/session_terminal_tmux.go	TmuxSessionTerminal.SendPrompt	SendPrompt	o":                       true,
 	"internal/ptymanager/session_terminal_tmux.go	TmuxSessionTerminal.SendRawInput	SendRawKeys	o":                    true,
@@ -355,7 +355,7 @@ var reviewedOrigins = map[string]bool{
 	"internal/server/routes/sessions_input.go	SessionsHandler.Keys	send	Coral":                                       true, // /keys from anything but a person: through the gate
 	"internal/server/routes/sessions_input.go	SessionsHandler.Keys	send	Person":                                      true, // /keys from a person (#5715)
 	"internal/server/routes/sessions_input.go	SessionsHandler.Send	SendInput	Coral":                                  true,
-	"internal/server/routes/sessions_lifecycle.go	sendLaunchCommand	SendToTarget	Internal":                           true,
+	"internal/server/routes/sessions_lifecycle.go	sendLaunchCommand	send	Internal":                                   true,
 	"internal/server/routes/websocket.go	terminalStream.handleFrame	SendInput	Person":                                true,
 	"internal/tmux/send_keys.go	Client.SendTerminalInputToTarget	SendTerminalInputToTarget	o":                        true,
 }

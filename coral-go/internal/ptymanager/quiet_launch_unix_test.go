@@ -30,13 +30,16 @@ func TestRestartRingAtClearKeepsFromTheClearOn(t *testing.T) {
 		{"a clear straddling two reads", "before\x1b[3", 3 + 2, "before\x1b[3"},
 	}
 	for _, tc := range cases {
-		got := string(restartRingAtClear(append([]byte(nil), tc.ring...), tc.n))
-		assert.Equal(t, tc.want, got, tc.name)
+		out, ok := restartRingAtClear(append([]byte(nil), tc.ring...), tc.n)
+		assert.Equal(t, tc.want, string(out), tc.name)
+		assert.Equal(t, strings.Contains(tc.ring[max(0, len(tc.ring)-tc.n-len(seq)+1):], seq), ok, tc.name)
 	}
 	// a read that completes a sequence begun in the one before
 	ring := []byte("before\x1b[3")
 	ring = append(ring, 'J', 'x')
-	assert.Equal(t, seq+"x", string(restartRingAtClear(ring, 2)), "straddling")
+	out, ok := restartRingAtClear(ring, 2)
+	assert.True(t, ok)
+	assert.Equal(t, seq+"x", string(out), "straddling")
 }
 
 // #5911 on the PTY backend: the launch line is a short line sourcing a private script; the replay holds the agent's output and none of the line, the script's contents or the
@@ -93,4 +96,43 @@ func TestPTYQuietLaunchScriptIsKeptWhenAskedAndHoldsNoTokenValue(t *testing.T) {
 	assert.Contains(t, string(body), "echo kept-$((6*7))", "the script holds what the line held")
 	assert.NotContains(t, string(body), "s3cr3t-token-value", "the token's value is never in the script: it names the file the shell reads")
 	assert.Contains(t, string(body), tokenFile)
+}
+
+// Only Coral can restart the replay ring: output that prints ESC[3J by itself, from a program in the terminal (an agent included), must not erase what came before it from what a
+// person is shown on reconnect (#5911, Security's review). A quiet launch arms the reset once, for a short window.
+func TestAClearInOutputRestartsTheReplayOnlyOnceAndOnlyWhenCoralArmedIt(t *testing.T) {
+	skipIfWindows(t)
+	canFork(t)
+	run := func(t *testing.T, name string, arm func(*PTYBackend)) string {
+		t.Helper()
+		terminal, backend := newTestTerminal(t)
+		spawnTestSession(t, backend, name)
+		if arm != nil {
+			arm(backend)
+		}
+		require.NoError(t, terminal.SendToTarget(context.Background(), terminalinput.Unclassified, name,
+			"echo ran-$((6*7))-evil; printf '\\033[3J'; echo after-$((6*7))-clear"))
+		return waitForPTYOutput(t, backend, name, "after-42-clear", 10*time.Second)
+	}
+	// not armed: an agent's own ESC[3J erases nothing from the replay
+	got := run(t, "clear-unarmed", nil)
+	assert.Contains(t, got, "ran-42-evil", "what came before an unarmed clear stays in the replay")
+	assert.Contains(t, got, "after-42-clear")
+
+	// armed by Coral: the first clear restarts it, and only the first
+	got = run(t, "clear-armed", func(b *PTYBackend) { b.ArmReplayClear("clear-armed") })
+	assert.NotContains(t, got, "ran-42-evil", "armed: the clear restarts the replay")
+	assert.Contains(t, got, "after-42-clear")
+	terminal, backend := newTestTerminal(t)
+	spawnTestSession(t, backend, "clear-twice")
+	backend.ArmReplayClear("clear-twice")
+	require.NoError(t, terminal.SendToTarget(context.Background(), terminalinput.Unclassified, "clear-twice", "printf '\\033[3J'; echo first-$((6*7))-kept"))
+	waitForPTYOutput(t, backend, "clear-twice", "first-42-kept", 10*time.Second)
+	require.NoError(t, terminal.SendToTarget(context.Background(), terminalinput.Unclassified, "clear-twice", "printf '\\033[3J'; echo second-$((6*7))-kept"))
+	got = waitForPTYOutput(t, backend, "clear-twice", "second-42-kept", 10*time.Second)
+	assert.Contains(t, got, "first-42-kept", "one-shot: the second clear erases nothing")
+
+	// armed, but the window has passed: nothing is reset
+	got = run(t, "clear-late", func(b *PTYBackend) { b.clearWindow = -time.Second; b.ArmReplayClear("clear-late") })
+	assert.Contains(t, got, "ran-42-evil", "an arming that has expired resets nothing")
 }

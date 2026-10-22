@@ -227,6 +227,9 @@ func (p *PTYSessionTerminal) SendQuietLaunchToTarget(ctx context.Context, o term
 func (p *PTYSessionTerminal) sendLaunch(_ context.Context, o terminalinput.Origin, target, command string, quiet bool) error {
 	DropHeld(target, "a launch command is typed") // nothing held for the old process is typed into a new one (#3431)
 	resolved := p.resolveSessionKey(target)
+	if quiet {
+		p.backend.ArmReplayClear(resolved) // the script's clear restarts the replay, this once
+	}
 	if quiet || len(command) > inlineCommandLimit {
 		invocation, cleanup, err := commandInvocation(command, quiet)
 		if err != nil {
