@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -187,4 +188,22 @@ func TestStatusAcceptsJSON(t *testing.T) {
 	bad := runBoard(t, srv.URL, dir, "status", "--nope")
 	assert.Equal(t, 2, bad.code)
 	assert.Equal(t, 1, strings.Count(bad.stderr, `unknown option "--nope"`), "printed once: %q", bad.stderr)
+}
+
+// getBoard gives up on a server that accepts the connection and never answers (http.Get had no timeout: read and check hung for ever).
+func TestGetBoardTimesOut(t *testing.T) {
+	isolateBoardEnv(t)
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { <-release }))
+	defer srv.Close()
+	defer close(release)
+	serverURL = srv.URL
+	old := boardClient
+	boardClient = &http.Client{Timeout: 200 * time.Millisecond}
+	defer func() { boardClient = old }()
+	start := time.Now()
+	_, err := getBoard("/team/messages")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot reach Coral server")
+	assert.Less(t, time.Since(start), 5*time.Second)
 }
