@@ -42,6 +42,10 @@ func TestAgySlashMenuIsRecognisedForTheCommandJustTyped(t *testing.T) {
 func TestAgySlashMenuIsNotRecognisedWhenTheEnterWouldMeanSomethingElse(t *testing.T) {
 	menu := agyScreen(t, "agy_slash_menu.txt")
 	assert.False(t, AgySlashMenuFor("agy", "/he", menu), "Enter would pick /help, not the /he that was typed")
+	// The box holds exactly "/he" (so the box check passes) while "/help" is highlighted: only the highlighted-command check stops this Enter.
+	prefix := strings.Replace(menu, "\n> /help\n", "\n> /he\n", 1)
+	require.NotEqual(t, menu, prefix)
+	assert.False(t, AgySlashMenuFor("agy", "/he", prefix), "the box holds /he, the highlighted item is /help: Enter would pick /help")
 	assert.False(t, AgySlashMenuFor("agy", "/model", menu), "another command than the highlighted one")
 	assert.False(t, AgySlashMenuFor("agy", "hello", menu), "not a slash command")
 	assert.False(t, AgySlashMenuFor("agy", "", menu))
