@@ -154,7 +154,13 @@ func TestProfileFoldersAreOnlyWhereAPathStarts(t *testing.T) {
 		"path=/home/bob/x failed":                  "path=/home/<user>/x failed",
 		"(/Users/bob/x)":                           "(/Users/<user>/x)",
 		"/home/bob/x":                              "/home/<user>/x",
-		"GET /api/home/bob/x":                      "GET /api/home/bob/x", // a URL, not a profile
+		"file:///Users/other/x.txt":                "file:///Users/<user>/x.txt",
+		"GOPATH=/usr/lib:/Users/other/go":          "GOPATH=/usr/lib:/Users/<user>/go",
+		"PATH=/usr/bin:/home/bob/bin:/opt/x":       "PATH=/usr/bin:/home/<user>/bin:/opt/x",
+		"a|/home/bob/x":                            "a|/home/<user>/x",
+		"out>/Users/bob/log":                       "out>/Users/<user>/log",
+		"http://h/api/Users/bob/x":                 "http://h/api/Users/bob/x", // still a URL
+		"GET /api/home/bob/x":                      "GET /api/home/bob/x",      // a URL, not a profile
 		"GET /api/users/bob":                       "GET /api/users/bob",
 		"/home/linuxbrew/.linuxbrew/bin/tmux":      "/home/linuxbrew/.linuxbrew/bin/tmux", // a shared account
 		"/Users/Shared/x and C:\\Users\\Public\\y": "/Users/Shared/x and C:\\Users\\Public\\y",

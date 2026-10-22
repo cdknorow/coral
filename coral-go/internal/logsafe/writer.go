@@ -52,9 +52,9 @@ func (rw *redactingWriter) Write(p []byte) (int, error) {
 
 // profileFolder matches the folder a profile lives in: /Users/<name>, /home/<name>, C:\Users\<name> (either slash), the name up to the next separator or a character no folder name has.
 //
-// It matches only where a path starts: at the start of the text or after a space, a quote, "=", "(", "[", "," or ";" (so "/api/home/x" is a URL, not a profile), and it leaves the shared accounts alone
+// It matches only where a path starts: at the start of the text or after a space, a quote, "=", "(", "[", ",", ";", ":", "|", ">" or a "file://" prefix (so "/api/home/x" is a URL, not a profile), and it leaves the shared accounts alone
 // (/home/linuxbrew, /Users/Shared, C:\Users\Public and Default are not a person).
-var profileFolder = regexp.MustCompile(`(?i)(^|[\s"'=(\[,;])((?:[a-z]:)?[\\/](?:users|home)[\\/])([^\\/\s"'<>:|*?]+)`)
+var profileFolder = regexp.MustCompile(`(?i)(^|[\s"'=(\[,;:|>]|file://)((?:[a-z]:)?[\\/](?:users|home)[\\/])([^\\/\s"'<>:|*?]+)`)
 
 var sharedProfiles = map[string]bool{"linuxbrew": true, "shared": true, "public": true, "default": true, "all users": true, "default user": true, "<user>": true, "~": true}
 
