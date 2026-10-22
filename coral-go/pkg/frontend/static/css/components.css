@@ -1205,6 +1205,8 @@ button.subscriber-history-link {
     line-height: 1;
 }
 
+@media (max-width: 767px), (pointer: coarse) { .toast-close { min-width: var(--control-touch-height, 44px); min-height: var(--control-touch-height, 44px); } } /* Dismiss is a 44 px target on touch (#6116) */
+
 .toast-action:hover,
 .toast-close:hover {
     color: var(--text-primary);
