@@ -38,10 +38,16 @@ const DATABASE = 'The sessions database is damaged (page 12 is corrupt). Stop Co
                 assert.ok(t.cw >= 24 && t.ch >= 24, t.id + ' close target is 24 px or more: ' + t.cw + 'x' + t.ch);
                 assert.equal(t.ws, 'pre-line', t.id + ' keeps its lines');
                 if (t.id === 'firewall-warning-toast') assert.ok(t.textLen < 200, 'the firewall toast is one short sentence, not ten lines: ' + t.textLen);
-                if (!fs) assert.ok(t.l >= -1 && t.r <= t.vw + 1 && t.t >= -1 && t.b <= t.vh + 1, t.id + ' is inside the window: ' + JSON.stringify(t));
+                if (!fs) assert.ok(t.l >= -1 && t.r <= t.vw + 1, t.id + ' is inside the window sideways: ' + JSON.stringify(t));
                 assert.ok(parseFloat(t.border) > 0, t.id + ' has its edge');
             }
             for (let i = 0; i < 3; i++) for (let j = i + 1; j < 3; j++) { const a = m.r[i], b = m.r[j]; const overlap = Math.min(a.r, b.r) - Math.max(a.l, b.l) > 1 && Math.min(a.b, b.b) - Math.max(a.t, b.t) > 1; assert.ok(!overlap, `${a.id} and ${b.id} do not sit on each other`); }
+            // The strip scrolls on its own when the warnings are taller than it: each toast, scrolled to, is inside the strip (or, when taller than the strip, starts at its top).
+            if (!fs) {
+                const fit = await ev(`(() => { const st = document.getElementById('warning-toasts'); const out = [...document.querySelectorAll('.security-warning-toast')].map(t => { t.scrollIntoView({ block: 'nearest' }); const b = t.getBoundingClientRect(), s = st.getBoundingClientRect();
+                    return { id: t.id, ok: b.top >= s.top - 1 && (b.bottom <= s.bottom + 1 || b.top <= s.top + 1) && s.top >= -1 && s.bottom <= innerHeight + 1, b: [b.top, b.bottom], s: [s.top, s.bottom] }; }); st.scrollTop = 0; return out; })()`);
+                for (const f of fit) assert.ok(f.ok, f.id + ' is inside the strip, and the strip inside the window, once scrolled to: ' + JSON.stringify(f));
+            }
             assert.ok(m.stack.l >= -1 && m.stack.r <= m.vw + 1 && m.stack.t >= -1 && m.stack.b <= m.vh + 1, 'the column of warnings is inside the window (it scrolls when 200% text outgrows it): ' + JSON.stringify(m.stack));
             assert.ok(!m.overflowX, 'the page does not scroll sideways');
             // the × closes its own warning and leaves the others where they are readable
