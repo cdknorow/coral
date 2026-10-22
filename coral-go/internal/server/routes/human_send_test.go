@@ -469,16 +469,29 @@ func TestHumanSendIsSubmittedOrSaysSo(t *testing.T) {
 			assert.Equal(t, humanSendExtraEnters, enters)
 		})
 	}
-	t.Run("a command to an agent still starting whose keystrokes are lost: typed again, then not confirmed", func(t *testing.T) {
+	t.Run("a command to an agent still starting whose keystrokes are lost: never typed again, not confirmed", func(t *testing.T) {
 		h := setup(t, "codex", false)
 		h.term.show(codexReady(t, ""))
 		rec := h.send("/compact")
 		assert.Equal(t, http.StatusConflict, rec.Code, rec.Body.String())
 		assert.Equal(t, "not_confirmed", code(rec))
 		typed, enters := h.term.counts()
-		assert.Len(t, typed, 1+humanSendRetypes)
+		assert.Equal(t, []string{"/compact"}, typed, "/compact acts on the agent: it is typed once")
 		assert.Zero(t, enters)
 	})
+	// An agent with no hook events (its hooks do not reach Coral, or it has none yet) sends nothing for a taken message: its box is
+	// empty again and its screen has moved on. That is "sent", once (it was typed three times and then answered 409).
+	for _, msg := range []string{"hello there", "/clear"} {
+		t.Run("no hook events, the box emptied after the typing: "+msg+" is sent once", func(t *testing.T) {
+			h := setup(t, "codex", false)
+			h.term.show(codexReady(t, ""))
+			h.term.onType = func(text string) { h.term.show("> you: " + text + "\n" + codexReady(t, "")) }
+			rec := h.send(msg)
+			assert.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+			typed, _ := h.term.counts()
+			assert.Equal(t, []string{msg}, typed)
+		})
+	}
 	t.Run("a message that starts with a path is a message: no evidence, not confirmed", func(t *testing.T) {
 		h := setup(t, "codex", true)
 		h.term.show(codexReady(t, ""))
