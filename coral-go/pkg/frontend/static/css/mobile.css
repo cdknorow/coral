@@ -1055,7 +1055,13 @@
         flex-wrap: nowrap;
         scrollbar-width: none;
         border-bottom: 1px solid var(--border);
-        background: var(--bg-secondary);
+        /* Ten 44 px targets do not fit one row at 390: the strip scrolls, and an edge shadow says there is more in that direction (the plain fade of "scroll shadows"), where before the last two tabs were simply cut off (#6116) */
+        background:
+            linear-gradient(to right, var(--bg-secondary) 30%, transparent) 0 0 / 28px 100% no-repeat local,
+            linear-gradient(to left, var(--bg-secondary) 30%, transparent) 100% 0 / 28px 100% no-repeat local,
+            radial-gradient(farthest-side at 0 50%, color-mix(in srgb, var(--text-primary) 55%, transparent), transparent) 0 0 / 22px 100% no-repeat scroll,
+            radial-gradient(farthest-side at 100% 50%, color-mix(in srgb, var(--text-primary) 55%, transparent), transparent) 100% 0 / 22px 100% no-repeat scroll;
+        background-color: var(--bg-secondary);
         flex-shrink: 0;
     }
 
