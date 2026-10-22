@@ -520,6 +520,10 @@ func winStageRisk(st winStage, outside func(string) bool) string {
 		}
 		return ""
 	case "git":
+		// A setting that makes git run a program (core.hooksPath, an alias with !, git -c ...): the same rule as the POSIX words (auto_accept_gitcfg.go).
+		if why := gitCodeExecRisk(args); why != "" {
+			return why
+		}
 		// git clone <url> <dir>: the directory it creates.
 		for i, a := range args {
 			if strings.EqualFold(a, "clone") {

@@ -229,8 +229,11 @@ func chmodRisk(_ string, args []string, at func([]string) []string, workDir stri
 	return ""
 }
 
-// gitRisk: the git subcommands that rewrite a remote or destroy uncommitted work.
+// gitRisk: the git subcommands that rewrite a remote or destroy uncommitted work, and the settings that make git run a program (auto_accept_gitcfg.go).
 func gitRisk(_ string, args []string, _ func([]string) []string, _ string) string {
+	if why := gitCodeExecRisk(args); why != "" {
+		return why
+	}
 	sub, rest := gitSubcommand(args)
 	switch sub {
 	case "push":

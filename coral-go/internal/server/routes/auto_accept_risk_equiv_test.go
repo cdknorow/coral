@@ -194,7 +194,8 @@ func riskTestStrings(t testing.TB) []string {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !strings.Contains(string(src), "shellRisk(") || f == "auto_accept_risk_equiv_test.go" {
+		// auto_accept_gitcfg_test.go holds commands the rule of #182 (git settings that run a program) holds on purpose, which the frozen pre-#4599 rule does not.
+		if !strings.Contains(string(src), "shellRisk(") || f == "auto_accept_risk_equiv_test.go" || f == "auto_accept_gitcfg_test.go" {
 			continue
 		}
 		file, err := parser.ParseFile(fset, f, src, 0)
