@@ -6,6 +6,7 @@ import { pollEvery } from './overload.js';
 import { registerActions } from './actions.js';
 import { isCloud, normServer, sessionServer, LOCAL_SERVER } from './server_base.js';
 import { setPill } from './dom_write.js';
+import { state } from './state.js';
 
 const RECHECK_MS = 60_000;
 
@@ -34,7 +35,7 @@ export function askSigninSoon() {
 /** Shows the line for a status with claude_signed_in === false, hides it otherwise (absent is "not known": nothing to say). */
 export function applySigninStatus(data) {
     _known = data && typeof data.claude_signed_in === 'boolean' ? data.claude_signed_in : undefined;
-    if (_known === false) { const pill = document.getElementById('waiting-banner'); if (pill && pill.classList.contains('waiting-banner-not-started')) setPill(pill, false, ''); } // the card now says it
+    if (_known === false && startupSignedOut(state.currentSession)) { const pill = document.getElementById('waiting-banner'); if (pill && pill.classList.contains('waiting-banner-not-started')) setPill(pill, false, ''); } // the card now says it (only for the agent that is open and whose Claude it is)
     const line = document.getElementById('claude-signin-line');
     if (!line) return;
     const off = !!data && data.claude_signed_in === false;
