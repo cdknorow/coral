@@ -139,3 +139,44 @@ func CheckFlags(args []string, spec FlagSpec) error {
 	}
 	return nil
 }
+
+// NearFlag reports the known option that arg is a typo of: the same name with one letter added, dropped or changed (two for a name of four letters
+// or more). Used to refuse "post hello --too Lead" without refusing text that has a flag in it ("use --force here").
+func NearFlag(arg string, known []string) (string, bool) {
+	name := strings.ToLower(strings.TrimLeft(arg, "-"))
+	for _, k := range known {
+		kn := strings.TrimLeft(k, "-")
+		if name == kn {
+			continue
+		}
+		limit := 1
+		if len(kn) >= 4 {
+			limit = 2
+		}
+		if editDistance(name, kn) <= limit {
+			return k, true
+		}
+	}
+	return "", false
+}
+
+// editDistance is the Levenshtein distance between a and b.
+func editDistance(a, b string) int {
+	prev := make([]int, len(b)+1)
+	for j := range prev {
+		prev[j] = j
+	}
+	for i := 1; i <= len(a); i++ {
+		cur := make([]int, len(b)+1)
+		cur[0] = i
+		for j := 1; j <= len(b); j++ {
+			cost := 1
+			if a[i-1] == b[j-1] {
+				cost = 0
+			}
+			cur[j] = min(prev[j]+1, cur[j-1]+1, prev[j-1]+cost)
+		}
+		prev = cur
+	}
+	return prev[len(b)]
+}
