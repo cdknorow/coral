@@ -85,6 +85,8 @@ export function parseUploadReply(text) {
 export function uploadStatusFailure(status) {
     if (status === 413) return { text: 'That image is too big to send. Pick a smaller one.', retry: false };
     if (status === 408) return { text: 'The upload took too long. Try again, on a faster connection if you can.', retry: true };
-    if (status === 502 || status === 503 || status === 504) return { text: UPLOAD_UNFINISHED, retry: true };
+    // Until coral-hub's proxy fix ships everywhere, the hub answers a slow upload it cut with 503 "remote unreachable": say what happened and what helps (a smaller image goes up faster).
+    if (status === 503) return { text: 'Upload timed out. Try a smaller image.', retry: true };
+    if (status === 502 || status === 504) return { text: UPLOAD_UNFINISHED, retry: true };
     return null;
 }

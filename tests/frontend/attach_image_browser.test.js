@@ -119,7 +119,7 @@ async function httpJson(method, p, body, headers = {}) {
             await waitFor(`window.__rec.ups.length === window.__nBefore + 1 && document.querySelectorAll('#image-attachments .image-attachment').length === ${a0 + 1}`, `${tag}: Retry uploads the same picture again`, { timeout: 10000 });
             check(`${tag}: Retry sends the same picture again and it is attached`, (await ev(`window.__rec.ups[window.__rec.ups.length - 1].name`)) === 'cut.png' && (await attached()) === a0 + 1);
             await ev(`import(${S} + 'controls.js').then(m => { for (let i = m.getPendingAttachments().length - 1; i >= 0; i--) m.removeAttachment(i); })`);
-            for (const [mode, re, want, retry] of [[413, '/too big/', 'That image is too big to send. Pick a smaller one.', false], [408, '/took too long/', 'The upload took too long. Try again, on a faster connection if you can.', true], ['throw', "/didn't finish/", "Upload didn't finish. Try again.", true]]) {
+            for (const [mode, re, want, retry] of [[413, '/too big/', 'That image is too big to send. Pick a smaller one.', false], [408, '/took too long/', 'The upload took too long. Try again, on a faster connection if you can.', true], [503, '/timed out/', 'Upload timed out. Try a smaller image.', true], [502, "/didn't finish/", "Upload didn't finish. Try again.", true], ['throw', "/didn't finish/", "Upload didn't finish. Try again.", true]]) {
                 await ev(`window.__upMode = ${typeof mode === 'number' ? mode : JSON.stringify(mode)}; document.querySelectorAll('.toast').forEach(t => t.remove()); true`);
                 await pick([mk(`'x.png'`, 40, 30, 'image/png')]);
                 await waitFor(toastOf(re), `${tag}: the ${mode} message`, { timeout: 8000 });
