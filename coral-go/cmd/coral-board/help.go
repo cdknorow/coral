@@ -74,6 +74,9 @@ non-ASCII text into '?' when piped to one. For text with quotes or non-ASCII use
 file), or pipe to "-" after  $OutputEncoding = [Text.UTF8Encoding]::new()  (PowerShell 7 and cmd.exe
 need neither).`
 
+// sendFlags are send's options, for the typo check after the text of a message.
+var sendFlags = []string{"--board", "--to", "--address", "--reply-to", "--message-id", "--attach", "--file"}
+
 // checkFreeText rejects free text that is really an option, so a mistyped
 // flag is never posted or stored: the first word of a post, and the value of
 // any text-taking option.
@@ -107,6 +110,7 @@ func checkFreeText(args []string) error {
 	}
 	if args[0] == "send" {
 		// The message's first word must not be an option.
+		seenText := false
 		for i := 0; i < len(rest); i++ {
 			if rest[i] == "--" {
 				break
@@ -117,9 +121,15 @@ func checkFreeText(args []string) error {
 				continue
 			}
 			if clihelp.IsFlagLike(rest[i]) {
-				return fmt.Errorf("unknown option %q for send (put -- before message text that starts with '-')", rest[i])
+				if !seenText {
+					return fmt.Errorf("unknown option %q for send (put -- before message text that starts with '-')", rest[i])
+				}
+				// After the words of the message, only a typo of a real option is refused ("send ... hello --reply-too 4"); other "--word"s are text.
+				if near, ok := clihelp.NearFlag(rest[i], sendFlags); ok {
+					return fmt.Errorf("unknown option %q for send: did you mean %s? (put -- before message text that has it)", rest[i], near)
+				}
 			}
-			break
+			seenText = true
 		}
 	}
 	return clihelp.CheckTextFlags(rest, textFlags)
