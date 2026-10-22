@@ -1,5 +1,5 @@
 // First-run audit: a brand-new agent's empty chat says what it is waiting for and what to do next, by the agent's state.
-//  - idle: a title and a hint (Enter sends, Shift+Enter is a new line, replies appear here); a role=status block, sized in rem
+//  - idle: a title and a hint ("Type below to start."); a role=status block, sized in rem
 //  - not started: the "Waiting in the terminal" card already says it, so no empty state shows under it (nothing to add)
 //  - asleep: it says so and points at waking it
 //  - the words are written once: a later refresh does not rewrite them (a screen reader is not told again)
@@ -39,9 +39,7 @@ const BASE = require('./test_base').BASE;
         let w = await words();
         assert.equal(w.role, 'status');
         assert.equal(w.title, 'No messages yet');
-        assert.match(w.hint, /Enter to send/);
-        assert.match(w.hint, /Shift\+Enter/);
-        assert.match(w.hint, /replies/);
+        assert.equal(w.hint, 'Type below to start.'); // #5991: the keys and what appears are said by the box itself
         assert.equal(w.size, '14px', 'sized in rem: 0.875rem is 14px at the default size');
         await shot('idle');
 
