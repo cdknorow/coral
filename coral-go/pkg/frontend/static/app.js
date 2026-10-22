@@ -215,7 +215,7 @@ registerActions({
     'm-tmux-banner-close': () => { const b = document.getElementById('tmux-missing-banner'); if (b) b.style.display = 'none'; },
     'm-toggle-agentic-panel': () => { window.toggleAgenticPanel(); },
     'm-toggle-tablet-sidebar': () => { window.toggleTabletSidebar(); },
-    'm-toggle-top-bar-settings': () => { window.__coral.toggleTopBarSettings(); },
+    'm-toggle-top-bar-settings': (el, event) => { window.__coral.toggleTopBarSettings(event); },
     'm-wake-pending-agents': () => { window.wakePendingAgents(); },
 });
 // The sidebar's own controls (#3645): rail, search, launch, display toggles, the Jobs subtabs.
@@ -603,6 +603,13 @@ document.addEventListener('click', (e) => {
     if (a && a !== document.body && !item.parentElement.contains(a)) return;
     document.querySelector('[aria-controls="top-bar-settings-menu"]')?.focus({ preventScroll: true });
 }, true);
+
+// Escape in the open Settings menu closes it and the focus goes back to its button (#6038).
+document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    const menu = document.getElementById('top-bar-settings-menu');
+    if (menu && menu.style.display !== 'none' && menu.contains(document.activeElement)) { e.preventDefault(); closeTopBarSettings({ restoreFocus: true }); }
+});
 
 // Close kebab menus when clicking outside
 document.addEventListener('click', (e) => {
