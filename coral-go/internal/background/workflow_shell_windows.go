@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -25,14 +26,32 @@ func workflowShell() (string, error) {
 	return shellPath, nil
 }
 
+// gitInstallRoot is the Git for Windows folder a git.exe on PATH belongs to, from the layouts Git ships and nothing
+// further up: <root>\cmd\git.exe and <root>\bin\git.exe (one up), <root>\mingw64\bin\git.exe (two up). Any other
+// folder is no Git install, and neither is a drive root: C:\ is writable by every signed-in user, who could put a
+// usr\bin\sh.exe there for Coral to run as the person.
+func gitInstallRoot(gitExe string) string {
+	dir := filepath.Dir(gitExe)
+	var root string
+	switch {
+	case strings.EqualFold(filepath.Base(dir), "bin") && strings.EqualFold(filepath.Base(filepath.Dir(dir)), "mingw64"):
+		root = filepath.Dir(filepath.Dir(dir))
+	case strings.EqualFold(filepath.Base(dir), "cmd"), strings.EqualFold(filepath.Base(dir), "bin"):
+		root = filepath.Dir(dir)
+	default:
+		return ""
+	}
+	if filepath.Dir(root) == root {
+		return ""
+	}
+	return root
+}
+
 func findWorkflowShell() string {
 	var roots []string
 	if git, err := exec.LookPath("git"); err == nil {
-		// <root>\cmd\git.exe, <root>\bin\git.exe or <root>\mingw64\bin\git.exe
-		dir := filepath.Dir(git)
-		for i := 0; i < 3; i++ {
-			roots = append(roots, dir)
-			dir = filepath.Dir(dir)
+		if root := gitInstallRoot(git); root != "" {
+			roots = append(roots, root)
 		}
 	}
 	for _, env := range []string{"ProgramFiles", "ProgramFiles(x86)", "ProgramW6432"} {
