@@ -22,7 +22,7 @@ async function httpJson(method, p, body, headers = {}) {
     const guard = await guardSettings();
     // the dashboard's own credential: the switch and the status are the owner's, a node-side call has none
     const pageJson = (method, p, body) => ev(`fetch(${JSON.stringify(p)}, { method: ${JSON.stringify(method)}, headers: { 'Content-Type': 'application/json' }, body: ${body === undefined ? 'undefined' : JSON.stringify(JSON.stringify(body))} }).then(async r => ({ status: r.status, data: await r.json().catch(() => null) }))`);
-    let standIn = null;
+    let standIn = null, standIn2 = null;
     try {
         standIn = await launchStandIn(httpJson, { displayName: 'Pasted Image QA' });
         if (!standIn.sid) throw new Error('no stand-in agent: ' + standIn.diag);
@@ -114,6 +114,11 @@ async function httpJson(method, p, body, headers = {}) {
             const served = await ev(`fetch('/api/artifacts/${up.artifact.id}?v=2').then(r => ({ status: r.status, type: r.headers.get('content-type') }))`);
             check(`${tag}: GET /api/artifacts/{id} serves the image`, served.status === 200 && served.type === 'image/png', JSON.stringify(served));
 
+            let same = null;
+            if (!mobile) { // the image of step 1 is still window.__file: the same bytes, for a second agent
+                if (!standIn2) { standIn2 = await launchStandIn(httpJson, { displayName: 'Pasted Image QA Two' }); if (!standIn2.sid) throw new Error('no second stand-in agent: ' + standIn2.diag); }
+                same = (await ev(`(async () => { const f = new FormData(); f.append('file', window.__file); f.append('session_id', ${JSON.stringify(standIn2.sid)}); return (await fetch('/api/upload', { method: 'POST', body: f })).json(); })()`)).artifact;
+            }
             // 6. Remove shared copy: the thumbnail goes back to the chip, the artifact is gone
             await render([{ type: 'user', content: typed, key: 'k5', timestamp: '2026-10-19T00:05:00Z' }]);
             await waitFor(`!!document.querySelector('#pia-box .chat-attachment-unshare:not([hidden])')`, `${tag}: the remove button`, { timeout: 10000 });
@@ -128,13 +133,28 @@ async function httpJson(method, p, body, headers = {}) {
             await waitFor(`window.__rec.deletes.length === 1 && document.querySelector('#pia-box .chat-attachment-thumb').hidden === true`, `${tag}: the thumbnail turns back into the chip`, { timeout: 8000 });
             if (mobile) check(`${tag}: the opened image closes with its shared copy`, await ev(`!document.querySelector('#preview-toolbar .preview-unshare-btn')`));
             check(`${tag}: the chip ("Pasted image") stays`, (await ev(`(document.querySelector('#pia-box .chat-attachment-chip') || {}).textContent`)) === 'Pasted image');
-            check(`${tag}: the shared copy is gone from the artifact route (asked past the browser's cache: an artifact is cached for good)`, (await ev(`fetch('/api/artifacts/${up.artifact.id}?v=2', { cache: 'no-store' }).then(r => r.status)`)) === 404, JSON.stringify(await ev(`window.__rec.deletes`)));
+            // The desktop pass holds the same bytes for a second agent too (one more upload; an agent session may upload 100 images an hour and a repeat run on one server spends them): removing the first
+            // copy keeps the artifact (another record lists it: artifact_removed false), removing the last takes it away. The phone pass has a unique image: removing its copy takes it away.
+            const route = () => ev(`fetch('/api/artifacts/${up.artifact.id}?v=2', { cache: 'no-store' }).then(r => r.status)`);
+            if (!mobile) {
+                const first = await ev(`window.__rec.deletes[0]`);
+                check(`${tag}: the same image held for a second agent: removing the first copy keeps the artifact (artifact_removed false), the route still serves it`, same.id === up.artifact.id && first.status === 200 && first.body.artifact_removed === false && (await route()) === 200, JSON.stringify([same, first]));
+                const last = await ev(`fetch('/api/shared-images/${up.artifact.id}?session_id=' + encodeURIComponent(${JSON.stringify(standIn2.sid)}), { method: 'DELETE' }).then(async r => ({ status: r.status, body: await r.json().catch(() => null) }))`);
+                check(`${tag}: removing the last copy takes the artifact away (artifact_removed true, 404 from the route)`, last.status === 200 && last.body.artifact_removed === true && (await route()) === 404, JSON.stringify(last));
+            } else check(`${tag}: a unique image's shared copy is gone from the artifact route after Remove shared copy (asked past the browser's cache: an artifact is cached for good)`, (await route()) === 404, JSON.stringify(await ev(`window.__rec.deletes`)));
 
             // 6b. three images: each is named by its place (#5756), in the composer and in the chat; CORAL_SCREENSHOT_DIR=<dir> also writes pictures of them, dark and light
             const dir = process.env.CORAL_SCREENSHOT_DIR;
             const shot = async (n, clip) => { require('node:fs').mkdirSync(dir, { recursive: true }); require('node:fs').writeFileSync(require('node:path').join(dir, n + '.png'), Buffer.from((await Page.captureScreenshot(clip ? { format: 'png', clip } : { format: 'png' })).data, 'base64')); };
             const n1 = await ev(`window.__rec.uploads.length`);
+            // At 1280 px these three are pasted with Coral Hub connected (#5575): each uploads at once and no notice shows. (Its own paste was a ninth upload of ten: a server allows 100 an hour, a repeat run spends them.)
+            const hubN = await ev(`window.__rec.uploads.length`);
+            if (!mobile) await ev(`sessionStorage.clear(); window.__hub = { state: 'connected', at: 'T1' }; true`);
             for (let k = 0; k < 3; k++) await upload();
+            if (!mobile) {
+                check(`${tag}: with Coral Hub connected a paste uploads at once and shows no notice`, (await ev(`window.__rec.uploads.length`)) === hubN + 3 && (await ev(`document.querySelectorAll('#image-attachments .share-notice').length`)) === 0);
+                await ev(`window.__hub = { state: 'off' }; true`);
+            }
             const ups = await ev(`window.__rec.uploads.slice(${n1})`);
             // the message as Send types it: the links, one hint, then the text (step 2); not the older path-and-link pairs, which the chat names by file
             const uris = ups.map(u => u.artifact.uri);
@@ -181,17 +201,13 @@ async function httpJson(method, p, body, headers = {}) {
             await ev(`document.getElementById('pia-box')?.remove(); for (let i = 0; i < 3; i++) document.querySelector('#image-attachments .image-attachment-remove')?.click(); true`);
             check(`${tag}: each remove button takes its image out of the strip`, await ev(`document.querySelectorAll('#image-attachments .image-attachment').length === 0`));
 
-            // 7. no notice before a paste, whatever the Coral Hub state: pasted images are the owner's alone through the hub, so there is nothing to warn about or switch off (#5575)
-            await ev(`document.getElementById('pia-box')?.remove(); sessionStorage.clear(); window.__hub = { state: 'connected', at: 'T1' }; true`);
-            const n0 = await ev(`window.__rec.uploads.length`);
-            await png();
-            await ev(`import(${S} + 'controls.js').then(m => m.uploadAndInsertImage(window.__file))`);
-            check(`${tag}: with Coral Hub connected a paste uploads at once and shows no notice`, (await ev(`window.__rec.uploads.length`)) === n0 + 1 && (await ev(`document.querySelectorAll('#image-attachments .share-notice').length`)) === 0);
-            await ev(`window.__hub = { state: 'off' }; true`);
+            // 7. (the no-notice check with Coral Hub connected is part of step 6b)
+            await ev(`document.getElementById('pia-box')?.remove(); true`);
             // leave nothing attached
             await ev(`import(${S} + 'controls.js').then(m => { for (let i = m.getPendingAttachments().length - 1; i >= 0; i--) m.removeAttachment(i); return true; })`);
         }
     } finally {
+        if (standIn2) await standIn2.stop().catch(() => {});
         if (standIn) await standIn.stop().catch(() => {});
         await guard.restore().catch(() => {});
     }
