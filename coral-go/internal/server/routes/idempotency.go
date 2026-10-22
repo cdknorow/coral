@@ -253,10 +253,14 @@ func (i *Idempotency) removeLocked(scope [sha256.Size]byte, e *idemEntry) {
 	}
 }
 
-// purgeLocked drops the finished records older than the time to live.
+// purgeLocked drops the finished records older than the time to live, and the running ones past their own bound (#5867): a handler that never returns must not keep its
+// per-user slot and its place among the 2000 until the same key is used again. The late handler, if it ever returns, finds its record gone and leaves the others alone (finish).
 func (i *Idempotency) purgeLocked(now time.Time) {
 	for s, e := range i.entries {
-		if e.done && now.Sub(e.at) > idempotencyTTL {
+		if (e.done && now.Sub(e.at) > idempotencyTTL) || (!e.done && now.Sub(e.at) > e.bound) {
+			if !e.done {
+				slog.Warn("[cloud] a request with an Idempotency-Key ran longer than its bound: its record is dropped", "hub_user", e.user, "ran", now.Sub(e.at).Round(time.Second))
+			}
 			i.removeLocked(s, e)
 		}
 	}
