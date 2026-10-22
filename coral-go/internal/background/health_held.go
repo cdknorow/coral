@@ -33,7 +33,8 @@ func (h *HealthNudges) heldNotices(ctx context.Context, project string, subs []b
 	h.heldNotice(ctx, project, subs, now, after, take, h.heldDialogs, ruleHeldNotice+"-msg",
 		"@Operator [Coral health] waiting at a dialog: %s. Coral's messages to them are held until someone answers the dialog at their terminal.")
 	h.heldNotice(ctx, project, subs, now, after, take, h.heldDrafts, ruleHeldNotice+"-draft",
-		"@Operator [Coral health] messages held behind text in the input box: %s. Coral doesn't type over text it didn't type; someone at their terminal should send or clear it.")
+		"@Operator [Coral health] Coral's messages to %s are waiting behind text in their input box that Coral didn't type. "+
+			"Coral never sends or clears that text. Send or clear it in their terminal, and the waiting messages are delivered.")
 }
 
 // heldNotice is one kind of heldNotices: the agents held (by held) for at least after, told once per episode under action.

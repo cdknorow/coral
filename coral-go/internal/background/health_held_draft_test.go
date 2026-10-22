@@ -45,7 +45,7 @@ func TestMessagesHeldBehindADraftAreTold(t *testing.T) {
 	var drafts, dialogs []string
 	for _, m := range msgs {
 		switch {
-		case strings.Contains(m.Content, "messages held behind text in the input box"):
+		case strings.Contains(m.Content, "are waiting behind text in their input box that Coral didn't type"):
 			drafts = append(drafts, m.Content)
 		case strings.Contains(m.Content, "waiting at a dialog"):
 			dialogs = append(dialogs, m.Content)
@@ -54,6 +54,9 @@ func TestMessagesHeldBehindADraftAreTold(t *testing.T) {
 	require.Len(t, drafts, 1, "once per episode")
 	assert.Contains(t, drafts[0], "Codex Tester (15 min)")
 	assert.NotContains(t, drafts[0], "Lead Developer", "held for less than the set minutes")
+	// #279, Security's rule for this line: it still says the draft is never sent by Coral, and what a person does.
+	assert.Contains(t, drafts[0], "Coral never sends or clears that text.")
+	assert.Contains(t, drafts[0], "Send or clear it in their terminal")
 	require.Len(t, dialogs, 1)
 	assert.Contains(t, dialogs[0], "QA Engineer")
 }
