@@ -1,0 +1,31 @@
+name: x64-trial
+on:
+  push:
+    branches: [ci/win14-trial]
+permissions:
+  contents: read
+jobs:
+  trial:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      CORAL_TELEMETRY_DISABLED: "1"
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: coral-go/go.mod
+          cache: false
+      - name: The x64 package, the upgrade, the refused launch and the uninstall
+        shell: pwsh
+        run: ./walk/x64trial.ps1
+      - name: Keep the screenshots
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: walk-out
+          path: walk-out
+          if-no-files-found: ignore
