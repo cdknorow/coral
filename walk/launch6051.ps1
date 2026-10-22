@@ -48,7 +48,7 @@ pwsh -NoProfile -Command "claude --version" 2>&1 | Select-Object -First 4
 "--- Git for Windows (Claude Code needs its bash on Windows): " + (Get-Command bash -ErrorAction SilentlyContinue).Source
 
 Section "start Coral from its Start Menu target with the CLIs on the PATH of the person's session"
-New-Item -ItemType Directory -Force C:\walk\data, C:\walk\work | Out-Null
+New-Item -ItemType Directory -Force C:\walk\data, C:\walk\work, ([string]::Concat('C:\walk\Ordner mit Leerzeichen und ', [char]0xDC, 'mlauten ', [char]0xC4, [char]0xD6)) | Out-Null
 $env:CORAL_DATA_DIR = 'C:\walk\data'; $env:CORAL_CLOUD_URL = 'off'
 $env:PATH = "$npmBin;" + $env:PATH
 Start-Process "$coralDir\coral-tray.exe" -ArgumentList '--backend', 'pty' -WorkingDirectory $coralDir
@@ -59,8 +59,22 @@ if (-not $up) { throw "Coral did not start" }
 
 Section "the launches"
 $env:WALK_OUT = Join-Path $env:GITHUB_WORKSPACE 'walk-out'
-node walk/launch6051.mjs
+node walk/launch6051.mjs phase1
 Section "tray.log tail (what Coral itself logged)"
 Get-Content C:\walk\data\tray.log -Tail 60 -ErrorAction SilentlyContinue | ForEach-Object { if ($_.Length -gt 240) { $_.Substring(0, 240) } else { $_ } }
 Section "logs folder"
 Get-ChildItem C:\walk\data\logs -ErrorAction SilentlyContinue | ForEach-Object { "  {0} {1} bytes" -f $_.Name, $_.Length }
+
+Section "phase 2: Coral started again with a leaner session (no PowerShell 7, no Git for Windows on the PATH), as a computer that never installed them"
+Get-Process coral-tray, coral-app, coral -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Start-Sleep -Seconds 3
+$lean = ($env:PATH -split ';' | Where-Object { $_ -and $_ -notlike 'C:\Program Files\PowerShell*' -and $_ -notlike 'C:\Program Files\Git*' -and $_ -notlike '*\Git\*' }) -join ';'
+$env:PATH = $lean
+"is pwsh on the PATH: " + [bool](Get-Command pwsh -ErrorAction SilentlyContinue) + "; bash: " + [bool](Get-Command bash -ErrorAction SilentlyContinue) + "; git: " + [bool](Get-Command git -ErrorAction SilentlyContinue)
+Start-Process "$coralDir\coral-tray.exe" -ArgumentList '--backend', 'pty' -WorkingDirectory $coralDir
+$up = $false
+for ($i = 0; $i -lt 60; $i++) { Start-Sleep -Seconds 1; try { $r = Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:8450/api/health' -TimeoutSec 2; if ($r.StatusCode -eq 200) { $up = $true; break } } catch {} }
+"server answers: $up after $i s"
+node walk/launch6051.mjs phase2
+Section "tray.log tail after phase 2"
+Get-Content C:\walk\data\tray.log -Tail 40 -ErrorAction SilentlyContinue | ForEach-Object { if ($_.Length -gt 240) { $_.Substring(0, 240) } else { $_ } }
