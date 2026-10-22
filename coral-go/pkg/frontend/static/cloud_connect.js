@@ -254,6 +254,20 @@ class CloudPanel {
         // Who last changed it (#5847, from status allow_hub_auto_accept_changed {by: hub|local, user, at}): a local Off that Coral Hub turned on again is visible to the person at this computer. Nothing is said until it was changed.
         const changed = this.part('auto-accept-changed');
         if (changed) { const t = autoAcceptChangedText(st); changed.textContent = t; show('auto-accept-changed', mode === 'launch' && !!t); }
+        // A computer linked before it recorded its owner (#6108): say so, and offer Confirm owner, which waits a minute for the owner's first owner-only request through the Hub.
+        const ownerMissing = st.owner_label_missing === true;
+        show('owner-row', ownerMissing);
+        // Look for the last owner the Hub showed when the owner went missing and every time Settings is opened (the panel outlives the dialog).
+        // ... and on a status load more than half a minute after the last look while the dialog stays open (the person may have used Coral Hub meanwhile).
+        if (ownerMissing && (ownerMissing !== this.ownerMissing || this.ownerRefresh || Date.now() - (this.ownerSeenAt || 0) > 30000)) { this.ownerSeenAt = Date.now(); this.loadOwnerCandidate(); }
+        if (ownerMissing || !this.ownerMissing) this.ownerRefresh = false;
+        this.ownerMissing = ownerMissing;
+        const confirmed = this.part('owner-confirmed');
+        if (confirmed) {
+            const at = typeof st.owner_adopted_at === 'string' ? new Date(st.owner_adopted_at) : null;
+            confirmed.textContent = at && Number.isFinite(at.getTime()) ? `Owner confirmed ${at.toLocaleString()}.` : '';
+            confirmed.hidden = !confirmed.textContent;
+        }
         // Token redaction for hub viewers (#3560): on unless the owner turned it off here.
         const redact = this.part('redact-tokens');
         if (redact) redact.checked = st.redact_tokens !== false;
@@ -268,6 +282,53 @@ class CloudPanel {
         const enrolled = ENROLLED.includes(st.state);
         if (enrolled !== this.enrolled) { this.enrolled = enrolled; this.loadHubOperator(); }
         this.onState(st);
+    }
+
+    // Confirm owner (#6108): the one account the Hub named as the owner in the last hour is shown, so the person knows who it will trust; pressing the button arms the adoption for a minute, and
+    // the first owner-only page the owner opens through Coral Hub in that minute is recorded as the owner. Status is polled until the owner is confirmed or the minute ends.
+    async loadOwnerCandidate() {
+        const cand = this.part('owner-candidate');
+        const say = this.part('owner-status');
+        if (!cand) return;
+        cand.hidden = true; if (say) say.textContent = '';
+        try {
+            const r = await fetch('/api/cloud/owner-label');
+            if (!r.ok) return;
+            const d = await r.json();
+            const host = typeof d.hub === 'string' ? d.hub : '';
+            if (typeof d.candidate === 'string' && /^hub-user-[0-9a-f]{8}$/.test(d.candidate)) {
+                const seen = Date.parse(d.candidate_seen_at);
+                const ago = Number.isFinite(seen) ? `, seen ${Math.max(0, Math.round((Date.now() - seen) / 60000))} min ago` : '';
+                cand.textContent = `The last owner Coral Hub showed was ${d.candidate}${host ? ` (${host})` : ''}${ago}. Confirm owner trusts the account that opens an owner-only page next.`;
+                cand.hidden = false;
+            } else if (host) { cand.textContent = `Confirm owner trusts the account that opens an owner-only page next through ${host}.`; cand.hidden = false; }
+        } catch { /* the row keeps its text */ }
+    }
+
+    async confirmOwner() {
+        const say = this.part('owner-status');
+        const btn = this.part('owner-record');
+        if (btn) btn.disabled = true;
+        const fail = text => { if (say) say.textContent = text; if (btn) btn.disabled = false; };
+        let reply = null;
+        try {
+            const r = await fetch('/api/cloud/owner-label/arm', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+            if (r.status === 429) return fail('Pressed a few times already. Try again later, or link this computer again.');
+            if (!r.ok) return fail(r.status === 409 ? 'Coral Hub is not connected right now, or the owner is already recorded.' : 'Could not start. Link this computer again instead.');
+            reply = await r.json();
+        } catch { return fail('Could not start. Link this computer again instead.'); }
+        const until = Date.parse(reply && reply.armed_until);
+        const tick = async () => {
+            const left = Number.isFinite(until) ? Math.round((until - Date.now()) / 1000) : 0;
+            await this.load();
+            if (!this.ownerMissing) { if (say) say.textContent = ''; if (btn) btn.disabled = false; return; }
+            if (left <= 0) return fail('Time is up. Press Confirm owner and open an owner-only page through Coral Hub within a minute.');
+            if (say) say.textContent = `Now open Artifacts or Saved through Coral Hub, as the owner (${left} s left).`;
+            this.ownerTimer = setTimeout(tick, 2000);
+        };
+        clearTimeout(this.ownerTimer);
+        if (say) say.textContent = 'Now open Artifacts or Saved through Coral Hub, as the owner (60 s left).';
+        this.ownerTimer = setTimeout(tick, 2000);
     }
 
     // 'Don't let Coral Hub act as the Operator' (#3404, an opt-out). Only this computer's own
@@ -426,6 +487,7 @@ class CloudPanel {
             if (this.asking) { this.pickAuto = e.target.checked; return; } // held until Connect, which sends it
             this.act('PUT', '/api/cloud/allow-auto-accept', { allow: e.target.checked });
         });
+        this.part('owner-record')?.addEventListener('click', () => this.confirmOwner());
         this.part('redact-tokens')?.addEventListener('change', (e) => this.act('PUT', '/api/cloud/redact-tokens', { redact: e.target.checked }));
         this.part('hub-relaunch')?.addEventListener('change', (e) => this.act('PUT', '/api/cloud/hub-relaunch', { allow: e.target.checked }));
         this.part('hub-cross-team')?.addEventListener('change', (e) => this.act('PUT', '/api/cloud/hub-cross-team', { allow: e.target.checked }));
@@ -442,7 +504,7 @@ class CloudPanel {
         this.say(msg);
     }
 
-    stop() { clearTimeout(this.timer); clearInterval(this.retryTick); }
+    stop() { clearTimeout(this.timer); clearTimeout(this.ownerTimer); clearInterval(this.retryTick); }
 }
 
 /** Mount the connect flow in `root` and load its status. Returns the panel (load(), stop()). */
@@ -466,5 +528,6 @@ export async function loadCloudStatus() {
     const root = document.getElementById('settings-cloud');
     if (!root) return;
     if (!root._cloudPanel) initCloudConnect();
+    root._cloudPanel.ownerRefresh = true; // Settings was opened: look for the last owner the Hub showed again (the panel outlives the dialog, #6108)
     await root._cloudPanel.load();
 }

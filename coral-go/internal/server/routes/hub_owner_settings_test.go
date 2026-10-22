@@ -211,7 +211,7 @@ func TestWithoutARecordedOwnerLabelTheConfigurationRoutesRefuseEveryone(t *testi
 	assert.NotContains(t, out, "health", "the marker alone does not keep the health setup")
 	code, out := boardCall(t, h, http.MethodPut, `{"subscriber_id":"Operator","health":{"on":false}}`, ownerHeaders(ownerLabel))
 	assert.Equal(t, 403, code)
-	assert.Equal(t, "owner_only", out["code"])
+	assert.Equal(t, "owner_label_missing", out["code"], "the owner of a computer with no recorded label is told that is the reason (#6108)")
 
 	db, err := storetest.Open(t, t.TempDir()+"/c.db")
 	require.NoError(t, err)

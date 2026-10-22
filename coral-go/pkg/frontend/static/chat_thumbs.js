@@ -13,6 +13,8 @@ import { openChatImageTab } from './preview_pane.js';
 import { removeSharedCopy } from './shared_images.js';
 import { showConfirmModal } from './confirm_dialog.js';
 import { showToast } from './utils.js';
+import { OWNER_LABEL_NOTE } from './owner_label.js'; // beside a thumbnail that cannot load because the computer has not confirmed its owner (#6108)
+
 
 const SIZE = 48; // px, fixed: the chat does not reflow when the image arrives
 
@@ -60,7 +62,16 @@ async function load(btn) {
         img.addEventListener('load', () => { btn.hidden = false; const x = btn.nextElementSibling; if (x && x.classList.contains('chat-attachment-unshare')) x.hidden = false; if (revoke) URL.revokeObjectURL(src); }, { once: true });
         img.addEventListener('error', () => { if (revoke) URL.revokeObjectURL(src); }, { once: true });
         img.src = src;
-    } catch { /* not served, or not an image Coral serves: the chip keeps its name */ }
+    } catch (e) {
+        // Not served, or not an image Coral serves: the chip keeps its name. A computer linked before it recorded its owner says so once, beside the chip (#6108).
+        if (e && e.ownerLabelMissing && !btn.nextElementSibling?.classList.contains('chat-attachment-note')) {
+            const note = document.createElement('span');
+            note.className = 'chat-attachment-note';
+            note.setAttribute('role', 'note');
+            note.textContent = OWNER_LABEL_NOTE;
+            btn.insertAdjacentElement('afterend', note);
+        }
+    }
 }
 
 // The chips' row is what is watched: a thumbnail is hidden until its image has loaded, and a hidden element is never "intersecting".

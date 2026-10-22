@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/subgentic/coral/internal/cloud"
 	"github.com/subgentic/coral/pkg/tunnel"
@@ -113,12 +114,97 @@ func refuseNonOwner(w http.ResponseWriter, r *http.Request) bool {
 	if hubOwnerRequest(r).owner {
 		return false
 	}
+	if ownerLabelMissingFor(r) {
+		if adoptOwnerFromRequest(r) {
+			return false // the person pressed Confirm owner a moment ago: this request is the one that was waited for, and it is served as the owner's (#6108)
+		}
+		// The hub says this is the owner, but this computer recorded no owner at enrolment (it was linked before Coral recorded one): say that, not "you are not the owner" (#6108).
+		writeJSON(w, http.StatusForbidden, map[string]string{"code": ownerLabelMissingCode, "error": textOwnerLabelMissing})
+		return true
+	}
 	text, ok := ownerRefusals[tunnel.OwnerRouteKey(r.Method, pattern)]
 	if !ok {
 		text = "through Coral Hub this is for the account this computer is linked to only"
 	}
 	writeJSON(w, http.StatusForbidden, map[string]string{"code": "owner_only", "error": text})
 	return true
+}
+
+// adoptOwnerFromRequest is called by refuseNonOwner for a request that passed every owner check except the missing label (ownerLabelMissingFor): an owner-only route, the connector's own
+// stamp, the owner marker and a hub user of the exact form. If the adoption is armed it is used up here, and when the connected hub is the enrolled one the request's hub user becomes the owner
+// label; true means the label was recorded and the request goes on as the owner's.
+func adoptOwnerFromRequest(r *http.Request) bool {
+	if hubOwnerAdopt == nil {
+		return false
+	}
+	id := identifyOwner(r, hubOwnerLabel, &hubOwnerNoLabelLog)
+	if !id.owner || !tunnel.ValidHubUser(id.pseudo) {
+		return false
+	}
+	if !takeOwnerArm(ownerNow()) {
+		return false
+	}
+	return hubOwnerAdopt(r.Context(), id.pseudo)
+}
+
+// ownerLabelMissingCode is the refusal code of an owner-marked request to a machine that recorded no owner label (#6108); the dashboard says what to do about it.
+const ownerLabelMissingCode = "owner_label_missing"
+
+const textOwnerLabelMissing = "Coral Hub can't confirm you own this computer yet. On the computer, open Settings > Network and Hub and choose Confirm owner."
+
+// ownerLabelMissingFor reports whether r is a stamped owner request refused only because no owner label is recorded: the stamp passes every owner check (identifyOwner), the label was read
+// without an error and is empty. An unreadable record is not "missing": that stays a plain refusal.
+func ownerLabelMissingFor(r *http.Request) bool {
+	if hubOwnerLabel == nil {
+		return false
+	}
+	if !identifyOwner(r, hubOwnerLabel, &hubOwnerNoLabelLog).owner {
+		return false
+	}
+	l, err := hubOwnerLabel(r.Context())
+	return err == nil && l == ""
+}
+
+// ownerStamps remembers which hub users the Hub stamped as the owner on authentic requests in the last hour, so the person at this computer can be shown who it would record (#6108): never
+// written to disk, and only the stamp's own form (hub-user-<8 hex>) is kept.
+var ownerStamps = struct {
+	sync.Mutex
+	seen map[string]time.Time
+}{seen: map[string]time.Time{}}
+
+const (
+	ownerStampWindow = time.Hour
+	ownerStampsMax   = 4
+)
+
+func noteOwnerStamp(user string, now time.Time) {
+	ownerStamps.Lock()
+	defer ownerStamps.Unlock()
+	for u, at := range ownerStamps.seen {
+		if now.Sub(at) >= ownerStampWindow {
+			delete(ownerStamps.seen, u)
+		}
+	}
+	if _, ok := ownerStamps.seen[user]; !ok && len(ownerStamps.seen) >= ownerStampsMax {
+		return // bounded: a hub that stamps many different owners is itself the answer, and no candidate is offered
+	}
+	ownerStamps.seen[user] = now
+}
+
+// ownerCandidate is the one hub user stamped as the owner in the last hour; several is true when more than one was, and then none is offered.
+func ownerCandidate(now time.Time) (user string, at time.Time, several bool) {
+	ownerStamps.Lock()
+	defer ownerStamps.Unlock()
+	for u, t := range ownerStamps.seen {
+		if now.Sub(t) >= ownerStampWindow {
+			continue
+		}
+		if user != "" {
+			return "", time.Time{}, true
+		}
+		user, at = u, t
+	}
+	return user, at, false
 }
 
 // identifyOwner runs the stamp and owner checks. It never trusts a header unless the request really came through the connector: the stamp must
@@ -139,6 +225,7 @@ func identifyOwner(r *http.Request, ownerUser func(context.Context) (string, err
 	if id.pseudo == "" {
 		return id
 	}
+	noteOwnerStamp(id.pseudo, time.Now())
 	var label string
 	if ownerUser != nil {
 		l, err := ownerUser(r.Context())

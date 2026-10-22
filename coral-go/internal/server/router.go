@@ -399,7 +399,9 @@ func (s *Server) registerCloud(r *chi.Mux) {
 	r.Post("/api/cloud/connect", s.cloudHandler.Connect)
 	r.Post("/api/cloud/connect/cancel", s.cloudHandler.CancelConnect)
 	r.Post("/api/cloud/disconnect", s.cloudHandler.Disconnect)
-	r.Post("/api/cloud/rekey", s.cloudHandler.Rekey) // #3698
+	r.Post("/api/cloud/rekey", s.cloudHandler.Rekey)                   // #3698
+	r.Get("/api/cloud/owner-label", s.cloudHandler.OwnerLabel)         // #6108: is the owner recorded, and who would be
+	r.Post("/api/cloud/owner-label/arm", s.cloudHandler.ArmOwnerLabel) // #6108: Confirm owner: arms the adoption for a minute, from this computer's dashboard only
 	r.Get("/api/system/hub-operator", s.cloudHandler.HubOperator)
 	s.cloudHandler.HubModeRunning, s.cloudHandler.HubModeForced = s.cfg.HubMode, s.cfg.HubModeForced
 	r.Get("/api/system/hub-mode", s.cloudHandler.HubMode)
@@ -433,7 +435,9 @@ func (s *Server) registerCloud(r *chi.Mux) {
 	r.Put("/api/system/codex-trust-hooks", s.cloudHandler.SetCodexTrustHooks)
 	// Coral Hub's relaunch into a staged update (#5280): 404 until the feature is switched on and the updater exists.
 	// Where the owner routes read the owner's label recorded at enrolment (#5307).
-	routes.SetHubOwnerLabel(store.NewCloudStore(s.db, store.NewRemoteServerStore(s.db, s.cfg.CoralDir())).OwnerUser)
+	ownerCloud := store.NewCloudStore(s.db, store.NewRemoteServerStore(s.db, s.cfg.CoralDir()))
+	routes.SetHubOwnerLabel(ownerCloud.OwnerUser)
+	s.cloudHandler.SetOwnerLabelStore(ownerCloud) // and where the person at this computer records it when it is missing (#6108)
 	upd := routes.NewUpdateRelaunchHandler(store.NewSessionStore(s.db), s.cfg.CoralDir(), func() string { return routes.TerminalKind(s.terminal) }, routes.BuildRelaunchUpdater(s.cfg.CoralDir(), endThisServer))
 	r.Get("/api/system/update", upd.Status)
 	r.Post("/api/system/update/relaunch", upd.Relaunch)

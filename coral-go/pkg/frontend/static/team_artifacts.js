@@ -1,5 +1,6 @@
 /* Optional, lazy team artifact source for the existing Files viewer. */
 import { state } from './state.js';
+import { isOwnerLabelRefusal, OWNER_LABEL_TEXT } from './owner_label.js';
 import { inlineArtifactPath } from './artifact_paths.js';
 import { boardOfPage } from './dock_page.js';
 import { escapeHtml, escapeAttr, sanitizeHtml, refusedTooLarge } from './utils.js';
@@ -578,7 +579,10 @@ async function load(append = false) {
         const response = await (standalone
             ? fetch(serverUrl(`/api/session-artifacts?${params}`, sessionServer(state.currentSession)), {signal:cache.controller.signal})
             : boardFetch(team, `/artifacts?${params}`, {signal:cache.controller.signal}));
-        if (!response.ok) throw new Error(`Unable to load ${scope === 'artifacts' ? 'agent' : 'team'} artifacts (${response.status}).`);
+        if (!response.ok) {
+            if (await isOwnerLabelRefusal(response)) throw new Error(OWNER_LABEL_TEXT); // linked before it recorded its owner (#6108)
+            throw new Error(`Unable to load ${scope === 'artifacts' ? 'agent' : 'team'} artifacts (${response.status}).`);
+        }
         const data = await response.json();
         if (gen !== cache.generation || caches[scope] !== cache || requestedTeam !== currentTeam() || source !== scope || (scope === 'artifacts' && requestedSession !== state.currentSession?.session_id)) return;
         if ((!standalone && data.project !== splitKey(requestedTeam).name) || !Array.isArray(data.artifacts) || (scope === 'artifacts' && data.session_id !== requestedSession)) throw new Error('Unable to load artifacts: unexpected response scope.');

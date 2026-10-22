@@ -1713,3 +1713,9 @@
 }
 .chat-bubble:focus-within .chat-save-btn,
 .chat-bubble.assistant:focus-within .chat-copy-btn { opacity: 1; }
+
+/* Beside a thumbnail that cannot load because this computer must be linked to Coral Hub again (#6108). */
+.chat-attachment-note {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}

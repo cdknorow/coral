@@ -79,7 +79,7 @@ func (s *CloudStore) Save(ctx context.Context, hubURL, serverID, label, token st
 	_, err = s.db.ExecContext(ctx, `INSERT INTO cloud_connection (id, hub_url, server_id, label, token, state, created_at, route_key, hub_owner, hub_owner_user)
 		VALUES (1, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL)
 		ON CONFLICT(id) DO UPDATE SET hub_url=excluded.hub_url, server_id=excluded.server_id, label=excluded.label,
-		  token=excluded.token, state=excluded.state, created_at=excluded.created_at, last_error=NULL, route_key=NULL, hub_owner=NULL, hub_owner_user=NULL`,
+		  token=excluded.token, state=excluded.state, created_at=excluded.created_at, last_error=NULL, route_key=NULL, hub_owner=NULL, hub_owner_user=NULL, hub_owner_adopted_at=NULL`,
 		strings.TrimRight(hubURL, "/"), serverID, label, env, CloudStateActive, nowUTC())
 	return err
 }
@@ -187,6 +187,37 @@ func (s *CloudStore) OwnerUser(ctx context.Context) (string, error) {
 		return "", ErrNoCloudConnection
 	}
 	return o.String, err
+}
+
+// ServerID is the server id of the enrolment, or "" when there is none.
+func (s *CloudStore) ServerID(ctx context.Context) (string, error) {
+	var id string
+	err := s.db.GetContext(ctx, &id, "SELECT server_id FROM cloud_connection WHERE id = 1")
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return id, err
+}
+
+// AdoptOwnerUser records user as the owner's label of the enrollment with serverID when none is recorded, marking that the person at this computer adopted it (at, RFC 3339) rather than the
+// hub's enrolment reply carrying it (#6108). It never replaces a label, and reports whether it recorded one.
+func (s *CloudStore) AdoptOwnerUser(ctx context.Context, serverID, user, at string) (bool, error) {
+	res, err := s.db.ExecContext(ctx, "UPDATE cloud_connection SET hub_owner_user = ?, hub_owner_adopted_at = ? WHERE id = 1 AND server_id = ? AND (hub_owner_user IS NULL OR hub_owner_user = '')", user, at, serverID)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n == 1, err
+}
+
+// OwnerAdoptedAt is when the owner label was adopted locally (RFC 3339), or "" when it came with the enrolment or none is recorded.
+func (s *CloudStore) OwnerAdoptedAt(ctx context.Context) (string, error) {
+	var at sql.NullString
+	err := s.db.GetContext(ctx, &at, "SELECT hub_owner_adopted_at FROM cloud_connection WHERE id = 1")
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return at.String, err
 }
 
 // PinOwnerUser records user as the owner's label of the enrollment with serverID when none is recorded, and reports whether it did.

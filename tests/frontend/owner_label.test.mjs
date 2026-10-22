@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import { installDom, importUi } from './helpers/jsdom_env.mjs';
+installDom({mode:'cloud'});
+const {isOwnerLabelRefusal,OWNER_LABEL_TEXT,OWNER_LABEL_MISSING}=await importUi('owner_label');
+const resp=(status,body)=>new Response(typeof body==='string'?body:JSON.stringify(body),{status});
+assert.equal(OWNER_LABEL_MISSING,'owner_label_missing');
+assert.ok(OWNER_LABEL_TEXT.includes('Confirm owner')&&OWNER_LABEL_TEXT.includes('Settings > Network and Hub')&&!/link this computer again/i.test(OWNER_LABEL_TEXT),'the refusal points at Confirm owner first');
+assert.equal(await isOwnerLabelRefusal(resp(403,{code:'owner_label_missing',error:'x'})),true);
+for(const no of [resp(403,{code:'owner_only'}),resp(403,{error:'owner_label_missing'}),resp(404,{code:'owner_label_missing'}),resp(200,{code:'owner_label_missing'}),resp(403,'not json'),resp(403,'null'),resp(403,'[]'),null,undefined])assert.equal(await isOwnerLabelRefusal(no),false);
+const r=resp(403,{code:'owner_label_missing'});await isOwnerLabelRefusal(r);assert.equal((await r.json()).code,'owner_label_missing','the caller can still read the body');
+console.log('PASS owner-label refusal: only a 403 with code owner_label_missing, the body stays readable');

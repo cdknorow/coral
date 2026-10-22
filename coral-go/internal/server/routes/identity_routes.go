@@ -110,6 +110,8 @@ var operatorOnlyRoutes = map[string]string{
 	"POST /api/cloud/disconnect":                     "disconnect from Coral Hub",
 	"POST /api/cloud/redeem":                         "redeem a Coral Hub credential",
 	"POST /api/cloud/rekey":                          "replace the secret key and discard what it sealed", // #3698
+	"GET /api/cloud/owner-label":                     "see whether Coral Hub's owner is recorded on this computer",
+	"POST /api/cloud/owner-label/arm":                "confirm who owns this computer on Coral Hub",
 	// #3553: the Operator removes an artifact (also refused to anyone but a person, in every mode).
 	"DELETE /api/artifacts/{id}": "delete an artifact",
 	// #5575: the machine-wide list of every artifact (the owner's, here or through Coral Hub): never an agent's.

@@ -206,6 +206,11 @@ type CloudHandler struct {
 	// linked overrides whether a Hub link exists (a test seam; nil reads the manager).
 	linked func() bool
 
+	// ownerLabels is where the owner's hub-user label is read and recorded (SetOwnerLabelStore, #6108).
+	ownerLabels ownerLabelStore
+	// connected overrides whether the connector is up to the enrolled hub (a test seam).
+	connected func() bool
+
 	mu  sync.RWMutex
 	mgr *cloud.Manager
 }
@@ -291,6 +296,11 @@ type cloudStatus struct {
 	// OfferAtLaunch: the dashboard opens its first-launch Connect to Coral Hub
 	// screen only when this server was started to offer it (#3459).
 	OfferAtLaunch bool `json:"offer_at_launch"`
+	// OwnerLabelMissing: this computer is linked to Coral Hub but its enrolment recorded no owner (linked before Coral recorded one), so the owner-only routes refuse the owner through the Hub until it is
+	// recorded (Settings > Network and Hub offers to, #6108).
+	OwnerLabelMissing bool `json:"owner_label_missing,omitempty"`
+	// OwnerAdoptedAt is when the person at this computer confirmed the owner (RFC 3339); empty when the label came with the enrolment (#6108).
+	OwnerAdoptedAt string `json:"owner_adopted_at,omitempty"`
 	// SecretKey is present only when the key that seals the Hub token and the remote servers'
 	// API keys can't be used (#3698): the dashboard then offers the re-key, listing what it discards.
 	SecretKey *store.SecretKeyState `json:"secret_key,omitempty"`
@@ -315,6 +325,14 @@ func (h *CloudHandler) status() cloudStatus {
 		}
 	}
 	out := cloudStatus{Status: st, AllowHubAutoAccept: allow, MaxModeSaved: modeSaved, RedactTokens: redact, HubRelaunchUpdates: relaunch, HubCrossTeamSettings: crossTeam, AllowHubAutoAcceptChanged: changed, Bootstrap: boot, OfferAtLaunch: h.OfferAtLaunch}
+	if missing, known := h.ownerLabelState(context.Background()); known && missing {
+		out.OwnerLabelMissing = true
+	}
+	if h.ownerLabels != nil {
+		if at, err := h.ownerLabels.OwnerAdoptedAt(context.Background()); err == nil {
+			out.OwnerAdoptedAt = at
+		}
+	}
 	if rs := h.secrets(); rs != nil {
 		if ks, err := rs.KeyState(context.Background()); err == nil && ks.State == "refused" {
 			out.SecretKey = &ks
@@ -788,6 +806,9 @@ func (h *CloudHandler) SetLoginMinter(fn func() (string, error)) {
 	h.mintLogin = fn
 	h.mu.Unlock()
 }
+
+// SetConnectedCheck replaces the answer to "is the connector up to the hub this computer was linked to" (tests, #6108).
+func (h *CloudHandler) SetConnectedCheck(f func() bool) { h.connected = f }
 
 // LoginToken: POST /api/system/login-token: a fresh single-use dashboard sign-in
 // token for `coral open` (#3387). Only the coral CLI on this computer, through its

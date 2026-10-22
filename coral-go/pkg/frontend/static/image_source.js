@@ -6,6 +6,8 @@
  * SVG is fetched as TEXT and shown as a data: URL. An SVG loaded by an <img> never runs script, loads sub-resources
  * or reaches the page; neither innerHTML, inline <svg>, <object> nor <embed> is ever used for it. */
 
+import { isOwnerLabelRefusal } from './owner_label.js';
+
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const MAX_SVG_BYTES = 2 * 1024 * 1024;
 
@@ -46,7 +48,11 @@ async function readLimited(resp, max) {
  *  `name` picks SVG handling; it defaults to the file name in `url`. */
 export async function fetchImageSrc(url, { name, mediaType, signal } = {}) {
     const resp = await fetch(url, { cache: 'no-store', signal });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    if (!resp.ok) {
+        const err = new Error(`HTTP ${resp.status}`);
+        err.ownerLabelMissing = await isOwnerLabelRefusal(resp); // the computer must be linked again (#6108)
+        throw err;
+    }
     if (isSvg(name || urlFileName(url)) || isSvg(mediaType)) {
         const text = new TextDecoder().decode(await readLimited(resp, MAX_SVG_BYTES));
         return { src: svgDataUrl(text), revoke: false };

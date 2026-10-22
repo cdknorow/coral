@@ -86,6 +86,7 @@ GET /api/board/{project}/waits/poll never
 GET /api/board/{project}/working-mode view
 GET /api/board/{project}/working-mode/presets view
 GET /api/call-metrics/summary view
+GET /api/cloud/owner-label never
 GET /api/cloud/status never
 GET /api/custom-models view
 GET /api/filesystem/is-git launch
@@ -283,6 +284,7 @@ POST /api/cloud/connect never
 POST /api/cloud/connect/cancel never
 POST /api/cloud/cross-team-links interact
 POST /api/cloud/disconnect never
+POST /api/cloud/owner-label/arm never
 POST /api/cloud/redeem never
 POST /api/cloud/rekey never
 POST /api/folder-tags/{folderName} never
