@@ -56,6 +56,7 @@ jobs:
           bash tests/release/require_cosign_test.sh
           bash tests/release/release_homes_test.sh
           bash tests/release/download_section_test.sh   # the Download section of the notes (#5467); no network
+          bash tests/release/test_release_upload_loop.sh # the upload step itself, with a stand-in gh and cosign, incl. the Dropbox tier with no MSI; no network
           bash tests/release/approve_release_test.sh    # the Approve release workflow's script (#5559); a stand-in gh, no network
           bash tests/release/update_tap_test.sh         # the cask move (#5559); a local bare repository, no network
           bash tests/release/release_cadence_test.sh    # the cadence table (#5559); a stand-in gh, no network
@@ -787,9 +788,9 @@ jobs:
           # The Coral For Dropbox tier ships no MSI (operator decision, 2026-10-21): its portable ZIP is kept, the MSI is neither
           # required nor uploaded, copied or checksummed.
           MSI=(artifacts/coral-windows-msi/*.msi)
-          MSI_SUM=(coral-windows-msi/*.msi)
           MSI_STABLE=(Coral-x64.msi)
-          case ",$BUILD_TAGS," in *,dropboxers,*) MSI=(); MSI_SUM=(); MSI_STABLE=() ;; esac
+          case ",$BUILD_TAGS," in *,dropboxers,*) MSI=(); MSI_STABLE=() ;; esac
+          MSI_SUM=("${MSI[@]#artifacts/}")
           # A DRAFT until every file is attached and the last step publishes it (#5522): an immutable release (a
           # repository setting) takes no new asset and no deletion once published, so nothing is uploaded after that;
           # its notes, title and prerelease flag stay editable (tools/devops/finish-release.sh sets the body).

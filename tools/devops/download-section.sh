@@ -12,10 +12,13 @@ V=${1:?usage: download-section.sh VER}; V=${V#v}
 release_has_stable_names "$V" || { echo "download-section: v$V has no stable-name files (1.4.130 and later do)" >&2; exit 1; }
 home=$(release_home_for_tag "v$V") || exit 1
 base="https://github.com/$home/releases/download/v$V"
+# The Coral For Dropbox tier ships no MSI (release.yml), so its notes carry no link to one.
+msi=" &bull; [Windows installer (.msi)]($base/Coral-x64.msi) "
+case "$V" in *-forDropbox*) msi=" " ;; esac
 cat <<SECTION
 ### Download
 
-[**macOS (.dmg)**]($base/Coral.dmg) &bull; [Windows installer (.msi)]($base/Coral-x64.msi) &bull; [Windows portable (.zip)]($base/Coral-x64-portable.zip) &bull; [Linux x86-64]($base/coral-linux-amd64.tar.gz) &bull; [Linux ARM64]($base/coral-linux-arm64.tar.gz)
+[**macOS (.dmg)**]($base/Coral.dmg)${msi}&bull; [Windows portable (.zip)]($base/Coral-x64-portable.zip) &bull; [Linux x86-64]($base/coral-linux-amd64.tar.gz) &bull; [Linux ARM64]($base/coral-linux-arm64.tar.gz)
 
 ---
 

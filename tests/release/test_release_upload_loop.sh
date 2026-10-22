@@ -65,7 +65,7 @@ run_case() {
   export GH_LOG="$dir/gh.log"; : > "$GH_LOG"
   export COSIGN_LOG="$dir/cosign.log"; : > "$COSIGN_LOG"
   local rc=0
-  ( cd "$dir" && PATH="$WORK/bin:$PATH" PRERELEASE="${PRERELEASE:-false}" GITHUB_REF_NAME=v0.0.0-test GITHUB_SERVER_URL=https://github.com \
+  ( cd "$dir" && PATH="$WORK/bin:$PATH" PRERELEASE="${PRERELEASE:-false}" BUILD_TAGS="${BUILD_TAGS:-fts5}" GITHUB_REF_NAME=v0.0.0-test GITHUB_SERVER_URL=https://github.com \
       GITHUB_WORKFLOW_REF=subgentic/coral/.github/workflows/release.yml@refs/tags/v0.0.0-test \
       bash --noprofile --norc -eo pipefail "$WORK/step.sh" ) > "$dir/out.log" 2>&1 || rc=$?
   local uploads signs
@@ -110,10 +110,20 @@ FAIL_UPLOAD=Coral.dmg run_case upload-fails nonzero 3 0 "${ALL[@]}"
 creates() { grep -c '^gh release create' "$WORK/case-$1/gh.log" || true; }
 [[ "$(creates all-present)" == 0 ]] || { echo "FAIL all-present: an existing release was created again" >&2; failures=$((failures + 1)); }
 NO_RELEASE=1 run_case new-release 0 8 3 "${ALL[@]}"
-[[ "$(creates new-release)" == 1 ]] && ! grep -q -- '--prerelease' "$WORK/case-new-release/gh.log" || { echo "FAIL new-release: want one create, not a prerelease" >&2; failures=$((failures + 1)); }
+# Every release is created as a pre-release that is not "latest" (#5551: the operator approves it later), whatever PRERELEASE says.
+[[ "$(creates new-release)" == 1 ]] && grep -q -- '^gh release create .*--prerelease --latest=false' "$WORK/case-new-release/gh.log" || { echo "FAIL new-release: want one create, as a pre-release that is not latest" >&2; failures=$((failures + 1)); }
 NO_RELEASE=1 PRERELEASE=true run_case new-prerelease 0 8 3 "${ALL[@]}"
 grep -q -- '^gh release create .*--prerelease --latest=false' "$WORK/case-new-prerelease/gh.log" || { echo "FAIL new-prerelease: created without --prerelease --latest=false" >&2; failures=$((failures + 1)); }
 NO_RELEASE=1 FAIL_CREATE=1 run_case create-fails nonzero 0 0 "${ALL[@]}"
+
+# The Coral For Dropbox tier ships no MSI (operator decision, 2026-10-21): with no MSI in the artifacts the step still succeeds
+# (4 packages + 1 stable-name call + SHA256SUMS.txt + 1 bundle call = 7 uploads, 3 signatures), and its checksums name no MSI. The
+# same tier with an MSI present would still not publish it.
+BUILD_TAGS=fts5,dropboxers NO_RELEASE=1 PRERELEASE=true run_case dropbox-no-msi 0 7 3 "$LINUX" "$LINUX_ARM" "$DMG" "$ZIP"
+grep -q 'msi' "$WORK/case-dropbox-no-msi/SHA256SUMS.txt" && { echo "FAIL dropbox-no-msi: SHA256SUMS.txt names an MSI" >&2; failures=$((failures + 1)); }
+grep -q 'Coral-x64-portable.zip' "$WORK/case-dropbox-no-msi/SHA256SUMS.txt" || { echo "FAIL dropbox-no-msi: SHA256SUMS.txt lacks the portable zip" >&2; failures=$((failures + 1)); }
+BUILD_TAGS=fts5,dropboxers PRERELEASE=true run_case dropbox-msi-present 0 7 3 "${ALL[@]}"
+grep -q 'msi' "$WORK/case-dropbox-msi-present/gh.log" && { echo "FAIL dropbox-msi-present: an MSI was uploaded" >&2; failures=$((failures + 1)); }
 
 if [[ "$failures" -ne 0 ]]; then
   echo "$failures case(s) failed" >&2
