@@ -120,10 +120,14 @@ func isLoopbackServer() bool {
 	return ip != nil && ip.IsLoopback()
 }
 
+// boardClient is the client for reads: the same 10 s as apiCall. http.Get has no timeout at all, so read and check waited for ever on a server
+// that accepted the connection and never answered.
+var boardClient = &http.Client{Timeout: 10 * time.Second}
+
 // getBoard does a GET to a /api/board path and returns the cleaned body, erroring on a transport
 // failure or a non-2xx status (#3589), so a refused read is never printed as "no messages".
 func getBoard(path string) ([]byte, error) {
-	resp, err := http.Get(serverURL + "/api/board" + path)
+	resp, err := boardClient.Get(serverURL + "/api/board" + path)
 	if err != nil {
 		return nil, fmt.Errorf("cannot reach Coral server at %s: %v", redactedServerURL(), err)
 	}
