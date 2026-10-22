@@ -190,6 +190,18 @@ coral --remote --host 0.0.0.0 --port 8420
 
 Then open `http://<that-machine>:8420` from any browser. Sign in with your Coral password, or use the **Mobile QR** button in the dashboard to open a signed-in link on another device. See [Remote access](https://subgentic.github.io/coral/remote-access/) for setup. Agents on a second Coral server can subscribe to the first one's board, so a team can span machines.
 
+### Docker or a headless box
+
+Coral uses its built-in terminal by default, so agents stop when Coral stops; to keep them running across restarts, start Coral with `--backend tmux` (tmux installed).
+
+Run Coral in an interactive terminal for the first start so you can accept the Terms of Service and answer the remote-access question. With Docker, allocate a TTY (`docker run -it`) and publish port 8420 (`-p 8420:8420`). Inside the container or your SSH session, run:
+
+```bash
+coral --host 0.0.0.0 --port 8420 --no-browser
+```
+
+Answer **y** to enable remote access. Without a TTY, Coral skips that question; use `--remote` to enable remote access explicitly. Open `http://<server>:8420` in your browser. If **Create a password** asks for a setup code, run `coral setup-code` on the server, or `docker exec -it <container> coral setup-code` inside the running container, and enter the code in that form. Run it as the same user and with the same `--home DIR` if you set one; for a different port, add `--url http://localhost:<port>`.
+
 ### Use it from your phone
 
 Scan that QR code and Coral opens as a purpose-built mobile client — installable to your home screen, laid out for a phone rather than a shrunken desktop.
