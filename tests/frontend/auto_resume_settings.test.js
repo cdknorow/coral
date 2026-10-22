@@ -70,7 +70,7 @@ const BASE = require('./test_base').BASE;
       const label = document.querySelector('label[for="settings-auto-resume"]');
       return box ? { checked: box.checked, label: label && label.textContent.trim() } : 'missing';
     })()`);
-    assert.deepEqual(row, { checked: false, label: 'Resume agents stopped by an API error' }, 'the Settings dialog');
+    assert.deepEqual(row, { checked: false, label: 'Resume after API errors' }, 'the Settings dialog');
 
     console.log('PASS auto-resume setting: off by default, shown as saved, saved as a boolean, validated');
   } finally {

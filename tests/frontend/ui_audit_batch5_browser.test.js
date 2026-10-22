@@ -21,7 +21,7 @@ const BASE = require('./test_base').BASE;
 
             console.log(`1. (${w}) Agents: defaults, models, switches, then the CLI paths`);
             await open('agents');
-            const names = await ev(`[...document.querySelectorAll('#settings-pane-agents .settings-row')].map(r => (r.querySelector('dt label, dt') || {}).textContent.trim().replace(/\\s+/g, ' ').slice(0, 40))`);
+            const names = await ev(`[...document.querySelectorAll('#settings-pane-agents .settings-row')].map(r => { const c = (r.querySelector('dt label, dt') || document.createElement('i')).cloneNode(true); c.querySelectorAll('.settings-info-btn').forEach(b => b.remove()); return c.textContent.trim().replace(/\\s+/g, ' ').slice(0, 40); })`);
             assert.deepEqual(names.slice(0, 5), ['Default permission mode', 'Default working directory', 'Default thinking', 'Default models', 'Custom models'], JSON.stringify(names));
             assert.equal(names[names.length - 1], 'CLI paths', 'the CLI paths come last: ' + JSON.stringify(names));
             assert.ok(names.slice(5, -1).length >= 4 && names.slice(5, -1).every(n => n !== 'CLI paths'), 'the switches are between: ' + JSON.stringify(names));
