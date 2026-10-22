@@ -2,8 +2,8 @@
   "about": "what the task list shows, scenario by scenario, for task_list_golden_browser.test.js: sha256 of the list, toggle, section, label and count, and the readable text. CORAL_UPDATE_GOLDEN=1 rewrites it.",
   "hashes": {
     "nothing, no agent": "b2ff123db30d33cc52ba14ae5b3576f9dfd35243ded38dca9e0ad2452f428759",
-    "nothing, a live agent": "1ba885d410cc94cc69faf654532ef21ce23171aec2a1144e80e2b7e5220e75d3",
-    "nothing, a team": "531a49a4334d6e6f3f6401c286e6c1fbb02a3611a4979116f12c67f2cfb33f6d",
+    "nothing, a live agent": "79d6164302415730aac906b7090be4fe3a540d8bab78b689fd228aba39b11488",
+    "nothing, a team": "79d6164302415730aac906b7090be4fe3a540d8bab78b689fd228aba39b11488",
     "a board of every status": "4da9fb9073f1b17763959265a1352d4dde5fed69025ef1baae96aa1883674aac",
     "sorted by id": "13dca52f238ad653f0598717ce86bfafc60b774e46a243a71f036e95c3ae8973",
     "sorted by id again": "95d2e551e9af99b75511df7d199f21e2a82503fd8a6fe5546635e55d4ea638f7",
@@ -28,8 +28,8 @@
   },
   "lines": {
     "nothing, no agent": "ids  | section none | label Board Tasks | count  | toggle  | ",
-    "nothing, a live agent": "ids  | section  | label Tasks | count  | toggle  | No tasks yet. Use + Task to give this agent something to work on.",
-    "nothing, a team": "ids  | section  | label Tasks | count  | toggle  | No tasks yet. Use + Task to add one for this team.",
+    "nothing, a live agent": "ids  | section  | label Tasks | count  | toggle  | No tasks. Add one with + Task.",
+    "nothing, a team": "ids  | section  | label Tasks | count  | toggle  | No tasks. Add one with + Task.",
     "a board of every status": "ids #7,#6,#5,#4,#3,#12,#2,#1,#8,#11,#10,#9 | section  | label Tasks | count 4/12 | toggle Hide done (4) | Status ID Priority Type Agent Task Cost Created rate_reviewOpen · Review requested #7 Medium board Dev schedule17d 2hTask 7 Oct 8 07:00 AM rate_reviewReview #6 Medium board Dev Task 6 Oct 7 06:00 AM Open #5 Medium board QA Task 5 Oct 6 05:00 AM Claimed #4 Medium board Dev schedule17d 2hTask 4 Oct 5 04:00 AM hourglass_emptyBlocked #3 High board Dev Task 3 Oct 4 03:00 AM radio_button_uncheckedOpen #12 — board — <img src=x onerror=alert(1)> & \"q\" Oct 4 03:00 AM edit_noteOpen · Draft #2 Critical boa",
     "sorted by id": "ids #12,#11,#10,#9,#8,#7,#6,#5,#4,#3,#2,#1 | section  | label Tasks | count 4/12 | toggle Hide done (4) | Status ID ▼ Priority Type Agent Task Cost Created radio_button_uncheckedOpen #12 — board — <img src=x onerror=alert(1)> & \"q\" Oct 4 03:00 AM check_circleFinished #11 Medium board Dev Task 11 Oct 3 02:00 AM cancelCancelled #10 Medium board Dev Task 10 $0.00 Oct 2 01:00 AM check_circleFinished #9 Medium board QA Task 9 $12.50 Oct 1 12:00 AM check_circleFinished #8 Medium board Dev Task 8 $0.42 Oct 9 08:00 AM rate_reviewOpen · Review requested #7 Medium board Dev schedule17d 2hTask 7 Oct 8 07:00 AM",
     "sorted by id again": "ids #1,#2,#3,#4,#5,#6,#7,#8,#9,#10,#11,#12 | section  | label Tasks | count 4/12 | toggle Hide done (4) | Status ID ▲ Priority Type Agent Task Cost Created radio_button_uncheckedOpen #1 Low board — Task 1 Oct 2 01:00 AM edit_noteOpen · Draft #2 Critical board — Task 2 Oct 3 02:00 AM hourglass_emptyBlocked #3 High board Dev Task 3 Oct 4 03:00 AM Claimed #4 Medium board Dev schedule17d 2hTask 4 Oct 5 04:00 AM Open #5 Medium board QA Task 5 Oct 6 05:00 AM rate_reviewReview #6 Medium board Dev Task 6 Oct 7 06:00 AM rate_reviewOpen · Review requested #7 Medium board Dev schedule17d 2hTask 7 Oct 8 07:00 A",

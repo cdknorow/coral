@@ -5,7 +5,7 @@
 //   1. the chat history (the hub's report: a long blank wait, then everything at once);
 //   2. a burst of refused requests pauses for the Retry-After once, not the fifth step of the doubling;
 //   3. the message board's messages (a refusal used to render as an empty board);
-//   4. the board's tasks (a refusal used to show "No tasks yet" until the next 10 s poll).
+//   4. the board's tasks (a refusal used to show "No tasks" until the next 10 s poll).
 //
 // Drives Chrome over CDP (chrome-remote-interface) through agent_view_harness.js; run_cdp_suites.mjs
 // finds CDP suites by that name.
@@ -41,7 +41,7 @@ const FAKE_HUB = `(() => {
         const mb = document.getElementById('mb-messages');
         if (mb && /No messages yet/.test(mb.textContent)) window.__seen.add('board-empty');
         const bt = document.getElementById('board-task-list');
-        if (bt && /No tasks yet/.test(bt.textContent)) window.__seen.add('tasks-empty');
+        if (bt && /No tasks/.test(bt.textContent)) window.__seen.add('tasks-empty');
         for (const el of document.querySelectorAll('.chat-history-busy, .mb-busy, .board-task-busy')) window.__seen.add('busy:' + el.textContent.trim());
     };
     document.addEventListener('DOMContentLoaded', () => new MutationObserver(look).observe(document.body, { childList: true, subtree: true, characterData: true }));
@@ -126,8 +126,8 @@ async function api(method, path, body) {
         const tookTasks = Date.now() - t2;
         assert.ok(tookTasks <= 2200, `the tasks are in ${tookTasks} ms, not at the next 10 s poll`);
         const seenTasks = await ev(`[...window.__seen]`);
-        assert.ok(!seenTasks.includes('tasks-empty'), `the refusal never showed as "No tasks yet" (${JSON.stringify(seenTasks)})`);
-        console.log(`   ✓ busy line shown, tasks in ${tookTasks} ms, never "No tasks yet"`);
+        assert.ok(!seenTasks.includes('tasks-empty'), `the refusal never showed as "No tasks" (${JSON.stringify(seenTasks)})`);
+        console.log(`   ✓ busy line shown, tasks in ${tookTasks} ms, never "No tasks"`);
 
         console.log('\nAll first-load-under-overload checks passed');
     } finally {

@@ -4574,3 +4574,7 @@ a.ibx-open, a.ibx-open:visited { color: var(--link-text); }
 /* New Agent (#5990): a Launch that is off (the CLI it needs is missing) looks off; the line under the folder is its reason. */
 #launch-modal .btn:disabled { opacity: .5; cursor: not-allowed; }
 .launch-dir-note { margin: 6px 0 0; }
+.task-workflow-options > summary { display: flex; align-items: center; gap: 4px; list-style: none; }
+.task-workflow-options > summary::-webkit-details-marker { display: none; }
+.task-workflow-options > summary::before { content: '▸' / ''; }
+.task-workflow-options[open] > summary::before { content: '▾' / ''; }

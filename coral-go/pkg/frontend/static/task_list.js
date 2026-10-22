@@ -459,8 +459,8 @@ function _renderEmptyTaskList(container, section, onBoardPage) {
     morphHtml(container, _boardList.busy
         ? `<div class="board-task-empty board-task-busy" role="status">${escapeHtml(_boardList.busy)}</div>`
         : state.selectedTeam || onBoardPage
-            ? '<div class="board-task-empty">No tasks yet. Use + Task to add one for this team.</div>'
-            : '<div class="board-task-empty">No tasks yet. Use + Task to give this agent something to work on.</div>');
+            ? '<div class="board-task-empty">No tasks. Add one with + Task.</div>'
+            : '<div class="board-task-empty">No tasks. Add one with + Task.</div>');
     return;
 }
 
