@@ -93,6 +93,17 @@ func TestRestartFromMarkerStartsOnlyARealTrayProgram(t *testing.T) {
 	require.NoError(t, os.Mkdir(filepath.Join(dir, "coral-tray.exe"), 0o755))
 	assert.False(t, restartFromMarker(t.TempDir(), dir))
 	assert.False(t, restartFromMarker(t.TempDir(), "relative"))
+	// A relative folder that DOES hold a coral-tray.exe (relative to where this runs) is still refused: only an absolute folder is one to start Coral from.
+	work := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(work, "rel"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(work, "rel", "coral-tray.exe"), []byte("x"), 0o755))
+	here, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(work))
+	t.Cleanup(func() { _ = os.Chdir(here) })
+	assert.False(t, restartFromMarker(t.TempDir(), "rel"), "a relative folder with a tray in it")
+	assert.False(t, restartFromMarker(t.TempDir(), "."+string(filepath.Separator)+"rel"))
+	require.NoError(t, os.Chdir(here))
 	assert.Empty(t, *started)
 	assert.True(t, restartFromMarker(t.TempDir(), installFolder(t)))
 }
