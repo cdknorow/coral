@@ -48,8 +48,15 @@ def provenance(cfg, get, repo, sha, actor, out=print):
 
     message = (commit.get("commit") or {}).get("message", "")
     named = GATED_TRAILER.findall(message)
+    # a line that starts "Gated-commit:" but is not exactly "Gated-commit: <40 lowercase hex>" (upper case, a short sha, text after it) is a typo: refuse and
+    # show the line, rather than silently judging by the old rule as if no trailer had been written
+    malformed = [l.strip() for l in message.splitlines() if re.match(r"(?i)\s*gated-commit\s*:", l) and not GATED_TRAILER.match(l)]
     lines, ok = [], True
-    if named:
+    if malformed:
+        lines.append(f"| trailer | refused | a Gated-commit line is not in the exact form 'Gated-commit: <40 lowercase hex>': {malformed[0][:100]} |")
+        ok = False
+        gated, best = sha, {}
+    elif named:
         # "Gated-commit: <sha>" (a trailer of the notes commit, written by whoever lands it): the release is judged on THAT commit, by name; runs on any other
         # commit (the tagged commit's own included) are ignored. It must be the single parent of a notes-only commit, so it cannot name some other code.
         if len(set(named)) != 1 or files != [NOTES] or len(parents) != 1 or named[0] != parents[0]:

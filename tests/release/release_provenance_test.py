@@ -159,6 +159,21 @@ class T(unittest.TestCase):
             self.assertEqual(rc, 1, out)
             self.assertIn("| trailer | refused |", out)
 
+    def test_two_different_trailers_are_refused_even_when_the_first_is_the_parent(self):
+        other = "c" * 40
+        commits = {TAGGED: {"files": ["RELEASE_NOTES.md"], "parents": [GATED], "message": f"release notes: v1.4.157\n\nGated-commit: {GATED}\nGated-commit: {other}\n"}}
+        rc, out = go(commits, {TAGGED: "identical"}, ALL_GREEN)
+        self.assertEqual(rc, 1, out)
+        self.assertIn("| trailer | refused |", out)
+
+    def test_a_mistyped_trailer_is_refused_and_shown_not_silently_ignored(self):
+        for bad in (GATED.upper(), GATED[:12], GATED + " (the parent)", GATED + "x"):
+            commits = {TAGGED: {"files": ["RELEASE_NOTES.md"], "parents": [GATED], "message": f"release notes: v1.4.157\n\nGated-commit: {bad}\n"}}
+            rc, out = go(commits, {TAGGED: "identical"}, ALL_GREEN)
+            self.assertEqual(rc, 1, out)
+            self.assertIn("| trailer | refused | a Gated-commit line is not in the exact form", out)
+            self.assertIn(bad[:12], out)
+
     def test_main_rejects_a_bad_argument_before_any_request(self):
         for argv in (["x"], ["x", "a/b", "c" * 40], ["x", "a/b", "c" * 40, "bad actor;rm"], ["x", "a b", "c" * 40, "ok"], ["x", "a/b", "zz", "ok"]):
             self.assertEqual(p.main(argv), 2, argv)
