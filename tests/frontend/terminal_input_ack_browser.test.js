@@ -5,7 +5,10 @@
 //   - refused by a gone terminal: terminal_gone names the input's id; the draft comes back;
 //   - refused by a read-only Coral Hub (hub_read_only, the input dropped): the draft comes back.
 // Real isolated server and real terminal agents. The page's terminal socket is wrapped
-// only to observe frames, or to act as a read-only hub.
+// only to observe frames or explicitly emulate read-only/gone-input refusals.
+// The real pty shell-exit path is checked separately below. Server-side gone-input
+// ids are covered by TestWSTerminal_GoneCarriesTheInputID; no timing window
+// between shell exit and socket closure is required for the browser refusal case.
 //
 // Expects CORAL_TEST_URL + CDP_PORT from tests/frontend/run.sh. Exit 0 / 1.
 
@@ -29,12 +32,14 @@ async function httpJson(method, path, body) {
 // window.__in: text frames received (parsed); window.__out: input frames sent (parsed).
 // __readOnlyHub: drop terminal_input and
 // answer hub_read_only, as a read-only Coral Hub does.
-const WRAP = `(function(){ const Real = window.WebSocket; window.__in = []; window.__out = []; window.__readOnlyHub = false;
+const WRAP = `(function(){ const Real = window.WebSocket; window.__in = []; window.__out = []; window.__readOnlyHub = false; window.__goneInput = false; window.__terminalSocket = null;
   function W(u, p) { const s = p === undefined ? new Real(u) : new Real(u, p);
     if (!/\\/ws\\/terminal/.test(String(u))) return s;
+    window.__terminalSocket = s;
     const send = s.send.bind(s);
     s.send = d => { let m = null; try { m = JSON.parse(d); } catch {}
       if (m && m.type === 'terminal_input') { window.__out.push(m);
+        if (window.__goneInput) { setTimeout(() => s.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ type: 'terminal_gone', code: 'terminal_gone', error: "The agent's terminal is gone. Restart it to continue.", not_sent: true, id: m.id }) })), 20); return; }
         if (window.__readOnlyHub) { setTimeout(() => s.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ type: 'hub_read_only', mode: 'view', error: 'View only' }) })), 20); return; } }
       return send(d); };
     let handler = null;
@@ -117,11 +122,8 @@ async function run() {
 
         // ── Refused by a gone terminal: terminal_gone names the input's id ──
         await attach(gone);
-        await ev(`(async () => { const x = ${XT}; x.sendTerminalInputWs('exit'); await new Promise(r => setTimeout(r, 300)); return x.sendTerminalInputWs('\\r'); })()`); // sleep-ok: the composer's own text-then-Enter gap, so the shell runs exit
-        // Wait for the pane to be gone, not a fixed time: the stream ends a moment after (on pty, 300 ms after the process), and the input has to reach the server inside that window.
-        const paneGone = async () => (await httpJson('POST', `/api/sessions/live/${encodeURIComponent(gone.session_name)}/resize`, { columns: 80, agent_type: 'terminal', session_id: gone.session_id })).status === 409;
-        for (const end = Date.now() + 8000; !(await paneGone()) && Date.now() < end; await new Promise(r => setTimeout(r, 50))); // sleep-ok: poll interval of a condition wait
-        await ev(`window.__out = []; window.__in = []; true`);
+        // Explicit protocol fixture: refuse the input without delivering it to the shell.
+        await ev(`window.__out = []; window.__in = []; window.__goneInput = true; true`);
         await send('echo to-gone');
         await until(`window.__in.some(m => m.type === 'terminal_gone')`, 'terminal_gone');
         const goneFrame = await ev(`window.__in.find(m => m.type === 'terminal_gone') || null`);
@@ -129,6 +131,29 @@ async function run() {
         check('gone: terminal_gone carries the id of the refused input', !!goneFrame && goneFrame.id === textId, JSON.stringify({ goneFrame, textId }));
         await until(`document.getElementById('command-input').value === 'echo to-gone'`, 'the draft back', 4000);
         check('gone: draft back and saved, never "Sent", the line under the composer', (await savedDraft()) === 'echo to-gone' && !(await sentToastAt('echo to-gone')) && !(await ev(`document.getElementById('composer-error').hidden`)), JSON.stringify({ saved: await savedDraft() }));
+        await ev(`window.__goneInput = false; true`);
+
+        // ── Real pty lifecycle: shell exit closes the socket; a new draft stays. ──
+        const backend = await ev(`fetch('/api/system/terminal-backend').then(r => r.json())`);
+        if (backend.running !== 'pty') throw new Error('this case requires the real pty default: ' + JSON.stringify(backend));
+        const ended = await launch('Ack Real PTY End');
+        await attach(ended);
+        await ev(`window.__in = []; true`);
+        await ev(`(async () => { const x = ${XT}; x.sendTerminalInputWs('exit'); return x.sendTerminalInputWs('\\r'); })()`);
+        await until(`window.__in.some(m => m.type === 'terminal_closed') && window.__terminalSocket?.readyState === WebSocket.CLOSED`, 'real pty shell exit closes the socket');
+        check('pty: real shell exit sends terminal_closed and closes the socket', await ev(`window.__in.some(m => m.type === 'terminal_closed') && window.__terminalSocket?.readyState === WebSocket.CLOSED`));
+        await clearToasts();
+        await type('echo draft after shell exit');
+        await until(`document.getElementById('session-ended-overlay')?.checkVisibility({ checkVisibilityCSS: true }) && document.getElementById('session-ended-default')?.checkVisibility({ checkVisibilityCSS: true })`, 'the Session ended overlay');
+        check('pty: Session ended shows while typing keeps the draft, with no Sent',
+            await ev(`document.getElementById('session-ended-default').textContent.includes('Session ended')`) &&
+            await ev(`document.getElementById('command-input').value === 'echo draft after shell exit'`) &&
+            (await savedDraft()) === 'echo draft after shell exit' && !(await sentToastAt('echo draft after shell exit')));
+        await ev(`window.sendCommand()`);
+        await until(`!document.getElementById('composer-error').hidden`, 'sending after real shell exit is refused');
+        check('pty: a send after shell exit keeps the draft and never says Sent',
+            await ev(`document.getElementById('command-input').value === 'echo draft after shell exit'`) &&
+            (await savedDraft()) === 'echo draft after shell exit' && !(await sentToastAt('echo draft after shell exit')));
         check('no page exceptions', exceptions.length === 0, JSON.stringify(exceptions));
     } finally {
         for (const s of launched) await httpJson('POST', `/api/sessions/live/${encodeURIComponent(s.session_name)}/kill`, { agent_type: 'terminal', session_id: s.session_id }).catch(() => {});
