@@ -20,7 +20,7 @@ import (
 // Only the child that runs Coral's script gets -ExecutionPolicy Bypass: the agent's terminal shell keeps the
 // machine's policy (Security's review of #26).
 func TestLaunchScriptRunsUnderARestrictedExecutionPolicy(t *testing.T) {
-	invocation, cleanup, err := commandInvocation("Write-Output coral-handoff-ran")
+	invocation, cleanup, err := commandInvocation("Write-Output coral-handoff-ran", false)
 	require.NoError(t, err)
 	t.Cleanup(cleanup)
 	env := append(os.Environ(), "PSExecutionPolicyPreference=Restricted")
@@ -67,7 +67,7 @@ func TestShellWrapKeepsTheMachinePolicy(t *testing.T) {
 func TestHandoffBypassDoesNotReachThePowerShellsTheAgentStarts(t *testing.T) {
 	ps := powerShellForTest(t)
 	grandchild := "& " + psLiteral(ps) + " -NoProfile -Command Get-ExecutionPolicy -Scope Process"
-	invocation, cleanup, err := commandInvocation(grandchild)
+	invocation, cleanup, err := commandInvocation(grandchild, false)
 	require.NoError(t, err)
 	t.Cleanup(cleanup)
 	sh, err := defaultShell()

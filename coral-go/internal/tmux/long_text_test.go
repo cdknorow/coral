@@ -102,6 +102,8 @@ func TestOnlyLaunchPathsWrapACommand(t *testing.T) {
 	sendKeysToTarget := map[string]int{}
 	callRe := regexp.MustCompile(`\bcommandInvocation\(`)
 	sendRe := regexp.MustCompile(`\.SendKeysToTarget\(`)
+	quietRe := regexp.MustCompile(`\.SendQuietLaunchToTarget\(`)
+	quiet := map[string]int{}
 	require.NoError(t, filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -125,6 +127,9 @@ func TestOnlyLaunchPathsWrapACommand(t *testing.T) {
 		if n := len(sendRe.FindAll(b, -1)); n > 0 {
 			sendKeysToTarget[rel] = n
 		}
+		if n := len(quietRe.FindAll(b, -1)); n > 0 {
+			quiet[rel] = n
+		}
 		return nil
 	}))
 	assert.Equal(t, map[string]int{
@@ -137,6 +142,11 @@ func TestOnlyLaunchPathsWrapACommand(t *testing.T) {
 		"internal/ptymanager/tmux_backend.go":          2,
 		"internal/ptymanager/session_terminal_tmux.go": 1,
 	}, sendKeysToTarget, "a new caller of SendKeysToTarget (which wraps a long command) must be a launch path: say so here")
+
+	// The quiet launch (an agent's launch line, always a script, #5911) is called by one terminal (the tmux session terminal's); the server picks it through an interface.
+	assert.Equal(t, map[string]int{
+		"internal/ptymanager/session_terminal_tmux.go": 1,
+	}, quiet, "a new caller of SendQuietLaunchToTarget must be a launch path: say so here")
 
 	// And the agent-text method itself never reaches the wrapping function.
 	body := funcBody(t, "send_keys.go", "func (c *Client) SendKeys(")

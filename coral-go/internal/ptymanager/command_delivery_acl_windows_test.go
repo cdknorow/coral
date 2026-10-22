@@ -21,7 +21,7 @@ func TestHandoffScriptIsMadeInThePrivateLaunchTempFolder(t *testing.T) {
 	require.NoError(t, agent.SetTempDir(dir))
 	t.Cleanup(func() { agent.ResetLaunchTempDirForTest() })
 
-	invocation, cleanup, err := commandInvocation("Write-Output hi")
+	invocation, cleanup, err := commandInvocation("Write-Output hi", false)
 	require.NoError(t, err)
 	t.Cleanup(cleanup)
 

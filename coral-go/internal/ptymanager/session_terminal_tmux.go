@@ -72,6 +72,12 @@ func (t *TmuxSessionTerminal) SendRawInput(ctx context.Context, o terminalinput.
 	return t.client.SendRawKeys(ctx, o, name, keys, agentType, sessionID)
 }
 
+// SendQuietLaunchToTarget is SendToTarget for an agent's launch line: always handed over as a script that erases the screen and scrollback first (#5911).
+func (t *TmuxSessionTerminal) SendQuietLaunchToTarget(ctx context.Context, o terminalinput.Origin, target, command string) error {
+	DropHeld(target, "a launch command is typed") // as SendToTarget
+	return t.client.SendQuietLaunchToTarget(ctx, o, target, command)
+}
+
 func (t *TmuxSessionTerminal) SendToTarget(ctx context.Context, o terminalinput.Origin, target, command string) error {
 	DropHeld(target, "a launch command is typed") // nothing held for the old process is typed into a new one (#3431)
 	return t.client.SendKeysToTarget(ctx, o, target, command)

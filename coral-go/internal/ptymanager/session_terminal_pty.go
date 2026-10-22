@@ -215,11 +215,20 @@ func (p *PTYSessionTerminal) SendRawInput(ctx context.Context, o terminalinput.O
 	return nil
 }
 
-func (p *PTYSessionTerminal) SendToTarget(_ context.Context, o terminalinput.Origin, target, command string) error {
+func (p *PTYSessionTerminal) SendToTarget(ctx context.Context, o terminalinput.Origin, target, command string) error {
+	return p.sendLaunch(ctx, o, target, command, false)
+}
+
+// SendQuietLaunchToTarget is SendToTarget for an agent's launch line: always handed over as a script that erases the screen first (#5911).
+func (p *PTYSessionTerminal) SendQuietLaunchToTarget(ctx context.Context, o terminalinput.Origin, target, command string) error {
+	return p.sendLaunch(ctx, o, target, command, true)
+}
+
+func (p *PTYSessionTerminal) sendLaunch(_ context.Context, o terminalinput.Origin, target, command string, quiet bool) error {
 	DropHeld(target, "a launch command is typed") // nothing held for the old process is typed into a new one (#3431)
 	resolved := p.resolveSessionKey(target)
-	if len(command) > inlineCommandLimit {
-		invocation, cleanup, err := commandInvocation(command)
+	if quiet || len(command) > inlineCommandLimit {
+		invocation, cleanup, err := commandInvocation(command, quiet)
 		if err != nil {
 			return err
 		}

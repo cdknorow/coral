@@ -136,6 +136,7 @@ func (s *session) readLoop() {
 			// Store in ring buffer for snapshot
 			s.ringMu.Lock()
 			s.ring = append(s.ring, data...)
+			s.ring = restartRingAtClear(s.ring, len(data))
 			if len(s.ring) > s.ringMax {
 				s.ring = s.ring[len(s.ring)-s.ringMax:]
 			}
@@ -239,6 +240,24 @@ func (s *session) unsubscribe(id string) {
 	}
 	delete(s.lagged, id)
 	s.mu.Unlock()
+}
+
+// clearScrollback is the sequence that erases a terminal's scrollback (ESC[3J). A quiet launch script prints it first (cmdhandoff.QuietShellScript, #5911).
+var clearScrollback = []byte("\x1b[3J")
+
+// restartRingAtClear drops what was in the replay ring before the last clear-scrollback sequence in the newly appended n bytes (or one that straddles them), keeping the sequence
+// itself, so a terminal opened later is replayed what the screen shows now, not the short line that started the agent (#5911). A ring with no such sequence is as it was.
+func restartRingAtClear(ring []byte, n int) []byte {
+	start := len(ring) - n - len(clearScrollback) + 1
+	if start < 0 {
+		start = 0
+	}
+	i := bytes.LastIndex(ring[start:], clearScrollback)
+	if i < 0 {
+		return ring
+	}
+	kept := copy(ring, ring[start+i:])
+	return ring[:kept]
 }
 
 // replayBytes returns a copy of the ring buffer for reconnect replay.

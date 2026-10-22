@@ -4,6 +4,7 @@ package ptymanager
 
 import (
 	"context"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -480,4 +481,35 @@ func TestTmuxSessionTerminal_CaptureOutputIsPlainTextWithBoundedScrollback(t *te
 	assert.Contains(t, out, "row 300")
 	assert.NotContains(t, out, "row 001", "only the last lines of scrollback")
 	assert.LessOrEqual(t, len(strings.Split(strings.TrimRight(out, "\n"), "\n")), 30+50, "at most lines above a screen of at most 50 rows")
+}
+
+// #5911 on tmux: the launch line is a short line that sources a private script; the pane's screen and scrollback hold the agent's output and neither the line, the script's
+// contents nor what was in the history before it.
+func TestTmuxSessionTerminal_QuietLaunchErasesTheLineAndTheHistoryBeforeIt(t *testing.T) {
+	dir, err := os.MkdirTemp("", "q5911")
+	require.NoError(t, err)
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	t.Setenv("TMPDIR", dir)
+	t.Setenv("CORAL_KEEP_LAUNCH_SCRIPTS", "")
+	terminal := newTmuxTestTerminal(t)
+	ctx := context.Background()
+	name := "claude-00000059-0011-4000-8000-000000000000"
+	spawnTmuxSession(t, terminal, name, t.TempDir())
+	require.NoError(t, terminal.SendInput(ctx, terminalinput.Unclassified, name, "echo BEFORE_THE_LAUNCH_$((6*7))", "", ""))
+	waitForCapture(t, terminal, name, "BEFORE_THE_LAUNCH_42", 10*time.Second)
+	pane, err := terminal.FindSession(ctx, name, "", "")
+	require.NoError(t, err)
+	require.NotNil(t, pane)
+
+	line := "export CORAL_QUIET_MARKER_LONG_NAME_0123456789=value-0123456789; echo AGENT_STARTED_$((6*7))"
+	require.NoError(t, terminal.SendQuietLaunchToTarget(ctx, terminalinput.Internal, pane.Target, line))
+	waitForCapture(t, terminal, name, "AGENT_STARTED_42", 10*time.Second)
+	out, err := terminal.CaptureOutput(ctx, name, 2000, "", "")
+	require.NoError(t, err)
+	assert.Contains(t, out, "AGENT_STARTED_42")
+	assert.NotContains(t, out, "BEFORE_THE_LAUNCH", "the history before the launch is erased")
+	assert.NotContains(t, out, "CORAL_QUIET_MARKER_LONG_NAME", "the exports were never on the screen")
+	assert.NotContains(t, out, "coral-command-", "nor the line that sourced the script")
+	gone, _ := filepath.Glob(filepath.Join(dir, "coral-command-*.sh"))
+	assert.Empty(t, gone, "the script removed itself")
 }
