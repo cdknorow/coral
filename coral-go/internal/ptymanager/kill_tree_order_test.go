@@ -20,26 +20,36 @@ func fakeTree(t *testing.T, sweeps [][]member) (log *[]sent) {
 	t.Helper()
 	var mu sync.Mutex
 	log = &[]sent{}
-	oldSend, oldSweep, oldLive, oldRounds := sendSignal, sweepTree, memberLive, stopRounds
-	t.Cleanup(func() { sendSignal, sweepTree, memberLive, stopRounds = oldSend, oldSweep, oldLive, oldRounds })
 	n := 0
-	sendSignal = func(pid int, sig syscall.Signal) {
-		mu.Lock()
-		defer mu.Unlock()
-		*log = append(*log, sent{pid, sig})
-	}
-	sweepTree = func(member, string) []member {
-		mu.Lock()
-		defer mu.Unlock()
-		i := min(n, len(sweeps)-1)
-		n++
-		if sweeps[i] == nil {
-			panic("sweep failed")
-		}
-		return sweeps[i]
-	}
-	memberLive = func(member) bool { return true }
+	seams := *killSeam() // the production number of rounds stays: it is part of what is pinned
+	seams.sendSignal, seams.sweepTree, seams.memberLive = nil, nil, nil
+	restore := setKillSeam(killSeams{
+		stopRounds: seams.stopRounds,
+		sendSignal: func(pid int, sig syscall.Signal) {
+			mu.Lock()
+			defer mu.Unlock()
+			*log = append(*log, sent{pid, sig})
+		},
+		sweepTree: func(member, string) []member {
+			mu.Lock()
+			defer mu.Unlock()
+			i := min(n, len(sweeps)-1)
+			n++
+			if sweeps[i] == nil {
+				panic("sweep failed")
+			}
+			return sweeps[i]
+		},
+		memberLive: func(member) bool { return true },
+	})
+	t.Cleanup(restore)
 	return log
+}
+
+// setKillSeam puts the seams in force and gives back what puts the earlier ones back.
+func setKillSeam(s killSeams) (restore func()) {
+	old := killSeamsP.Swap(&s)
+	return func() { killSeamsP.Store(old) }
 }
 
 func pidsWith(log []sent, sig syscall.Signal) []int {

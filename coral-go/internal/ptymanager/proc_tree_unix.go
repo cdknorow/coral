@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -121,23 +122,45 @@ func excluded(pid, self, selfGroup int) bool {
 // signalTree sends sig to each member that is still the process it was and, for one that leads its own group, to the group too (what it started there and did not tag).
 func signalTree(ms []member, sig syscall.Signal) {
 	for _, m := range ms {
-		if !memberLive(m) {
+		k := killSeam()
+		if !k.memberLive(m) {
 			continue
 		}
-		sendSignal(m.pid, sig)
+		k.sendSignal(m.pid, sig)
 		if g, err := syscall.Getpgid(m.pid); err == nil && g == m.pid {
-			sendSignal(-m.pid, sig)
+			k.sendSignal(-m.pid, sig)
 		}
 	}
 }
 
 // The seams the order of killTree's signals is tested through: how a signal is sent, how the tree is swept, whether a member is still the process found, and how many stop-and-sweep rounds there are.
-var (
-	sendSignal = func(pid int, sig syscall.Signal) { _ = syscall.Kill(pid, sig) }
-	sweepTree  = treeMembers
-	memberLive = func(m member) bool { return m.current() }
-	stopRounds = 5
-)
+// They are one value behind an atomic pointer, read through killSeam() once per use and replaced by a test with setKillSeam (kill_tree_order_test.go): a plain package variable a test assigns is a
+// data race with a goroutine an earlier test left running (#5266, seams_census_test.go).
+type killSeams struct {
+	sendSignal func(pid int, sig syscall.Signal)
+	sweepTree  func(root member, tag string) []member
+	memberLive func(m member) bool
+	stopRounds int
+}
+
+var killSeamsP atomic.Pointer[killSeams] // nil until a test sets its own
+
+// defaultKillSeams is what runs in a program. It is a package variable and not set in an init(): the guardian's own init (guardian_unix.go) runs before main, and before the init of a file that sorts after
+// it, and it ends a tree with these.
+var defaultKillSeams = &killSeams{
+	sendSignal: func(pid int, sig syscall.Signal) { _ = syscall.Kill(pid, sig) },
+	sweepTree:  treeMembers,
+	memberLive: func(m member) bool { return m.current() },
+	stopRounds: 5,
+}
+
+// killSeam is the seams in force; read it once per use and keep the value.
+func killSeam() *killSeams {
+	if k := killSeamsP.Load(); k != nil {
+		return k
+	}
+	return defaultKillSeams
+}
 
 // killTree ends known and what else is found of the terminal's tree. A process can fork between the sweep that found the tree and the signal that ends it, and its child would be missed, so the
 // tree is first stopped (SIGSTOP: nothing in it can fork), swept again, and stopped again until a sweep finds nothing new, and only then killed; a stopped process dies of SIGKILL like any other.
@@ -146,10 +169,11 @@ func killTree(known []member, root member, tag string) []member {
 	set := append([]member(nil), known...)
 	// Whatever happens below, a stop is never left without its kill: the set is read when this runs, so a panic or an early return still ends what was stopped (SIGKILL ends a stopped process).
 	defer func() { signalTree(set, syscall.SIGKILL) }()
-	set = unionOf(set, sweepTree(root, tag))
-	for i := 0; i < stopRounds; i++ {
+	k := killSeam()
+	set = unionOf(set, k.sweepTree(root, tag))
+	for i := 0; i < k.stopRounds; i++ {
 		signalTree(set, syscall.SIGSTOP)
-		next := unionOf(set, sweepTree(root, tag))
+		next := unionOf(set, k.sweepTree(root, tag))
 		if len(next) == len(set) {
 			break
 		}
