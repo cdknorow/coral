@@ -1,5 +1,5 @@
 // Saved for later is scoped to where it is opened from (#4792), against the real isolated server (the scope's parameters of GET /api/saved are the server's):
-//   - on home it shows everything, headed "All"; in an agent's view only that agent's chat and the board messages it wrote ("Saved: <agent>"); in a team's view the team's board and
+//   - on home it shows everything, headed "All saved"; in an agent's view only that agent's chat and the board messages it wrote ("Saved: <agent>"); in a team's view the team's board and
 //     its agents' chats ("Saved: <team>"); the Open and Done counts and the dock badge are of the scope;
 //   - switching to another agent (or into a team and back home) while the list is open updates it, without the last scope's conversation filter staying;
 //   - a search works inside a scope, an empty scope says whom it is empty for, and on a phone the heading and the list fit.
@@ -85,7 +85,7 @@ const hex = i => i.toString(16).padStart(20, '0');
             await open(w, mobile);
             // home: everything
             await openSaved();
-            let s = await rowsAre('All', ['fe-a chat', 'qa-a chat', 'qa-b chat', 'team-a board, by the Orchestrator', 'team-a board, by the QA Engineer', 'team-b board, by the QA Engineer'], ['(6)', '(1)'], `${dev}: home shows everything, headed All (6 open, 1 done)`);
+            let s = await rowsAre('All saved', ['fe-a chat', 'qa-a chat', 'qa-b chat', 'team-a board, by the Orchestrator', 'team-a board, by the QA Engineer', 'team-b board, by the QA Engineer'], ['(6)', '(1)'], `${dev}: home shows everything, headed All saved (6 open, 1 done)`);
             await shotSaved(`saved-scope-all-${dev}`);
 
             // an agent
@@ -132,7 +132,7 @@ const hex = i => i.toString(16).padStart(20, '0');
             await rowsAre('Saved: QA Beta', ['qa-b chat', 'team-b board, by the QA Engineer'], ['(2)', ''], `${dev}: leaving the team, the agent underneath is the scope again`);
             await ev(`window.selectLiveSession('', '', '', 'local'); true`).catch(() => {});
             await openSaved(); // nothing is chosen, so the scope is everything's and the list is the Inbox's: the bookmark opens it
-            await rowsAre('All', ['fe-a chat', 'qa-a chat', 'qa-b chat', 'team-a board, by the Orchestrator', 'team-a board, by the QA Engineer', 'team-b board, by the QA Engineer'], ['(6)', '(1)'], `${dev}: home again shows everything`);
+            await rowsAre('All saved', ['fe-a chat', 'qa-a chat', 'qa-b chat', 'team-a board, by the Orchestrator', 'team-a board, by the QA Engineer', 'team-b board, by the QA Engineer'], ['(6)', '(1)'], `${dev}: home again shows everything`);
         }
 
         // an agent with nothing saved
