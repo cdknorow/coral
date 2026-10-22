@@ -159,6 +159,10 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 		remoteLimit = h.cfg.WSRemoteDebounce // tests only
 	}
 	remoteDebounce := min(remoteLimit, pollInterval)
+	after := h.remoteAfter
+	if after == nil {
+		after = time.After
+	}
 
 	// Every connection ticks on the same wall-clock boundaries (multiples of the interval), so
 	// all the tabs, popouts and hub feeds ticking at once share one build of the list
@@ -208,7 +212,7 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 			}
 			if wait := remoteDebounce - time.Since(lastRemoteBuild); wait > 0 {
 				if debounce == nil {
-					debounce = time.After(wait)
+					debounce = after(wait)
 				}
 				continue
 			}

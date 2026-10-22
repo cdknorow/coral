@@ -68,16 +68,18 @@ type SessionsHandler struct {
 	// wsHeartbeat overrides wsHeartbeatInterval when set (nanoseconds; tests).
 	wsHeartbeat  atomic.Int64
 	remoteAgents background.RemoteAgentSource
-	db           *store.DB
-	ss           *store.SessionStore
-	ts           *store.TaskStore
-	subagents    *store.SubagentStore
-	gs           *store.GitStore
-	bs           *board.Store
-	cfg          *config.Config
-	terminal     ptymanager.SessionTerminal
-	jsonl        *jsonl.SessionReader
-	backend      ptymanager.TerminalBackend // nil = use tmux directly
+	// remoteAfter is the timer of the feed's remote-change debounce (nil: time.After); a test supplies its own to fire the window itself, not by waiting for it (#5942).
+	remoteAfter func(time.Duration) <-chan time.Time
+	db          *store.DB
+	ss          *store.SessionStore
+	ts          *store.TaskStore
+	subagents   *store.SubagentStore
+	gs          *store.GitStore
+	bs          *board.Store
+	cfg         *config.Config
+	terminal    ptymanager.SessionTerminal
+	jsonl       *jsonl.SessionReader
+	backend     ptymanager.TerminalBackend // nil = use tmux directly
 
 	boardHandler  *BoardHandler          // for sleep/wake board pausing
 	schedStore    *store.ScheduleStore   // for active runs in websocket
