@@ -80,7 +80,12 @@ func (g *inputGate) sendChecked(ctx context.Context, in AutomatedInput) (enterHe
 		return false, err
 	}
 	if !strings.HasSuffix(in.Key, "#enter") {
-		g.noteOwnText(in.Name, in.Text) // what the gate types is Coral's, if it is found in the box later (#247)
+		// what the gate types is Coral's, if it is found in the box later (#247): a paste (its Enter is confirmed from the screen) for hours, a typed send for two minutes
+		if in.Paste {
+			g.noteOwnText(in.Name, in.Text)
+		} else {
+			g.noteOwnTyped(in.Name, in.Text)
+		}
 	}
 	if in.Paste {
 		if held, err, done := g.pasteChecked(ctx, in); done {

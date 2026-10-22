@@ -375,3 +375,22 @@ func TestForgetOwnTextDropsOnlyThatText(t *testing.T) {
 	gate.forgetOwnText(name, "")
 	assert.True(t, gate.ownLeftover(name, b))
 }
+
+// A typed send's text (its Enter is not confirmed from the screen) is remembered for two minutes, not six hours: after that the same words in the box are a person's.
+func TestATypedSendsTextIsRememberedOnlyBriefly(t *testing.T) {
+	dialogGate(t, time.Hour)
+	name := "codex-composer-typed-brief"
+	t.Cleanup(func() { gate.forgetOwnTexts(name) })
+	now := time.Now()
+	setNow(t, gate, func() time.Time { return now })
+	typed, pasted := "typed nudge text for the agent box", "pasted nudge text for the agent box"
+	gate.noteOwnTyped(name, typed)
+	gate.noteOwnText(name, pasted)
+	assert.True(t, gate.ownLeftover(name, typed))
+	assert.True(t, gate.ownLeftover(name, pasted))
+	now = now.Add(3 * time.Minute)
+	assert.False(t, gate.ownLeftover(name, typed), "three minutes on, a typed send's words are a person's draft")
+	assert.True(t, gate.ownLeftover(name, pasted), "a paste is remembered for hours")
+	now = now.Add(7 * time.Hour)
+	assert.False(t, gate.ownLeftover(name, pasted))
+}
