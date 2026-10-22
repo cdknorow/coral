@@ -43,5 +43,5 @@ func endingCommand() string {
 	if runtime.GOOS == "windows" {
 		return "powershell.exe -NoProfile -Command exit"
 	}
-	return "exit"
+	return "/bin/sh -c exit"
 }
