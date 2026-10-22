@@ -2,6 +2,7 @@ package routes
 
 import (
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -26,6 +27,11 @@ func TestAnEmptyArgumentIsNotAPath(t *testing.T) {
 // -DestinationPath is a path parameter (Expand-Archive, Compress-Archive): winPathParams only knew its prefix "destination", which "destinationpath" is not a prefix OF, so
 // `Expand-Archive -Path x.zip -DestinationPath C:\Windows\Temp\x` named no path and was let through. (The positional Expand-Archive form was already held by the generic rule.)
 func TestDestinationPathIsAPathParameter(t *testing.T) {
+	// The Windows reader judges Windows paths (winPathsMode hands over "C:/Windows/Temp/x"); pathInside is the host's, so on macOS and Linux "C:/..." is a folder name under the working
+	// folder and nothing is held. This stand-in says what Windows would: a drive, a rooted path or a way up is outside, anything else is inside (the host's own check runs below on Windows).
+	outsideWin := func(p string) bool {
+		return strings.Contains(p, ":") || strings.HasPrefix(p, "/") || strings.HasPrefix(p, "../")
+	}
 	assert.Equal(t, []string{"x.zip", `C:\out`}, winPaths([]string{"-Path", "x.zip", "-DestinationPath", `C:\out`}))
 	assert.Equal(t, []string{`C:\out`}, winPaths([]string{`-DestinationPath:C:\out`}))
 	assert.Equal(t, []string{`C:\out`}, winPaths([]string{"-DestinationP", `C:\out`}))
@@ -43,13 +49,13 @@ func TestDestinationPathIsAPathParameter(t *testing.T) {
 		if runtime.GOOS == "windows" {
 			assert.NotEmpty(t, shellRisk(c, wd), "should be held: %s", c)
 		}
-		assert.NotEmpty(t, winVerbRisk(c, func(p string) bool { return !pathInside(p, wd) }), "should be held (the Windows reader): %s", c)
+		assert.NotEmpty(t, winVerbRisk(c, outsideWin), "should be held (the Windows reader): %s", c)
 	}
 	for _, c := range []string{
 		`Expand-Archive -Path x.zip -DestinationPath out`,
 		`Expand-Archive -Path x.zip -DestinationPath:out`,
 		`Compress-Archive -Path src -DestinationPath out.zip`,
 	} {
-		assert.Empty(t, winVerbRisk(c, func(p string) bool { return !pathInside(p, wd) }), "should be allowed: %s", c)
+		assert.Empty(t, winVerbRisk(c, outsideWin), "should be allowed: %s", c)
 	}
 }
