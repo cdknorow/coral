@@ -16,6 +16,9 @@ func (s *SessionStore) UpsertSessionIndex(ctx context.Context, idx *SessionIndex
 		// A Codex rollout file represents exactly one session. Remove stale aliases
 		// created if an older parser extracted a malformed Coral session marker.
 		if idx.SourceType == "codex" {
+			if _, err := tx.ExecContext(ctx, `DELETE FROM history_exclusions WHERE source_type = ? AND source_file = ?`, idx.SourceType, idx.SourceFile); err != nil {
+				return err
+			}
 			if _, err := tx.ExecContext(ctx,
 				`DELETE FROM session_fts WHERE session_id IN
 				 (SELECT session_id FROM session_index WHERE source_type = 'codex'
@@ -34,12 +37,12 @@ func (s *SessionStore) UpsertSessionIndex(ctx context.Context, idx *SessionIndex
 		_, err := tx.ExecContext(ctx,
 			`INSERT OR REPLACE INTO session_index
 			 (session_id, source_type, source_file, first_timestamp, last_timestamp,
-			  message_count, display_summary, agent_name, display_name, indexed_at, file_mtime)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			  message_count, display_summary, agent_name, display_name, indexed_at, file_mtime, index_version)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			idx.SessionID, idx.SourceType, idx.SourceFile,
 			idx.FirstTimestamp, idx.LastTimestamp,
 			idx.MessageCount, idx.DisplaySummary,
-			idx.AgentName, idx.DisplayName, now, idx.FileMtime)
+			idx.AgentName, idx.DisplayName, now, idx.FileMtime, idx.IndexVersion)
 		return err
 	})
 }
@@ -51,7 +54,7 @@ func (s *SessionStore) GetIndexedSession(ctx context.Context, sessionID string) 
 	var idx SessionIndex
 	err := s.reader().GetContext(ctx, &idx,
 		`SELECT session_id, source_type, source_file, first_timestamp, last_timestamp,
-			message_count, display_summary, agent_name, display_name, indexed_at, file_mtime
+			message_count, display_summary, agent_name, display_name, indexed_at, file_mtime, index_version
 		 FROM session_index WHERE session_id = ?`, sessionID)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -157,14 +160,7 @@ func (s *SessionStore) GetIndexedMtimes(ctx context.Context) (map[string]float64
 
 // RemoveExcludedSessionSource forgets derived History/search data for a rollout
 // identified by its scanner as an internal thread. Source files and user data stay.
-func (s *SessionStore) RemoveExcludedSessionSource(ctx context.Context, sourceType, sourceFile string) error {
-	var present bool
-	if err := s.reader().GetContext(ctx, &present, `SELECT EXISTS(SELECT 1 FROM session_index WHERE source_type = ? AND source_file = ?)`, sourceType, sourceFile); err != nil {
-		return err
-	}
-	if !present {
-		return nil
-	}
+func (s *SessionStore) RemoveExcludedSessionSource(ctx context.Context, sourceType, sourceFile string, mtime float64, version int) error {
 	return s.db.WithTx(ctx, func(tx *sqlx.Tx) error {
 		for _, query := range []string{
 			`DELETE FROM session_fts WHERE session_id IN (SELECT session_id FROM session_index WHERE source_type = ? AND source_file = ?)`,
@@ -175,6 +171,36 @@ func (s *SessionStore) RemoveExcludedSessionSource(ctx context.Context, sourceTy
 				return err
 			}
 		}
-		return nil
+		_, err := tx.ExecContext(ctx, `INSERT OR REPLACE INTO history_exclusions (source_type, source_file, file_mtime, index_version) VALUES (?, ?, ?, ?)`, sourceType, sourceFile, mtime, version)
+		return err
 	})
+}
+
+// GetHistoryMtimes skips files checked by the current parser. Legacy Codex rows
+// are parsed once even with unchanged mtimes; excluded files keep only this
+// derived stat cache, so a later pass needn't reopen guardian rollouts either.
+// Version 1 is the guardian-aware Codex parser (#6081).
+func (s *SessionStore) GetHistoryMtimes(ctx context.Context) (map[string]float64, error) {
+	known, err := s.GetIndexedMtimes(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var legacy []string
+	if err := s.reader().SelectContext(ctx, &legacy, `SELECT source_file FROM session_index WHERE source_type = 'codex' AND index_version < 1`); err != nil {
+		return nil, err
+	}
+	for _, path := range legacy {
+		delete(known, path)
+	}
+	var excluded []struct {
+		SourceFile string  `db:"source_file"`
+		FileMtime  float64 `db:"file_mtime"`
+	}
+	if err := s.reader().SelectContext(ctx, &excluded, `SELECT source_file, file_mtime FROM history_exclusions WHERE source_type = 'codex' AND index_version = 1`); err != nil {
+		return nil, err
+	}
+	for _, row := range excluded {
+		known[row.SourceFile] = row.FileMtime
+	}
+	return known, nil
 }

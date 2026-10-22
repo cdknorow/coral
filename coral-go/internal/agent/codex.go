@@ -15,7 +15,11 @@ import (
 )
 
 // CodexAgent implements the Agent interface for OpenAI Codex CLI.
-type CodexAgent struct{}
+type CodexAgent struct {
+	openHistory func(string) (*os.File, error) // nil uses the regular-file-only history opener
+}
+
+const codexHistoryIndexVersion = 1
 
 func (a *CodexAgent) AgentType() string    { return "codex" }
 func (a *CodexAgent) SupportsResume() bool { return true }
@@ -51,23 +55,15 @@ func (a *CodexAgent) ExtractSessions(basePath string, knownMtimes map[string]flo
 		if !strings.HasPrefix(filepath.Base(path), "rollout-") || !strings.HasSuffix(path, ".jsonl") {
 			return nil
 		}
-		// Recheck metadata even for an unchanged indexed file: an older Coral
-		// may already have indexed a guardian's verdict as chat.
-		if _, indexed := knownMtimes[path]; indexed {
-			if f, err := openHistoryFile(path); err == nil {
-				guardian := IsCodexGuardianRollout(f)
-				f.Close()
-				if guardian {
-					sessions = append(sessions, IndexedSession{Excluded: true, SourceType: "codex", SourceFile: path})
-					return nil
-				}
-			}
-		}
 		mtime := float64(info.ModTime().Unix())
 		if prev, ok := knownMtimes[path]; ok && prev == mtime {
 			return nil // file unchanged since last index
 		}
-		sess, err := parseCodexSession(path, mtime)
+		open := a.openHistory
+		if open == nil {
+			open = openHistoryFile
+		}
+		sess, err := parseCodexSessionWithOpen(path, mtime, open)
 		if err != nil {
 			slog.Debug("codex: failed to parse session file", "path", logsafe.Dir(path), "error", err)
 			return nil
@@ -85,13 +81,17 @@ func (a *CodexAgent) ExtractSessions(basePath string, knownMtimes map[string]flo
 
 // parseCodexSession parses a Codex JSONL session file.
 func parseCodexSession(fpath string, mtime float64) (*IndexedSession, error) {
-	f, err := openHistoryFile(fpath) // regular file, never a link or FIFO (#3601, W21)
+	return parseCodexSessionWithOpen(fpath, mtime, openHistoryFile)
+}
+
+func parseCodexSessionWithOpen(fpath string, mtime float64, open func(string) (*os.File, error)) (*IndexedSession, error) {
+	f, err := open(fpath) // regular file, never a link or FIFO (#3601, W21)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
 	if IsCodexGuardianRollout(f) {
-		return &IndexedSession{Excluded: true, SourceType: "codex", SourceFile: fpath}, nil
+		return &IndexedSession{Excluded: true, SourceType: "codex", SourceFile: fpath, FileMtime: mtime, IndexVersion: codexHistoryIndexVersion}, nil
 	}
 
 	// Derive session ID from filename: rollout-<timestamp>-<id>.jsonl
@@ -161,6 +161,7 @@ func parseCodexSession(fpath string, mtime float64) (*IndexedSession, error) {
 	return &IndexedSession{
 		SessionID:      sessionID,
 		SourceType:     "codex",
+		IndexVersion:   codexHistoryIndexVersion,
 		SourceFile:     fpath,
 		FileMtime:      mtime,
 		FirstTimestamp: firstTS,

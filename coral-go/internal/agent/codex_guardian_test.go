@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -72,4 +73,42 @@ func TestCodexIndexKeepsRepeatedMessagesButMergesFormatCopies(t *testing.T) {
 	require.NotNil(t, got)
 	assert.Equal(t, 2, got.MessageCount)
 	assert.Contains(t, got.DisplaySummary, "guardian_review")
+}
+
+func TestCodexSecondPassOpensNoUnchangedRollouts(t *testing.T) {
+	dir := t.TempDir()
+	for _, kind := range []string{"parent", "guardian"} {
+		data, err := os.ReadFile(filepath.Join("testdata", "codex-0163-"+kind+".jsonl"))
+		require.NoError(t, err)
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "rollout-"+kind+".jsonl"), data, 0600))
+	}
+	opens := 0
+	opener := func(path string) (*os.File, error) { opens++; return openHistoryFile(path) }
+	a := &CodexAgent{openHistory: opener}
+	sessions, err := a.ExtractSessions(dir, nil)
+	require.NoError(t, err)
+	require.Len(t, sessions, 2)
+	require.Equal(t, 2, opens, "one open for each normal or excluded rollout")
+	known := map[string]float64{}
+	for _, s := range sessions {
+		require.Equal(t, codexHistoryIndexVersion, s.IndexVersion)
+		known[s.SourceFile] = s.FileMtime
+	}
+	// A new scanner models a server restart: the skip data belongs to the store,
+	// not to the scanner's memory. Both the parent and guardian must skip opens.
+	opens = 0
+	a = &CodexAgent{openHistory: opener}
+	sessions, err = a.ExtractSessions(dir, known)
+	require.NoError(t, err)
+	assert.Empty(t, sessions)
+	assert.Zero(t, opens)
+	// A changed excluded file is checked again instead of being hidden forever.
+	path := filepath.Join(dir, "rollout-guardian.jsonl")
+	stamp := time.Unix(int64(known[path])+2, 0)
+	require.NoError(t, os.Chtimes(path, stamp, stamp))
+	sessions, err = a.ExtractSessions(dir, known)
+	require.NoError(t, err)
+	require.Len(t, sessions, 1)
+	assert.True(t, sessions[0].Excluded)
+	assert.Equal(t, 1, opens)
 }
