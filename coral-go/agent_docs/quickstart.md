@@ -2,9 +2,8 @@
 
 Get from a downloaded release to a committed, tested change.
 
-This page describes Coral v1.3.23. Behavior statements were checked against the current
-source. The example output and timings in steps 4-5 were captured on an earlier (v1.0.8)
-build, so treat them as illustrative. Where something is unverified, it says so.
+This page targets Coral v1.4.156. The example output and timings in steps 4-5 were
+captured on an earlier (v1.0.8) build, so treat them as illustrative. Where something is unverified, it says so.
 
 > **Example result (v1.0.8 measurement):** about 90 seconds from starting the server to a
 > committed, passing change — *after* your agent CLI is installed and authenticated, and
@@ -15,7 +14,7 @@ build, so treat them as illustrative. Where something is unverified, it says so.
 
 | Requirement | Notes |
 |---|---|
-| **tmux** | The macOS app (v1.3.23) bundles tmux 3.7c; older downloads and standalone/source builds may still need it installed separately. Linux requires a separate tmux installation for the default backend. The PTY backend (`--backend pty`) does not require tmux. See [Platform support](#platform-support). |
+| **tmux** | The macOS app bundles tmux 3.7c; older downloads and standalone/source builds may still need it installed separately. Linux requires a separate tmux installation for the default backend. The PTY backend (`--backend pty`) does not require tmux. See [Platform support](#platform-support). |
 | **git** | Worktree and branch features need a real repository. |
 | **An agent CLI** | At least one of `claude`, `codex`, `agy` (Antigravity), or `pi` — **installed and authenticated**. Coral drives these tools; it does not install, configure, or authenticate them. |
 
@@ -46,7 +45,7 @@ setting. The launch API rejects an unsupported `agent_type` (`ValidateAgentType`
 > start the old Python server and look like it worked.
 >
 > ```bash
-> which -a coral coral-board launch-coral   # more than one hit means both are installed
+> which -a coral coral-board launch-coral   # inspect multiple hits for an old Python install
 > pip uninstall agent-coral
 > ```
 
@@ -77,7 +76,7 @@ $ uname -m        # x86_64 → the amd64 tarball, aarch64 → the arm64 tarball
 $ tar xzf coral-linux-amd64.tar.gz
 ```
 
-Put them somewhere on your `PATH` yourself.
+Put the extracted tools in a directory on your `PATH`, or run `./coral` from the extracted folder. See the [public installation walkthrough](https://subgentic.github.io/coral/getting-started/) for complete installation commands.
 
 ### Getting the CLI tools on macOS
 
@@ -89,8 +88,9 @@ bundle does that:
 ```
 
 It symlinks the tools into `~/.local/bin` by default (`--dir <path>` or `CORAL_LINK_DIR`
-choose another directory, `--force` replaces non-Coral files). Make sure that directory
-is on your `PATH`. Earlier versions linked into `/usr/local/bin` and failed on a clean
+choose another directory, `--force` replaces non-Coral files). Add
+`export PATH="$HOME/.local/bin:$PATH"` to your shell's startup file and run it in the
+current terminal too. Earlier versions linked into `/usr/local/bin` and failed on a clean
 Apple Silicon Mac.
 
 You can skip this entirely and run the binary by its full path.
@@ -103,13 +103,16 @@ Coral dashboard: http://localhost:8420
 Press Ctrl+C to stop
 ```
 
+On first launch, review the Terms of Service and accept them if you agree. Keep the
+terminal open while the server runs. Without tmux, add `--backend pty`.
+
 Useful flags: `--home <dir>` (data directory, default `~/.coral`), `--port` (default
 8420), `--host` (one address or a comma list, see [below](#listening-on-a-tailnet-address)),
 `--backend pty|tmux`, `--no-browser`. Coral listens on `127.0.0.1` unless
 [remote access](#remote-access) is enabled and restarted.
 
-> There is no `--version` flag. `coral --version` fails with
-> `flag provided but not defined: -version`. The version is printed in the startup log.
+`coral --version`, `coral -v`, and `coral version` print the version and exit without
+starting a server. A running server's version is in its startup log and `/api/system/status`.
 
 ### Running a second instance
 
@@ -132,19 +135,20 @@ coral --home /tmp/coral-t1 --port 8452 --no-browser
 > directory short. If you are unsure what a new instance can see, check:
 > ```bash
 > # a script you run yourself, never an agent
-> curl -s -H "Authorization: Bearer $(coral api-key)" localhost:8452/api/sessions/live   # sessions you did not create = not isolated
+> curl -s -H "Authorization: Bearer $(coral api-key --home /tmp/coral-t1)" localhost:8452/api/sessions/live   # sessions you did not create = not isolated
 > ```
 
 ## Remote access
 
-Remote (LAN/mobile) access is **off by default**. Enabling it saves a preference and
-takes effect only after Coral restarts; the dashboard reports the saved and effective
-state separately. Details: `PRIVACY_CONTROLS.md` and `/api/system/privacy`.
+Remote (LAN/mobile) access is **off by default**. Enabling it in Settings saves a preference and
+takes effect only after Coral restarts. `--remote` enables it for one run without saving it.
+The dashboard reports the saved and effective state separately. Details: `PRIVACY_CONTROLS.md` and `/api/system/privacy`.
 
 ### Listening on a tailnet address
 
 To reach Coral from your other devices on a tailnet (Tailscale) without a proxy, listen on
-loopback **and** the tailnet address, with remote access on, and sign in with the API key:
+loopback **and** the tailnet address, with remote access on, and sign in with your Coral
+password or API key:
 
 ```console
 $ coral --remote --host 127.0.0.1,100.101.102.103
@@ -161,7 +165,7 @@ command line and the dashboard keep using loopback; `--no-auto-loopback` (or
 
 Whichever address a request arrives on, what it may do depends on where it comes from, never
 on the listener: a program on this computer reaching the loopback listener is local, and anyone
-reaching the tailnet address needs the key. A local request must also name this server in its
+reaching the tailnet address needs a dashboard sign-in or API key. A local request must also name this server in its
 `Host` header (`localhost`, a loopback address, or an address in `--host`); any other name or
 IP is refused as a DNS-rebinding attempt, unless Coral listens on every interface.
 
@@ -194,18 +198,14 @@ HTTP …`) and **Settings › Privacy › Remote access** all say so. Pick one o
   loopback only. Forward WebSocket upgrades (`/ws/…`), and send
   `X-Forwarded-Proto: https`.
 
-  > **Warning — the proxy must not lend its clients the loopback bypass.** The proxy reaches
-  > Coral from `127.0.0.1`, so if it rewrites `Host` to `localhost` **and** forwards no
-  > `X-Forwarded-*` / `Tailscale-*` header, every client it proxies — a remote tailnet user
-  > included — would land on the no-credentials loopback pass. Coral already denies that pass to
-  > any loopback request carrying a forwarding header, but a proxy that strips those headers
-  > (nginx's default `proxy_pass` sends none) still looks direct. With **any** proxy on this
-  > machine, either turn on **`require_auth_on_loopback`** (Settings; Operator-only) so even a
-  > plain loopback request must authenticate, or don't front loopback at all — bind Coral to the
-  > tailnet address with `--host <tailnet-ip>` (with remote access on), so the tailnet reaches
-  > Coral directly as a remote caller that needs the key, and a local proxy isn't in the path.
-  > Coral's loopback trust keys on the connection's peer address, not the `Host` header, so a
-  > caller arriving on the tailnet address is never treated as local.
+  Keep [strict local auth](auth.md#strict-local-auth-the-default) on (the default), so
+  requests need credentials even on loopback. Have the proxy preserve forwarding
+  headers: a forwarded request is a remote caller and needs a dashboard sign-in or API
+  key. A proxy that strips those headers looks direct. **`require_auth_on_loopback`**
+  (Settings; Operator-only) requires credentials for loopback requests, even if strict
+  local auth is disabled; see [authentication](auth.md). Do not disable authentication
+  to make a proxy work.
+
 - **Native TLS**: `coral --tls-cert cert.pem --tls-key key.pem` (or `CORAL_TLS_CERT` and
   `CORAL_TLS_KEY`), PEM files, with remote access on. The same port then serves HTTPS, and
   WSS for the terminal and live feeds (the dashboard picks `wss:` on an `https:` page). From
@@ -223,21 +223,32 @@ HTTP …`) and **Settings › Privacy › Remote access** all say so. Pick one o
 
 ## 3. Open the dashboard
 
-Go to **http://localhost:8420**.
+Open the address printed at startup (normally **http://localhost:8420**). If the
+browser shows **Create a password**, enter and confirm a password, then choose
+**Create password and open Coral**. Later, sign in with that password. The desktop
+app can open a signed-in browser directly; `coral open` does the same from your own
+terminal on the server. For a second instance, pass its `--home` and `--url` to
+`coral open` too.
 
-> **The first time, Coral offers to connect to Coral Hub** (app.coralhub.dev, invite-only
-> beta), so you can use your agents from any browser or your phone. **Connect** shows a
-> link with your code filled in; once you approve it, choose how much the hub may do on
-> this computer (View, Interact or Launch) and click **Done**. **Skip for now** keeps
-> Coral local: nothing is sent to the hub until you connect. **Run your own hub instead**
-> explains `coral --hub`. It asks once per install; **Settings › About › Connect to Coral
-> Hub…** shows it again. In a terminal, `coral cloud connect` does the same. Coral is
-> free, with no licence and no usage limits.
+Coral Hub (app.coralhub.dev, invite-only beta) is optional. A fresh install stays local
+until you choose to connect from Home or **Settings > Coral Hub**, or run
+`coral cloud connect`. In the connect flow, approve the link/code and choose the
+hub's access (View, Interact or Launch). See [connecting to Coral Hub](hub.md#connecting-a-server-to-coral-hub).
+
+The first-launch offer appears only when you explicitly give a Hub URL
+(`--cloud-url https://app.coralhub.dev` or `CORAL_CLOUD_URL`) or request it with
+`--cloud-connect prompt` (`CORAL_CLOUD_CONNECT=prompt`). `--cloud-connect auto`
+also offers the dashboard screen, but only logs the terminal link/code instead of
+asking a terminal question. The release build's default
+URL alone does not trigger the offer. `--cloud-connect off` suppresses it;
+`--cloud-url off` disables Hub connections. Nothing is sent to the Hub until you connect.
 
 ## 4. Launch your first agent
 
-From the dashboard click **+New**, choose a working directory and an agent type. The
-equivalent API call (with [strict local auth](auth.md#strict-local-auth-the-default), the default, add
+On Home choose **Launch agent** (elsewhere, **+ New > AI Agent**). Enter an existing
+project folder on the computer running Coral. Open **More options > Agent** to choose
+your installed CLI, then choose **Launch**. In **Chat**, type a task and press Enter
+to send it; check **Terminal** first for any sign-in or trust prompt. The equivalent API call (with [strict local auth](auth.md#strict-local-auth-the-default), the default, add
 `-H "Authorization: Bearer $(coral api-key)"` to every `curl` in this guide; the key is for a script you run yourself, never an agent):
 
 ```console
@@ -254,9 +265,10 @@ $ curl -H "Authorization: Bearer $(coral api-key)" -s -X POST http://127.0.0.1:8
 > names the launch path and reads `pty` even for tmux sessions, so use `terminal` (or
 > `tmux_session` in `/api/sessions/live`). Other fields are omitted above.
 
-### Your first agent will appear to hang — this is expected
+### If your first agent is waiting for input
 
-On its first run in a directory, the agent CLI asks its own trust question:
+On its first run in a directory, the agent CLI may ask its own trust question. An
+earlier Claude screen looked like this (wording and choices vary by CLI version):
 
 ```
 Quick safety check: Is this a project you created or one you trust?
@@ -265,11 +277,14 @@ Quick safety check: Is this a project you created or one you trust?
 Enter to confirm · Esc to cancel
 ```
 
-Coral may not show this as "waiting for input" (not verified for every provider). The agent
-can look alive and idle. Open its terminal in the dashboard and answer it. Codex asks an equivalent
-question (`Do you trust the contents of this directory?`).
+The agent can look alive and idle while it waits. Open **Terminal** in the dashboard,
+read the current prompt and answer it. Coral detects known startup prompts, but this
+has not been verified for every provider/version. Codex can also ask you to review
+Coral's hooks before it starts; read that request in Terminal.
 
-Answering over the API:
+For a script you run yourself, the keys API accepts named keys. Inspect the
+current menu before choosing a key; the `Down` then `Enter` example below applies
+only when those keys select the answer you intend:
 
 ```bash
 # a script you run yourself, never an agent
@@ -282,7 +297,8 @@ curl -H "Authorization: Bearer $(coral api-key)" -s -X POST "http://127.0.0.1:84
   -d "{\"keys\":[\"Enter\"],\"agent_type\":\"claude\",\"session_id\":\"$SID\"}"
 ```
 
-Trust is remembered per repository, so later agents in the same repo skip it.
+The CLI may remember your answer for that repository. Coral does not answer these
+startup trust or hook-review questions for you.
 
 ## 5. Watch it finish
 
@@ -311,7 +327,7 @@ by trusting the agent's summary.
 
 | Symptom | Cause |
 |---|---|
-| Agent launched, no output, looks hung | The trust prompt in step 4. Open the terminal and answer it. |
+| Agent launched, no output, looks hung | A trust, hook-review or sign-in prompt may be waiting. Open Terminal and read it; a launched process alone does not prove provider access. |
 | `coral: command not found` after a DMG install | `install-cli.sh` was never run, or its link directory (`~/.local/bin` by default) is not on your `PATH`. |
 | `coral` starts something unfamiliar | The retired `agent-coral` pip package is shadowing it. Run `which -a coral`. |
 | Agents launch but never post to the board | Confirm the server's view with `/api/board/<project>/subscribers`. Agents are given `CORAL_URL` and `CORAL_DATA_DIR`; a custom wrapper that clears the environment can lose them. |
