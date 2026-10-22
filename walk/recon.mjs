@@ -64,18 +64,33 @@ await step('4 launch the agent', async () => {
     await clickText(/^(Launch|Launch Agent|Start|Launch agent)$/); await sleep(6000);
     await shot('A5-after-launch'); await dump('A5-after-launch');
 });
-await step('5 the agent window', async () => {
-    await sleep(4000); await shot('A6-agent-later'); await dump('A6-agent-later');
+await step('5 the agent: chat and terminal', async () => {
+    await sleep(3000); await shot('A6-agent-chat'); await dump('A6-agent-chat');
+    await clickText(/^terminal$/); await sleep(3500); await shot('A7-agent-terminal'); await dump('A7-agent-terminal');
+    const t = await ev(`(document.querySelector('.xterm, .terminal, #terminal-container') || document.body).innerText.replace(/\\s+/g, ' ').slice(0, 600)`);
+    console.log('TERMINAL TEXT ' + t);
 });
-await step('6 team dialog', async () => {
+await step('6 Browse in the launch dialog (a folder picker, as a person would see)', async () => {
+    await Page.navigate({ url: base + '/' }); await sleep(3000);
+    await clickText(/Launch agent One agent in a folder/); await sleep(2000);
+    await clickText(/^Browse$/); await sleep(2500);
+    await shot('A8-browse'); await dump('A8-browse');
+    await clickText(/^Cancel$/); await sleep(800);
+});
+await step('7 team: name it, launch it', async () => {
     await Page.navigate({ url: base + '/' }); await sleep(3000);
     await clickText(/Launch team Agents with roles/); await sleep(2500);
-    await shot('B1-team-members'); await dump('B1-team-members');
-    await clickText(/Board & workspace/); await sleep(1500); await shot('B2-team-board'); await dump('B2-team-board');
-    await clickText(/^tune Defaults$|Defaults/); await sleep(1500); await shot('B3-team-defaults'); await dump('B3-team-defaults');
+    await clickText(/^Launch Team$/); await sleep(2000);
+    await shot('B1-team-no-name'); await dump('B1-team-no-name');
+    await typeInto('#team-board-name', 'first-team'); await sleep(500);
+    await shot('B2-team-named');
+    await clickText(/^Launch Team$/); await sleep(10000);
+    await shot('B3-after-team-launch'); await dump('B3-after-team-launch');
 });
-await step('7 launch the team', async () => {
-    await clickText(/^(Launch Team|Launch team|Launch)$/); await sleep(8000);
-    await shot('B4-after-team-launch'); await dump('B4-after-team-launch');
+await step('8 the team after launch', async () => {
+    await sleep(6000);
+    await shot('B4-team-later'); await dump('B4-team-later');
+    await clickText(/first-team/); await sleep(3500);
+    await shot('B5-team-opened'); await dump('B5-team-opened');
 });
 await client.close(); chrome.kill();
