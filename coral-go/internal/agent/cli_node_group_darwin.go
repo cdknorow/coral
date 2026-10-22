@@ -36,7 +36,7 @@ func groupIsTheUsersAlone(gid uint32) (bool, error) {
 	if g.Name != "admin" && fmt.Sprint(gid) != u.Gid {
 		return false, nil
 	}
-	members, err := runDscl("-read", "/Groups/"+g.Name, "GroupMembership")
+	members, err := runDscl("-read", "/Groups/"+g.Name, "GroupMembership", "GroupMembers", "NestedGroups")
 	if err != nil && !strings.Contains(members, "No such key") {
 		return false, err
 	}
@@ -51,16 +51,21 @@ func groupIsTheUsersAlone(gid uint32) (bool, error) {
 // a Mac set up the usual way: without it admin is never the user's alone on a normal Mac. Every other account, system or not, is someone else.
 var apartFromTheUser = map[string]bool{"root": true, "_mbsetupuser": true}
 
-// onlyUserAndRoot reads dscl's two answers: the "GroupMembership: a b c" line and the "name gid" lines of the user list.
-func onlyUserAndRoot(membership, primary, me, gid string) bool {
-	for _, line := range strings.Split(membership, "\n") {
-		if rest, ok := strings.CutPrefix(strings.TrimSpace(line), "GroupMembership:"); ok {
-			for _, m := range strings.Fields(rest) {
-				if m != me && !apartFromTheUser[m] {
-					return false
-				}
-			}
+// onlyUserAndRoot reads dscl's two answers: the group's "GroupMembership" (names), "GroupMembers" (one GUID each) and "NestedGroups" lines, and the "name gid" lines of the user list. The
+// group is the user's alone when its names are the user and the accepted accounts, it has no nested group (a managed Mac can put a directory group inside admin, whose members the names
+// do not show), it has no more GUID members than there are accepted names (the same, from the other list), and no other account has it as its primary group.
+func onlyUserAndRoot(read, primary, me, gid string) bool {
+	attrs := dsclAttributes(read)
+	for _, m := range attrs["GroupMembership"] {
+		if m != me && !apartFromTheUser[m] {
+			return false
 		}
+	}
+	if len(attrs["NestedGroups"]) > 0 {
+		return false
+	}
+	if len(attrs["GroupMembers"]) > len(apartFromTheUser)+1 { // root, _mbsetupuser and the user
+		return false
 	}
 	for _, line := range strings.Split(primary, "\n") {
 		f := strings.Fields(line)
@@ -69,4 +74,29 @@ func onlyUserAndRoot(membership, primary, me, gid string) bool {
 		}
 	}
 	return true
+}
+
+// dsclAttributes splits a dscl -read answer into attribute -> values: "Name: a b" starts one, a line that begins with white space continues the one before, and "No such key: X" is no attribute.
+func dsclAttributes(out string) map[string][]string {
+	attrs := map[string][]string{}
+	last := ""
+	for _, line := range strings.Split(out, "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		if line[0] == ' ' || line[0] == '\t' {
+			if last != "" {
+				attrs[last] = append(attrs[last], strings.Fields(line)...)
+			}
+			continue
+		}
+		name, rest, ok := strings.Cut(line, ":")
+		if !ok || strings.HasPrefix(line, "No such key") {
+			last = ""
+			continue
+		}
+		last = strings.TrimSpace(name)
+		attrs[last] = append(attrs[last], strings.Fields(rest)...)
+	}
+	return attrs
 }
