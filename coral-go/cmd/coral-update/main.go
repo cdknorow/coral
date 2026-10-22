@@ -123,6 +123,8 @@ func run(args []string, getenv func(string) string, stdout io.Writer) int {
 		Fetcher:        &verify.Fetcher{Client: newClient()},
 		Asset:          assetName(runtime.GOOS, runtime.GOARCH, portable),
 		BytesPerSecond: bytesPerSecond,
+		// On a Windows MSI install the installed version's own package is kept, verified, for the rollback (#162 (b)).
+		Rollback: runtime.GOOS == "windows" && !portable,
 	})
 	print(stdout, output{Result: res.Result, Installed: res.Installed, Version: res.Version, FailedStage: res.FailedStage, NextAttempt: res.NextAttempt, Trust: string(source)})
 	return 0
