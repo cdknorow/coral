@@ -19,7 +19,8 @@ import { pollEvery } from './overload.js';
 const INTERACT = new Set(['cmd-send', 'cmd-send-menu', 'cmd-send-team', 'send-menu-send', 'send-menu-team', 'send-menu-resend',
     'send-menu-protocol', 'cmd-quick', 'cmd-raw-keys', 'cmd-macro', 'macro-show', 'macro-delete', 'cmd-mode-toggle',
     'agent-rename', 'agent-icon', 'agent-archive']);
-const LAUNCH = new Set(['agent-restart', 'agent-attach', 'agent-kill', 'agent-sleep', 'team-sleep', 'board-chat-pause', 'mb-pause', 'mb-msg-delete']);
+const LAUNCH = new Set(['agent-restart', 'agent-attach', 'agent-kill', 'agent-sleep', 'team-sleep', 'board-chat-pause', 'mb-pause', 'mb-msg-delete',
+    'attach-image']); // POST /api/upload writes a file on the host: Launch (#6088)
 // Turning auto-accept on needs Launch, turning it off Interact: the menu item says which by aria-checked.
 const AUTO_ACCEPT = 'agent-auto-accept';
 // What #3942 moved to Launch through the Hub: sleeping a team, pausing a board and deleting a board message.
@@ -30,8 +31,9 @@ const BAR = { wake: 'launch', restart: 'launch', unarchive: 'interact' };
 
 function tierOf(el) {
     if (el.closest('#sleeping-composer')) return BAR[el.dataset.action] || '';
-    if (el.classList.contains('mobile-send-btn')) return 'interact';
     const a = el.dataset.onClick;
+    if (a === 'attach-image') return 'launch'; // before the phone's round buttons: its Add image button is one of them
+    if (el.classList.contains('mobile-send-btn')) return 'interact';
     if (a === AUTO_ACCEPT) return el.getAttribute('aria-checked') === 'true' ? 'interact' : 'launch';
     return INTERACT.has(a) ? 'interact' : LAUNCH.has(a) ? 'launch' : '';
 }

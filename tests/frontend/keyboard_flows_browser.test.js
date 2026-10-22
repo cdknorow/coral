@@ -77,9 +77,9 @@ const { settle } = require('./helpers/wait');
             await ev(`(() => { const t = document.getElementById('command-input'); const f = [...document.querySelectorAll('button, a[href], input, textarea, select, [tabindex="0"]')].filter(e => e.offsetParent && !e.disabled && e.tabIndex >= 0); const i = f.indexOf(t); f[i - 1].focus(); return true; })()`);
             const into = await tabs(1);
             assert.equal(into[0], 'Enter command or paste image', `${w} px: Tab from the control before the composer reaches the text box first (got ${into[0]})`);
-            const after = await tabs(mobile ? 2 : 12);
+            const after = await tabs(mobile ? 3 : 12);
             if (mobile) {
-                assert.deepEqual(after, ['Send with team reminder', 'Send'], `${w} px: after the text box come the two send buttons`);
+                assert.deepEqual(after, ['Add image', 'Send with team reminder', 'Send'], `${w} px: after the text box come Add image and the two send buttons`);
             } else {
                 const iStop = after.indexOf('Stop (Escape)'), iSend = after.indexOf('Send command'), iOpts = after.indexOf('Send options');
                 assert.ok(iStop >= 0 && iSend > iStop && iOpts > iSend, `${w} px: after the text box Tab reaches Stop, then Send, then Send options (got ${JSON.stringify(after)})`);

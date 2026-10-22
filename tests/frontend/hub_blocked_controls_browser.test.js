@@ -83,6 +83,7 @@ const HUB_PRELOAD = `(() => {
         }
     };
     const INTERACT_PANE = ['cmd-send', 'cmd-send-menu', 'cmd-raw-keys', 'cmd-macro'];
+    const LAUNCH_PANE = ['attach-image']; // the Add image button (#6088): POST /api/upload is Launch
     const INTERACT_ROW = ['agent-rename'];
     // Since #4274 stopping and sleeping one agent need Launch (the route table; #4526 moved them here from Interact), and turning
     // auto-accept on does too.
@@ -108,6 +109,7 @@ const HUB_PRELOAD = `(() => {
         await waitFor(`!!document.querySelector('#live-sessions-list [data-session-id="bc-awake-id"] [data-on-click=agent-rename].hub-blocked')`, 'Rename dimmed at View', 6000);
         let s = await state();
         blockedAs(s.pane, INTERACT_PANE, true, 'Interact', 'View pane');
+        blockedAs(s.pane, LAUNCH_PANE, true, 'Launch', 'View pane');
         blockedAs(s.row, INTERACT_ROW, true, 'Interact', 'View row');
         blockedAs(s.row, LAUNCH_ROW, true, 'Launch', 'View row');
         blockedAs(s.row, NEVER_ROW, false, '', 'View row (reads or rearranges)');
@@ -120,6 +122,7 @@ const HUB_PRELOAD = `(() => {
         await marked();
         s = await state();
         blockedAs(s.pane, INTERACT_PANE, false, '', 'Interact pane');
+        blockedAs(s.pane, LAUNCH_PANE, true, 'Launch', 'Interact pane');
         blockedAs(s.row, INTERACT_ROW, false, '', 'Interact row');
         blockedAs(s.row, LAUNCH_ROW, true, 'Launch', 'Interact row');
         console.log('   ✓ Send, keys, macros, Rename normal; Restart, Kill, Sleep and turning auto-accept on still say they need Launch');

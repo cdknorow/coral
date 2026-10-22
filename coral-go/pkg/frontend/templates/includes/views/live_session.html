@@ -156,6 +156,9 @@
                                 <div id="image-attachments" class="image-attachments"></div>
                                 <div class="command-editor">
                                     <textarea id="command-input" placeholder="Type a command or paste an image..." rows="3" autocomplete="off" aria-label="Enter command or paste image"></textarea>
+                                    <!-- Add image (#6088): inside the text box's corner, so no toolbar or button row has to find room for it -->
+                                    <button type="button" class="attach-image-btn" data-on-click="attach-image" aria-label="Add image" title="Add image"><span class="material-icons" aria-hidden="true">image</span></button>
+                                    <input type="file" id="attach-image-input" accept="image/png,image/jpeg,image/gif,image/webp,image/bmp,image/tiff" multiple hidden tabindex="-1" aria-hidden="true">
                                 </div>
                                 <button class="mobile-send-btn mobile-send-team-btn" data-on-click="cmd-send-team" aria-label="Send with team reminder" title="Send with a team reminder"><span class="material-icons" aria-hidden="true">groups</span></button>
                                 <button class="mobile-send-btn" data-on-click="cmd-send" aria-label="Send">

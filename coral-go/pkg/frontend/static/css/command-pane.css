@@ -59,6 +59,36 @@
     overflow: visible;
 }
 
+/* Add image (#6088): an icon in the bottom-left corner of the text box, which makes room for it. 32 px with a mouse, 44 px on a touch screen. */
+.attach-image-btn {
+    position: absolute;
+    left: 6px;
+    bottom: 6px;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    z-index: 1;
+}
+.attach-image-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+.attach-image-btn .material-icons { font-size: 1.25rem; }
+.command-editor:has(> .attach-image-btn) textarea { padding-left: 44px !important; }
+@media (pointer: coarse) {
+    .attach-image-btn { width: var(--control-touch-height, 44px); height: var(--control-touch-height, 44px); left: 2px; bottom: 0; }
+    .command-editor:has(> .attach-image-btn) textarea { padding-left: 50px !important; }
+}
+/* Not offered while the agent sleeps, and dimmed when the hub or the popout says the terminal is not for typing (as the Send buttons are). */
+#command-pane.agent-sleeping .attach-image-btn { display: none; }
+.command-pane.hub-view-only .attach-image-btn { opacity: 0.4; pointer-events: none; }
+body.popout-mode.popout-terminal-blocked .attach-image-btn { pointer-events: none; opacity: 0.5; }
+
 .command-editor {
     flex: 1;
     min-height: 0;

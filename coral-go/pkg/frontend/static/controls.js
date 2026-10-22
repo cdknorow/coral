@@ -13,9 +13,10 @@ import { stopCaptureRefresh } from './capture.js';
 import { renderLiveSessions, KILL_LOG_NOTE } from './render.js';
 import { loadAgentEvents, renderEventTimeline } from './agentic_state.js';
 import { addPendingMessage, confirmPendingMessage, removePendingMessage, resetLiveHistory, effectiveLiveViewMode } from './live_chat.js';
-import { serverFetch, currentServer, serverForSession, sessionServer } from './server_base.js';
+import { serverFetch, currentServer, serverForSession, sessionServer, isCloud } from './server_base.js';
 import { applySleepingView } from './sleeping_view.js';
-import { hubBlocked } from './hub_access.js';
+import { hubBlocked, blockedReason } from './hub_access.js';
+import { prepareImage, artifactErrorText, PICKER_ACCEPT, parseUploadReply, uploadStatusFailure, UPLOAD_UNFINISHED } from './image_attach.js';
 import { attachmentsLead } from './shared_images.js';
 import { loadModals } from './lazy_panels.js';
 import { responseErrorText, responseError } from './server_status.js';
@@ -976,6 +977,38 @@ function hasImageFiles(e) {
     return false;
 }
 
+/** The Add image button (#6088): opens the file picker (a phone offers Photo Library, Take Photo and Browse). Launch tier through Coral Hub, as the upload route is: a refused account is told why. This runs
+ *  straight from the tap, with nothing awaited before the click, or a phone would not open the picker. */
+export function openImagePicker() {
+    const session = state.currentSession;
+    if (!session || session.type !== "live") return;
+    if (sleepingBlocked()) return;
+    const why = blockedReason(sessionServer(session), "launch");
+    if (why) { showToast(why, true); return; }
+    const input = document.getElementById("attach-image-input");
+    if (!input) return;
+    if (!input.dataset.bound) { // bound on the first press, not at startup: the startup sequence stays as it was
+        input.dataset.bound = "1";
+        // The files are taken before the input is cleared, so the same photo can be chosen again.
+        input.addEventListener("change", () => {
+            const files = [...input.files];
+            input.value = "";
+            if (files.length) uploadPickedImages(files);
+        });
+    }
+    input.accept = PICKER_ACCEPT;
+    input.click();
+}
+
+/** Pictures chosen in the picker go up one after another, not at once (a phone on a slow connection, and the hub's limit on parallel requests); each is made smaller first when it is a big photo. */
+export async function uploadPickedImages(files, session = state.currentSession) {
+    for (const file of files) {
+        const prepared = await prepareImage(file, { viaHub: isCloud() });
+        if (prepared.error) { showToast(prepared.error, true); continue; }
+        await uploadAndInsertImage(prepared.file, session);
+    }
+}
+
 export async function uploadAndInsertImage(file, session = state.currentSession) {
     const targetSession = session || state.currentSession;
     const sid = targetSession?.session_id;
@@ -993,11 +1026,16 @@ export async function uploadAndInsertImage(file, session = state.currentSession)
                 method: "POST",
                 body: formData,
             });
+            // A failed upload says so in a sentence, with Retry where trying again can work (#6088: through Coral Hub an upload can be cut short and answered with an EMPTY 200).
+            const failed = (text, retry) => showToast(text, true, 10000, retry ? { action: { label: "Retry", onClick: () => uploadAndInsertImage(file, targetSession) } } : {});
             if (!resp.ok) {
-                showToast(`Image not uploaded: ${await responseErrorText(resp, sessionServer(targetSession), `HTTP ${resp.status}`)}`, true);
+                const known = uploadStatusFailure(resp.status);
+                if (known) failed(known.text, known.retry);
+                else showToast(`Image not uploaded: ${await responseErrorText(resp, sessionServer(targetSession), `HTTP ${resp.status}`)}`, true);
                 return false;
             }
-            const result = await resp.json();
+            const result = parseUploadReply(await resp.text());
+            if (!result) { failed(UPLOAD_UNFINISHED, true); return false; }
             if (result.error) {
                 showToast(result.error, true);
                 return false;
@@ -1016,10 +1054,10 @@ export async function uploadAndInsertImage(file, session = state.currentSession)
                 renderAttachments(targetSession);
                 document.getElementById("command-input")?.focus();
             }
-            showToast(result.artifact_error ? `Attached: ${result.filename} (not shared: ${result.artifact_error})` : `Attached: ${result.filename}`);
+            showToast(result.artifact_error ? `Attached: ${result.filename} (not shared: ${artifactErrorText(result)})` : `Attached: ${result.filename}`);
             return true;
         } catch (e) {
-            showToast("Failed to upload image", true);
+            showToast(UPLOAD_UNFINISHED, true, 10000, { action: { label: "Retry", onClick: () => uploadAndInsertImage(file, targetSession) } });
             console.error("Upload error:", e);
             return false;
         }
@@ -1146,6 +1184,7 @@ registerActions({
     'macro-show': () => showMacroModal(),
     'cmd-send': () => sendCommand({ nudge: true }),
     'cmd-send-team': () => sendCommandWithTeam(),
+    'attach-image': () => openImagePicker(),
     'cmd-send-menu': el => window.toggleSendMenu(el),
     'send-menu-send': () => { sendCommand({ nudge: true }); window.closeSendMenu(); },
     'send-menu-team': () => { sendCommandWithTeam(); window.closeSendMenu(); },
