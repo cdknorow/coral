@@ -1,6 +1,9 @@
 package routes
 
-import "strings"
+import (
+	"path"
+	"strings"
+)
 
 // Writes into the places git runs programs from are held by auto-accept (#186, Security's G4 on #86). Holding `git config core.hooksPath` is not enough if the same program can be
 // run by writing a hook file: `echo evil > .git/hooks/pre-commit` runs it at the next commit, `Set-Content .husky/pre-commit evil` at the next one a husky install makes, and a
@@ -68,6 +71,52 @@ func gitHookWhy(p string) string {
 	return "it writes into a place git runs programs from (" + p + "): a hook or git's config"
 }
 
+// underCwd reads relative paths from the folder a PowerShell cd moved to (cwd, as text, "" when none moved): a cd into .git\hooks then Set-Content pre-commit writes .git/hooks/pre-commit.
+func underCwd(cwd string, paths []string) []string {
+	if cwd == "" {
+		return paths
+	}
+	out := make([]string, len(paths))
+	for i, p := range paths {
+		q := strings.ReplaceAll(p, `\`, "/")
+		if strings.HasPrefix(q, "/") || (len(q) > 1 && q[1] == ':') || strings.HasPrefix(q, "~") || strings.HasPrefix(q, "$") {
+			out[i] = p
+			continue
+		}
+		out[i] = path.Clean(cwd + "/" + q)
+	}
+	return out
+}
+
+// cdTarget is the folder a PowerShell/cmd location command moves to, as text joined onto cwd, or cwd when it is not one or has no target.
+func cdTarget(cwd string, words []string) string {
+	if len(words) == 0 || !winLocationCmds[cmdName(words[0])] {
+		return cwd
+	}
+	for _, a := range words[1:] {
+		if strings.EqualFold(a, "/d") || strings.HasPrefix(strings.ToLower(a), "-path") && !strings.ContainsAny(a, ":=") || strings.HasPrefix(strings.ToLower(a), "-literalpath") && !strings.ContainsAny(a, ":=") || a == "--" {
+			continue
+		}
+		if k := strings.IndexAny(a, ":="); k > 0 && strings.HasPrefix(a, "-") {
+			a = a[k+1:]
+		} else if strings.HasPrefix(a, "-") {
+			continue
+		}
+		if a == "" || a == "-" {
+			return cwd
+		}
+		q := strings.ReplaceAll(a, `\`, "/")
+		if strings.HasPrefix(q, "/") || (len(q) > 1 && q[1] == ':') || strings.HasPrefix(q, "~") || strings.HasPrefix(q, "$") {
+			return q // an absolute folder: later relative paths are under it
+		}
+		if cwd == "" {
+			return path.Clean(q)
+		}
+		return path.Clean(cwd + "/" + q)
+	}
+	return cwd
+}
+
 // firstGitHookPath is the first of paths that is one of those places, or "".
 func firstGitHookPath(paths []string) string { return firstGitHookPlace(paths, false) }
 
@@ -109,6 +158,89 @@ func downloadOutputs(cmd string, args []string) []string {
 	return out
 }
 
+// archiveDests are the folders an extraction or a sync writes into: tar/bsdtar -x with -C/--directory, unzip -d, 7z x -o<dir>, rsync's last operand (the destination), and PowerShell's
+// Expand-Archive -DestinationPath (or its second operand). A folder here counts as a place when it IS a hooks folder: something extracted or copied into it puts files there. (What an
+// archive's own member paths name, say a .git/hooks/x member extracted at the repository root, is not read: a known limit.)
+func archiveDests(cmd string, args []string) []string {
+	var out []string
+	switch cmd {
+	case "tar", "bsdtar":
+		extract := false
+		for i, a := range args {
+			if a == "--extract" || a == "--get" || a == "-x" || (i == 0 && !strings.HasPrefix(a, "-") && strings.Contains(a, "x")) ||
+				(strings.HasPrefix(a, "-") && !strings.HasPrefix(a, "--") && strings.Contains(a, "x") && !strings.Contains(a, "=")) {
+				extract = true
+			}
+		}
+		if !extract {
+			return nil
+		}
+		for i, a := range args {
+			switch {
+			case (a == "-C" || a == "--directory") && i+1 < len(args):
+				out = append(out, args[i+1])
+			case strings.HasPrefix(a, "--directory="):
+				out = append(out, strings.TrimPrefix(a, "--directory="))
+			case len(a) > 2 && strings.HasPrefix(a, "-C"):
+				out = append(out, a[2:])
+			}
+		}
+	case "unzip":
+		for i, a := range args {
+			switch {
+			case a == "-d" && i+1 < len(args):
+				out = append(out, args[i+1])
+			case len(a) > 2 && strings.HasPrefix(a, "-d"):
+				out = append(out, a[2:])
+			}
+		}
+	case "7z", "7za", "7zr":
+		for _, a := range args {
+			if len(a) > 2 && strings.HasPrefix(a, "-o") {
+				out = append(out, a[2:])
+			}
+		}
+	case "rsync":
+		var operands []string
+		for _, a := range args {
+			if !strings.HasPrefix(a, "-") {
+				operands = append(operands, a)
+			}
+		}
+		if len(operands) >= 2 {
+			out = append(out, operands[len(operands)-1])
+		}
+	case "awk", "gawk":
+		// gawk -i inplace 'program' file...: the files are edited in place.
+		inplace := false
+		for i, a := range args {
+			if (a == "-i" && i+1 < len(args) && args[i+1] == "inplace") || a == "--include=inplace" || a == "-iinplace" {
+				inplace = true
+			}
+		}
+		if inplace {
+			var operands []string
+			skip := false
+			for i, a := range args {
+				switch {
+				case skip:
+					skip = false
+				case a == "-i" || a == "-v" || a == "-F" || a == "-f" || a == "-e":
+					skip = true
+					_ = i
+				case strings.HasPrefix(a, "-"):
+				default:
+					operands = append(operands, a)
+				}
+			}
+			if len(operands) > 1 {
+				out = append(out, operands[1:]...) // the first operand is the program text
+			}
+		}
+	}
+	return out
+}
+
 // posixHookWriteRisk is why a POSIX command writes into a place git runs programs from, or "": targets are its redirect targets, cmd/args the command.
 func posixHookWriteRisk(cmd string, args, targets []string, at func([]string) []string) string {
 	if p := firstGitHookPath(at(targets)); p != "" {
@@ -129,6 +261,8 @@ func posixHookWriteRisk(cmd string, args, targets []string, at func([]string) []
 		}
 	case "curl", "wget":
 		written = downloadOutputs(cmd, args)
+	case "tar", "bsdtar", "unzip", "7z", "7za", "7zr", "rsync", "awk", "gawk":
+		written, dest = archiveDests(cmd, args), true
 	case "touch", "truncate":
 		// creates or empties a file: no program arrives, but a hook that exists is emptied; not a write of one
 	}
@@ -139,8 +273,32 @@ func posixHookWriteRisk(cmd string, args, targets []string, at func([]string) []
 }
 
 // winHookWriteRisk is the same for a PowerShell or cmd stage: name is the lower-case verb, args its arguments after it and paths the path-like ones (winPaths).
-func winHookWriteRisk(name string, args, paths []string) string {
+func winHookWriteRisk(name string, args, paths []string, cwd string) string {
+	paths = underCwd(cwd, paths)
 	switch name {
+	case "tar", "bsdtar", "unzip", "7z", "7za", "7zr":
+		if p := firstGitHookPlace(underCwd(cwd, archiveDests(name, args)), true); p != "" {
+			return gitHookWhy(p)
+		}
+	case "expand-archive":
+		dest := ""
+		for i, a := range args {
+			if isParam(a, "destinationpath", 4) || isParam(a, "destination", 4) {
+				if k := strings.IndexAny(a, ":="); k > 0 {
+					dest = a[k+1:]
+				} else if i+1 < len(args) {
+					dest = args[i+1]
+				}
+			}
+		}
+		if dest == "" && len(paths) >= 2 {
+			dest = paths[1] // Expand-Archive <zip> <destination>
+		}
+		if dest != "" {
+			if p := firstGitHookPlace(underCwd(cwd, []string{dest}), true); p != "" {
+				return gitHookWhy(p)
+			}
+		}
 	case "new-item", "ni":
 		// -Path <folder> -Name <file> makes <folder>\<file>: with a -Name the path is the folder it is made in.
 		named := false
@@ -166,7 +324,7 @@ func winHookWriteRisk(name string, args, paths []string) string {
 			}
 		}
 	case "invoke-webrequest", "iwr", "invoke-restmethod", "irm", "curl", "wget":
-		if p := firstGitHookPath(downloadOutputs(name, args)); p != "" {
+		if p := firstGitHookPath(underCwd(cwd, downloadOutputs(name, args))); p != "" {
 			return gitHookWhy(p)
 		}
 	case "mklink":
