@@ -199,7 +199,7 @@ var winSwitches = func() map[string]bool {
 var winPathParams = []struct {
 	name string
 	min  int
-}{{"path", 1}, {"literalpath", 1}, {"destination", 3}, {"filepath", 2}, {"outfile", 3}}
+}{{"path", 1}, {"literalpath", 1}, {"destination", 3}, {"destinationpath", 3}, {"filepath", 2}, {"outfile", 3}}
 
 // winPaths are the path arguments of a stage: values of the path parameters, and every word that is not a switch.
 func winPaths(args []string) []string { return winPathsMode(args, false) }

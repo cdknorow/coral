@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -19,5 +20,36 @@ func TestAnEmptyArgumentIsNotAPath(t *testing.T) {
 		`Invoke-WebRequest '' -OutFile x`, `7z x ''`, `tar -xf ''`, `cmd /c del ""`, `git config --global credential.helper ''`,
 	} {
 		assert.NotPanics(t, func() { _ = shellRisk(c, wd) }, c)
+	}
+}
+
+// -DestinationPath is a path parameter (Expand-Archive, Compress-Archive): winPathParams only knew its prefix "destination", which "destinationpath" is not a prefix OF, so
+// `Expand-Archive -Path x.zip -DestinationPath C:\Windows\Temp\x` named no path and was let through. (The positional Expand-Archive form was already held by the generic rule.)
+func TestDestinationPathIsAPathParameter(t *testing.T) {
+	assert.Equal(t, []string{"x.zip", `C:\out`}, winPaths([]string{"-Path", "x.zip", "-DestinationPath", `C:\out`}))
+	assert.Equal(t, []string{`C:\out`}, winPaths([]string{`-DestinationPath:C:\out`}))
+	assert.Equal(t, []string{`C:\out`}, winPaths([]string{"-DestinationP", `C:\out`}))
+	assert.Equal(t, []string{`C:\out`}, winPaths([]string{"-Destination", `C:\out`}), "-Destination still works")
+
+	wd := t.TempDir()
+	for _, c := range []string{
+		`Expand-Archive -Path x.zip -DestinationPath C:\Windows\Temp\x`,
+		`Expand-Archive -Path x.zip -DestinationPath:C:\Windows\Temp\x`,
+		`Expand-Archive x.zip -DestinationPath C:\Windows\Temp\x -Force`,
+		`Compress-Archive -Path src -DestinationPath C:\Windows\Temp\x.zip`,
+		`Compress-Archive -Path src -DestinationPath:C:\Windows\Temp\x.zip -Update`,
+		`Compress-Archive src -DestinationPath ..\..\x.zip`,
+	} {
+		if runtime.GOOS == "windows" {
+			assert.NotEmpty(t, shellRisk(c, wd), "should be held: %s", c)
+		}
+		assert.NotEmpty(t, winVerbRisk(c, func(p string) bool { return !pathInside(p, wd) }), "should be held (the Windows reader): %s", c)
+	}
+	for _, c := range []string{
+		`Expand-Archive -Path x.zip -DestinationPath out`,
+		`Expand-Archive -Path x.zip -DestinationPath:out`,
+		`Compress-Archive -Path src -DestinationPath out.zip`,
+	} {
+		assert.Empty(t, winVerbRisk(c, func(p string) bool { return !pathInside(p, wd) }), "should be allowed: %s", c)
 	}
 }
