@@ -331,3 +331,47 @@ func TestASendBehindACodexHistoryLineGoesAfterARedraw(t *testing.T) {
 	assert.Equal(t, 1, term.repaints)
 	assert.Equal(t, []string{"You have 1 unread message on the message board. Run 'coral-board read' to see them."}, term.submitted)
 }
+
+// Once Coral's text has been delivered (its Enter seen to empty the box), the same words typed later by a person are a draft: they are not Coral's leftover, so they are
+// never submitted for it (QA's finding on #108: the gate forgot its texts only after a leftover submit).
+func TestACodexTextDeliveredNormallyIsForgottenSoAPersonsIdenticalDraftIsHeld(t *testing.T) {
+	dialogGate(t, time.Hour)
+	term := &codexTerm{}
+	name := "codex-composer-forget-normal"
+	t.Cleanup(func() { DropHeld(name, "test"); gate.forgetOwnTexts(name) })
+	text := "You have 1 unread message on the message board. Run 'coral-board read' to see them."
+
+	d, err := DeliverAutomated(context.Background(), codexInput(term, name, "", text, false))
+	require.NoError(t, err)
+	assert.Equal(t, Sent, d)
+	_, submitted, _ := term.state()
+	require.Equal(t, []string{text}, submitted, "delivered through the box")
+	assert.False(t, gate.ownLeftover(name, text), "the words are no longer taken for Coral's")
+
+	// a person types the same words into the box: that is a draft, and the next send is held behind it, never submitted for Coral
+	term.mu.Lock()
+	term.box = text
+	term.mu.Unlock()
+	d, err = DeliverAutomated(context.Background(), codexInput(term, name, "", "[Task #9 available] Run 'coral-board task claim 9' to claim it.", false))
+	require.NoError(t, err)
+	assert.Equal(t, Held, d, "a person's draft holds the send")
+	_, submitted, box := term.state()
+	assert.Len(t, submitted, 1, "the draft was not submitted")
+	assert.Equal(t, text, box, "and it is still in the box")
+}
+
+// forgetOwnText drops only the newest matching record: other texts of Coral's that may still be stacked in a box stay recognised.
+func TestForgetOwnTextDropsOnlyThatText(t *testing.T) {
+	dialogGate(t, time.Hour)
+	name := "codex-composer-forget-one"
+	t.Cleanup(func() { gate.forgetOwnTexts(name) })
+	a, b := "first nudge text for the agent", "second nudge text for the agent"
+	gate.noteOwnText(name, a)
+	gate.noteOwnText(name, b)
+	gate.forgetOwnText(name, a)
+	assert.False(t, gate.ownLeftover(name, a))
+	assert.True(t, gate.ownLeftover(name, b), "the other text is still Coral's")
+	gate.forgetOwnText(name, "never typed")
+	gate.forgetOwnText(name, "")
+	assert.True(t, gate.ownLeftover(name, b))
+}
