@@ -231,7 +231,7 @@ const SHOTS = process.env.CORAL_SCREENSHOT_DIR;
         await ev(`window.__previewFixture=null;window.__items=window.__originalItems`);
         // Empty, error and retry states.
         await ev(`window.__mode='empty'`); await click('.team-artifacts-refresh'); await settle();
-        assert.match(await text(), /No artifacts shared/);
+        assert.match(await text(), /No artifacts yet/);
         await ev(`window.__mode='error'`); await click('.team-artifacts-refresh'); await settle();
         assert.match(await text(), /Unable to load team artifacts \(503\)/);
         await ev(`window.__mode='normal'`); await click('#agentic-panel-team-artifacts-view > button'); await settle();
@@ -257,7 +257,7 @@ const SHOTS = process.env.CORAL_SCREENSHOT_DIR;
         assert.doesNotMatch(await text(), /Design review/);
         assert.match(await text(), /new-team/);
         await ev(`window.__items=[]; window.__pending[1]()`); await settle();
-        assert.match(await text(), /No artifacts shared/);
+        assert.match(await text(), /No artifacts yet/);
         // Switching to Files cancels lazy work and remains the selected source.
         await click('#agentic-tab-files');
         const count = (await ev('window.__calls')).length;
