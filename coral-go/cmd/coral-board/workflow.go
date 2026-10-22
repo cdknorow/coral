@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/subgentic/coral/internal/clierr"
 	"io"
 	"net/http"
 	"net/url"
@@ -26,12 +27,14 @@ func workflowAPICall(method, path string, body any) ([]byte, int, error) {
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	client := &http.Client{Timeout: 10 * time.Second}
+	wait := clierr.Timeout(10 * time.Second)
+	client := &http.Client{Timeout: wait}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, 0, fmt.Errorf("cannot reach Coral server at %s: %v", redactedServerURL(), err)
+		return nil, 0, clierr.CannotReach(redactedServerURL(), err, wait)
 	}
 	defer resp.Body.Close()
+	clierr.NoteStatus(resp.StatusCode)
 	respData, _ := readServer(resp.Body)
 	return respData, resp.StatusCode, nil
 }
@@ -39,7 +42,7 @@ func workflowAPICall(method, path string, body any) ([]byte, int, error) {
 func cmdWorkflow() {
 	if len(os.Args) < 3 {
 		printWorkflowUsage()
-		os.Exit(1)
+		clierr.Exit1()
 	}
 
 	sub := os.Args[2]
@@ -62,7 +65,7 @@ func cmdWorkflow() {
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown workflow subcommand: %s\n", sub)
 		printWorkflowUsage()
-		os.Exit(1)
+		clierr.Exit1()
 	}
 }
 
@@ -92,32 +95,32 @@ func cmdWorkflowCreate() {
 	}
 	if filePath == "" {
 		fmt.Fprintln(os.Stderr, "Usage: coral-board workflow create --file <path>")
-		os.Exit(1)
+		clierr.Exit1()
 	}
 
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error reading file: %v\n", err)
-		os.Exit(1)
+		clierr.Exit1()
 	}
 
 	// Validate it's valid JSON
 	var body map[string]any
 	if err := json.Unmarshal(data, &body); err != nil {
 		fmt.Fprintf(os.Stderr, "Invalid JSON: %v\n", err)
-		os.Exit(1)
+		clierr.Exit1()
 	}
 
 	respData, status, err := workflowAPICall("POST", "", json.RawMessage(data))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	if status != http.StatusCreated && status != http.StatusOK {
 		var errResp map[string]string
 		json.Unmarshal(respData, &errResp)
 		fmt.Fprintf(os.Stderr, "Error creating workflow: %s\n", errResp["error"])
-		os.Exit(1)
+		clierr.Exit1()
 	}
 
 	var wf map[string]any
@@ -131,11 +134,11 @@ func cmdWorkflowList() {
 	respData, status, err := workflowAPICall("GET", "", nil)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	if status != http.StatusOK {
 		fmt.Fprintf(os.Stderr, "Error listing workflows: %s\n", string(respData))
-		os.Exit(1)
+		clierr.Exit1()
 	}
 
 	var result map[string]any
@@ -180,7 +183,7 @@ func cmdWorkflowTrigger() {
 	args := os.Args[3:]
 	if len(args) < 1 {
 		fmt.Fprintln(os.Stderr, "Usage: coral-board workflow trigger <name> [--context '{...}']")
-		os.Exit(1)
+		clierr.Exit1()
 	}
 
 	name := args[0]
@@ -198,7 +201,7 @@ func cmdWorkflowTrigger() {
 		var ctx json.RawMessage
 		if err := json.Unmarshal([]byte(triggerCtx), &ctx); err != nil {
 			fmt.Fprintf(os.Stderr, "Invalid context JSON: %v\n", err)
-			os.Exit(1)
+			clierr.Exit1()
 		}
 		body["context"] = ctx
 	}
@@ -206,13 +209,13 @@ func cmdWorkflowTrigger() {
 	respData, status, err := workflowAPICall("POST", "/by-name/"+url.PathEscape(name)+"/trigger", body)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	if status != http.StatusOK {
 		var errResp map[string]string
 		json.Unmarshal(respData, &errResp)
 		fmt.Fprintf(os.Stderr, "Error triggering workflow: %s\n", errResp["error"])
-		os.Exit(1)
+		clierr.Exit1()
 	}
 
 	var result map[string]any
@@ -226,20 +229,20 @@ func cmdWorkflowStatus() {
 	args := os.Args[3:]
 	if len(args) < 1 {
 		fmt.Fprintln(os.Stderr, "Usage: coral-board workflow status <run-id>")
-		os.Exit(1)
+		clierr.Exit1()
 	}
 
 	runID := args[0]
 	respData, status, err := workflowAPICall("GET", "/runs/"+runID, nil)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	if status != http.StatusOK {
 		var errResp map[string]string
 		json.Unmarshal(respData, &errResp)
 		fmt.Fprintf(os.Stderr, "Error: %s\n", errResp["error"])
-		os.Exit(1)
+		clierr.Exit1()
 	}
 
 	var run map[string]any
@@ -334,11 +337,11 @@ func cmdWorkflowRuns() {
 		wfData, wfStatus, err := workflowAPICall("GET", "/by-name/"+url.PathEscape(workflowName), nil)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
+			clierr.Exit1()
 		}
 		if wfStatus != http.StatusOK {
 			fmt.Fprintf(os.Stderr, "Workflow '%s' not found\n", workflowName)
-			os.Exit(1)
+			clierr.Exit1()
 		}
 		var wf map[string]any
 		json.Unmarshal(wfData, &wf)
@@ -357,11 +360,11 @@ func cmdWorkflowRuns() {
 	respData, status, err := workflowAPICall("GET", path, nil)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	if status != http.StatusOK {
 		fmt.Fprintf(os.Stderr, "Error: %s\n", string(respData))
-		os.Exit(1)
+		clierr.Exit1()
 	}
 
 	var result map[string]any
@@ -396,20 +399,20 @@ func cmdWorkflowKill() {
 	args := os.Args[3:]
 	if len(args) < 1 {
 		fmt.Fprintln(os.Stderr, "Usage: coral-board workflow kill <run-id>")
-		os.Exit(1)
+		clierr.Exit1()
 	}
 
 	runID := args[0]
 	respData, status, err := workflowAPICall("POST", "/runs/"+runID+"/kill", nil)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	if status != http.StatusOK {
 		var errResp map[string]string
 		json.Unmarshal(respData, &errResp)
 		fmt.Fprintf(os.Stderr, "Error: %s\n", errResp["error"])
-		os.Exit(1)
+		clierr.Exit1()
 	}
 
 	fmt.Printf("Killed workflow run #%s\n", runID)

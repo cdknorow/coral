@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/subgentic/coral/internal/clierr"
 	"io"
 	"net/http"
 	"net/url"
@@ -73,9 +74,10 @@ func docsGet(path string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	resp, err := (&http.Client{Timeout: 15 * time.Second}).Do(req)
+	wait := clierr.Timeout(15 * time.Second)
+	resp, err := (&http.Client{Timeout: wait}).Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("could not reach Coral at %s: %w", hooks.RedactedURL(serverURL), err)
+		return nil, clierr.CannotReach(hooks.RedactedURL(serverURL), err, wait)
 	}
 	defer resp.Body.Close()
 	b, _ := readServer(resp.Body)
