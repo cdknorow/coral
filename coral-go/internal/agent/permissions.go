@@ -339,9 +339,15 @@ func ValidPermissionMode(mode string) bool {
 //   - every type: --model / -m, and --permission-mode default|plan (Coral translates it per type; for Claude only default|manual: its Plan mode runs classifier-approved commands without asking, #5894)
 //   - Claude, agy, Antigravity: --effort (the thinking level, agentmodels.ThinkingArgs)
 //   - agy, Antigravity, Gemini: --mode plan, --approval-mode default|plan
+//   - Pi: nothing. Pi has no mode that asks, so every Pi launch skips (#5901)
 //   - Codex: -a / --ask-for-approval / --approval-mode untrusted|on-request, -s / --sandbox
 //     read-only|workspace-write (Coral's default for Codex), -c / --config model_reasoning_effort=<level> (a lowercase word)
 func SkipsPermissionPrompts(agentType string, flags []string) bool {
+	if agentType == at.Pi {
+		// Pi has no mode that asks: its tools run with the launching user's permissions, with no approval before a call (Pi's security documentation, #5901), so any Pi launch counts
+		// as skipping, whatever its flags: a Coral Hub request for one needs the owner's switch, Launch mode and the dashboard's provenance, like Auto.
+		return true
+	}
 	for i := 0; i < len(flags); i++ {
 		name, value, inline := strings.Cut(flags[i], "=")
 		keeps := promptKeepingFlag(agentType, name)

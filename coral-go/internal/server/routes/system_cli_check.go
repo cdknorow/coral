@@ -64,7 +64,7 @@ func (h *SystemHandler) CLICheck(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			if p := agent.ResolveCLIPath(settings, agentType); p != "" {
-				if err := configuredCLIRunnable(p); err != nil {
+				if err := configuredCLIRunnable(p, agentType); err != nil {
 					writeJSON(w, http.StatusOK, hubCLIReply(r, map[string]any{
 						"found":      false,
 						"status":     tracking.PrereqMissing,
@@ -244,10 +244,13 @@ func probeCLIVersion(parent context.Context, path string) (version, probe string
 }
 
 // configuredCLIRunnable reports why a configured CLI path can't be run, as FindCLI does for launch (#115).
-func configuredCLIRunnable(p string) error {
+func configuredCLIRunnable(p, agentType string) error {
 	resolved, err := cliLookPath(p)
 	if err != nil {
 		return err
 	}
-	return agent.CheckRunnable(resolved)
+	if err := agent.CheckRunnable(resolved); err != nil {
+		return err
+	}
+	return agent.CheckNotRealGemini(agentType, resolved) // the gemini type runs agy (#5901)
 }

@@ -430,6 +430,9 @@ func FindCLI(settings map[string]string, agentType string) (string, error) {
 		if err == nil {
 			err = CheckRunnable(resolved)
 		}
+		if err == nil {
+			err = CheckNotRealGemini(agentType, resolved)
+		}
 		if err != nil {
 			return "", &CLIPathError{AgentType: agentType, Path: p, Err: err}
 		}

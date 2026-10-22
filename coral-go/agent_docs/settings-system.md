@@ -59,7 +59,7 @@ boolean settings in any case, so `true` and `"true"` mean the same.
 | `terminal_replay_bytes` | 262144 | How much recent terminal output a newly opened terminal is sent first (see websockets.md), clamped to 4 KiB to 16 MiB. Applies to terminals opened from then on. |
 
 **CLI paths:** `cli_path_<type>` (Settings › CLI paths: `claude`, `codex`, `agy`,
-`antigravity`, `gemini`, `pi`) is the program Coral runs for that agent type. A new value
+`antigravity`, `gemini`, `pi`) is the program Coral runs for that agent type. The `gemini` type is Antigravity compatibility: it runs agy, with agy's flags and model list (`agy` and `gemini` share one path field in Settings), so a path that is the real Gemini CLI is refused when a launch or the CLI check reaches it, with a setup error naming the setting. A new value
 must be an absolute path to an executable regular file (a symlink to one is fine) with no
 shell metacharacters (`' " \` $ ; & | < > * ? !`) or control characters; `""` clears it.
 Otherwise the whole request is refused with `400` and the reason, and nothing in it is
