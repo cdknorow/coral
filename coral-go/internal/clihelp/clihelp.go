@@ -87,3 +87,55 @@ func CheckTextFlags(args []string, textFlags map[string]bool) error {
 	}
 	return nil
 }
+
+// FlagSpec lists the options and positional arguments one command takes, for CheckFlags.
+type FlagSpec struct {
+	Bools      []string // options without a value, given with their dashes: "--json", "-a"
+	Values     []string // options that take the next argument (or --name=value): "--id"
+	Positional int      // how many arguments that are not options it takes; -1 for any number
+}
+
+// CheckFlags rejects what a command does not take: an option that is not in spec, a value option with no value, and more positional
+// arguments than spec allows. Arguments after "--" are positional. A command that did not check used to ignore a misspelt option and
+// carry on (coral-board read --jsno printed a table; task list --json printed a table, and a script read it as JSON).
+func CheckFlags(args []string, spec FlagSpec) error {
+	known := map[string]bool{}
+	for _, f := range spec.Bools {
+		known[f] = false
+	}
+	for _, f := range spec.Values {
+		known[f] = true
+	}
+	var positional []string
+	note := func(a string) { positional = append(positional, a) }
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if a == "--" {
+			for _, rest := range args[i+1:] {
+				note(rest)
+			}
+			break
+		}
+		if !strings.HasPrefix(a, "-") || a == "-" || !flagLike.MatchString(strings.SplitN(a, "=", 2)[0]) {
+			note(a) // text, a number or a path: not an option
+			continue
+		}
+		name, _, inline := strings.Cut(a, "=")
+		takesValue, ok := known[name]
+		if !ok {
+			return fmt.Errorf("unknown option %q", name)
+		}
+		if takesValue && !inline {
+			if i+1 >= len(args) {
+				return fmt.Errorf("%s needs a value", name)
+			}
+			i++
+		} else if !takesValue && inline {
+			return fmt.Errorf("%s takes no value", name)
+		}
+	}
+	if spec.Positional >= 0 && len(positional) > spec.Positional {
+		return fmt.Errorf("unexpected argument %q", positional[spec.Positional])
+	}
+	return nil
+}

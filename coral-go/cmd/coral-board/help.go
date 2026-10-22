@@ -60,10 +60,19 @@ func commandUsage(cmd string, rest []string) string {
 		return full
 	}
 	if lines := clihelp.UsageLines(usageText, cmd); lines != "" {
+		if cmd == "post" || cmd == "send" {
+			lines += "\n\n" + windowsTextNote
+		}
 		return "Usage: coral-board <command> [args]\n\n" + lines
 	}
 	return usageText
 }
+
+// windowsTextNote is added to post's and send's help: the two things that damage a message on Windows before Coral sees it.
+const windowsTextNote = `On Windows: PowerShell 5.1 drops the double quotes inside a native program's argument and turns
+non-ASCII text into '?' when piped to one. For text with quotes or non-ASCII use --file <path> (a UTF-8
+file), or pipe to "-" after  $OutputEncoding = [Text.UTF8Encoding]::new()  (PowerShell 7 and cmd.exe
+need neither).`
 
 // checkFreeText rejects free text that is really an option, so a mistyped
 // flag is never posted or stored: the first word of a post, and the value of
@@ -78,7 +87,7 @@ func checkFreeText(args []string) error {
 			if rest[i] == "--" {
 				break
 			}
-			if rest[i] == "--to" {
+			if rest[i] == "--to" || rest[i] == "--file" {
 				i++
 				continue
 			}
@@ -95,7 +104,7 @@ func checkFreeText(args []string) error {
 				break
 			}
 			switch rest[i] {
-			case "--board", "--to", "--address", "--reply-to", "--message-id", "--attach":
+			case "--board", "--to", "--address", "--reply-to", "--message-id", "--attach", "--file":
 				i++
 				continue
 			}

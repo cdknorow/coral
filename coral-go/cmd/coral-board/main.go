@@ -45,6 +45,14 @@ func main() {
 		os.Exit(2)
 	}
 
+	if err := checkKnownFlags(os.Args[1:]); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		if u := commandUsage(os.Args[1], os.Args[2:]); u != "" {
+			fmt.Fprintln(os.Stderr, u)
+		}
+		os.Exit(2)
+	}
+
 	cmd := os.Args[1]
 	switch cmd {
 	case "join":
@@ -115,6 +123,11 @@ Commands:
                                coral://artifacts/<digest> in the short post.
                                Never use backticks or $( ) in double-quoted
                                post arguments.
+                               The text must be UTF-8; a leading byte-order mark
+                               is dropped, CRLF becomes LF and one final newline
+                               is dropped; nothing else
+  post --file <path> [--to "a,b"]
+                               Post the text of a UTF-8 file, same rules
   read [--all] [--last N] [--id N] [--json]
                                Read new messages (tagged only by default; --all
                                for all), the newest N (marks older unread
@@ -123,7 +136,8 @@ Commands:
   check [--quiet]              Check unread count
   projects                     List all boards
   subscribers                  List board subscribers
-  status [--board NAME]         JSON snapshot of agent availability and open work
+  status [--board NAME] [--json]  JSON snapshot of agent availability and open work
+                               (always JSON; --json is accepted)
   working-mode [--board NAME] [--mode ID] [--custom-instructions TEXT]
   working-mode --presets | --create ID | --edit ID | --reset ID
                                Use --name NAME --instructions TEXT when creating/editing
@@ -132,6 +146,7 @@ Commands:
   queue [--json]               The merge queue: approved tasks whose patches have not landed
   peek "<agent>" [--lines N]   Peek at agent's terminal (orchestrator only)
   send --board <target> [--to <orchestrator>] [--attach coral://artifacts/<id> ...] "<message>"
+       (or --file <path> instead of the message: a UTF-8 file, as for post)
                                Message another team's Orchestrator (Orchestrators
                                and the Operator only; both boards must allow it);
                                "-" as the message reads it from stdin.
@@ -184,7 +199,14 @@ Output:
 
 Environment:
   CORAL_URL   Server URL (default http://localhost:8420)
-  CORAL_PORT  Server port (overrides CORAL_URL)`
+  CORAL_PORT  Server port (overrides CORAL_URL)
+
+Windows:
+  Windows PowerShell 5.1 drops the double quotes inside a native program's argument,
+  and turns non-ASCII text (accents, symbols, emoji) into '?' when you pipe it to one.
+  For text with quotes or non-ASCII, use  post --file <path>  with a UTF-8 file, or
+  pipe to  post -  after  $OutputEncoding = [Text.UTF8Encoding]::new()  (PowerShell 7
+  and cmd.exe do not need it). Options coral-board does not know are refused (exit 2).`
 
 // exitFn is os.Exit, replaced in tests that check a refused command.
 var exitFn = os.Exit

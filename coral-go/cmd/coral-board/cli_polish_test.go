@@ -1,0 +1,190 @@
+package main
+
+import (
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+// bom is a UTF-8 byte-order mark, which Notepad and Windows PowerShell put at the start of a file.
+var bom = string(rune(0xFEFF))
+
+// An option a command does not take is refused with exit 2 and the usage, and nothing is sent (#222). Each of these used to run and print as if
+// the option were not there.
+func TestUnknownOptionsAreRefusedWithoutAnyRequest(t *testing.T) {
+	srv := newRecordingServer(t)
+	dir := subscribedDataDir(t, srv.URL)
+	for _, args := range [][]string{
+		{"read", "--not-a-flag"},
+		{"read", "--jsno"},
+		{"read", "extra"},
+		{"check", "--loud"},
+		{"task", "list", "--not-a-flag"},
+		{"task", "list", "--json=yes"},
+		{"task", "current", "--nope"},
+		{"task", "detail", "1", "--nope"},
+		{"task", "detail", "1", "2"},
+		{"status", "--nope"},
+		{"queue", "--nope"},
+		{"projects", "--x"},
+		{"subscribers", "--x"},
+		{"leave", "--x"},
+		{"targets", "--x"},
+	} {
+		res := runBoard(t, srv.URL, dir, args...)
+		assert.Equal(t, 2, res.code, "%v: stderr %q", args, res.stderr)
+		assert.Contains(t, res.stderr, "Usage:", "%v", args)
+	}
+	assert.Empty(t, srv.requests(), "a refused command reaches no server")
+}
+
+// read's numbers: 0, a negative, a word and a number too big for an int were read as "not given".
+func TestReadRefusesBadNumbers(t *testing.T) {
+	srv := newRecordingServer(t)
+	dir := subscribedDataDir(t, srv.URL)
+	for _, args := range [][]string{
+		{"read", "--last", "0"}, {"read", "--last", "-3"}, {"read", "--last", "abc"}, {"read", "--last", "99999999999999999999"},
+		{"read", "--id", "0"}, {"read", "--id", "x"}, {"read", "--id=-1"}, {"read", "--last"},
+	} {
+		res := runBoard(t, srv.URL, dir, args...)
+		assert.Equal(t, 2, res.code, "%v: stderr %q", args, res.stderr)
+	}
+	assert.Empty(t, srv.requests())
+	res := runBoard(t, srv.URL, dir, "read", "--last=5", "--json")
+	assert.NotEqual(t, 2, res.code, "valid numbers still run: %q", res.stderr)
+}
+
+func TestCheckKnownFlagsAcceptsWhatTheCommandsTake(t *testing.T) {
+	for _, args := range [][]string{
+		{"read"}, {"read", "--all"}, {"read", "-a", "--json"}, {"read", "--id", "7"}, {"read", "--last=3"},
+		{"check", "--quiet"}, {"status"}, {"status", "--json"}, {"status", "--board", "team", "--activity"},
+		{"queue", "--json"}, {"task", "list"}, {"task", "list", "--json"}, {"task", "detail", "4", "--json"}, {"task", "detail"},
+		{"task", "add", "a title", "--body", "x"}, // not in the table: its own parser
+		{"post", "--nope"},                        // post's own check handles its text
+		{"wait", "--timeout", "1m"},
+	} {
+		assert.NoError(t, checkKnownFlags(args), "%v", args)
+	}
+}
+
+// What stdin and --file change in a message, and nothing else (#222-C).
+func TestInputTextNormalisation(t *testing.T) {
+	cases := []struct{ name, in, want string }{
+		{"final newline", "a\n", "a"},
+		{"only one final newline goes", "a\n\n", "a\n"},
+		{"crlf", "a\r\nb\r\n", "a\nb"},
+		{"bom", "" + bom + "a", "a"},
+		{"bom and crlf", "" + bom + "a\r\nb\r\n", "a\nb"},
+		{"inner blank lines and indentation stay", "a\n\n  b\n", "a\n\n  b"},
+		{"a lone cr stays", "a\rb", "a\rb"},
+	}
+	for _, c := range cases {
+		got, err := normalizeInputText([]byte(c.in), "message", "on stdin")
+		require.NoError(t, err, c.name)
+		assert.Equal(t, c.want, got, c.name)
+	}
+	for name, in := range map[string][]byte{
+		"empty": nil, "only whitespace": []byte(" \r\n\n"),
+		"utf-16 le": {0xFF, 0xFE, 'a', 0}, "utf-16 be": {0xFE, 0xFF, 0, 'a'}, "latin-1": {'c', 'a', 'f', 0xE9},
+	} {
+		_, err := normalizeInputText(in, "message", "on stdin")
+		assert.Error(t, err, name)
+	}
+	_, err := normalizeInputText([]byte{0xFF, 0xFE, 'a', 0}, "message", "on stdin")
+	assert.Contains(t, err.Error(), "UTF-16", "says what it is")
+	assert.Contains(t, err.Error(), "$OutputEncoding", "and the PowerShell 5.1 fix")
+}
+
+// post --file posts the file's text, with the same rules as stdin; --file and message text do not mix.
+func TestPostFilePostsTheFile(t *testing.T) {
+	srv := newRecordingServer(t)
+	dir := subscribedDataDir(t, srv.URL)
+	file := filepath.Join(t.TempDir(), "msg.txt")
+	require.NoError(t, os.WriteFile(file, []byte(""+bom+"café \"quoted\" — ok\r\nsecond line\r\n"), 0o600))
+	res := runBoard(t, srv.URL, dir, "post", "--file", file, "--to", "Lead")
+	require.Equal(t, 0, res.code, res.stderr)
+	assert.Equal(t, "@Lead café \"quoted\" — ok\nsecond line", postedContent(t, srv))
+
+	srv2 := newRecordingServer(t)
+	dir2 := subscribedDataDir(t, srv2.URL)
+	for _, args := range [][]string{
+		{"post", "--file", file, "also text"},
+		{"post", "--file", filepath.Join(t.TempDir(), "missing.txt")},
+		{"post", "--file"},
+		{"post", "--to"},
+	} {
+		res := runBoard(t, srv2.URL, dir2, args...)
+		assert.Equal(t, 2, res.code, "%v: %q", args, res.stderr)
+	}
+	assert.Empty(t, srv2.requests())
+}
+
+func TestPostHelpTellsAWindowsUserWhatToDo(t *testing.T) {
+	srv := newRecordingServer(t)
+	res := runBoard(t, srv.URL, subscribedDataDir(t, srv.URL), "post", "--help")
+	require.Equal(t, 0, res.code)
+	for _, want := range []string{"--file", "$OutputEncoding", "PowerShell 5.1", "byte-order mark", "one final newline"} {
+		assert.Contains(t, res.stdout, want)
+	}
+	res = runBoard(t, srv.URL, subscribedDataDir(t, srv.URL), "send", "--help")
+	assert.Contains(t, res.stdout, "--file")
+	assert.True(t, strings.Contains(res.stdout, "$OutputEncoding"))
+}
+
+// task list --json prints the tasks as a JSON array (an empty board is [], never null), and the table is unchanged without it.
+func TestTaskListJSON(t *testing.T) {
+	isolateBoardEnv(t)
+	tasks := []map[string]any{
+		{"id": 2, "status": "in_progress", "priority": "low", "assigned_to": "a", "title": "second", "workflow": map[string]any{}},
+		{"id": 1, "status": "pending", "priority": "high", "title": "first", "workflow": map[string]any{}},
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{"tasks": tasks})
+	}))
+	defer srv.Close()
+	serverURL = srv.URL
+
+	run := func(asJSON bool) string {
+		r, w, err := os.Pipe()
+		require.NoError(t, err)
+		old := os.Stdout
+		os.Stdout = w
+		done := make(chan string)
+		go func() { b, _ := io.ReadAll(r); done <- string(b) }()
+		cmdTaskList(&boardState{Project: "team"}, asJSON)
+		w.Close()
+		os.Stdout = old
+		return <-done
+	}
+	var got []map[string]any
+	require.NoError(t, json.Unmarshal([]byte(run(true)), &got), "valid JSON, not a table")
+	require.Len(t, got, 2)
+	assert.EqualValues(t, 1, got[0]["id"], "in the table's order: priority, then id")
+	assert.Equal(t, "second", got[1]["title"])
+	assert.Contains(t, run(false), "ID", "the table is still the default")
+
+	tasks = nil
+	assert.Equal(t, "[]", strings.TrimSpace(run(true)), "an empty board is an empty array")
+}
+
+// status always printed JSON; --json is accepted (a no-op) and a real error is printed once (#222-D).
+func TestStatusAcceptsJSON(t *testing.T) {
+	srv := newRecordingServer(t)
+	dir := subscribedDataDir(t, srv.URL)
+	plain := runBoard(t, srv.URL, dir, "status")
+	withFlag := runBoard(t, srv.URL, dir, "status", "--json")
+	require.Equal(t, 0, plain.code, plain.stderr)
+	assert.Equal(t, 0, withFlag.code, withFlag.stderr)
+	assert.Equal(t, plain.stdout, withFlag.stdout)
+	bad := runBoard(t, srv.URL, dir, "status", "--nope")
+	assert.Equal(t, 2, bad.code)
+	assert.Equal(t, 1, strings.Count(bad.stderr, `unknown option "--nope"`), "printed once: %q", bad.stderr)
+}
