@@ -1,5 +1,30 @@
 # Release Notes
 
+## v1.4.154 — Coral Hub connects with one question, cross-team relay is on by default, and agents launch quietly
+
+### Features
+
+- **Coral Hub asks one question when you connect:** the Connect screen asks "What may Coral Hub do on this computer?" (View, Interact or Launch; Launch is preselected, or what an install already saved), with the auto-accept switch shown beside Launch, and says once that nothing is sent until you connect. The first focus is on the question, so Enter cannot connect before it was reached. Settings > Network and Hub asks the same question in the same words. The answer goes with the connect call (it is saved before the enrollment starts, and nothing is saved when any part is invalid); the command line's plain connect is unchanged.
+- **Coral Hub's Servers page (in the shared front end) is a table:** sortable, with rows that open, "Add a machine" on top with the download page, one lower-only "Hub access" control (View, Interact, Launch) that follows the computer, Rename and Revoke in the row, and an online computer with no health reading yet says "Waiting for a health reading" (never "not connected"). Revoke asks in the words Coral Hub wants, and Cancel and Escape give the keyboard back.
+- **Coral Hub is told when this computer's access mode changes:** to a hub that advertises it, the change is a short message on a new control stream instead of a reconnect (a reconnect drops every stream and looks like a network failure, and an open terminal a viewer of Interact could type into stayed open until its first keystroke); a hub without it still gets the reconnect.
+- **A new agent's terminal starts quiet:** it no longer shows the long launch command; it stays empty until the agent draws (the command is in the server log; `CORAL_KEEP_LAUNCH_SCRIPTS` keeps the script for debugging).
+
+### Changes
+
+- **Cross-team relay is on by default:** a board's cross-team messaging and file switches are now on for a board that never set them (an owner's explicit off stays off), and the two switches are kill switches: the Coral Hub team link is the permission. Teams on one computer still need an explicit on to reach each other, and the Messaging tab now says so, with the two reaches told apart ("Teams on other computers: on (needs a Coral Hub link)" and "Teams on this computer: on or off", with a button, Turn on for teams on this computer).
+- **Codex starts in the workspace-write sandbox, with no approval prompts and tool networking on** (before: it bypassed the sandbox); a default mode saved in Settings wins, and `-c sandbox_workspace_write.network_access=false` turns networking off.
+
+### Fixes
+
+- **In Coral Hub mode the Settings dialog keeps its layout:** the hub note sits inside the content column; before, the dialog collapsed to a sliver at every width.
+- **An agent CLI installed with npm runs from the macOS app:** `claude`, `codex` and `pi` installed with npm are scripts that start with `#!/usr/bin/env node`, and the app started from Finder has a PATH with no node, so every run of the CLI failed (the launch, the version probe, the sign-in check, the model list). Coral now finds the node that installed the CLI and adds its folder to the end of the PATH for that one child only, and only from a folder no other user can write (each link and parent checked, macOS access lists included) (the process PATH is never changed, and nothing is put first).
+- **Windows: every program Coral starts itself runs without the current-folder search**, so a `claude.cmd` shim started in a repository does not run a planted `node.exe` from that folder; and Coral's window marker no longer follows a link.
+
+### Internal
+
+- Windows builds: every Windows test run now builds the package and runs the release's own smoke test (including the MSI when the installer changes), the Windows CI pins MinGW, and a census keeps the test build and the release build the same.
+- Tests: the live-PTY restart tests count a real launch of the stand-in agent (a quiet launch erases the screen); an opt-in test checks the Codex hook-trust key against a real Codex 0.163.0; the PTY identity stress run works on Windows and with lower- and mixed-case Coral variable names; the release verifier allows 1.4.153's larger packages.
+
 ## v1.4.153 — Claude always carries a permission mode, Pi and Plan need the Hub switch, and the updater ships (switched off)
 
 ### Features
