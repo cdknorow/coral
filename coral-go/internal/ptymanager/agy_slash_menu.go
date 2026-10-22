@@ -16,7 +16,8 @@ var agySlashItemRe = regexp.MustCompile(`^>\s+(/\S+)(\s|$)`)
 // AgySlashMenuFor reports whether screen is agy's slash-completion menu opened by the command text just typed, and nothing else: the Enter
 // then confirms that very command, and holding it as a prompt means the command never runs (#210). It is true only when
 //   - the agent is agy, and text is one slash command line (its first word starts with "/"),
-//   - the screen ends in the completion list: a highlighted "> /command" item, the "tab Complete" hint and the "esc to cancel" footer, and
+//   - the screen ends, by position, in the input box holding exactly the typed text, then the completion list: a highlighted "> /command"
+//     item, the "tab Complete" hint and the "esc to cancel" footer as the last lines, and
 //   - the highlighted command is the one typed (so Enter does not pick another command),
 //
 // and when PromptOnScreen sees nothing but that footer (a dialog, a selection menu or a question is still a prompt).
@@ -31,19 +32,19 @@ func AgySlashMenuFor(agentType, text, screen string) bool {
 	if open, why := PromptOnScreen(screen); !open || !strings.HasPrefix(why, footerWhy) {
 		return false
 	}
-	lines := tailLines(screenText(screen), promptScreenLines)
-	item, hint, footer := "", false, false
-	for _, l := range lines {
-		t := strings.TrimSpace(l)
-		if m := agySlashItemRe.FindStringSubmatch(t); m != nil {
-			item = m[1]
-		}
-		if agySlashHintRe.MatchString(t) {
-			hint = true
-		}
-		if strings.HasPrefix(t, "esc to cancel") {
-			footer = true
+	// By position, so nothing an agent prints into its transcript can complete the match: from the bottom of the screen the non-empty lines
+	// are the "esc to cancel" footer, the hint, the highlighted item, then the input box's closing rule and the input line holding exactly the
+	// typed text.
+	var rest []string
+	for _, l := range tailLines(screenText(screen), promptScreenLines) {
+		if t := strings.TrimSpace(l); t != "" {
+			rest = append(rest, t)
 		}
 	}
-	return hint && footer && item != "" && item == typed[0]
+	n := len(rest)
+	if n < 5 || !strings.HasPrefix(rest[n-1], "esc to cancel") || !agySlashHintRe.MatchString(rest[n-2]) || !isRuleLine(rest[n-4]) {
+		return false
+	}
+	m := agySlashItemRe.FindStringSubmatch(rest[n-3])
+	return m != nil && m[1] == typed[0] && rest[n-5] == "> "+strings.TrimSpace(text)
 }
