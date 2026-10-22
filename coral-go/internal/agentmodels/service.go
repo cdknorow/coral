@@ -136,7 +136,7 @@ func withBuiltin(res Result) Result {
 		return res
 	}
 	var models []Model
-	for _, v := range at.AgentTypeModels[res.AgentType] {
+	for _, v := range at.AgentTypeModels[Family(res.AgentType)] {
 		name := v
 		if n, ok := builtinDisplayNames[v]; ok {
 			name = n

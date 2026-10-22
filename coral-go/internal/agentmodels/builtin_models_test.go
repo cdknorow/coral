@@ -1,6 +1,8 @@
 package agentmodels
 
 import (
+	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -45,5 +47,36 @@ func TestBuiltinListShowsAnUnnamedModelByItsID(t *testing.T) {
 	require.NotEmpty(t, res.Models)
 	for _, m := range res.Models {
 		assert.Equal(t, m.Value, m.DisplayName)
+	}
+}
+
+// A signed-out or offline CLI leaves every agy alias on the same curated list (#5909).
+func TestFailedAgyAliasFetchUsesFamilyBuiltins(t *testing.T) {
+	for _, failure := range []struct {
+		name string
+		err  error
+	}{
+		{"signed out", errors.New("sign in required")},
+		{"offline", context.DeadlineExceeded},
+	} {
+		for _, agentType := range []string{at.Agy, at.Antigravity, at.Gemini} {
+			t.Run(failure.name+"/"+agentType, func(t *testing.T) {
+				var fetchedFamily string
+				s, _ := newTestService(t, fakeCLI(t), func(_ context.Context, family, _ string) ([]Model, string, error) {
+					fetchedFamily = family
+					return nil, "", failure.err
+				})
+				s.Get(agentType)
+				s.Wait()
+				res := s.Get(agentType)
+				require.Equal(t, at.Agy, fetchedFamily)
+				require.NotEmpty(t, res.Models)
+				assert.Equal(t, at.AgentTypeModels[at.Agy], values(res.Models))
+				assert.Equal(t, "builtin", res.Source)
+				assert.Equal(t, agentType, res.AgentType)
+				assert.NotEmpty(t, res.Error)
+				assert.False(t, res.Refreshing)
+			})
+		}
 	}
 }
