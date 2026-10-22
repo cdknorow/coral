@@ -297,6 +297,9 @@ func (g *inputGate) pasteAndEnter(ctx context.Context, in AutomatedInput, ps Pro
 		}
 	}
 	g.setLastPasted(in.Name, in.Text) // Coral's, until its Enter is seen to submit it (#4104)
+	if on, known := BracketedPasteHint(pctx); known && !on {
+		g.markTyped(in.Name, in.Text) // it is typed: no screen confirms the Enter, so it is Coral's only for ownTypedMaxAge
+	}
 	err = ps.SendPrompt(tmux.WithBeforeEnter(pctx, check), terminalinput.Coral, in.Name, in.Text, agentType, sessionID)
 	if err == nil {
 		held, err := g.confirmSubmitted(ctx, in, sr, rendered, agentType, sessionID)
