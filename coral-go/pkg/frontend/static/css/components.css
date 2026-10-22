@@ -4306,6 +4306,7 @@ a.ibx-open, a.ibx-open:visited { color: var(--link-text); }
 /* The install help where an agent CLI is missing (#4569): the vendor's page as a link in the theme's link colour, and a quiet note. */
 .acf-cli-warning .cli-install-link, .acf-cli-warning .cli-install-note { margin: 6px 0 0; }
 .acf-cli-warning .cli-install-link a { display: block; min-height: 24px; color: var(--accent); overflow-wrap: anywhere; } /* a link on a line of its own is a 24 px target (#6038) */
+@media (pointer: coarse), (max-width: 767px) { .acf-cli-warning .cli-install-link a { display: flex; align-items: center; min-height: var(--control-touch-height, 44px); } } /* and a 44 px row on touch and at phone width (#6094) */
 .acf-cli-warning .cli-install-note { color: var(--text-secondary); font-size: 0.75rem; line-height: 1.5; }
 /* ── Settings: a wide dialog with its groups down the left (#4566) ──────────────────────────────────────────────────────────
    The dialog is 60rem wide at most (the one size rule, 92vw below that). Under 50rem of its own width (a phone, a small window, or large text) the group list is a

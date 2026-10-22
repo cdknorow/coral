@@ -47,7 +47,7 @@ const BASE = require('./test_base').BASE;
             await ev(`(async () => { const el = document.createElement('div'); el.id = 'qa-cli'; el.className = 'acf-cli-warning'; document.body.appendChild(el); const m = await import(${S} + 'prerequisites.js'); await m.checkAgentCLI('claude', el, { force: true }); return true; })()`);
             await waitFor(`!!document.querySelector('#qa-cli .cli-install-link a')`, `${w}: the install link`, 8000);
             const link = await ev(`(() => { const a = document.querySelector('#qa-cli .cli-install-link a'); const r = a.getBoundingClientRect(); return { h: Math.round(r.height), w: Math.round(r.width), text: a.textContent }; })()`);
-            check(`${w}: the vendor install link is a target of at least 24 px (${JSON.stringify(link)})`, link.h >= 24 && link.w >= 24);
+            check(`${w}: the vendor install link is a target of at least ${Number(w) <= 767 ? 44 : 24} px (${JSON.stringify(link)})`, link.h >= (Number(w) <= 767 ? 44 : 24) && link.w >= 24); // 44 px on a phone (#6094)
             // 3. the Workflow switch
             await ev(`window.__m.add('p-bot', 'A', 4, { sleeping: false, board_project: ${JSON.stringify(team)} }); true`); await settle(600);
             await ev(`window.selectLiveSession('p-bot', 'claude', 'p-bot-id', 'local'); true`); await settle(900);
