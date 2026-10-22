@@ -7,6 +7,7 @@ const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
 const settle = ms => new Promise(r => setTimeout(r, ms)); // sleep-ok: the page's own timers (notice delays, debounces) have no event to wait for; it is polled until the page stops changing
 // FEED_STACK_SELFTEST=1 makes every retry run twice (a reconnect that stacks): the suite must then fail.
+const QUIET_MS = 2000; // longer than the page's longest timer of its own, the 1.5 s notice delay
 const CYCLES = Number(process.env.CYCLES || 100), STREAKS = 5, STREAK_LEN = 7;
 // The hundred drops and restores are held to a tight bound of their own (they grew nothing when written: 0 nodes, 0 listeners, 0 timers); the whole run to a looser one, because the page builds a little
 // UI once, at a time of its own (about 70 nodes, from its own timers), somewhere in the minutes of a run: a per-round leak of even 2 nodes still shows in 300 rounds.
@@ -43,11 +44,16 @@ const DROP_BOUNDS = { listeners: 5, nodes: 10, documents: 0, intervals: 0, heapM
         await Emulation.setDeviceMetricsOverride({ width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
         await Page.navigate({ url: process.env.CORAL_TEST_URL + '/' }); await Page.loadEventFired(); await install();
         await ev(`window.__coralReady.then(() => true)`);
+        // When the page last changed its DOM at all. The list re-renders on every feed update and a render replaces nodes (the same count before and after), so a steady node count does not mean the
+        // page has stopped building: counting nodes in the middle of a render read +37 (two runs in 20 of the old quiet-count wait, one in 45 before it). A node count is taken only after the DOM has been still.
+        await ev(`(() => { window.__lastMut = Date.now(); new MutationObserver(() => { window.__lastMut = Date.now(); }).observe(document.documentElement, { childList: true, subtree: true }); return true; })()`);
+        const quiet = async ms => { for (let i = 0; i < 200; i++) { if (await ev(`Date.now() - window.__lastMut`) >= ms) return; await settle(50); } };
         await waitFor(`window.__fakeFeed.opened >= 1`, 'the first feed socket', 8000);
         // retries run at once and are recorded
         await ev(`import(${S} + 'websocket.js').then(m => { m.feedHooks.schedule = (fn, ms) => { window.__fakeFeed.delays.push(ms); window.__fakeFeed.pending++; window.__fakeFeed.pendingMax = Math.max(window.__fakeFeed.pendingMax || 0, window.__fakeFeed.pending); setTimeout(() => { window.__fakeFeed.pending--; fn(); }, 0); if (${process.env.FEED_STACK_SELFTEST ? 'true' : 'false'}) setTimeout(fn, 1); }; const opened = window.__fakeFeed.opened; m.connectCoralWs(); return opened; })`); // (the harness had detached the page's own feed: start one again, with the retries on the test's scheduler)
         await waitFor(`window.__fakeFeed.opened >= 2 && window.__live() === 1`, 'the restarted feed', 8000);
         const metrics = async () => {
+            await quiet(500); // no render in flight when the nodes are counted
             await HeapProfiler.collectGarbage(); await HeapProfiler.collectGarbage();
             const m = Object.fromEntries((await Performance.getMetrics()).metrics.map(x => [x.name, x.value]));
             return { heapMB: m.JSHeapUsedSize / 1048576, nodes: m.Nodes, listeners: m.JSEventListeners, documents: m.Documents, intervals: await ev(`window.__intervals.size`) };
@@ -71,8 +77,8 @@ const DROP_BOUNDS = { listeners: 5, nodes: 10, documents: 0, intervals: 0, heapM
             await ev(`window.__fakeFeed.refuse = false; true`); await drop();
         }
         await ev(`window.__fakeFeed.delays.length = 0; window.__fakeFeed.pendingMax = 0; true`);
-        // the page's own timed work (the 1.5 s notice delays, debounces) happens once, whenever it fires: wait until the node count has been the same for a second
-        for (let last = -1, same = 0, i = 0; same < 4 && i < 40; i++) { const n = await ev(`document.querySelectorAll('*').length`); same = n === last ? same + 1 : 0; last = n; await settle(300); }
+        // the page's own timed work (the 1.5 s notice delays, debounces) happens once, whenever it fires: wait until the DOM has not changed at all for longer than the longest of those delays (QUIET_MS)
+        await quiet(QUIET_MS);
         const base = await metrics();
         let stacked = 0;
         for (let n = 0; n < CYCLES; n++) { await drop(); const live = await ev(`window.__live()`); if (live !== 1) stacked++; }
