@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -115,6 +116,40 @@ func TestNoAfterReplyWriteForATaskWithoutASession(t *testing.T) {
 	assert.Zero(t, calls.Load())
 }
 
+// Security's note on #97: two completions of the same task close together (complete then cancel, or a retry) write its
+// changes.diff one after the other, never at the same time; different tasks still write in parallel.
+func TestAfterReplyWritesOfOneTaskDoNotOverlap(t *testing.T) {
+	h := &BoardHandler{}
+	var mu sync.Mutex
+	inFlight := map[int64]int{}
+	maxSame, maxAll, all := 0, 0, 0
+	h.SetTaskArtifactWriter(t.TempDir(), func(_ context.Context, task *board.Task, _ string) error {
+		mu.Lock()
+		inFlight[task.ID]++
+		all++
+		if inFlight[task.ID] > maxSame {
+			maxSame = inFlight[task.ID]
+		}
+		if all > maxAll {
+			maxAll = all
+		}
+		mu.Unlock()
+		time.Sleep(50 * time.Millisecond) // a diff being written
+		mu.Lock()
+		inFlight[task.ID]--
+		all--
+		mu.Unlock()
+		return nil
+	})
+	sid := "aaaaaaaa-0000-4000-8000-000000000097"
+	for i := 0; i < 4; i++ {
+		h.persistTaskArtifactAfterReply(&board.Task{ID: 1, SessionID: &sid}) // the same task, four times at once
+	}
+	h.persistTaskArtifactAfterReply(&board.Task{ID: 2, SessionID: &sid})
+	h.WaitBackground()
+	assert.Equal(t, 1, maxSame, "one task's writes never overlap")
+	assert.Equal(t, 2, maxAll, "another task's write runs alongside")
+}
 func errString(err error) string {
 	if err == nil {
 		return ""
