@@ -2,6 +2,7 @@ package ptymanager
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/subgentic/coral/internal/logsafe"
 	"github.com/subgentic/coral/internal/terminalinput"
@@ -57,6 +58,9 @@ func NewTmuxBackend(client *tmux.Client, logDir string) *TmuxBackend {
 	}
 }
 
+// ErrTmuxBackend marks a failure of the tmux backend itself (its messages begin "tmux"), so a launch can tell a missing or broken tmux from a failure of the pure pty backend (#6046).
+var ErrTmuxBackend = errors.New("tmux")
+
 func (b *TmuxBackend) Spawn(name, agentType, workDir, sessionID, command string, cols, rows uint16) error {
 	DropHeld(name, "spawned") // nothing held for the old process is typed into a new one (#3431)
 	ctx := context.Background()
@@ -73,7 +77,7 @@ func (b *TmuxBackend) Spawn(name, agentType, workDir, sessionID, command string,
 
 	// Create tmux session
 	if err := b.client.NewSession(ctx, tmuxName, workDir); err != nil {
-		return fmt.Errorf("tmux new-session: %w", err)
+		return fmt.Errorf("%w: new-session: %w", ErrTmuxBackend, err)
 	}
 
 	// Setup pipe-pane logging
