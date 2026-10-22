@@ -64,15 +64,36 @@ export function firewallDetails(message, { open = false } = {}) {
     return details;
 }
 
+/** The Settings row, made when there is a warning to show (so a machine without one has no row at all, and the dialog's default markup is as before). */
+function ensureRow() {
+    let row = document.getElementById('settings-firewall-row');
+    if (row) return row;
+    const anchor = document.getElementById('settings-security');
+    if (!anchor) return null;
+    row = el('div', 'settings-row');
+    row.id = 'settings-firewall-row';
+    const dt = el('dt', 'toggle-dt');
+    dt.append(el('span', null, 'Windows Firewall'), el('span', 'toggle-desc', 'A rule that lets other computers reach Coral on every port.'));
+    const dd = el('dd');
+    const body = el('div', 'settings-hint');
+    body.id = 'settings-firewall-status';
+    body.setAttribute('role', 'status');
+    body.dataset.state = 'warn';
+    dd.append(body);
+    row.append(dt, dd);
+    anchor.after(row);
+    return row;
+}
+
 /** Settings: the row for the warning, there while the warning is, so the toast can be dismissed for good. */
 export async function renderFirewallRow() {
-    const row = document.getElementById('settings-firewall-row');
-    const body = document.getElementById('settings-firewall-status');
-    if (!row || !body) return;
     let message = '';
-    try { const r = await fetchSystemStatus({ fresh: true }); if (r.ok) message = (await r.json()).firewall_warning || ''; } catch { /* the row stays hidden */ }
+    try { const r = await fetchSystemStatus({ fresh: true }); if (r.ok) message = (await r.json()).firewall_warning || ''; } catch { /* no row */ }
+    if (!message) { document.getElementById('settings-firewall-row')?.remove(); return; }
+    const row = ensureRow();
+    const body = row && document.getElementById('settings-firewall-status');
+    if (!body) return;
     body.replaceChildren();
-    if (!message) { row.hidden = true; return; }
     body.append(el('p', 'firewall-summary', parseFirewallWarning(message).summary), firewallDetails(message));
     if (firewallDismissedForGood(message)) {
         const again = el('button', 'btn btn-small', 'Show the warning on the dashboard again');
@@ -80,5 +101,4 @@ export async function renderFirewallRow() {
         again.addEventListener('click', () => { showFirewallAgain(); again.remove(); });
         body.append(again);
     }
-    row.hidden = false;
 }
