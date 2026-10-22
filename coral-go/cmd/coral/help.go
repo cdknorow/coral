@@ -125,6 +125,21 @@ var unknownCommandHints = map[string]string{
 	"password": "coral set-password (the first one) or coral reset-password.",
 }
 
+// flagParseFailure is what the binary prints when its flags do not parse, and the exit code (2, usage): for a flag it does not have, one line naming it and the hint for the
+// word people type (--stop, --status), never Go's own "flag provided but not defined: -stop"; for a bad value Go's words about it.
+func flagParseFailure(w io.Writer, err error) int {
+	if name, ok := strings.CutPrefix(err.Error(), "flag provided but not defined: -"); ok {
+		fmt.Fprintf(w, "coral: unknown option --%s\n", strings.TrimLeft(name, "-"))
+		if hint, found := unknownCommandHints[strings.ToLower(strings.TrimLeft(name, "-"))]; found {
+			fmt.Fprintln(w, hint)
+		}
+	} else {
+		fmt.Fprintf(w, "coral: %v\n", err)
+	}
+	fmt.Fprintln(w, "Run 'coral --help' for the commands and main flags, or 'coral --help-all' for every server flag.")
+	return 2
+}
+
 // unknownCommand reports a word that is neither a command nor a flag, with a hint where one exists. Exit 2 (usage).
 func unknownCommand(w io.Writer, word string) int {
 	fmt.Fprintf(w, "coral: unknown command %q.\n", word)

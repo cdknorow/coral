@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"strconv"
 	"testing"
 
@@ -82,4 +83,26 @@ func TestAnUnknownCommandSaysSoWithAHint(t *testing.T) {
 // The commands' default address is this platform's port.
 func TestTheDefaultAddressIsThisPlatformsPort(t *testing.T) {
 	assert.Equal(t, "http://localhost:"+strconv.Itoa(config.DefaultPort), defaultCoralURL())
+}
+
+// A flag the binary does not have gets coral's own line and the hint for what people mean (--stop, --status), exit 2, never Go's "flag provided but not defined" (QA's nit on #104).
+func TestAnUnknownFlagGetsOneLineAndTheHintNotGoErrors(t *testing.T) {
+	var errb bytes.Buffer
+	code := flagParseFailure(&errb, errors.New("flag provided but not defined: -stop"))
+	assert.Equal(t, 2, code)
+	s := errb.String()
+	assert.Contains(t, s, "coral: unknown option --stop")
+	assert.Contains(t, s, "Ctrl+C", "the hint for stop")
+	assert.Contains(t, s, "coral --help")
+	assert.NotContains(t, s, "flag provided but not defined")
+	assert.NotContains(t, s, "agent-priority", "the flag list is not dumped")
+
+	errb.Reset()
+	assert.Equal(t, 2, flagParseFailure(&errb, errors.New("flag provided but not defined: -frobnicate")))
+	assert.Contains(t, errb.String(), "unknown option --frobnicate")
+	assert.NotContains(t, errb.String(), "Ctrl+C", "no hint for a word with none")
+
+	errb.Reset()
+	assert.Equal(t, 2, flagParseFailure(&errb, errors.New(`invalid value "x" for flag -port: parse error`)))
+	assert.Contains(t, errb.String(), `invalid value "x" for flag -port`)
 }
