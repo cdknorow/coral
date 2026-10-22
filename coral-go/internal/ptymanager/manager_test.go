@@ -318,9 +318,10 @@ func TestPTYBackendAttachUnsubscribe(t *testing.T) {
 	// Send input
 	backend.SendInput(terminalinput.Unclassified, "sub-test", []byte("fan-out-test\n"))
 
-	// Both subscribers should receive output
-	got1 := readFromChan(ch1, 2*time.Second)
-	got2 := readFromChan(ch2, 2*time.Second)
+	// Both subscribers should receive output. Read until the marker has come: a pty shows the typed line twice (the terminal's echo, then cat's own output), in chunks that can arrive far apart on a loaded
+	// machine, and a read that returns after the first chunk leaves the second in the channel, to be taken for the next message (#6125-era CI: "expected after-unsub, got fan-out-test").
+	got1 := readUntil(ch1, "fan-out-test", 2*time.Second)
+	got2 := readUntil(ch2, "fan-out-test", 2*time.Second)
 
 	if !strings.Contains(got1, "fan-out-test") {
 		t.Errorf("subscriber 1 expected 'fan-out-test', got %q", got1)
@@ -335,7 +336,7 @@ func TestPTYBackendAttachUnsubscribe(t *testing.T) {
 	// Send more input — only ws-2 should receive
 	backend.SendInput(terminalinput.Unclassified, "sub-test", []byte("after-unsub\n"))
 
-	got2 = readFromChan(ch2, 2*time.Second)
+	got2 = readUntil(ch2, "after-unsub", 2*time.Second) // skipping whatever cat's output of the first line left behind
 	if !strings.Contains(got2, "after-unsub") {
 		t.Errorf("subscriber 2 expected 'after-unsub' after ws-1 unsubscribed, got %q", got2)
 	}
@@ -596,5 +597,45 @@ func TestParseCommand(t *testing.T) {
 			t.Errorf("parseCommand(%q) = %v, want %v", tt.input, got, tt.want)
 			continue
 		}
+	}
+}
+
+// readUntil collects chunks from ch until the accumulated text holds marker (or the channel closes, or timeout): the output of an earlier line that arrives late is read past, not returned in place of
+// the next one.
+func readUntil(ch <-chan []byte, marker string, timeout time.Duration) string {
+	var buf strings.Builder
+	deadline := time.After(timeout)
+	for {
+		select {
+		case data, ok := <-ch:
+			if !ok {
+				return buf.String()
+			}
+			buf.Write(data)
+			if strings.Contains(buf.String(), marker) {
+				return buf.String()
+			}
+		case <-deadline:
+			return buf.String()
+		}
+	}
+}
+
+// The race that failed CI: the first line's output comes in two chunks, the second late, and the next line's output comes after that. readUntil reads past the late chunk to the marker it was asked for;
+// a read that returns after one chunk (and a short wait for one more) hands back the late chunk of the FIRST line as if it were the next one.
+func TestReadUntilReadsPastAnEarlierLinesLateOutput(t *testing.T) {
+	ch := make(chan []byte, 8)
+	ch <- []byte("fan-out-test\r\n") // the terminal's echo
+	go func() {
+		time.Sleep(350 * time.Millisecond)
+		ch <- []byte("fan-out-test\r\n") // cat's own output of the same line, late
+		time.Sleep(50 * time.Millisecond)
+		ch <- []byte("after-unsub\r\n")
+	}()
+	if got := readUntil(ch, "fan-out-test", time.Second); !strings.Contains(got, "fan-out-test") {
+		t.Fatalf("the first line: %q", got)
+	}
+	if got := readUntil(ch, "after-unsub", 2*time.Second); !strings.Contains(got, "after-unsub") {
+		t.Fatalf("readUntil should read past the first line's late chunk to the next line: %q", got)
 	}
 }
