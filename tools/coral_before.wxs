@@ -1,0 +1,187 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!--
+  WiX v4 installer definition for Coral.
+  Builds an MSI that:
+    - Installs coral.exe to Program Files\Coral
+    - Adds Coral to the system PATH
+    - Creates a Start Menu shortcut
+    - Registers for clean uninstall
+
+  ProductName is the name shown in the installer and in Apps & features: "Coral". The Coral For Dropbox
+  tier ships no MSI (.github/workflows/release.yml skips every MSI step for it). Manufacturer is the
+  publisher, Subgentic LLC; the UpgradeCode is unchanged so upgrades keep working.
+-->
+
+<?ifndef ProductName ?>
+<?define ProductName = "Coral" ?>
+<?endif ?>
+
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+
+  <Package
+    Name="$(var.ProductName)"
+    Manufacturer="Subgentic LLC"
+    Version="$(var.Version)"
+    UpgradeCode="B8F2E3A1-7C4D-4E5F-9A1B-2C3D4E5F6A7B">
+
+    <MajorUpgrade
+      DowngradeErrorMessage="A newer version of $(var.ProductName) is already installed." />
+
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- Install to Program Files\Coral -->
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Coral">
+        <Component Id="CoralExe" Guid="A1B2C3D4-E5F6-7890-ABCD-EF1234567890">
+          <File Id="coral.exe" Source="$(var.BinDir)\coral.exe" KeyPath="yes" />
+
+          <!-- Add to PATH -->
+          <Environment
+            Id="PATH"
+            Name="PATH"
+            Value="[INSTALLFOLDER]"
+            Permanent="no"
+            Part="last"
+            Action="set"
+            System="yes" />
+        </Component>
+
+        <Component Id="LaunchCoralExe" Guid="C3D4E5F6-A7B8-9012-CDEF-234567890123">
+          <File Id="launch_coral.exe" Source="$(var.BinDir)\launch-coral.exe" KeyPath="yes" />
+        </Component>
+
+        <Component Id="CoralBoardExe" Guid="D4E5F6A7-B8C9-0123-DEFA-345678901234">
+          <File Id="coral_board.exe" Source="$(var.BinDir)\coral-board.exe" KeyPath="yes" />
+        </Component>
+
+        <Component Id="CoralTrayExe" Guid="E5F6A7B8-C9D0-1234-EFAB-456789012345">
+          <File Id="coral_tray.exe" Source="$(var.BinDir)\coral-tray.exe" KeyPath="yes" />
+        </Component>
+
+        <Component Id="CoralAppExe" Guid="F6A7B8C9-D0E1-2345-FABC-567890123456">
+          <File Id="coral_app.exe" Source="$(var.BinDir)\coral-app.exe" KeyPath="yes" />
+        </Component>
+
+        <Component Id="HookAgenticState" Guid="A7B8C9D0-E1F2-3456-ABCD-678901234567">
+          <File Id="coral_hook_agentic_state.exe" Source="$(var.BinDir)\coral-hook-agentic-state.exe" KeyPath="yes" />
+        </Component>
+
+        <Component Id="HookTaskSync" Guid="B8C9D0E1-F2A3-4567-BCDE-789012345678">
+          <File Id="coral_hook_task_sync.exe" Source="$(var.BinDir)\coral-hook-task-sync.exe" KeyPath="yes" />
+        </Component>
+
+        <Component Id="HookMessageCheck" Guid="C9D0E1F2-A3B4-5678-CDEF-890123456789">
+          <File Id="coral_hook_message_check.exe" Source="$(var.BinDir)\coral-hook-message-check.exe" KeyPath="yes" />
+        </Component>
+
+        <Component Id="HookSessionStart" Guid="D0E1F2A3-B4C5-6789-DEFA-901234567890">
+          <File Id="coral_hook_session_start.exe" Source="$(var.BinDir)\coral-hook-session-start.exe" KeyPath="yes" />
+        </Component>
+
+        <Component Id="CoralUpdate" Guid="C26B2BA3-7EA8-404D-AF56-32A41AADF614">
+          <File Id="coral_update.exe" Source="$(var.BinDir)\coral-update.exe" KeyPath="yes" />
+        </Component>
+
+        <Component Id="CoralAgentExe" Guid="E1F2A3B4-C5D6-7890-EFAB-012345678901">
+          <File Id="coral_agent.exe" Source="$(var.BinDir)\coral-agent.exe" KeyPath="yes" />
+        </Component>
+
+        <!-- Third-party notices (installers/third-party-notices.sh): installed as Coral\licenses -->
+        <Directory Id="LicensesFolder" Name="licenses" />
+      </Directory>
+    </StandardDirectory>
+
+    <!-- Start Menu shortcut -->
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="CoralMenuFolder" Name="Coral">
+        <Component Id="CoralShortcut" Guid="B2C3D4E5-F6A7-8901-BCDE-F12345678901">
+          <Shortcut
+            Id="CoralStartMenuShortcut"
+            Name="$(var.ProductName)"
+            Target="[INSTALLFOLDER]coral-tray.exe"
+            Arguments="--backend pty"
+            WorkingDirectory="INSTALLFOLDER"
+            Description="$(var.ProductName) — AI Agent Dashboard"
+            Icon="CoralIcon.exe" />
+
+          <RemoveFolder Id="RemoveCoralMenuFolder" On="uninstall" />
+          <RegistryValue
+            Root="HKCU"
+            Key="Software\Coral"
+            Name="installed"
+            Type="integer"
+            Value="1"
+            KeyPath="yes" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+
+    <!-- Icon for the Start Menu shortcut and the Apps & features entry: the multi-size icon
+         resource embedded in coral-tray.exe (tools/gen_windows_resources.sh) -->
+    <Icon Id="CoralIcon.exe" SourceFile="$(var.BinDir)\coral-tray.exe" />
+    <Property Id="ARPPRODUCTICON" Value="CoralIcon.exe" />
+
+    <!-- Apps & features: the project's public pages (README) -->
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/subgentic/coral" />
+    <Property Id="ARPHELPLINK" Value="https://subgentic.github.io/coral/" />
+    <Property Id="ARPURLUPDATEINFO" Value="https://github.com/subgentic/coral/releases/latest" />
+
+    <!-- License agreement dialog. license.rtf is the app's own terms text (pinned to it by
+         TestInstallerTermsMatchEULAText), so it is shown as it is. -->
+    <ui:WixUI Id="WixUI_Minimal" />
+    <WixVariable Id="WixUILicenseRtf" Value="$(var.BuildDir)\license.rtf" />
+
+    <!-- The last screen offers to start Coral, ticked (#151): coral-tray.exe, as the Start Menu shortcut does. It runs from the
+         Finish button, in the installer's client (UI) process, as an immediate action: Coral starts with the token of the person
+         who ran the installer, never the elevated one that installed the files (a deferred or no-impersonate action would run
+         it as SYSTEM or elevated). ExitDialog shows the checkbox only on a first install or an upgrade (NOT Installed), and
+         the launch has the same condition plus NOT REMOVE~="ALL", so a repair or an uninstall starts nothing. A silent or
+         basic-UI install (/qn, /passive) shows no ExitDialog and starts nothing.
+         From an ELEVATED client (msiexec run as administrator) that same token would start Coral elevated, with its server, agents and
+         tools running as an administrator (#5883): the from-installer flag below makes coral-tray.exe start nothing when its own token is
+         elevated (cmd/coral-tray/installer_launch.go), before it spawns its background process. -->
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Launch $(var.ProductName)" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
+    <CustomAction Id="LaunchCoral" FileRef="coral_tray.exe" ExeCommand="--from-installer" Execute="immediate" Return="asyncNoWait" />
+    <UI>
+      <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchCoral"
+        Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 AND NOT Installed AND NOT REMOVE~=&quot;ALL&quot;" />
+    </UI>
+
+    <!-- Coral's dialog art in place of WiX's stock bitmaps (tools/make_installer_art.py) -->
+    <WixVariable Id="WixUIBannerBmp" Value="$(sys.SOURCEFILEDIR)..\assets\installer\WixUIBannerBmp.bmp" />
+    <WixVariable Id="WixUIDialogBmp" Value="$(sys.SOURCEFILEDIR)..\assets\installer\WixUIDialogBmp.bmp" />
+
+    <!-- Write EULA acceptance marker after install so coral-app skips its own prompt -->
+    <StandardDirectory Id="SystemFolder" />
+    <CustomAction Id="WriteEULAMarker"
+      Directory="SystemFolder"
+      ExeCommand="cmd.exe /c &quot;if not exist &quot;%USERPROFILE%\.coral&quot; mkdir &quot;%USERPROFILE%\.coral&quot; &amp; echo accepted>&quot;%USERPROFILE%\.coral\.eula-accepted&quot;&quot;"
+      Impersonate="yes"
+      Return="ignore" />
+    <InstallExecuteSequence>
+      <Custom Action="WriteEULAMarker" After="InstallFiles" Condition="NOT Installed" />
+    </InstallExecuteSequence>
+
+    <Feature Id="MainFeature" Title="$(var.ProductName)" Level="1">
+      <ComponentRef Id="CoralExe" />
+      <ComponentRef Id="LaunchCoralExe" />
+      <ComponentRef Id="CoralBoardExe" />
+      <ComponentRef Id="CoralTrayExe" />
+      <ComponentRef Id="CoralAppExe" />
+      <ComponentRef Id="HookAgenticState" />
+      <ComponentRef Id="HookTaskSync" />
+      <ComponentRef Id="HookMessageCheck" />
+      <ComponentRef Id="HookSessionStart" />
+      <ComponentRef Id="CoralUpdate" />
+      <ComponentRef Id="CoralAgentExe" />
+      <ComponentRef Id="CoralShortcut" />
+      <!-- every file under bin\licenses, its folders kept (WiX v5 harvesting) -->
+      <Files Directory="LicensesFolder" Include="$(var.BinDir)\licenses\**" />
+    </Feature>
+
+  </Package>
+
+</Wix>

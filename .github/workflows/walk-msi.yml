@@ -1,0 +1,41 @@
+name: walk-msi
+on:
+  push:
+    branches: [trial/msi-walk-6109]
+permissions:
+  contents: read
+jobs:
+  walk:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    env:
+      CORAL_TELEMETRY_DISABLED: "1"
+      WALK_OUT: ${{ github.workspace }}\walk-out
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: coral-go/go.mod
+          cache: false
+      - name: mingw for cgo
+        shell: pwsh
+        run: |
+          if (-not (Get-Command gcc -ErrorAction SilentlyContinue)) { choco install mingw --version=16.1.0 -y --no-progress; if ($LASTEXITCODE -ne 0) { throw "choco install mingw failed" } }
+      - name: Build the programs and the two installers
+        shell: pwsh
+        run: ./walk/build_msis.ps1
+      - name: Finish with Launch ticked, v158's installer
+        shell: pwsh
+        run: ./walk/msi_finish.ps1 -Label before
+      - name: Finish with Launch ticked, this branch's installer
+        shell: pwsh
+        run: ./walk/msi_finish.ps1 -Label after
+      - name: Keep the screenshots
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: walk-out
+          path: walk-out
+          if-no-files-found: ignore
