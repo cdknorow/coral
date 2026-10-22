@@ -22,6 +22,7 @@ func TestTheCommandsDefaultIsTheServersPort(t *testing.T) {
 	t.Setenv("CORAL_DATA_DIR", t.TempDir())
 	server := config.Load()
 	assert.Equal(t, "http://localhost:"+strconv.Itoa(server.Port), hooks.CoralBase())
+	assert.Equal(t, hooks.CoralBase(), defaultCoralURL())
 }
 
 // The commands find the running server of their data folder from the address it recorded in its lock file, before the default;
@@ -31,7 +32,7 @@ func TestTheCommandsFindTheRunningServerOfTheirDataFolder(t *testing.T) {
 	t.Setenv("CORAL_PORT", "")
 	dir := t.TempDir()
 	t.Setenv("CORAL_DATA_DIR", dir)
-	def := hooks.CoralBase()
+	def := defaultCoralURL()
 	parse := func(args ...string) (*flag.FlagSet, *string, *string) {
 		fs := flag.NewFlagSet("t", flag.ContinueOnError)
 		base := fs.String("url", def, "")
