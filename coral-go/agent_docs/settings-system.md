@@ -669,7 +669,7 @@ What happens: the server writes a one-time marker (`<data>/updates/install-trigg
 
 409 answers (the server keeps running, nothing changed): `unsupported_platform` (not Windows: those platforms apply an update without asking anyone), `install_unavailable` (this Coral is not under the tray), `nothing_staged`, `busy` (one is already under way); 500 `updater_not_started` when the copy or the start failed.
 
-Coral Hub's relaunch (`POST /api/system/update/relaunch`, and the status's `relaunch` view) is refused on Windows with 409 `local_approval_needed`: it would leave Coral stopped behind a prompt nobody sees. macOS and Linux keep it. The apply itself stays off in releases (`windowsApplyEnabled`) until the coral-go-team has reviewed it.
+Coral Hub's relaunch (`POST /api/system/update/relaunch`, and the status's `relaunch` view) is refused on Windows with 409 `local_approval_needed`: it would leave Coral stopped behind a prompt nobody sees. macOS and Linux keep it. The apply itself stays off in releases (`applyEnabledWindows` in `cmd/coral-update/apply_switch.go`) until the coral-go-team has reviewed it.
 
 ### API Key Middleware
 
