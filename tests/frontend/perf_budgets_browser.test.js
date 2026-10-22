@@ -85,6 +85,8 @@ const { framesJs } = require('./helpers/wait');
         const y = await ev(`({ yields: window.__yields, drawn: document.getElementById('agent-list-bar').childElementCount })`);
         assert.ok(y.yields >= 1, 'the startup handler called scheduler.yield (the only yield it makes; the zero timers the page sets for other things do not count): ' + JSON.stringify(y));
         console.log('7. A feed message writes only what changed: nothing at all when no drawn field did, one row and the header text when the viewed agent\'s summary did (#5010)');
+        // The harness has no terminal attached, so with "Fit pane width" on (the page's default while the setting was never saved) syncPaneWidth measures a hidden span on every feed message: a real write, but not the feed's (a terminal answers its own column count). The setting is pinned off for this page so the budget is the same on a fresh server as after another suite saved it.
+        await ev(`window.T.state.settings.fit_pane_width = false; true`);
         const feed = fields => ev(`(async () => { const T = window.T; const e = window.__m.entry(window.__m.agents['perf-a-id']); Object.assign(e, ${JSON.stringify(fields)});
             const seen = []; const mo = new MutationObserver(rs => { for (const r of rs) seen.push({ type: r.type, inList: !!r.target.closest?.('#live-sessions-list') || r.target.id === 'live-sessions-list', target: (r.target.id || r.target.className || r.target.nodeName) + '' }); });
             mo.observe(document.body, { subtree: true, childList: true, attributes: true, characterData: true });
