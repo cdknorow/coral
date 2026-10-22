@@ -678,7 +678,7 @@ func cmdTaskReview(st *boardState, args []string, action string) {
 	id, err := strconv.ParseInt(args[0], 10, 64)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "Invalid task ID")
-		clierr.Exit1()
+		os.Exit(2) // usage
 	}
 	fs := flag.NewFlagSet(action, flag.ExitOnError)
 	reason := fs.String("reason", "", "Reason review is needed or capacity is being released")
@@ -715,7 +715,7 @@ func cmdTaskReview(st *boardState, args []string, action string) {
 	}
 	data, status, err := apiCallRaw("POST", fmt.Sprintf("/%s/tasks/%d/%s", url.PathEscape(st.Project), id, action), body)
 	if err != nil || status != http.StatusOK {
-		fmt.Fprintln(os.Stderr, "Review action failed:", err, string(data))
+		fmt.Fprintln(os.Stderr, "Review action failed: "+clierr.Describe(err, status, data))
 		clierr.Exit1()
 	}
 	if action == "submit-review" {
@@ -749,7 +749,7 @@ func cmdTaskReviewFlow(st *boardState, args []string, action string) {
 	id, err := strconv.ParseInt(args[0], 10, 64)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "Invalid task ID")
-		clierr.Exit1()
+		os.Exit(2) // usage
 	}
 	fs := flag.NewFlagSet(action, flag.ExitOnError)
 	to := fs.String("to", "", "Reviewers, comma-separated (review)")
@@ -776,13 +776,13 @@ func cmdTaskReviewFlow(st *boardState, args []string, action string) {
 		}
 		if len(reviewers) == 0 {
 			fmt.Fprintln(os.Stderr, `--to "Reviewer A,Reviewer B" is required`)
-			clierr.Exit1()
+			os.Exit(2) // usage
 		}
 		body["reviewers"] = reviewers
 	case "reject":
 		if strings.TrimSpace(*note) == "" {
 			fmt.Fprintln(os.Stderr, `--note "why" is required`)
-			clierr.Exit1()
+			os.Exit(2) // usage
 		}
 		body["note"] = *note
 		body["round"] = *round
@@ -797,7 +797,7 @@ func cmdTaskReviewFlow(st *boardState, args []string, action string) {
 	}
 	data, status, err := apiCallRaw("POST", fmt.Sprintf("/%s/tasks/%d/%s", url.PathEscape(st.Project), id, action), body)
 	if err != nil || status != http.StatusOK {
-		fmt.Fprintln(os.Stderr, "Review action failed:", err, string(data))
+		fmt.Fprintln(os.Stderr, "Review action failed: "+clierr.Describe(err, status, data))
 		exitFn(1)
 		return
 	}
