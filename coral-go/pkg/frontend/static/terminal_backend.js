@@ -107,7 +107,10 @@ export async function loadTerminalBackendRow() {
                 b.textContent = target.hidden ? 'Learn more' : 'Show less';
             });
         }
-        $('tb-note').textContent = osNote();
+        // The operating system's security note is the end of each backend's own Learn more, not a third control under both (UI/UX's #5985 note): said once there, whole.
+        for (const d of document.querySelectorAll('#settings-terminal-backend .tb-d')) {
+            if (!d.querySelector('.tb-d-os')) d.append(' ', Object.assign(document.createElement('span'), { className: 'tb-d-os', textContent: osNote() }));
+        }
         renderPending();
     }
 }

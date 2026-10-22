@@ -27,7 +27,11 @@ const BASE = require('./test_base').BASE;
             const tb = await ev(`(() => { const vis = e => e.checkVisibility({ checkVisibilityCSS: true }); return [...document.querySelectorAll('#settings-terminal-backend .tb-opt')].map(l => ({ short: l.querySelector('.tb-short').textContent, shortLen: l.querySelector('.tb-short').textContent.length, fullShown: vis(l.querySelector('.tb-d')), learn: l.querySelector('.tb-learn').textContent, expanded: l.querySelector('.tb-learn').getAttribute('aria-expanded'), full: l.querySelector('.tb-d').textContent.length })); })()`);
             assert.equal(tb.length, 2);
             for (const t of tb) { assert.ok(t.shortLen < 140 && !t.fullShown && t.learn === 'Learn more' && t.expanded === 'false' && t.full > 300, JSON.stringify(t)); }
-            assert.match(tb[0].short, /read their terminals/); assert.match(tb[1].short, /end when Coral restarts or upgrades/);
+            assert.match(tb[0].short, /^Agents keep running when Coral restarts or upgrades\.$/); assert.match(tb[1].short, /^Agents end when Coral restarts; Coral wakes them\.$/);
+            assert.match(await ev(`document.getElementById('tb-d-tmux').textContent`), /any other program running as you, can find that socket/, 'the access warning moved into Learn more, whole');
+            const os = await ev(`[...document.querySelectorAll('#settings-terminal-backend .tb-d')].map(d => ({ os: (d.querySelector('.tb-d-os') || {}).textContent || '', shown: d.checkVisibility({ checkVisibilityCSS: true }) }))`);
+            assert.ok(os.length === 2 && os.every(o => !o.shown && o.os.length > 100), 'the operating system note ends each backend\'s Learn more, closed at first, said once (no third Learn more): ' + JSON.stringify(os));
+            assert.equal(await ev(`document.querySelectorAll('#settings-terminal-backend .tb-learn').length`), 2);
             await shot('terminal-short', w);
             await ev(`document.querySelector('#tb-opt-pty').checked = false; document.querySelector('#settings-terminal-backend .tb-learn[aria-controls=tb-d-pty]').click(); true`);
             const opened = await ev(`(() => { const d = document.getElementById('tb-d-pty'); return { shown: d.checkVisibility({ checkVisibilityCSS: true }), text: d.textContent, label: document.querySelector('.tb-learn[aria-controls=tb-d-pty]').textContent, expanded: document.querySelector('.tb-learn[aria-controls=tb-d-pty]').getAttribute('aria-expanded'), radioChanged: document.getElementById('tb-opt-pty').checked }; })()`);
