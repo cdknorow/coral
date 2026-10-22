@@ -10,7 +10,7 @@
 // the suite ADDED is deleted again and the settings are exactly as found; alone, it PUTs the old values through the API and an added key is set to '' (the API has no way to unset one; the
 // server reads '' as unset for the settings that matter here). Returns the number of keys put back.
 'use strict';
-const { execFileSync } = require('./child_process.js');
+const { sqliteText, sqliteExec } = require('./sqlite.js');
 const path = require('node:path');
 const { BASE } = require('../test_base');
 
@@ -19,7 +19,7 @@ const quote = s => "'" + String(s).replace(/'/g, "''") + "'";
 // Under the runner the settings are read from the shard's database, not through the API: a strict shard (--strict-local-auth) answers a request with no credential with 401, and a suite's
 // node-side calls send none (#4849 follow-up). Alone, through the API.
 function readFromDb(dataDir) {
-    const out = execFileSync('sqlite3', ['-readonly', '-separator', '\u001f', path.join(dataDir, 'sessions.db'), 'SELECT key, value FROM user_settings;'], { encoding: 'utf8', maxBuffer: 16 << 20 });
+    const out = sqliteText(path.join(dataDir, 'sessions.db'), 'SELECT key, value FROM user_settings;');
     const settings = {};
     for (const line of out.split('\n')) { if (!line) continue; const i = line.indexOf('\u001f'); settings[line.slice(0, i)] = line.slice(i + 1); }
     return settings;
@@ -43,7 +43,7 @@ async function guardSettings({ base = BASE, dataDir = process.env.CORAL_TEST_DAT
             if (!changed.length) return 0;
             if (dataDir) {
                 const stmts = changed.map(k => (before[k] === undefined ? `DELETE FROM user_settings WHERE key = ${quote(k)};` : `INSERT OR REPLACE INTO user_settings (key, value) VALUES (${quote(k)}, ${quote(before[k])});`));
-                execFileSync('sqlite3', [path.join(dataDir, 'sessions.db'), `PRAGMA busy_timeout = 5000; ${stmts.join(' ')}`], { stdio: ['ignore', 'ignore', 'pipe'] });
+                sqliteExec(path.join(dataDir, 'sessions.db'), `PRAGMA busy_timeout = 5000; ${stmts.join(' ')}`);
                 return changed.length;
             }
             const put = async body => (await fetch(base + '/api/settings', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })).ok;

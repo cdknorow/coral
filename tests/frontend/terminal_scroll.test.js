@@ -111,7 +111,7 @@ async function run() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    command: 'for i in $(seq 1 200); do echo scroll_line_$i; done',
+                    command: ${JSON.stringify(process.platform === 'win32' ? '1..200 | ForEach-Object { "scroll_line_$_" }' : 'for i in $(seq 1 200); do echo scroll_line_$i; done')}, // the terminal on Windows is PowerShell
                     agent_type: 'terminal',
                     session_id: '${sessionId}'
                 })

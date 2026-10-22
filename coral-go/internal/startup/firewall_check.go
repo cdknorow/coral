@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/subgentic/coral/internal/config"
 	"github.com/subgentic/coral/internal/firewall"
 	"github.com/subgentic/coral/internal/safego"
 )
@@ -26,6 +27,11 @@ var firewallRecheck = []time.Duration{time.Minute, 10 * time.Minute, time.Hour}
 func startFirewallCheck(ctx context.Context) {
 	defer safego.Recover("startup/firewall_check")
 	if runtime.GOOS != "windows" {
+		return
+	}
+	// The dashboard test suites (a dev build with CORAL_TEST_HOOKS=1) must not depend on the rules of the machine they run on: a broad rule made by an earlier
+	// "Allow" shows the Windows Firewall toast over the page, which covers controls the suites tap and measure (#237).
+	if config.TestHooksEnvHonoured && os.Getenv("CORAL_TEST_HOOKS") == "1" {
 		return
 	}
 	runFirewallChecks(ctx, os.Executable, firewallRecheck)

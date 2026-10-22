@@ -146,7 +146,7 @@ const CASES = [
                     fetched: fetchedNow, defaultModelsCacheEmptied: window.__modelsRefetched }; })()`);
             if (from === 'empty') saved = out.request;
             if (out.request) for (const k of Object.keys(out.request)) keys.add(k);
-            cases[name] = JSON.stringify(out, null, 1).replace(/[^"\s|,]*coral-cdp-[A-Za-z0-9]+(\/shard\d+(-\d+)?)?/g, '<run folder>'); // the run's own temporary folder is in the CLI path the server fills in
+            cases[name] = JSON.stringify(out, null, 1).replace(/[^"\s|,]*coral-cdp-[A-Za-z0-9]+((?:\\\\|\/)shard\d+(-\d+)?)?/g, '<run folder>').replace(/<run folder>(?:\\\\|\/)mock-agent(?:\.exe)?/g, '<run folder>/mock-agent'); // the run's own temporary folder is in the CLI path the server fills in
         }
         // the floor: every key the payload can hold is sent by some case
         const unseen = PAYLOAD_KEYS.filter(k => !keys.has(k));

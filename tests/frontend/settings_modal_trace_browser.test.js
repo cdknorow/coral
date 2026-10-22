@@ -9,7 +9,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const CDP = require('chrome-remote-interface');
 const BASE = require('./test_base').BASE;
-const GOLDEN = path.join(__dirname, 'fixtures', 'settings_modal_trace.json');
+// Windows has its own: Coral runs there on pty with no tmux choice, so the Terminal section (and its sha) is not the one recorded where tmux is the default.
+const GOLDEN = path.join(__dirname, 'fixtures', process.platform === 'win32' ? 'settings_modal_trace.windows.json' : 'settings_modal_trace.json');
 const sha = t => require('node:crypto').createHash('sha256').update(t).digest('hex');
 
 const FULL = { theme: 'light', default_renderer: 'xterm', default_agent_type: 'codex', default_permission_mode: 'acceptEdits', default_working_dir: '/work/dir', cli_path_claude: '/bin/claude', cli_path_codex: '/bin/codex', cli_path_agy: '/bin/agy', cli_path_pi: '/bin/pi',
@@ -94,7 +95,7 @@ const SCEN = [
             })()`);
             void out;
             const snap = await ev(SNAP);
-            trace[name] = JSON.parse(JSON.stringify(snap).replace(/[^"\s|,]*coral-cdp-[A-Za-z0-9]+(\/shard\d+(-\d+)?)?/g, '<run folder>')); // the run's own temporary folder is in some placeholders, with the shard's folder under it (shard1, or shard1-1 once a shard was replaced) when a path runs through it
+            trace[name] = JSON.parse(JSON.stringify(snap).replace(/[^"\s|,]*coral-cdp-[A-Za-z0-9]+((?:\\\\|\/)shard\d+(-\d+)?)?/g, '<run folder>').replace(/<run folder>(?:\\\\|\/)mock-agent(?:\.exe)?/g, '<run folder>/mock-agent')); // the run's own temporary folder is in some placeholders, with the shard's folder under it (shard1, or shard1-1 once a shard was replaced) when a path runs through it
         };
         for (const [name, settings, answers, group, local] of SCEN) await run(name, settings, answers, group, local);
         cloud = true;

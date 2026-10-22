@@ -151,6 +151,7 @@ async function run() {
         await pause(200); // sleep-ok: proves a negative
         check('XTVERSION and window reports (CSI 18t/22t/8t) get no reply', (await inputs()) === '', JSON.stringify(await inputs()));
 
+        // (A link provider is asked for an absolute buffer line, not a screen row: with scrollback above the screen, as a Windows PowerShell session has, the row alone asks about another line.)
         // OSC 8 hyperlinks: only http(s) targets (any case) become links; every other scheme, a
         // relative path and a UNC path produce no link. Queried through xterm's link PROVIDER (the
         // activation boundary, which validates the URL's protocol), not the raw OSC-link store.
@@ -184,7 +185,7 @@ async function run() {
                 const baseY = buf().baseY; let row = -1;
                 for (let y = 1; y <= t.rows; y++) { const ln = buf().getLine(baseY + y - 1); const s = ln ? ln.translateToString(true) : ''; if (s.indexOf(c.marker) !== -1) { row = y; break; } }
                 let has = false;
-                if (row !== -1) { const arrs = await Promise.all(providers.map(p => new Promise(res => { try { p.provideLinks(row, ls => res(ls || [])); } catch (e) { res([]); } }))); has = arrs.flat().length > 0; }
+                if (row !== -1) { const arrs = await Promise.all(providers.map(p => new Promise(res => { try { p.provideLinks(baseY + row, ls => res(ls || [])); } catch (e) { res([]); } }))); has = arrs.flat().length > 0; }
                 out[c.marker] = { found: row !== -1, has };
             }
             return { providers: providers.length, out };

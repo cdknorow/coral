@@ -3,7 +3,7 @@
 // settings_modal_trace then showed (#4813). The runner takes snapshot() of the SHARED, GLOBAL state before a suite and after it, reports what changed (diff), and puts the settings back
 // (restoreSettings: the server reads user_settings on every request, so a row put back in the database is the value the next suite sees). Per-board data (messages, tasks, subscribers: messageboard.db) is counted per board (#4920): a board a suite
 // made is removed by the runner like a team, and rows added to a board that was there already are a leak. Uses the sqlite3 command line, which the runner already needs to seed cli_path (#4354).
-import { execFileSync } from './child_process.js';
+import { sqliteText, sqliteExec } from './sqlite.js';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -12,7 +12,7 @@ import fs from 'node:fs';
 export const SHARED_TABLES = ['pinned_folders', 'saved_messages', 'remote_servers', 'remote_board_subscriptions', 'scheduled_jobs', 'artifact_keep', 'custom_views', 'agent_ui_panels', 'tags',
   'folder_tags', 'session_tags', 'teams', 'team_members', 'workflows', 'board_workflow_presets', 'cloud_connection', 'cloud_enrollment', 'live_sessions'];
 
-const q = (db, sql) => execFileSync('sqlite3', ['-readonly', '-separator', '\u001f', db, sql], { encoding: 'utf8', maxBuffer: 64 << 20, stdio: ['ignore', 'pipe', 'pipe'] });
+const q = (db, sql) => sqliteText(db, sql);
 const quote = s => "'" + String(s).replace(/'/g, "''") + "'";
 
 /** The shared state of the server whose data dir this is: {settings: {key: value}, tables: {name: {rows, hash}}}. */
@@ -140,6 +140,6 @@ export function restoreSettings(dataDir, before, after) {
     if (a === b) continue;
     stmts.push(a === undefined ? `DELETE FROM user_settings WHERE key = ${quote(k)};` : `INSERT OR REPLACE INTO user_settings (key, value) VALUES (${quote(k)}, ${quote(a)});`);
   }
-  if (stmts.length) execFileSync('sqlite3', [path.join(dataDir, 'sessions.db'), `PRAGMA busy_timeout = 5000; ${stmts.join(' ')}`], { stdio: ['ignore', 'ignore', 'pipe'] });
+  if (stmts.length) sqliteExec(path.join(dataDir, 'sessions.db'), `PRAGMA busy_timeout = 5000; ${stmts.join(' ')}`);
   return stmts.length;
 }

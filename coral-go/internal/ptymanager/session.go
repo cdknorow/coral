@@ -40,6 +40,7 @@ type session struct {
 	mu          sync.Mutex
 	subscribers map[string]chan []byte
 	lagged      map[string]bool // subscribers cut off for falling behind (#4161; guarded by mu)
+	ended       bool            // the process has ended and its subscribers were closed (guarded by mu)
 	cols, rows  uint16          // the PTY's size as last set (guarded by mu)
 
 	// Ring buffer of recent output for snapshot on reconnect
@@ -113,15 +114,29 @@ func newSession(name, agentType, workDir, sessionID, command string, cols, rows 
 
 	// Start output reader goroutine
 	go func() { defer safego.Recover("ptymanager/session:s.readLoop"); s.readLoop() }()
+	// A ConPTY output pipe does not reach end of file when the child exits (only when the pseudo console is closed), so readLoop alone would leave a viewer on a
+	// dead terminal. When the process is done, give its last output a moment to arrive, then close the subscribers.
+	go func() {
+		defer safego.Recover("ptymanager/session:s.watchExit")
+		<-s.proc.Done()
+		time.Sleep(exitDrain)
+		s.closeSubscribers()
+	}()
 
 	return s, nil
 }
+
+// exitDrain is how long the last output of an ended process is given to reach its viewers before they are told the terminal closed.
+const exitDrain = 300 * time.Millisecond
 
 // readLoop reads PTY output and fans out to log file and subscribers.
 // When the PTY closes (EOF), the log file is closed here to prevent FD leaks
 // if the session exits naturally without kill() being called.
 func (s *session) readLoop() {
 	defer s.closeLog()
+	// The process ended on its own (the shell's exit): the subscribers' channels close, so a viewer is told the terminal is closed (the stream sends
+	// terminal_closed) instead of staying open on a dead terminal. kill closes them too; closing is once per subscriber.
+	defer s.closeSubscribers()
 	buf := make([]byte, 32*1024)
 	for {
 		n, err := s.proc.Read(buf)
@@ -218,6 +233,11 @@ func (s *session) size() (uint16, uint16) {
 func (s *session) subscribe(id string) <-chan []byte {
 	ch := make(chan []byte, 256)
 	s.mu.Lock()
+	if s.ended { // the process has already ended: this viewer is told so at once (a closed channel), not left waiting
+		s.mu.Unlock()
+		close(ch)
+		return ch
+	}
 	s.subscribers[id] = ch
 	delete(s.lagged, id)
 	s.mu.Unlock()
@@ -231,6 +251,17 @@ func (s *session) takeLagged(id string) bool {
 	lagged := s.lagged[id]
 	delete(s.lagged, id)
 	return lagged
+}
+
+// closeSubscribers closes every subscriber's channel and forgets them.
+func (s *session) closeSubscribers() {
+	s.mu.Lock()
+	s.ended = true
+	for id, ch := range s.subscribers {
+		close(ch)
+		delete(s.subscribers, id)
+	}
+	s.mu.Unlock()
 }
 
 // unsubscribe removes a subscriber.
@@ -336,12 +367,7 @@ func (s *session) killWithin(grace time.Duration) error {
 	s.closeLog()
 
 	// Close all subscriber channels
-	s.mu.Lock()
-	for id, ch := range s.subscribers {
-		close(ch)
-		delete(s.subscribers, id)
-	}
-	s.mu.Unlock()
+	s.closeSubscribers()
 
 	return nil
 }

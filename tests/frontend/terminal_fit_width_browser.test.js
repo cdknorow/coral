@@ -15,6 +15,7 @@
 //
 // Drives Chrome over CDP (chrome-remote-interface); run_cdp_suites.mjs finds CDP suites by that name.
 const assert = require('node:assert/strict');
+require('./helpers/requires_tmux')('terminal_fit_width_browser');
 const { execFileSync } = require('./helpers/child_process.js');
 const CDP = require('chrome-remote-interface');
 
