@@ -57,6 +57,8 @@ Through a Coral Hub tunnel the machine's connector can refuse a request. These a
 | 400 `{"error":"bad request","code":"bad_request"}` | The connector could not accept the request as sent (header, method or body) |
 | 403 `{"error":"local_mode","mode":"view"\|"interact"}` | The machine's own access setting is below what the hub allows |
 
+When the machine's access setting (Settings > Network and Hub, or `--cloud-max-mode`) is lowered or raised while Coral is connected, Coral Hub learns it at once (#5918). A hub that advertises `local_mode/1` is told with one small message on a connector-opened stream, `POST /control/mode` with the body `{"local_mode":"view"|"interact"|"launch"}` (answered 204, at most one a second, the latest value only, an identical one not sent), and the tunnel stays up; on a lowering Coral first ends its own open terminal streams whose viewer was allowed more than the new setting (a close with the reason "access mode lowered by this computer"), and a viewer who can only look is left alone. A hub that does not advertise it, an answer other than 204 (a 429 included) and a timeout all fall back to what Coral did before: it reconnects, and the next hello carries the setting. Either way the machine enforces its own setting on every request and every frame; the hub's view of it never gates anything.
+
 ### Identity through the tunnel
 
 The tunnel carries no proof of who the Hub user is, so on boards (#3377, #3404), for requests the connector executed:

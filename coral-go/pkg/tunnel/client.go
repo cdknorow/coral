@@ -236,7 +236,7 @@ func Dial(ctx context.Context, rawURL, token string, o ClientOptions) (*ClientSe
 		return nil, err
 	}
 	c.SetReadLimit(maxHandshakeBytes)
-	hello, _ := json.Marshal(Hello{ProtocolVersion: ProtocolVersion, ServerToken: token, CoralVersion: o.CoralVersion, LocalMode: currentMode(o.LocalMode).String(), Capabilities: []string{CapCrossTeamAllowlist, CapCrossTeamLinks}, BootID: thisBoot.id, StartedAt: thisBoot.at.Format(time.RFC3339)})
+	hello, _ := json.Marshal(Hello{ProtocolVersion: ProtocolVersion, ServerToken: token, CoralVersion: o.CoralVersion, LocalMode: currentMode(o.LocalMode).String(), Capabilities: []string{CapCrossTeamAllowlist, CapCrossTeamLinks, CapabilityLocalMode}, BootID: thisBoot.id, StartedAt: thisBoot.at.Format(time.RFC3339)})
 	if err := c.Write(hctx, websocket.MessageBinary, hello); err != nil {
 		_ = c.Close(websocket.StatusInternalError, "")
 		return nil, err

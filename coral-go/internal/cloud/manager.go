@@ -166,6 +166,18 @@ type Manager struct {
 	// (#3966); a sign-in starts only on that tunnel and only for an origin on it.
 	originsAccepted []string
 	originsSession  *tunnel.ClientSession
+	// local is the current tunnel's handler, so that lowering this computer's mode can end the streams it allowed above the new mode (#5918).
+	local atomic.Pointer[tunnel.LocalHandler]
+	// The mode the hub is told about (#5918): lastMode is the mode as of the last dial or change (a lowering is a change below it), announced is what the hub last learned (by Hello or by
+	// a local_mode message), modeAt when the last message went, pendingMode and modeTimer the one message held back to keep to one a second; modeGap is that second (a test's own).
+	modeMu      sync.Mutex
+	lastMode    tunnel.Mode
+	announced   tunnel.Mode
+	modeAt      time.Time
+	pendingMode tunnel.Mode
+	modeTimer   *time.Timer
+	modeGap     time.Duration
+	closeAbove  func(tunnel.Mode) int // ends the streams allowed above a lowered mode (the current tunnel's handler); a test sets its own to see when it runs
 }
 
 // New creates a Manager. Nothing runs until Run.
@@ -180,7 +192,7 @@ func New(o Options) *Manager {
 	if hc == nil {
 		hc = NewHubHTTPClient()
 	}
-	m := &Manager{o: o, hc: hc, loaded: make(chan struct{}), relaySlots: make(chan struct{}, 4), artifactSlots: make(chan struct{}, 1), signinSlots: make(chan struct{}, 2)}
+	m := &Manager{o: o, hc: hc, loaded: make(chan struct{}), relaySlots: make(chan struct{}, 4), artifactSlots: make(chan struct{}, 1), signinSlots: make(chan struct{}, 2), modeGap: tunnel.LocalModeMinGap + 100*time.Millisecond}
 	m.st = Status{Configured: o.HubURL != "", HubURL: o.HubURL, State: StateOff}
 	if o.HubURL != "" {
 		m.st.State = StateIdle
@@ -561,6 +573,9 @@ func (m *Manager) runTunnel(ctx context.Context, gen int) {
 		set(StateKeyUnreadable, "the stored token cannot be decrypted (master key missing or changed); disconnect and enroll again")
 		return
 	}
+	m.modeMu.Lock()
+	m.lastMode, m.announced = m.currentMode(), m.currentMode() // this dial's Hello carries it
+	m.modeMu.Unlock()
 	local := &tunnel.LocalHandler{
 		BaseURL:       m.o.LocalBaseURL,
 		AllowRequest:  tunnel.AllowRequest(m.o.MaxMode), // read on every request: a change applies at once
@@ -570,6 +585,7 @@ func (m *Manager) runTunnel(ctx context.Context, gen int) {
 		Redactor:      m.o.Redactor,                     // betterleaks' rules (#3808)
 		HubLimitsFunc: m.o.HubLimits,                    // read on every request: a change applies at once
 	}
+	m.local.Store(local)
 	err = tunnel.Run(ctx, TunnelURL(m.o.HubURL), token, tunnel.ClientOptions{
 		Handler:       local,
 		CoralVersion:  m.o.CoralVersion,
@@ -649,9 +665,12 @@ func (m *Manager) currentMode() tunnel.Mode {
 	return tunnel.TierView
 }
 
-// ModeChanged reconnects an established tunnel so the hub learns the new local maximum
-// (shown to the user as "limited by this machine"). Enforcement does not wait for it:
-// the connector reads the mode on every request and every WebSocket frame.
+// ModeChanged tells the hub that this computer's maximum mode changed, so it learns it ("limited by this machine"). Enforcement does not wait for it: the connector reads the mode on
+// every request and every WebSocket frame.
+//
+// To a hub that advertised local_mode/1 (#5918) it is a message, not a reconnect: first, on a lowering, this Coral ends its own open streams that were allowed more than the new mode, then it
+// sends {"local_mode": ...} (at most one a second: a faster change is held and only the latest sent, an identical one not sent at all). Any answer but 204, a timeout, or no capability falls back to what
+// it always did, a reconnect, so the next Hello carries the mode: the hub turns the capability on with its own go, and until then nothing changes.
 func (m *Manager) ModeChanged(ctx context.Context) {
 	if m.o.HubURL == "" {
 		return
@@ -663,9 +682,83 @@ func (m *Manager) ModeChanged(ctx context.Context) {
 	m.mu.Lock()
 	st := m.st.State
 	m.mu.Unlock()
-	if st == StateConnected || st == StateConnecting || st == StateRetrying {
-		m.startTunnel(conn)
+	if st != StateConnected && st != StateConnecting && st != StateRetrying {
+		return
 	}
+	cs := m.session.Load()
+	if cs == nil || !cs.CanSendLocalMode() {
+		m.startTunnel(conn)
+		return
+	}
+	mode := m.currentMode()
+	m.modeMu.Lock()
+	lowering := mode < m.lastMode
+	m.lastMode = mode
+	m.modeMu.Unlock()
+	if lowering {
+		closeAbove := m.closeAbove
+		if closeAbove == nil {
+			if lh := m.local.Load(); lh != nil {
+				closeAbove = lh.CloseAbove
+			}
+		}
+		if closeAbove != nil {
+			if n := closeAbove(mode); n > 0 {
+				m.o.Logger.Info("[cloud] ended streams allowed above the new mode", "streams", n, "mode", mode.String())
+			}
+		}
+	}
+	m.sendMode(conn, mode)
+}
+
+// sendMode tells the hub mode, now or (within modeGap of the last message) once the gap has passed, with only the latest value. An identical value is not sent.
+func (m *Manager) sendMode(conn *store.CloudConnection, mode tunnel.Mode) {
+	m.modeMu.Lock()
+	if m.modeTimer != nil { // one is held: it will send the latest
+		m.pendingMode = mode
+		m.modeMu.Unlock()
+		return
+	}
+	if wait := m.modeGap - m.o.Now().Sub(m.modeAt); !m.modeAt.IsZero() && wait > 0 {
+		m.pendingMode = mode
+		m.modeTimer = time.AfterFunc(wait, func() {
+			defer safego.Recover("cloud/manager:m.flushMode")
+			m.modeMu.Lock()
+			m.modeTimer = nil
+			mode := m.pendingMode
+			m.modeMu.Unlock()
+			m.deliverMode(conn, mode)
+		})
+		m.modeMu.Unlock()
+		return
+	}
+	m.modeMu.Unlock()
+	m.deliverMode(conn, mode)
+}
+
+// deliverMode sends the message, or reconnects when it cannot be sent or is not taken (a 429 included).
+func (m *Manager) deliverMode(conn *store.CloudConnection, mode tunnel.Mode) {
+	m.modeMu.Lock()
+	same := mode == m.announced
+	m.modeMu.Unlock()
+	if same {
+		return // the hub already has it: coalesced
+	}
+	cs := m.session.Load()
+	if cs == nil || !cs.CanSendLocalMode() {
+		m.startTunnel(conn) // the tunnel was replaced meanwhile: its Hello carries the mode
+		return
+	}
+	ctx, cancel := context.WithTimeout(m.root, 5*time.Second)
+	defer cancel()
+	if err := cs.SendLocalMode(ctx, mode); err != nil {
+		m.o.Logger.Info("[cloud] the hub did not take the local mode message: reconnecting so the next hello carries it", "error", err.Error())
+		m.startTunnel(conn)
+		return
+	}
+	m.modeMu.Lock()
+	m.announced, m.modeAt = mode, m.o.Now()
+	m.modeMu.Unlock()
 }
 
 // setSession records generation gen's live tunnel session (nil when it ends). Only the
