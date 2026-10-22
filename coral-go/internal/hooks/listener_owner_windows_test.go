@@ -6,11 +6,13 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -113,7 +115,7 @@ func TestAnotherAccountsListenerGetsNoToken(t *testing.T) {
 
 // The image is enforced: this user's listener must be coral.exe or coral-tray.exe in a folder Coral runs from (the running
 // tool's own folder, covering a dev build, or the Coral install); a renamed binary or another folder gets no token. Each
-// address is checked once per process, and a request with no token isn't checked.
+// address is cached briefly, and a request with no token is not checked.
 func TestTheImageMustBeCoralFromItsOwnFolder(t *testing.T) {
 	me, err := currentUserSID()
 	require.NoError(t, err)
@@ -284,4 +286,46 @@ func TestTheInstallFoldersComeFromTheSystemNotTheEnvironment(t *testing.T) {
 	for _, f := range folders {
 		assert.NotContains(t, f, "not-program-files", "the environment's %ProgramFiles% is not used")
 	}
+}
+
+// A long-running CLI rechecks a changed listener after a short pass; a refusal
+// expires sooner so restarting Coral repairs the next request without a new CLI.
+func TestListenerVerdictExpiresWhenThePortChangesOwner(t *testing.T) {
+	me, err := currentUserSID()
+	require.NoError(t, err)
+	system, err := windows.CreateWellKnownSid(windows.WinLocalSystemSid)
+	require.NoError(t, err)
+	folder := t.TempDir()
+	resetListenerCheck(t, tcpListenerPIDs, func(pid uint32) (*windows.SID, string, error) {
+		if pid == 77 {
+			return me, filepath.Join(folder, "coral.exe"), nil
+		}
+		return system, filepath.Join(folder, "coral.exe"), nil
+	})
+	selfSID = func() (*windows.SID, error) { return me, nil }
+	fileOwner = func(string) (*windows.SID, error) { return nil, windows.ERROR_FILE_NOT_FOUND }
+	coralFolders = func() []string { return []string{folder} }
+	oldRows, oldNow := tcpRows, listenerNow
+	t.Cleanup(func() { tcpRows, listenerNow = oldRows, oldNow })
+	now := time.Unix(1000, 0)
+	listenerNow = func() time.Time { return now }
+	rows := []listenRow{{addr: net.ParseIP("127.0.0.1"), port: 8450, pid: 77}}
+	calls := 0
+	tcpRows = func(uint32) ([]listenRow, error) { calls++; return rows, nil }
+	target, err := url.Parse("http://127.0.0.1:8450")
+	require.NoError(t, err)
+	require.NoError(t, verifyLocalListener(target))
+	assert.Equal(t, 1, calls)
+	rows[0].pid = 88
+	now = now.Add(listenerPassTTL)
+	var foreign *ForeignListenerError
+	require.ErrorAs(t, verifyLocalListener(target), &foreign, "the new SYSTEM owner is refused once the pass expires")
+	assert.Equal(t, 2, calls)
+	rows[0].pid = 77
+	now = now.Add(listenerErrorTTL - time.Nanosecond)
+	require.ErrorAs(t, verifyLocalListener(target), &foreign, "a refusal is cached only briefly")
+	assert.Equal(t, 2, calls)
+	now = now.Add(time.Nanosecond)
+	require.NoError(t, verifyLocalListener(target), "Coral returning recovers after two seconds")
+	assert.Equal(t, 3, calls)
 }
