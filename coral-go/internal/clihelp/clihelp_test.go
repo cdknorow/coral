@@ -85,3 +85,17 @@ func TestCheckFlags(t *testing.T) {
 		t.Errorf("any number of positionals: %v", err)
 	}
 }
+
+func TestNearFlag(t *testing.T) {
+	known := []string{"--to", "--file"}
+	for arg, want := range map[string]string{"--too": "--to", "--t": "--to", "--o": "--to", "--fil": "--file", "--fiel": "--file", "--files": "--file", "--fl": "--file", "--TO2": "--to"} {
+		if got, ok := NearFlag(arg, known); !ok || got != want {
+			t.Errorf("NearFlag(%q) = %q, %v; want %q", arg, got, ok, want)
+		}
+	}
+	for _, arg := range []string{"--force", "--on", "--verbose", "--count", "--to", "--file", "--help"} {
+		if got, ok := NearFlag(arg, known); ok {
+			t.Errorf("NearFlag(%q) = %q; it is text or a real option", arg, got)
+		}
+	}
+}
