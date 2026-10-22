@@ -3,6 +3,7 @@ package routes
 import (
 	"fmt"
 	"strings"
+	"time"
 )
 
 // The words of cross-team messaging (#5572, operator feedback: "these settings are all over the place"). ONE table, used by the API, the command line (which prints the API's
@@ -95,7 +96,7 @@ type crossTeamStatus struct {
 }
 
 // statusFor names where a team stands. linkable is false for a team made before Coral Hub links existed; linked is how many teams on other Corals can message it; stale says the links
-// are paused because Coral Hub has not been heard from (never true before links are kept fresh, #5572 patch 2); heard is when it last was.
+// are paused because Coral Hub has not been heard from (never true before links are kept fresh, #5572 patch 2); heard is when it last was, already in words ("today 15:04", "21 Oct 15:04").
 func statusFor(linkable, on bool, linked int, stale bool, heard string) crossTeamStatus {
 	switch {
 	case !linkable:
@@ -103,17 +104,32 @@ func statusFor(linkable, on bool, linked int, stale bool, heard string) crossTea
 	case !on:
 		return crossTeamStatus{statusOff, "Cross-team messaging is off for this team. Turn it on in " + teamSettingsMessaging + "."}
 	case stale:
-		text := "Links are paused: this Coral has not heard from Coral Hub"
+		text := "Waiting for Coral Hub: messages from other teams are refused until this computer reconnects."
 		if heard != "" {
-			text += " since " + heard
+			text += " Last heard from Coral Hub " + heard + "."
 		}
-		return crossTeamStatus{statusStale, text + ". Check its connection in " + settingsCoralHub + "."}
+		return crossTeamStatus{statusStale, text + " Check the connection in " + settingsCoralHub + "."}
 	case linked == 0:
 		return crossTeamStatus{statusWaiting, "No team on another Coral is linked to this team yet."}
 	case linked == 1:
 		return crossTeamStatus{statusReady, "1 team on another Coral can message this team."}
 	}
 	return crossTeamStatus{statusReady, fmt.Sprintf("%d teams on other Corals can message this team.", linked)}
+}
+
+// heardWords says when Coral Hub was last heard from, in the owner's time: "today 15:04" on the same day as now, "21 Oct 15:04" otherwise; "" when never.
+func heardWords(t, now time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	t, now = t.Local(), now.Local()
+	if t.YearDay() == now.YearDay() && t.Year() == now.Year() {
+		return "today " + t.Format("15:04")
+	}
+	if t.Year() != now.Year() {
+		return t.Format("2 Jan 2006 15:04")
+	}
+	return t.Format("2 Jan 15:04")
 }
 
 // The Coral Hub owner's switch routes (#5572): refusals toward the hub, and the notice a team reads when its switch was changed. The notice is a fixed template; the only variable parts are the
