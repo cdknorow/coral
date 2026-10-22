@@ -197,6 +197,11 @@ type inputGate struct {
 	// lastPasted: each session's last text Coral pasted, squeezed, until its Enter is seen to
 	// submit it (#4104): left in the box (a dialog took the Enter), it is Coral's, not a draft.
 	lastPasted map[string]string
+	// ownTexts: each session's recent texts the gate typed, squeezed (own_texts.go, #247): Coral's text left in the box is
+	// recognised as its own, alone or several in a row, and submitted rather than held as a draft.
+	ownTexts map[string][]ownText
+	// repaintedAt: when each session was last asked to redraw because its input box wasn't on the rendered screen (#247).
+	repaintedAt map[string]time.Time
 	// dialogHeld: sessions whose sends were last held behind a dialog: the held notice stays
 	// up (checkEnded) until a send is delivered again.
 	dialogHeld map[string]bool

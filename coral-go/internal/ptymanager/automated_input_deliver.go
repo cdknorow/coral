@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	at "github.com/subgentic/coral/internal/agenttypes"
 	"github.com/subgentic/coral/internal/inputlog"
 	"github.com/subgentic/coral/internal/naming"
 	"github.com/subgentic/coral/internal/terminalinput"
@@ -77,6 +78,9 @@ func (g *inputGate) sendChecked(ctx context.Context, in AutomatedInput) (enterHe
 	// 2-3 s after. Only here, where a send really goes: a held send waits nothing until it's due.
 	if err := SpaceTeam(ctx, teamFor(in.Name)); err != nil {
 		return false, err
+	}
+	if !strings.HasSuffix(in.Key, "#enter") {
+		g.noteOwnText(in.Name, in.Text) // what the gate types is Coral's, if it is found in the box later (#247)
 	}
 	if in.Paste {
 		if held, err, done := g.pasteChecked(ctx, in); done {
@@ -239,6 +243,16 @@ func (g *inputGate) boxBeforeFirstPaste(ctx context.Context, in *AutomatedInput,
 	case boxOurs:
 		held, err := g.enterAndConfirm(ctx, *in, sr, rendered, agentType, sessionID)
 		return held, err, true
+	case boxUnknown:
+		if agentType == at.Codex {
+			// Never pasted blind into Codex (#247): with no input box on screen it is most likely mid-turn (streaming
+			// output hides its box on the rendered screen), and what is pasted then stays in its composer. Held until
+			// the box shows (after a long reply the rendered screen can miss it: Codex is asked to redraw); reported as
+			// held too long if it never does.
+			g.repaintIfDue(ctx, *in, agentType, sessionID)
+			g.holdPaste(*in, "the input box isn't on screen", false, "")
+			return true, nil, true
+		}
 	}
 	return false, nil, false
 }

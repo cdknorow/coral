@@ -1,0 +1,13 @@
+  Worked for 2m 1s • 2:20 AM
+
+
+› [Task #1 available] Run 'coral-board task claim 1' to claim it when your current task is done.[Task #2 available] Run 'coral-board task claim 2' to claim it when your current task is done.
+
+
+• Working (1s • esc to interrupt)
+
+
+› Ask Codex to do anything
+
+  GPT-6.1-Sol default · D:\work\proj · Await orchestrator instructions
+  ? for shortcuts                                                                                                                                                            ⚠ 1 warning · f2 to view

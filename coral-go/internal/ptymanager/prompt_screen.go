@@ -132,6 +132,41 @@ func busyOnScreen(lines []string) bool {
 	return false
 }
 
+// codexWorkingRe: Codex's working line above its input box, "• Working (12s • esc to interrupt)" (or a reasoning title in
+// place of "Working": "• Planning the change (1m 3s • esc to interrupt)").
+var codexWorkingRe = regexp.MustCompile(`(?i)^\s*[•◦]\s+\S.*\(.*\besc to interrupt\)\s*$`)
+
+// codexWorkingLines: how many lines above Codex's input box are read for its working line (queued messages sit between them).
+const codexWorkingLines = 6
+
+// codexWorkingOnScreen reports whether Codex's screen shows it working (#247): its working line within the few lines just above
+// the lowest input box. Only there: the same words further up are output (a reply quoting them), not the status.
+func codexWorkingOnScreen(screen string) (line string, busy bool) {
+	lines := tailLines(screenText(screen), promptScreenLines)
+	box := -1
+	for i := len(lines) - 1; i >= 0; i-- {
+		if isInputBoxLine(lines[i]) {
+			box = i
+			break
+		}
+	}
+	if box < 0 {
+		return "", false
+	}
+	seen := 0
+	for i := box - 1; i >= 0 && seen < codexWorkingLines; i-- {
+		t := strings.TrimSpace(lines[i])
+		if t == "" {
+			continue
+		}
+		seen++
+		if codexWorkingRe.MatchString(t) {
+			return t, true
+		}
+	}
+	return "", false
+}
+
 // isPromptHold reports whether a hold's reason (PromptOnScreen's, or the agent's
 // state) is a request from the agent to the user: a selection menu, a prompt
 // question, or a state of needs input. A footer alone ("esc to cancel", which agy
