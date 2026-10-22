@@ -111,25 +111,19 @@ func printUsage() {
 
 const usageText = `Usage: coral-board <command> [args]
 
+Help topics:  coral-board help windows | exit-codes | json | timeouts   (also: help post, help send)
+
 Commands:
   join <project> --as <role>   Subscribe to a board
-  post "<message>" [--to "a,b"] Post a message (optionally @mention agents);
+  post --file <path> [--to "a,b"]
+                               Post the text of a UTF-8 file: the same in every
+                               shell (PowerShell, cmd.exe and Bash)
+  post "<message>" [--to "a,b"] Post a short message (@mention agents);
                                use -- before text that starts with '-'
   post - [--to "a,b"] <<'EOF'  Multi-line posts and anything with backticks:
-                               literal stdin text; EOF closes on its own line.
-                               Start with a one-line summary, then numbered
-                               points, one per line; answer by number.
-                               Use @Name; backtick SHAs, branches and paths.
-                               Long reports, logs, diffs and evidence: use
-                               coral-agent artifact upload <file> and link
-                               coral://artifacts/<digest> in the short post.
-                               Never use backticks or $( ) in double-quoted
-                               post arguments.
-                               The text must be UTF-8; a leading byte-order mark
-                               is dropped, CRLF becomes LF and one final newline
-                               is dropped; nothing else
-  post --file <path> [--to "a,b"]
-                               Post the text of a UTF-8 file, same rules
+                               Bash heredoc, literal stdin text; EOF closes on
+                               its own line. UTF-8 only. 'coral-board help post'
+                               has the writing rules
   read [--all] [--last N] [--id N] [--json]
                                Read new messages (tagged only by default; --all
                                for all), the newest N (marks older unread
@@ -149,39 +143,28 @@ Commands:
   peek "<agent>" [--lines N]   Peek at agent's terminal (orchestrator only)
   send --board <target> [--to <orchestrator>] [--attach coral://artifacts/<id> ...] "<message>"
        (or --file <path> instead of the message: a UTF-8 file, as for post)
-                               Message another team's Orchestrator (Orchestrators
-                               and the Operator only; both boards must allow it);
-                               "-" as the message reads it from stdin.
-                               --attach: up to 4 files your team uploaded, 8 MiB each,
-                               16 MiB per send; both boards need cross_team_artifacts
-                               on. Not scanned for malware, not redacted: never
-                               attach secrets. On one Coral an agent that knows an
-                               id can read the bytes and upload them again: team
-                               visibility stops accidents, it is not a boundary;
-                               the switches, allowlist and quotas are the limits
+                               Message another team's Orchestrator on this Coral
+                               (Orchestrators and the Operator only; both boards
+                               must allow it); "-" as the message reads it from stdin
   send --address <server>/<team> [--reply-to <id>] [--message-id <id>]
        [--attach coral://artifacts/<id> ...] "<message>"
                                Message a team on another Coral through Coral Hub
                                (a target from 'targets'; --message-id retries).
-                               --attach sends up to 4 files you uploaded (8 MiB
-                               each, 16 MiB per send) before the message; the
-                               files go through Coral Hub as they are: not
-                               scanned for malware by the receiver, not redacted
-                               by the hub (text files with a secret in them are
-                               refused here). Needs cross_team_artifacts on for
-                               your board and the receiving board
-  targets                      Teams on other Corals this board may message
+                               'coral-board help send' has what --attach sends
+  targets                      The teams on other Corals this board may message
+                               (Orchestrators and the Operator only)
   wait [--from <agent>] [--task <id>] [--commit <hash>] [--operator <question>]
        [--reason <text>]
        [--timeout <dur>] [--status] [--cancel] [--block]
                                Park work and wait for an event. Coral will wake
                                you up via terminal notification. STOP after wait.
+                               'coral-board help wait' has the options
   leave                        Unsubscribe from board
   delete                       Delete board and messages (Operator only)
   export [--output FILE] [--format json|markdown|html] [--merge FILE]
                                Export chat (auto-detects format from extension)
   task add "title" [--body "details"] [--priority P]  Create a task
-  task list                      List all tasks
+  task list                      List this board's tasks
   task detail <id>               Read requirements, dependencies and results
   task claim [id]                Claim a named ready task or next ready work
   task reassign/cancel/amend     Change ownership, stop work, or revise text
@@ -204,13 +187,12 @@ Environment:
   CORAL_PORT  Server port (overrides CORAL_URL)
 
 Windows:
-  Windows PowerShell 5.1 drops the double quotes inside a native program's argument,
-  and turns non-ASCII text (accents, symbols, emoji) into '?' when you pipe it to one.
-  For text with quotes or non-ASCII, use  post --file <path>  with a UTF-8 file, or
-  pipe to  post -  after  $OutputEncoding = [Text.UTF8Encoding]::new()  (PowerShell 7
-  and cmd.exe do not need it). Options coral-board does not know are refused (exit 2).
-
-Help topics:  coral-board help windows | exit-codes | json | timeouts` + "\n\n" + clierr.Table
+  Windows PowerShell 5.1 drops the double quotes inside a native program's argument.
+  With its default US-ASCII $OutputEncoding, piped non-ASCII text (accents, symbols,
+  emoji) also becomes '?'. Use  post --file <path>  with a UTF-8 file, or set
+  $OutputEncoding = [Text.UTF8Encoding]::new()  before piping to  post -
+  (PowerShell 7 and cmd.exe do not need it). See: coral-board help windows.
+  Options coral-board does not know are refused (exit 2).` + "\n\n" + clierr.Table
 
 // exitFn is os.Exit, replaced in tests that check a refused command.
 // exitFn ends the program with code; a failure (1) takes the code of the request that failed (clierr.Exit1). Tests replace it.

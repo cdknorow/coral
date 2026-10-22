@@ -55,7 +55,8 @@ const exitCodes = `Exit codes: what each one means and what to do
   2  usage: an option or value the command does not take. Nothing was sent. Run: TOOL <command> --help
   3  cannot reach Coral: is it running (the tray icon)? Is CORAL_URL (or CORAL_PORT) the address
      Coral listens on?ADDR3
-  4  no answer in time: Coral may be busy. Try again, or set CORAL_TIMEOUT (TOOL help timeouts).
+  4  no answer in time: Coral may be busy. A read can be retried. After a write, check its result
+     before you retry: it may have gone through. Or set CORAL_TIMEOUT (TOOL help timeouts).
   5  refused (HTTP 401 or 403): your role or session may not do this. Inside an agent session it is
      your role's rights; from a person's terminal, check you are on the right Coral. It is also the
      code when the tool would not send the agent's token (a program other than Coral on its port, or
@@ -75,10 +76,12 @@ const timeouts = `Timeouts: CORAL_TIMEOUT
 A request waits 10 seconds for Coral by default (15 for docs, 30 for an artifact download, 5 minutes
 for an upload). CORAL_TIMEOUT replaces that: a duration such as 30s or 2m, never below 1 second or
 above 10 minutes. A value that is not a duration is ignored, with a note.
-  PowerShell:  $env:CORAL_TIMEOUT = '30s'; TOOL task complete 12
-  cmd.exe:     set CORAL_TIMEOUT=30s & TOOL task complete 12
-  Linux/macOS: CORAL_TIMEOUT=30s TOOL task complete 12
-When the time runs out the command exits 4 and says so (TOOL help exit-codes).
+  PowerShell:  $env:CORAL_TIMEOUT = '30s'; TOOL READ
+  cmd.exe:     set CORAL_TIMEOUT=30s & TOOL READ
+  Linux/macOS: CORAL_TIMEOUT=30s TOOL READ
+When the time runs out the command exits 4 and says so (TOOL help exit-codes). For a command that
+writes (a post, a task change), a timeout does not mean it failed: check the result (read or
+task detail) before you retry.
 A command with its own long wait (coral-board wait) keeps its own timing.`
 
 const jsonBoard = `JSON output: coral-board
@@ -131,7 +134,11 @@ func TopicPage(tool, name string) (string, bool) {
 		}
 		page = strings.NewReplacer("READ", read, "ADDR3", addr).Replace(exitCodes)
 	case "timeouts":
-		page = timeouts
+		read := "task list"
+		if board {
+			read = "read"
+		}
+		page = strings.NewReplacer("READ", read).Replace(timeouts)
 	case "json":
 		page = jsonAgent
 		if board {

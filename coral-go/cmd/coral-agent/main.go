@@ -53,11 +53,11 @@ Commands:
                                  directory) with your default settings;
                                  --board joins it to that board (its id)
   task add "title" [--body "details"] [--priority P]  Create a task
-  task list [--json]             List all tasks (--json: a JSON array)
+  task list [--json]             List your tasks (--json: a JSON array)
   task detail <id> [--json]      Read requirements, dependencies and results (always JSON)
   task claim [id]                Claim a named ready task or next ready work
-  task edit <id>                 Edit unstarted task text/dependencies
-  task current                   Show your current in-progress task
+  task edit <id> [options]       Edit unstarted task text/dependencies (task edit --help)
+  task current [--json]          Show your current in-progress task
   task complete <id> [--message "note"]  Complete with outcome/evidence
   task cancel <id> [--message "reason"]  Cancel a task
   history search <query> [flags] Search conversation history (post-compaction)
@@ -141,15 +141,35 @@ func main() {
 
 const artifactUsageText = `Usage: coral-agent artifact upload <file> [--name NAME] [--media-type TYPE]
        coral-agent artifact download <coral://artifacts/digest> [--output FILE] [--force]
-       (options may stand before or after the link; --force replaces an existing
-       --output file)
+Run coral-agent artifact upload --help or coral-agent artifact download --help for one of them.`
+
+const artifactUploadUsageText = `Usage: coral-agent artifact upload <file> [--name NAME] [--media-type TYPE]
 
 Upload long reports, logs, diffs and evidence instead of pasting them into posts.
 Link the returned coral://artifacts/<digest> in a short board post: a one-line
 summary, then numbered points, one per line; answer numbered posts by number.
-Use @Name; put SHAs, branches and paths in backticks. For short posts with backticks,
-use coral-board post - <<'EOF' (body and closing EOF on separate lines).
+Use @Name; put SHAs, branches and paths in backticks. To post a longer text from
+Windows use coral-board post --file <path> (coral-board help windows); in Bash,
+coral-board post - <<'EOF' (body and closing EOF on separate lines).
 Never put backticks or $( ) inside a double-quoted post argument.`
+
+const artifactDownloadUsageText = `Usage: coral-agent artifact download <coral://artifacts/digest> [--output FILE] [--force]
+
+Downloads the artifact, checks its SHA-256 and prints the local path. The options
+may stand before or after the link; --force replaces an existing --output file.`
+
+// artifactUsage is the usage of one artifact operation, or of both when rest names none.
+func artifactUsage(rest []string) string {
+	if len(rest) > 0 {
+		switch rest[0] {
+		case "upload":
+			return artifactUploadUsageText
+		case "download":
+			return artifactDownloadUsageText
+		}
+	}
+	return artifactUsageText
+}
 
 func cmdArtifact(args []string) {
 	if len(args) >= 1 && args[0] == "download" {
@@ -158,7 +178,7 @@ func cmdArtifact(args []string) {
 			if err == nil {
 				err = fmt.Errorf("download needs exactly one artifact link")
 			}
-			fmt.Fprintf(os.Stderr, "Error: %v\n%s\n", err, artifactUsageText)
+			fmt.Fprintf(os.Stderr, "Error: %v\n%s\n", err, artifactDownloadUsageText)
 			os.Exit(2)
 		}
 		path, err := downloadArtifactOpts(serverURL, opts.Positional[0], opts.Values["output"], opts.Bools["force"])
@@ -182,7 +202,7 @@ func cmdArtifact(args []string) {
 		if err == nil {
 			err = fmt.Errorf("upload needs exactly one file")
 		}
-		fmt.Fprintf(os.Stderr, "Error: %v\n%s\n", err, artifactUsageText)
+		fmt.Fprintf(os.Stderr, "Error: %v\n%s\n", err, artifactUploadUsageText)
 		os.Exit(2)
 	}
 	file := opts.Positional[0]
@@ -268,13 +288,17 @@ func taskUsageText() string {
 
 Subcommands:
   add "title" [--body "details"] [--priority P]
-  list
+  list [--json]                  List your tasks (--json: a JSON array)
   claim [id]                     Claim a specific ready task or next ready work
-  current                        Show your current in-progress task
-  detail <id>                    Read instructions, prerequisites and artifacts
-  edit <id> [options]             Edit unstarted task text/dependencies
+  current [--json]               Show your current in-progress task
+                                 (--json: the task as JSON, null when there is none)
+  detail <id> [--json]           Read instructions, prerequisites and artifacts
+  edit <id> [--title TEXT] [--body TEXT] [--priority P] [--blocked-by JSON]
+                                 Edit an unstarted task (any of the options)
   publish <id>                   Publish a draft
-  complete <id> [options]         Complete with outcome/evidence
+  complete <id> [--message "note"] [--outcome success|failed]
+       [--artifacts manifest.json] [--candidate-revision REVISION]
+                                 Complete with outcome/evidence
   cancel <id> [--message "reason"]
 
 Add options:
