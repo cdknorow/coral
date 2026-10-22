@@ -77,3 +77,11 @@ func TestWindowsApplyHasItsOwnOffSwitch(t *testing.T) {
 	assert.False(t, applyEnabledWindows, "off in this build")
 	assert.False(t, applyOn("windows", applyEnabledDarwin, applyEnabledLinux, applyEnabledWindows, windowsApplyBuilt), "so the Windows apply is off")
 }
+
+// #81 N1: only a Windows MSI install keeps the rollback package.
+func TestOnlyAWindowsMSIInstallKeepsTheRollbackPackage(t *testing.T) {
+	assert.True(t, keepsRollback("windows", false))
+	assert.False(t, keepsRollback("windows", true), "portable")
+	assert.False(t, keepsRollback("darwin", false))
+	assert.False(t, keepsRollback("linux", false))
+}
