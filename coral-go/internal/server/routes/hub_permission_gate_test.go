@@ -45,6 +45,12 @@ var hubGateCases = []hubGateCase{
 		safe: func(string) any {
 			return map[string]any{"agent_type": "claude", "flags": []string{"--permission-mode", "default"}}
 		}},
+	// Pi has no mode that asks (its tools run with the launching user's permissions), so even a plain Pi launch needs the switch (#5901).
+	{name: "launch: Pi, no flags",
+		skips: func(string) any { return map[string]any{"agent_type": "pi"} },
+		safe: func(string) any {
+			return map[string]any{"agent_type": "claude", "flags": []string{"--permission-mode", "default"}}
+		}},
 	{name: "launch: an unknown flag",
 		skips: func(string) any {
 			return map[string]any{"agent_type": "claude", "flags": []string{"--settings", "s.json"}}

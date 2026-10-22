@@ -320,11 +320,26 @@ func (a *AgyAgent) LaunchCommand(params LaunchParams) (string, error) {
 
 	// User-provided flags — translate or drop flags that agy doesn't understand
 	claudeOnlyFlags := map[string]bool{
-		"--settings": true, "--session-id": true, "--approval-mode": true,
+		"--settings": true, "--session-id": true,
 	}
 	permissionApplied := params.Capabilities != nil && !params.Capabilities.IsEmpty()
 	for i := 0; i < len(params.Flags); i++ {
 		flag := params.Flags[i]
+		// The former Gemini spelling of the mode (--approval-mode X, --approval-mode=X): agy has --mode, so a recognised value is translated, both tokens consumed (dropping only the
+		// name left its value as a stray argument, and the = form went through untouched), and any other value is refused, not passed (#5901).
+		if value, isApproval := agyApprovalModeValue(params.Flags, &i); isApproval {
+			mode, known := agyLegacyApprovalModes[value]
+			if !known {
+				return "", fmt.Errorf("agy does not take --approval-mode %q: use --mode plan, --mode accept-edits or --dangerously-skip-permissions (the old values are default, plan, auto_edit and yolo)", value)
+			}
+			if permissionApplied {
+				slog.Info("dropping --approval-mode for agy agent: its capabilities or an earlier mode set it", "value", value)
+				continue
+			}
+			parts = appendAgyPermissionMode(parts, mode)
+			permissionApplied = true
+			continue
+		}
 		if claudeOnlyFlags[flag] {
 			slog.Warn("dropping unsupported flag for agy agent", "flag", flag)
 			continue
@@ -467,6 +482,26 @@ func agyHooksDir(sessionID string) (string, error) {
 	}
 	rememberLaunchTemp(safeFileID(sessionID), dir)
 	return dir, nil
+}
+
+// agyLegacyApprovalModes maps the values of Gemini's former --approval-mode to Coral's generic permission modes (appendAgyPermissionMode makes agy's own flags of them).
+var agyLegacyApprovalModes = map[string]string{"default": "default", "plan": "plan", "auto_edit": "acceptEdits", "yolo": "bypassPermissions"}
+
+// agyApprovalModeValue reads --approval-mode at flags[*i] ("--approval-mode X" or "--approval-mode=X"), moving *i past its value, and reports whether it is that flag. A name with no value
+// after it (the end, or another flag) has the empty value, which is not a known one.
+func agyApprovalModeValue(flags []string, i *int) (value string, ok bool) {
+	flag := flags[*i]
+	if v, eq := strings.CutPrefix(flag, "--approval-mode="); eq {
+		return v, true
+	}
+	if flag != "--approval-mode" {
+		return "", false
+	}
+	if *i+1 < len(flags) && !strings.HasPrefix(flags[*i+1], "-") {
+		*i++
+		return flags[*i], true
+	}
+	return "", true
 }
 
 func appendAgyPermissionMode(parts []string, mode string) []string {

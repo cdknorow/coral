@@ -25,7 +25,6 @@ func TestSkipsPermissionPrompts(t *testing.T) {
 			"-s read-only", "--sandbox workspace-write", "--sandbox=read-only", "--sandbox workspace-write -a on-request",
 			"-c model_reasoning_effort=high", "--config model_reasoning_effort=low", "-c=model_reasoning_effort=medium", "--permission-mode default",
 		},
-		"pi":       {"--model x"},
 		"terminal": {""},
 	}
 	skips := map[string][]string{
@@ -48,7 +47,8 @@ func TestSkipsPermissionPrompts(t *testing.T) {
 			"-c model_reasoning_effort=high\napproval_policy=never", "-c model_reasoning_effort=", "-p yolo", "--profile yolo", "--add-dir /",
 			"--permission-mode bypassPermissions", "--permission-mode auto", "--effort high",
 		},
-		"pi":       {"--yolo", "--permission-mode plan --approval-mode yolo"},
+		// Pi has no mode that asks: its tools run without approval before a call, so every Pi launch skips, with no flags and with a model (#5901)
+		"pi":       {"", "--model x", "--yolo", "--permission-mode plan --approval-mode yolo", "--permission-mode default"},
 		"terminal": {"--anything"},
 	}
 	words := func(s string) []string {
