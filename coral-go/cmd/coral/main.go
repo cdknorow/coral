@@ -115,6 +115,10 @@ func main() {
 		flag.Usage()
 		os.Exit(2)
 	}
+	if msg := backendFlagProblem(runtime.GOOS, *backendFlag); msg != "" {
+		fmt.Fprintf(os.Stderr, "coral: %s\n", msg)
+		os.Exit(2)
+	}
 	if *selfTest {
 		if err := runEncryptionSelfTest(); err != nil {
 			fmt.Fprintln(os.Stderr, err)
