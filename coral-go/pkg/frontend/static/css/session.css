@@ -1707,15 +1707,17 @@
 .prompt-inspection-content { display: grid; gap: 10px; }
 .prompt-inspection-card { min-width: 0; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--bg-tertiary); }
 .prompt-inspection-card h4 { margin: 0 0 6px; font-size: 0.875rem; }
-.prompt-inspection-meta { display: flex; flex-wrap: wrap; gap: 8px 16px; color: var(--text-secondary); font-size: 0.75rem !important; }
+.prompt-inspection-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; color: var(--text-secondary); font-size: 0.75rem !important; }
 .prompt-inspection-fragment { margin-top: 10px; }
-.prompt-inspection-fragment h5 { margin: 0; font-size: 0.75rem; font-weight: 600; color: var(--text-secondary); }
 .prompt-inspection-folded { --dz-width: auto; --dz-pad: 0; --dz-size: 0.75rem; --dz-color: var(--text-secondary); --dz-gap: 4px; }
+.prompt-inspection-folded > summary { display: flex; align-items: center; list-style: none; gap: 4px; }
+.prompt-inspection-folded > summary::-webkit-details-marker { display: none; }
+.prompt-inspection-folded > summary::before { content: '▸' / ''; }
+.prompt-inspection-folded[open] > summary::before { content: '▾' / ''; }
 .prompt-inspection-bar { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 8px 12px; }
 .prompt-inspection-bar label { margin: 0; }
 .prompt-inspection-card[hidden] { display: none; }
 .prompt-inspection-fragment pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 4px 0 0; padding: 8px; border-radius: 5px; background: var(--bg-primary); color: var(--text-primary); font: 0.75rem/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
-@media(max-width: 600px) { .prompt-inspection-meta { flex-direction: column; gap: 4px; } }
 @media(max-width: 600px) { .team-settings-tabs { overflow-x: auto; } .team-settings-tabs [role="tab"] { flex: 0 0 auto; white-space: nowrap; } }
 .team-settings-actions { position: sticky; bottom: 0; z-index: 2; display: flex; align-items: center; gap: 12px; padding: 12px 0 2px; background: linear-gradient(var(--bg-secondary), var(--bg-secondary)); }
 .team-settings-actions button { flex: 0 0 auto; }

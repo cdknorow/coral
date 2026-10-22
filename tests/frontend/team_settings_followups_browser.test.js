@@ -1,6 +1,5 @@
 // Team settings follow-ups (UI audit #5589, finding 13, and the #5611 review):
-//   - Prompt inspection starts short: the effective system and action texts are shown, the other blocks (defaults, override)
-//     are closed details, and nothing scrolls inside the page; Copy still takes every text of the role;
+//   - Prompt inspection starts short: all effective texts, defaults and overrides start in closed details, and nothing scrolls inside the page; Copy still takes every text of the role;
 //   - on a phone the Save footer is one short row, and nothing the person scrolls to or focuses sits under it
 //     (the end of the Workflow tab, and the Edit presets editor).
 // Drives Chrome over CDP against the isolated dev server.
@@ -12,6 +11,7 @@ const BASE = require('./test_base').BASE;
 
 (async () => {
     const { client, Page, Emulation, ev, waitFor, PRELOAD, install } = await connect();
+    const { Input } = client;
     const TEAM = 'ts-phone-' + Date.now().toString(36);
     const shot = async name => { if (!process.env.CORAL_SCREENSHOT_DIR) return; fs.mkdirSync(process.env.CORAL_SCREENSHOT_DIR, { recursive: true }); await new Promise(r => setTimeout(r, 250)); // sleep-ok: a screenshot settles layout, there is no event for it
         fs.writeFileSync(`${process.env.CORAL_SCREENSHOT_DIR}/${name}.png`, Buffer.from((await Page.captureScreenshot({ format: 'png' })).data, 'base64')); };
@@ -36,9 +36,13 @@ const BASE = require('./test_base').BASE;
             return { shown: [...c.querySelectorAll('section.prompt-inspection-fragment h5')].map(h => h.textContent), folded: [...c.querySelectorAll('details.prompt-inspection-folded')].map(d => [d.querySelector('summary').textContent, d.open]),
                 boxes: [...document.querySelectorAll('.prompt-inspection-content pre')].filter(p => getComputedStyle(p).overflowY !== 'visible').length,
                 hiddenPre: [...c.querySelectorAll('details.prompt-inspection-folded pre')].filter(p => vis(p)).length }; })()`);
-        assert.deepEqual(pi.shown, ['Effective system', 'Effective action']);
-        assert.deepEqual(pi.folded, [['System default', false], ['Action default', false], ['Override', false]]);
+        assert.deepEqual(pi.shown, []);
+        assert.deepEqual(pi.folded, [['Effective system', false], ['Effective action', false], ['System default', false], ['Action default', false], ['Override', false]]);
         assert.equal(pi.boxes, 0); assert.equal(pi.hiddenPre, 0, 'the folded blocks are closed');
+        assert.equal(await ev(`document.querySelector('.team-settings-actions').hidden`), true, 'read-only tab has no Save footer');
+        const metadata = await ev(`(() => { const b = document.querySelector('.prompt-inspection-card:not([hidden]) .settings-info-btn'); const box = document.getElementById(b.getAttribute('aria-controls')); const before = box.hidden; b.click(); const result = {before, expanded:b.getAttribute('aria-expanded'), hidden:box.hidden, text:box.textContent}; b.click(); return result; })()`);
+        assert.equal(metadata.before, true); assert.equal(metadata.expanded, 'true'); assert.equal(metadata.hidden, false);
+        assert.ok(metadata.text.includes('Scope:') && metadata.text.includes('Applies:'));
         await ev(`window.__copied = []; Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: t => { window.__copied.push(t); return Promise.resolve(); } } }); document.querySelector('.prompt-inspection-copy').click(); true`);
         await waitFor(`window.__copied.length === 1`, 'one copy', 5000);
         const copied = await ev(`window.__copied[0]`);
@@ -46,6 +50,19 @@ const BASE = require('./test_base').BASE;
         await ev(`document.querySelector('.prompt-inspection-folded > summary').click(); true`);
         assert.equal(await ev(`document.querySelector('.prompt-inspection-folded').open`), true, 'a folded block opens');
         assert.equal(await ev(`[...document.querySelectorAll('.prompt-inspection-content pre')].filter(p => getComputedStyle(p).overflowY !== 'visible').length`), 0, 'still no scroll box');
+        // Copy preserves the complete body of every role even while all its sections are folded.
+        for (const role of ['orchestrator', 'worker', 'task']) {
+            const expected = await ev(`(() => { const select = document.querySelector('.prompt-inspection-role'); select.value = '${role}'; select.dispatchEvent(new Event('change', {bubbles:true})); const card = document.querySelector('.prompt-inspection-card:not([hidden])'); card.querySelectorAll('details').forEach(d => d.open = false); return [...card.querySelectorAll('pre')].map(p => p.textContent); })()`);
+            await ev(`document.querySelector('.prompt-inspection-copy').click();true`);
+            await waitFor(`window.__copied.length === ${role === 'orchestrator' ? 2 : role === 'worker' ? 3 : 4}`, 'role copy');
+            const text = await ev(`window.__copied.at(-1)`);
+            for (const body of expected) assert.ok(text.includes(body), `Copy preserves ${role} body`);
+        }
+        assert.equal(await ev(`document.querySelector('.prompt-inspection-card:not([hidden]) .prompt-inspection-meta span').textContent`), 'Applies on first task claim.');
+        await ev(`document.querySelector('.prompt-inspection-card:not([hidden]) .settings-info-btn').focus();true`);
+        await Input.dispatchKeyEvent({type:'keyDown',key:'Enter',code:'Enter',windowsVirtualKeyCode:13,text:'\r'});
+        await Input.dispatchKeyEvent({type:'keyUp',key:'Enter',code:'Enter',windowsVirtualKeyCode:13});
+        assert.equal(await ev(`document.activeElement.getAttribute('aria-expanded')`), 'true', 'info opens from keyboard');
         await shot('prompts-desktop');
 
         console.log('2. On a phone: a short Save footer, and nothing under it');

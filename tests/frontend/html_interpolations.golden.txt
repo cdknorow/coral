@@ -653,14 +653,16 @@
 1	team_health_settings.js	switchRow({ label: 'Send health check', name: 'on', checked: h.on, labelClass: 'health-rule-head', labelId: 'h
 1	team_health_settings.js	switchRow({ label: title, name: `${key}_on`, checked: on, labelClass: 'health-rule-head', labelId: `hr-${key}-
 1	team_templates_ui.js	suffix
-1	team_working_mode.js	block(role, name, title, text)
+1	team_working_mode.js	applicability
 1	team_working_mode.js	body
 1	team_working_mode.js	cards
 1	team_working_mode.js	head
+1	team_working_mode.js	infoBox(infoId, explanation)
+1	team_working_mode.js	infoButton(infoId, `${label} prompts`)
 2	team_working_mode.js	label
 1	team_working_mode.js	options
 1	team_working_mode.js	switchRow({ label: 'Include dependent-queue guidance', name: 'dependency_guidance' })
-2	team_working_mode.js	title
+1	team_working_mode.js	title
 1	team_working_mode.js	workspaceActions
 1	template_browser.js	active
 1	template_browser.js	btnLabel

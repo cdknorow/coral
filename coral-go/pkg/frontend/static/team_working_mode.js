@@ -4,6 +4,7 @@ import { switchRow } from './switch_row.js';
 import { escapeHtml, escapeAttr, copyText, showToast } from './utils.js';
 import { splitKey, keyLabel, serverUrl, isCloud } from './server_base.js';
 const { boardRenameControl } = await importOnce('./board_rename.js'); // lazy modules load the others they need through importOnce, so a failed load is retried
+const { infoButton, infoBox, bindInfo } = await importOnce('./info_toggle.js');
 const { refusalOf, answeredLocally } = await importOnce('./owner_refusal.js');
 import { changedFields, rebaseChanges, NOTHING_TO_SAVE } from './settings_diff.js';
 
@@ -58,22 +59,22 @@ function presetLabel(preset) {
 
 function renderInspection(data, workingMode) {
     const roles = [['orchestrator', 'Orchestrator'], ['worker', 'Agent / worker'], ['task', 'Task defaults']];
-    // One role at a time: a page that scrolls once (UI audit #5589, finding 10). Each text is a labelled block, not a small scroll box; the texts behind the effective ones are folded.
-    const block = (role, name, title, text) => `<h5>${title}</h5><pre>${escapeHtml(text ?? (role[name] || 'Not configured'))}</pre>`;
-    // What the agent actually gets (the effective texts) is shown; the defaults and the override it came from are one click away, so the page starts short.
-    const shown = (role, name, title, text) => `<section class="prompt-inspection-fragment">${block(role, name, title, text)}</section>`;
+    // Keep every prompt available without expanding the page until a reader asks for it.
     const folded = (role, name, title, text) => `<details class="disclosure prompt-inspection-fragment prompt-inspection-folded"><summary>${title}</summary><pre>${escapeHtml(text ?? (role[name] || 'Not configured'))}</pre></details>`;
     const cards = roles.map(([key, label], index) => {
         const role = data?.[key] || {};
-        const head = `<h4>${label}</h4><p class="prompt-inspection-meta"><span>Scope: ${escapeHtml(role.scope || 'global')}</span><span>Applies: ${escapeHtml(role.applicability || '—')}</span></p>`;
+        const infoId = `prompt-inspection-${key}-info`;
+        const applicability = key === 'task' ? 'Applies on first task claim.' : 'Applies to new board sessions.';
+        const explanation = `Scope: ${role.scope || 'global'}. Applies: ${role.applicability || '—'}. Per-task additions are only known when a task is created.`;
+        const head = `<h4>${label}</h4><div class="prompt-inspection-meta"><span>${applicability}</span>${infoButton(infoId, `${label} prompts`)}</div>${infoBox(infoId, explanation)}`;
         let body;
         if (key === 'task') {
             const defaultInst = role.default_instructions || '';
             const teamInst = workingMode?.instructions?.trim();
             const composed = defaultInst + (teamInst ? `\n\nTeam working instructions:\n${teamInst}` : '') + '\n\n[+ per-task extra when supplied at creation]';
-            body = `${shown(role, null, 'Effective composed task preview (on first claim)', composed)}${folded(role, 'default_instructions', 'Default task instructions')}`;
+            body = `${folded(role, null, 'Effective composed task preview (on first claim)', composed)}${folded(role, 'default_instructions', 'Default task instructions')}`;
         } else {
-            body = shown(role, 'effective_system', 'Effective system') + shown(role, 'effective_action', 'Effective action') + folded(role, 'system_default', 'System default') + folded(role, 'action_default', 'Action default') + folded(role, 'override', 'Override');
+            body = folded(role, 'effective_system', 'Effective system') + folded(role, 'effective_action', 'Effective action') + folded(role, 'system_default', 'System default') + folded(role, 'action_default', 'Action default') + folded(role, 'override', 'Override');
         }
         return `<article class="prompt-inspection-card" data-role="${escapeAttr(key)}"${index ? ' hidden' : ''}>${head}${body}</article>`;
     }).join('');
@@ -124,8 +125,7 @@ function _teamSettingsShell(workspaceMode) {
       </section>
       <section class="team-settings-panel" id="team-settings-prompts" role="tabpanel" aria-labelledby="team-settings-tab-prompts" data-settings-panel="prompts" tabindex="0" hidden>
       <fieldset class="team-settings-section prompt-inspection-section">
-        <legend>Prompt inspection</legend>
-        <p class="working-mode-hint">Read-only view of the defaults, overrides, effective role prompts, and task defaults used by Coral. Per-task additions are only known when a task is created.</p>
+        <p class="working-mode-hint">Read-only preview of the prompts agents get.</p>
         <div class="prompt-inspection-content" aria-live="polite">Loading prompt inspection…</div>
       </fieldset>
       </section>
@@ -181,6 +181,7 @@ function _wireSettingsTabs(dialog, form) {
             panel.hidden = !active;
             panel.classList.toggle('active', active);
         });
+        form.querySelector('.team-settings-actions').hidden = name === 'prompts';
         form.hidden = name === 'health' || name === 'messaging'; // these tabs have their own form and Save; the main Save bar is not for them (#4230, #5510)
         // On a phone the tab strip scrolls sideways: the selected tab is brought into view (the Health check tab is last).
         tabs.find(tab => tab.dataset.settingsTab === name)?.scrollIntoView({ inline: 'nearest', block: 'nearest' });
@@ -217,6 +218,7 @@ export async function showTeamWorkingMode(team, options = {}) {
     const presetReset = dialog.querySelector('.preset-reset');
     const presetSave = dialog.querySelector('.preset-save');
     const inspection = dialog.querySelector('.prompt-inspection-content');
+    bindInfo(inspection);
     // One role's prompts at a time; Copy takes the text of the one shown (UI audit #5589, finding 10).
     inspection.addEventListener('change', event => {
         if (!event.target.matches('.prompt-inspection-role')) return;
