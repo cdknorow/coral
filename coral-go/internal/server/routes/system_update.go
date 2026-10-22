@@ -9,6 +9,7 @@ import (
 
 	"github.com/subgentic/coral/internal/config"
 	"github.com/subgentic/coral/internal/settings"
+	"github.com/subgentic/coral/internal/tracking"
 	"github.com/subgentic/coral/internal/updatecheck"
 )
 
@@ -71,6 +72,9 @@ func (h *SystemHandler) UpdateCheck(w http.ResponseWriter, r *http.Request) {
 	}
 	// Only a strictly newer release: a dev, beta or newer build is never sent to an older one.
 	available := updatecheck.Newer(latest, config.Version)
+	if available {
+		tracking.NoteOfferedRelease(latest) // the dashboard may report update events only for this release (#5952)
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"available":   available,
 		"current":     config.Version,
