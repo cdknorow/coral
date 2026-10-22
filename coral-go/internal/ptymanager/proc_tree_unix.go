@@ -121,30 +121,40 @@ func excluded(pid, self, selfGroup int) bool {
 // signalTree sends sig to each member that is still the process it was and, for one that leads its own group, to the group too (what it started there and did not tag).
 func signalTree(ms []member, sig syscall.Signal) {
 	for _, m := range ms {
-		if !m.current() {
+		if !memberLive(m) {
 			continue
 		}
-		_ = syscall.Kill(m.pid, sig)
+		sendSignal(m.pid, sig)
 		if g, err := syscall.Getpgid(m.pid); err == nil && g == m.pid {
-			_ = syscall.Kill(-m.pid, sig)
+			sendSignal(-m.pid, sig)
 		}
 	}
 }
+
+// The seams the order of killTree's signals is tested through: how a signal is sent, how the tree is swept, whether a member is still the process found, and how many stop-and-sweep rounds there are.
+var (
+	sendSignal = func(pid int, sig syscall.Signal) { _ = syscall.Kill(pid, sig) }
+	sweepTree  = treeMembers
+	memberLive = func(m member) bool { return m.current() }
+	stopRounds = 5
+)
 
 // killTree ends known and what else is found of the terminal's tree. A process can fork between the sweep that found the tree and the signal that ends it, and its child would be missed, so the
 // tree is first stopped (SIGSTOP: nothing in it can fork), swept again, and stopped again until a sweep finds nothing new, and only then killed; a stopped process dies of SIGKILL like any other.
 // It returns what it killed.
 func killTree(known []member, root member, tag string) []member {
-	set := unionOf(known, treeMembers(root, tag))
-	for i := 0; i < 5; i++ {
+	set := append([]member(nil), known...)
+	// Whatever happens below, a stop is never left without its kill: the set is read when this runs, so a panic or an early return still ends what was stopped (SIGKILL ends a stopped process).
+	defer func() { signalTree(set, syscall.SIGKILL) }()
+	set = unionOf(set, sweepTree(root, tag))
+	for i := 0; i < stopRounds; i++ {
 		signalTree(set, syscall.SIGSTOP)
-		next := unionOf(set, treeMembers(root, tag))
+		next := unionOf(set, sweepTree(root, tag))
 		if len(next) == len(set) {
 			break
 		}
 		set = next
 	}
-	signalTree(set, syscall.SIGKILL)
 	return set
 }
 
