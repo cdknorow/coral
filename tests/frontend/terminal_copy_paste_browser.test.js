@@ -126,7 +126,7 @@ const BASE = require('./test_base').BASE;
         await ev(`(async () => { const c = document.createElement('canvas'); c.width = c.height = 2; const blob = await new Promise(r => c.toBlob(r, 'image/png'));
             await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]); return true; })()`);
         // the type comes from the session the socket was opened for (each case is a new session, so a new socket)
-        for (const [type, key] of [['claude', '\u001bv'], ['codex', '\u0016'], ['agy', ''], ['', '']]) {
+        for (const [type, key] of [['claude', '\u001bv'], ['codex', '\u0016'], ['agy', ''], ['', ''], ['constructor', ''], ['__proto__', '']]) {
             await ev(`window.T.x.connectTerminalWs('t1', ${JSON.stringify(type)}, 'sess-img-${type || 'none'}', 'local'); new Promise(r => setTimeout(r, 60))`); // sleep-ok: the fake socket opens on a timer
             await fresh();
             await press('v', { ctrl: true, commands: ['paste'] });

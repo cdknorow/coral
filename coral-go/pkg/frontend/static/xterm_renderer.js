@@ -429,7 +429,7 @@ function _onPaste(e) {
     const text = e.clipboardData ? e.clipboardData.getData('text/plain') : '';
     // Ctrl+V with an image and no text (#312): the key the agent reads as "paste the image from the clipboard", so taking
     // Ctrl+V for text paste costs it nothing. Another agent gets nothing (an empty paste).
-    const imageKey = IMAGE_PASTE_KEYS[_connectedAgentType];
+    const imageKey = Object.hasOwn(IMAGE_PASTE_KEYS, _connectedAgentType) ? IMAGE_PASTE_KEYS[_connectedAgentType] : ''; // own keys only, not toString
     if (fromCtrlV && !text && imageKey && clipboardHasImage(e.clipboardData)) {
         terminal.input(imageKey, true);
         return;
