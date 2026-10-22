@@ -268,6 +268,8 @@ func TestAnApplyThatIsNeverReadyIsEndedTheServerKeepsRunningAndThePersonCanTryAg
 	st, _ := u.loadState()
 	assert.Equal(t, "not_ready", st.Failed.Reason)
 	assert.True(t, st.StartedAt.IsZero(), "nothing is in flight")
+	assert.Empty(t, st.HubRelaunched, "nothing was installed: the version is not spent")
+	assert.False(t, st.LastHubRelaunch.IsZero(), "but the spacing between relaunches still counts from the start")
 
 	u.mu.Lock()
 	u.cachedOK = false

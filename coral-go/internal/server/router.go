@@ -435,9 +435,10 @@ func (s *Server) registerCloud(r *chi.Mux) {
 	upd := routes.NewUpdateRelaunchHandler(store.NewSessionStore(s.db), s.cfg.CoralDir(), func() string { return routes.TerminalKind(s.terminal) }, routes.BuildRelaunchUpdater(s.cfg.CoralDir(), endThisServer))
 	r.Get("/api/system/update", upd.Status)
 	r.Post("/api/system/update/relaunch", upd.Relaunch)
-	r.Post("/api/system/update/check", upd.CheckNow)  // #5280 step 3 B: local only, 404 until the feature is on
-	r.Put("/api/system/update/settings", upd.SetAuto) // check automatically
-	s.goBackground(upd.RunBackgroundChecks)           // returns at once while the feature is off
+	r.Post("/api/system/update/relaunch-local", upd.RelaunchLocal) // #5280 step 3: the person at this computer; local only, 404 until the feature is on
+	r.Post("/api/system/update/check", upd.CheckNow)               // #5280 step 3 B: local only, 404 until the feature is on
+	r.Put("/api/system/update/settings", upd.SetAuto)              // check automatically
+	s.goBackground(upd.RunBackgroundChecks)                        // returns at once while the feature is off
 	r.Post("/api/cloud/redeem", s.cloudHandler.Redeem)
 	r.Post("/api/cloud/cli-hello", s.cloudHandler.CLIHello)
 }
