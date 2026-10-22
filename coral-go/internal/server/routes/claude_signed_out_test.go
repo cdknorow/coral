@@ -26,11 +26,19 @@ import (
 // seconds, start no print-mode run and no login flow (the stand-in's call log says), and say Claude is not signed in. See internal/background for the other callers.
 const failFastRoutes = 3 * time.Second
 
+// grossly is the one wall-clock ceiling kept in these tests (#5924): a call that took a minute is broken however busy the machine. Holds are found by what the stand-in recorded (no print run, no
+// login grab) and by claudestub.NoSlower / agentsignin's differential test, not by seconds.
+const grossly = 60 * time.Second
+
 // hangBoundRoutes is the ceiling when the status command does not answer: its limit (shortened to 1 s by shortHang; production 6 s) passes, then the run is skipped as "did not answer", never as signed out.
 const hangBoundRoutes = 4 * time.Second
 
 // shortHang makes the status command's limit one second for this test when the stand-in hangs on purpose (claudestub.HangingAuth): what is tested, a run skipped as "did not answer" and never
 // as signed out, does not need the production 6 s (#5604; agentsignin's own test pins the 6 s).
+// patientCheck gives the sign-in status command a minute (production: 6 s) for these tests: a busy machine starts the stand-in script slowly, and a check that ran past its limit is "did not answer",
+// not what the test is about (#5924: in whole-module runs "says not signed in; got did not answer the sign-in check"). shortHang then shortens it for the stand-in that hangs on purpose.
+func patientCheck(t *testing.T) { t.Cleanup(agentsignin.SetCheckTimeoutForTests(time.Minute)) }
+
 func shortHang(t *testing.T, state claudestub.State) {
 	t.Helper()
 	if state == claudestub.HangingAuth {
@@ -63,13 +71,14 @@ func TestTeamGenerationNeverStartsAClaudeRunWhileNotSignedIn(t *testing.T) {
 	for _, state := range []claudestub.State{claudestub.SignedOut, claudestub.LoginInProgress, claudestub.HangingAuth} {
 		t.Run(string(state), func(t *testing.T) {
 			claudestub.Isolate(t)
+			patientCheck(t)
 			shortHang(t, state)
 			stub := claudestub.New(t, state)
-			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), grossly)
 			defer cancel()
 			start := time.Now()
 			result, msg := runTeamGeneration(ctx, stub.Path(), "a team of three", t.TempDir())
-			assert.Less(t, time.Since(start), boundFor(state), "comes back fast")
+			assert.Less(t, time.Since(start), grossly, "comes back")
 			assert.Nil(t, result)
 			assert.Empty(t, stub.PrintRuns(), "no print-mode run was started")
 			assert.Zero(t, stub.Grabs(), "no login flow was started or held")
@@ -80,6 +89,7 @@ func TestTeamGenerationNeverStartsAClaudeRunWhileNotSignedIn(t *testing.T) {
 
 func TestTeamGenerationStillAsksClaudeWhenSignedIn(t *testing.T) {
 	claudestub.Isolate(t)
+	patientCheck(t)
 	stub := claudestub.New(t, claudestub.SignedIn)
 	_, msg := runTeamGeneration(context.Background(), stub.Path(), "a team of three", t.TempDir())
 	assert.False(t, notSignedInText(msg), "signed in: %q", msg) // the stub's plain answer is not a team: the reply's own parse error is fine
@@ -99,7 +109,7 @@ func generateTheme(t *testing.T, path string) (*httptest.ResponseRecorder, time.
 	require.NoError(t, store.NewSessionStore(db).SetSetting(context.Background(), agent.CLIPathSettingKey(at.Claude), path))
 	h := NewThemesHandler(cfg)
 	h.SetDB(db)
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), grossly)
 	defer cancel()
 	req := httptest.NewRequest(http.MethodPost, "/api/themes/generate", strings.NewReader(`{"description":"calm blue","agent_type":"claude"}`)).WithContext(ctx)
 	rec := httptest.NewRecorder()
@@ -112,10 +122,11 @@ func TestThemeGenerationNeverStartsAClaudeRunWhileNotSignedIn(t *testing.T) {
 	for _, state := range []claudestub.State{claudestub.SignedOut, claudestub.LoginInProgress, claudestub.HangingAuth} {
 		t.Run(string(state), func(t *testing.T) {
 			claudestub.Isolate(t)
+			patientCheck(t)
 			shortHang(t, state)
 			stub := claudestub.New(t, state)
 			rec, took := generateTheme(t, stub.Path())
-			assert.Less(t, took, boundFor(state), "comes back fast")
+			assert.Less(t, took, grossly, "comes back")
 			assert.Empty(t, stub.PrintRuns(), "no print-mode run was started")
 			assert.Zero(t, stub.Grabs(), "no login flow was started or held")
 			assert.NotEqual(t, http.StatusOK, rec.Code)
@@ -126,6 +137,7 @@ func TestThemeGenerationNeverStartsAClaudeRunWhileNotSignedIn(t *testing.T) {
 
 func TestThemeGenerationStillAsksClaudeWhenSignedIn(t *testing.T) {
 	claudestub.Isolate(t)
+	patientCheck(t)
 	stub := claudestub.New(t, claudestub.SignedIn)
 	rec, _ := generateTheme(t, stub.Path())
 	assert.False(t, notSignedInText(rec.Body.String()), rec.Body.String())

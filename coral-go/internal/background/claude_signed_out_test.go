@@ -23,11 +23,19 @@ import (
 // log is what says what was started; the tests name no helper, so they hold for whatever shape the shared check takes.
 const failFast = 3 * time.Second
 
+// grossly is the one wall-clock ceiling kept in these tests (#5924): a call that took a minute is broken however busy the machine. Holds are found by what the stand-in recorded (no print run, no
+// login grab) and by claudestub.NoSlower / agentsignin's differential test, not by seconds.
+const grossly = 60 * time.Second
+
 // hangBound is the ceiling when the status command does not answer (its limit, shortened to 1 s by shortHang; production 6 s, #5469): the run is then skipped as "did not answer", its own state, never as signed out.
 const hangBound = 4 * time.Second
 
 // shortHang makes the status command's limit one second for this test when the stand-in hangs on purpose (claudestub.HangingAuth): what is tested, a run skipped as "did not answer" and never
 // as signed out, does not need the production 6 s (#5604; agentsignin's own test pins the 6 s).
+// patientCheck gives the sign-in status command a minute (production: 6 s) for these tests: a busy machine starts the stand-in script slowly, and a check that ran past its limit is "did not answer",
+// not what the test is about (#5924: in whole-module runs "says not signed in; got did not answer the sign-in check"). shortHang then shortens it for the stand-in that hangs on purpose.
+func patientCheck(t *testing.T) { t.Cleanup(agentsignin.SetCheckTimeoutForTests(time.Minute)) }
+
 func shortHang(t *testing.T, state claudestub.State) {
 	t.Helper()
 	if state == claudestub.HangingAuth {
@@ -99,7 +107,7 @@ func callers() []caller {
 // ran is one call, timed, with a ceiling well above failFast so a run that does hold (the bug: 2 s signed out, 20 s waiting behind a login) shows as slow, not as a hang.
 func ran(t *testing.T, c caller, path string) (out string, err error, took time.Duration) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), grossly)
 	defer cancel()
 	start := time.Now()
 	out, err = c.run(t, ctx, path)
@@ -111,11 +119,12 @@ func TestBackgroundCallersNeverStartAClaudeRunWhileNotSignedIn(t *testing.T) {
 		for _, c := range callers() {
 			t.Run(string(state)+"/"+c.name, func(t *testing.T) {
 				claudestub.Isolate(t)
+				patientCheck(t)
 				shortHang(t, state)
 				stub := claudestub.New(t, state)
 				want := expect(state)
 				out, err, took := ran(t, c, stub.Path())
-				assert.Less(t, took, want.bound, "comes back fast")
+				assert.Less(t, took, grossly, "comes back") // a hold is claudestub.NoSlower's and agentsignin's to find, against a signed-in control (#5924)
 				assert.Empty(t, stub.PrintRuns(), "no print-mode run was started")
 				assert.Zero(t, stub.Grabs(), "no login flow was started or held")
 				if !(c.fallback != nil && err == nil && c.fallback(out)) {
@@ -134,6 +143,7 @@ func TestBackgroundCallersStillAskClaudeWhenSignedIn(t *testing.T) {
 	for _, c := range callers() {
 		t.Run(c.name, func(t *testing.T) {
 			claudestub.Isolate(t)
+			patientCheck(t)
 			stub := claudestub.New(t, claudestub.SignedIn)
 			_, err, took := ran(t, c, stub.Path())
 			// Signed in, speed is not the property (the fast-fail bound of the signed-out tests is): what is checked is that nothing HELD the call (the bug waited 15-20 s behind a login). A fresh stub script
@@ -156,6 +166,7 @@ func TestBackgroundCallersFollowTheSignInState(t *testing.T) {
 	for _, c := range callers() {
 		t.Run(c.name, func(t *testing.T) {
 			claudestub.Isolate(t)
+			patientCheck(t)
 			stub := claudestub.New(t, claudestub.SignedOut)
 			ran(t, c, stub.Path())
 			require.Empty(t, stub.PrintRuns(), "skipped while signed out")
@@ -180,6 +191,7 @@ func TestBackgroundCallersDoNotStormWhileNotSignedIn(t *testing.T) {
 	for _, c := range callers() {
 		t.Run(c.name, func(t *testing.T) {
 			claudestub.Isolate(t)
+			patientCheck(t)
 			stub := claudestub.New(t, claudestub.SignedOut)
 			for i := 0; i < 10; i++ {
 				_, _, took := ran(t, c, stub.Path())

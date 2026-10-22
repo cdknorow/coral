@@ -33,6 +33,10 @@ func fetched(t *testing.T, path string) (Result, time.Duration) {
 
 // shortHang makes the status command's limit one second for this test when the stand-in hangs on purpose (claudestub.HangingAuth): what is tested, a run skipped as "did not answer" and never
 // as signed out, does not need the production 6 s (#5604; agentsignin's own test pins the 6 s).
+// patientCheck gives the sign-in status command a minute (production: 6 s) for these tests: a busy machine starts the stand-in script slowly, and a check that ran past its limit is "did not answer",
+// not what the test is about (#5924: in whole-module runs "says not signed in; got did not answer the sign-in check"). shortHang then shortens it for the stand-in that hangs on purpose.
+func patientCheck(t *testing.T) { t.Cleanup(agentsignin.SetCheckTimeoutForTests(time.Minute)) }
+
 func shortHang(t *testing.T, state claudestub.State) {
 	t.Helper()
 	if state == claudestub.HangingAuth {
@@ -40,18 +44,21 @@ func shortHang(t *testing.T, state claudestub.State) {
 	}
 }
 
+// grossly is the one wall-clock ceiling kept in these tests (#5924): a call that took a minute is broken however busy the machine. Holds are found by what the stand-in recorded (no print run,
+// no login grab) and by claudestub.NoSlower, not by seconds.
+const grossly = 60 * time.Second
+
 func TestModelListNeverStartsAClaudeRunWhileNotSignedIn(t *testing.T) {
 	for _, state := range []claudestub.State{claudestub.SignedOut, claudestub.LoginInProgress, claudestub.HangingAuth} {
 		t.Run(string(state), func(t *testing.T) {
 			claudestub.Isolate(t)
+			patientCheck(t)
 			shortHang(t, state)
 			stub := claudestub.New(t, state)
 			res, took := fetched(t, stub.Path())
-			bound := 3 * time.Second
-			if state == claudestub.HangingAuth {
-				bound = 4 * time.Second // the status command's limit, shortened to 1 s here (production: 6 s, #5469)
-			}
-			assert.Less(t, took, bound, "the background fetch ends fast")
+			// Not a measure of a hold: a hold is claudestub.NoSlower's and agentsignin's (against a signed-in control, #5924); what is asserted here is that nothing took so long it is a gross
+			// regression (the status command's limit is shortened to 1 s for the hanging one; production 6 s, #5469), on a machine that may be thrashing under a whole-module run.
+			assert.Less(t, took, grossly, "the background fetch ends")
 			assert.Empty(t, stub.PrintRuns(), "no print-mode run was started")
 			assert.Zero(t, stub.Grabs(), "no login flow was started or held")
 			lower := strings.ToLower(res.Error)
@@ -67,6 +74,7 @@ func TestModelListNeverStartsAClaudeRunWhileNotSignedIn(t *testing.T) {
 
 func TestModelListStillAsksClaudeWhenSignedIn(t *testing.T) {
 	claudestub.Isolate(t)
+	patientCheck(t)
 	stub := claudestub.New(t, claudestub.SignedIn)
 	res, took := fetched(t, stub.Path())
 	assert.False(t, strings.Contains(strings.ToLower(res.Error), "not signed in"), "signed in: %q", res.Error)

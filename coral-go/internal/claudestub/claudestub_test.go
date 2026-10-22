@@ -39,14 +39,27 @@ func run(t *testing.T, s *Stub, limit time.Duration, stdin string, args ...strin
 	return o.String(), e.String(), code, took, killed
 }
 
+// killLimit is when a test ends a child that is stuck: generous, because it is not what tells a hold from a plain run (NoSlower does, against a signed-in control), and a busy machine
+// starts a script slowly.
+const killLimit = 30 * time.Second
+
+// startOf is one run of the stub, for NoSlower.
+func startOf(s *Stub, args ...string) func() {
+	return func() { _ = exec.Command(s.Path(), args...).Run() }
+}
+
 func TestVersionAnswersAtOnceInEveryState(t *testing.T) {
+	control := New(t, SignedIn)
 	for _, st := range []State{SignedIn, SignedOut, LoginInProgress, HangingAuth} {
 		s := New(t, st)
-		out, _, code, took, killed := run(t, s, 3*time.Second, "", "--version")
+		out, _, code, took, killed := run(t, s, killLimit, "", "--version")
 		assert.Equal(t, "2.1.999 (Claude Code)\n", out, st)
 		assert.Zero(t, code, st)
 		assert.False(t, killed, st)
-		assert.Less(t, took, time.Second, st)
+		_ = took
+		if st != SignedIn {
+			NoSlower(t, "--version in "+string(st), startOf(control, "--version"), startOf(s, "--version"), time.Second)
+		}
 		assert.Equal(t, 0, s.Grabs(), st)
 		assert.Empty(t, s.PrintRuns(), st)
 	}
@@ -54,7 +67,8 @@ func TestVersionAnswersAtOnceInEveryState(t *testing.T) {
 
 func TestAuthStatusInEachState(t *testing.T) {
 	s := New(t, SignedIn)
-	out, _, code, _, _ := run(t, s, 3*time.Second, "", "auth", "status")
+	control := New(t, SignedIn)
+	out, _, code, _, _ := run(t, s, killLimit, "", "auth", "status")
 	var j map[string]any
 	require.NoError(t, json.Unmarshal([]byte(out), &j))
 	assert.Equal(t, true, j["loggedIn"])
@@ -62,28 +76,30 @@ func TestAuthStatusInEachState(t *testing.T) {
 
 	for _, st := range []State{SignedOut, LoginInProgress} {
 		s.Set(st)
-		out, errOut, code, took, killed := run(t, s, 3*time.Second, "", "auth", "status", "--json")
+		out, errOut, code, took, killed := run(t, s, killLimit, "", "auth", "status", "--json")
 		assert.Equal(t, 1, code, st)
 		assert.Contains(t, out, `"loggedIn":false`, st)
 		assert.Contains(t, errOut, "Not logged in", st)
 		assert.False(t, killed, st)
-		assert.Less(t, took, time.Second, st)
+		_ = took
+		probe := New(t, st) // its own stand-in: s's call log is counted below
+		NoSlower(t, "auth status in "+string(st), startOf(control, "auth", "status", "--json"), startOf(probe, "auth", "status", "--json"), time.Second)
 	}
 
 	s.Set(HangingAuth)
 	_, _, _, took, killed := run(t, s, 700*time.Millisecond, "", "auth", "status")
 	assert.True(t, killed, "a hanging `auth status` is ended by the caller's own limit")
-	assert.Less(t, took, 3*time.Second)
+	assert.Less(t, took, 2*killLimit)
 	assert.Len(t, s.AuthChecks(), 4, "every check is logged, including the hanging one")
 	assert.Zero(t, s.Grabs(), "asking for the status never starts a login")
 }
 
 func TestPrintModeSignedInAnswersAndReadsItsStdin(t *testing.T) {
 	s := New(t, SignedIn)
-	out, _, code, _, _ := run(t, s, 3*time.Second, "a prompt", "--print", "--model", "haiku")
+	out, _, code, _, _ := run(t, s, killLimit, "a prompt", "--print", "--model", "haiku")
 	assert.Equal(t, "stub reply\n", out)
 	assert.Zero(t, code)
-	out, _, _, _, _ = run(t, s, 3*time.Second, "x", "-p", "--output-format", "json")
+	out, _, _, _, _ = run(t, s, killLimit, "x", "-p", "--output-format", "json")
 	var j map[string]any
 	require.NoError(t, json.Unmarshal([]byte(out), &j))
 	assert.Equal(t, "stub reply", j["result"])
@@ -96,7 +112,7 @@ func TestPrintModeSignedInAnswersAndReadsItsStdin(t *testing.T) {
 
 func TestPrintModeSignedOutIsTheBug(t *testing.T) {
 	s := New(t, SignedOut)
-	out, _, code, took, killed := run(t, s, 5*time.Second, "", "--print", "--model", "sonnet")
+	out, _, code, took, killed := run(t, s, 2*killLimit, "", "--print", "--model", "sonnet")
 	assert.Contains(t, out, "Not logged in")
 	assert.Equal(t, 1, code)
 	assert.False(t, killed)
@@ -141,7 +157,7 @@ func TestStateChangesBetweenCallsAndLoginLockFollowsIt(t *testing.T) {
 	s.Set(SignedIn)
 	_, err = os.Stat(lock)
 	assert.True(t, os.IsNotExist(err), "signing in releases it")
-	out, _, _, _, _ := run(t, s, 3*time.Second, "x", "--print")
+	out, _, _, _, _ := run(t, s, killLimit, "x", "--print")
 	assert.Equal(t, "stub reply\n", out)
 	calls := s.Calls()
 	require.Len(t, calls, 1)

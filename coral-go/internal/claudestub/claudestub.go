@@ -23,6 +23,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/subgentic/coral/internal/agent"
 )
@@ -110,6 +111,30 @@ func New(t testing.TB, state State) *Stub {
 	}
 	s.Set(state)
 	return s
+}
+
+// NoSlower fails the test when subject takes a second or more longer than baseline: how a hold shows (a wait on a lock or on a login, a sleep put into the path), told apart from a
+// busy machine without an absolute number of seconds. baseline and subject are timed five times, interleaved so both meet the machine's load of the moment, and the FASTEST run of each
+// is compared: a spike from load is in some runs only and does not count; a delay in the subject is in every run. The slack (a second) is under the two-second hold the tests guard against.
+func NoSlower(t testing.TB, what string, baseline, subject func(), slack time.Duration) {
+	t.Helper()
+	const n = 5
+	var bestBase, bestSubj time.Duration
+	for i := 0; i < n; i++ {
+		start := time.Now()
+		baseline()
+		if d := time.Since(start); i == 0 || d < bestBase {
+			bestBase = d
+		}
+		start = time.Now()
+		subject()
+		if d := time.Since(start); i == 0 || d < bestSubj {
+			bestSubj = d
+		}
+	}
+	if bestSubj > bestBase+slack {
+		t.Errorf("%s: the fastest of %d runs took %v against %v for the control: held for %v more than a plain run takes", what, n, bestSubj, bestBase, bestSubj-bestBase)
+	}
 }
 
 // Path is the stub's program: what a test gives as the CLI path.
