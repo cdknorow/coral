@@ -108,7 +108,7 @@ function _teamSettingsShell(workspaceMode) {
         <legend>Team working mode</legend>
         <label>Working mode<select name="mode" aria-describedby="working-mode-desc"><option value="none">None</option><option value="shared_checkout">Shared checkout</option><option value="worktrees">Worktrees</option></select></label>
         <p class="working-mode-hint working-mode-desc" id="working-mode-desc"></p>
-        ${switchRow({ label: 'Include dependent-queue guidance', name: 'dependency_guidance' })}
+        ${switchRow({ label: 'Include dependent-queue guidance', name: 'dependency_guidance', labelClass: 'check-hit' })}
         <label>Additional instructions<textarea name="custom_instructions" rows="4" placeholder="Team-specific conventions"></textarea></label>
         <p class="working-mode-hint">Working mode instructions are saved with each task on its first claim. Existing claimed tasks keep their instructions. This setting provides guidance; it does not create worktrees automatically. <a href="#" class="working-mode-docs-link" data-doc="teams">Docs: Team working modes</a></p>
       </fieldset>

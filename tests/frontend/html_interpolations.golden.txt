@@ -662,7 +662,7 @@
 1	team_working_mode.js	infoButton(infoId, `${label} prompts`)
 2	team_working_mode.js	label
 1	team_working_mode.js	options
-1	team_working_mode.js	switchRow({ label: 'Include dependent-queue guidance', name: 'dependency_guidance' })
+1	team_working_mode.js	switchRow({ label: 'Include dependent-queue guidance', name: 'dependency_guidance', labelClass: 'check-hit' })
 1	team_working_mode.js	title
 1	team_working_mode.js	workspaceActions
 1	template_browser.js	active
