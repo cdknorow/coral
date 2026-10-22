@@ -340,6 +340,7 @@ POST /api/system/terminal-logs/delete-ended never
 POST /api/system/update/check never
 POST /api/system/update/install never
 POST /api/system/update/relaunch launch
+POST /api/system/update/relaunch-local never
 POST /api/tags never
 POST /api/tasks/run launch
 POST /api/tasks/runs/{runID}/kill never

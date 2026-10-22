@@ -18,6 +18,8 @@ import (
 type callerIdentity struct {
 	owner  bool
 	pseudo string // the stamped hub user when it has the stamp's form; "" otherwise
+	// local is the owner at this computer's own dashboard or command line (a request that did not come through the Hub's tunnel): no Hub gate applies to it, its pseudonym is "local".
+	local bool
 }
 
 // hubOwnerLabel is the owner's hub-user label recorded at enrolment, read from the enrolment record. The server sets it at startup

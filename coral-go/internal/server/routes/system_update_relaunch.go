@@ -246,6 +246,9 @@ func (h *UpdateRelaunchHandler) identify(r *http.Request) callerIdentity {
 
 // gate is the status of the checks that don't depend on the update's state, as the reason the relaunch is unavailable ("" = pass).
 func (h *UpdateRelaunchHandler) gate(ctx context.Context, id callerIdentity) (reason string, code string) {
+	if id.local {
+		return "", "" // the owner at this computer: the Hub's mode cap, Operator opt-out and switch are about what Coral Hub may do, not about the person here
+	}
 	if !id.owner {
 		return reasonOwnerOnly, "owner_only"
 	}
@@ -591,6 +594,9 @@ func (h *UpdateRelaunchHandler) Status(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := h.identify(r)
+	if !viaTunnel(r) {
+		id = localIdentity // the local dashboard gets the acknowledgement for its own relaunch (RelaunchLocal)
+	}
 	v, err := h.view(r.Context(), id)
 	if err != nil {
 		slog.Warn("[update] status unavailable", "error", err)
@@ -691,6 +697,32 @@ func (h *UpdateRelaunchHandler) Relaunch(w http.ResponseWriter, r *http.Request)
 		h.refuse(w, r, id, nil, http.StatusConflict, reasonLocalApproval, "installing an update on Windows needs someone at this computer to approve it: use Install update in Settings there", nil)
 		return
 	}
+	h.relaunch(w, r, id)
+}
+
+// localIdentity is the owner at this computer's own dashboard or command line.
+var localIdentity = callerIdentity{owner: true, pseudo: "local", local: true}
+
+// RelaunchLocal: POST /api/system/update/relaunch-local. The same relaunch for the person at this computer, with the same acknowledgement token (issued by the local GET
+// /api/system/update, bound to "local" so it is no good on the Hub's route and a Hub token is no good here). Local only: through Coral Hub it is refused, and an agent's token is
+// refused before it gets here.
+func (h *UpdateRelaunchHandler) RelaunchLocal(w http.ResponseWriter, r *http.Request) {
+	if !h.on() {
+		errNotFound(w, "not found")
+		return
+	}
+	if relaunchNeedsLocalApproval { // Windows installs through its own local route (POST /api/system/update/install, #166)
+		errNotFound(w, "not found")
+		return
+	}
+	if !h.localOnly(w, r) {
+		return
+	}
+	h.relaunch(w, r, localIdentity)
+}
+
+// relaunch is the rest of a relaunch once the caller is known and, for the Hub, has passed the owner and gate checks.
+func (h *UpdateRelaunchHandler) relaunch(w http.ResponseWriter, r *http.Request, id callerIdentity) {
 	// 5: the strict body.
 	tok, ok := readRelaunchBody(w, r)
 	if !ok {
@@ -754,6 +786,11 @@ func (h *UpdateRelaunchHandler) Relaunch(w http.ResponseWriter, r *http.Request)
 		}
 		h.refuse(w, r, id, &v, http.StatusConflict, "stale_ack", "what a relaunch would restart changed: check the list and confirm again", map[string]any{"relaunch": fresh})
 		return
+	}
+	// An attempt this process started that has since ended without an update (the updater recorded a result for it and nothing is running) is over: its version may be tried again,
+	// after the spacing below.
+	if h.startedVersion != "" && v.rec.State != updApplying && v.rec.LastResult != nil && v.rec.LastResult.At.After(h.startedAt) {
+		h.startedVersion = ""
 	}
 	// The same two rules as the status', from this process's own memory: whatever the updater's record says, a version already started
 	// is not started twice and a second start inside the spacing is refused.
