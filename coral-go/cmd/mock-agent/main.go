@@ -125,11 +125,12 @@ func main() {
 			writeAtomic(filepath.Join(dir, sessionID+".env"),
 				"CORAL_SESSION_TOKEN="+os.Getenv("CORAL_SESSION_TOKEN")+"\nCORAL_SESSION_NAME="+sessionName+"\n")
 		}
-		// Every CORAL_ variable the agent was started with (#3421: none may come from
-		// the environment of whatever started the Coral server).
+		// Every CORAL_ variable the agent was started with, in any case (#3421: none may come from
+		// the environment of whatever started the Coral server; Windows reads coral_session_token as
+		// CORAL_SESSION_TOKEN, so a lower- or mixed-case name from the parent counts too).
 		var coralEnv []string
 		for _, kv := range os.Environ() {
-			if strings.HasPrefix(kv, "CORAL_") {
+			if strings.HasPrefix(strings.ToUpper(kv), "CORAL_") {
 				coralEnv = append(coralEnv, kv)
 			}
 		}

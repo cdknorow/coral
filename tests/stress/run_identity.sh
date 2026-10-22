@@ -74,7 +74,7 @@ coral_test_is_windows && WIN_ENV=(SystemRoot="${SYSTEMROOT:-${SystemRoot:-C:\Win
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CORAL_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)/coral-go"
 PORT="${CORAL_IDENTITY_PORT:-8476}"
-if [[ "$PORT" == 8420 ]]; then echo "ERROR: refusing port 8420 (production Coral server); pick another port." >&2; exit 2; fi
+if [[ "$PORT" == 8420 || "$PORT" == 8450 ]]; then echo "ERROR: refusing port $PORT (a live Coral server's port: 8420 production, 8450 the team's); pick another port." >&2; exit 2; fi
 BUDGET_S="${IDENTITY_BUDGET_S:-240}"
 BASE="http://127.0.0.1:${PORT}"
 PASS=0; FAIL=0; SERVER_PID=""
@@ -158,7 +158,10 @@ log "Starting an isolated server on $PORT (data $DATA)..."
 # token. None of it may reach this server's agents (checked below).
 HOSTILE_ENV=(CORAL_PORT=1 CORAL_HOST=10.255.255.1 CORAL_URL=http://10.255.255.1:1 CORAL_DIR=/nonexistent/parent-coral
     CORAL_DATA_DIR=/nonexistent/parent-coral CORAL_SESSION_NAME=parent-session-3421 CORAL_SESSION_ID=parent-sid-3421
-    CORAL_SUBSCRIBER_ID=ParentRole3421 CORAL_SESSION_TOKEN=leak-token-parent-3421)
+    CORAL_SUBSCRIBER_ID=ParentRole3421 CORAL_SESSION_TOKEN=leak-token-parent-3421
+    # The same names in lower and mixed case: Windows reads environment names without regard to case, so these are the
+    # same variables to an agent there, and a filter that strips only CORAL_* would let them through.
+    coral_session_token=leak-token-lower-3421 Coral_Dir=/nonexistent/parent-mixed-coral coral_session_name=parent-lower-session-3421)
 coral_test_sandbox   # #4354: stub claude/codex/gemini first on PATH; checked at the end
 env -u CORAL_CLOUD_URL -u CLAUDE_PROJECTS_DIR HOME="$(NP "$TMP/h")" USERPROFILE="$(NP "$TMP/h")" PATH="$CORAL_TEST_STUB_BIN:$PATH" "${HOSTILE_ENV[@]}" \
     CORAL_NO_DEMO_SEED=1 CORAL_NO_WELCOME=1 CORAL_TMUX_NO_FALLBACK=1 \
@@ -324,6 +327,14 @@ collect
 # ── #3421: nothing from the parent's environment reaches an agent ────────
 envdumps=$(ls "$DUMP"/*.coralenv 2>/dev/null | wc -l | tr -d ' ')
 parent_leaks=$(cat "$DUMP"/*.coralenv 2>/dev/null | grep -cE 'parent-session-3421|parent-sid-3421|ParentRole3421|leak-token-parent-3421|/nonexistent/parent-coral|10\.255\.255\.1|^CORAL_PORT=1$' || true)
+# The lower- and mixed-case names: on Windows they ARE the CORAL_* variables (names there ignore case), so none may reach an
+# agent; elsewhere names are case-sensitive, they are other variables that no Coral tool reads, and they are only counted.
+case_leaks=$(cat "$DUMP"/*.coralenv 2>/dev/null | grep -ciE 'leak-token-lower-3421|parent-mixed-coral|parent-lower-session-3421' || true)
+if coral_test_is_windows; then
+    parent_leaks=$((parent_leaks + case_leaks))
+else
+    log "case-sensitive environment: $case_leaks lower/mixed-case parent CORAL names reached agents as other variables (no Coral tool reads them)"
+fi
 wrong_port=$(cat "$DUMP"/*.coralenv 2>/dev/null | grep '^CORAL_PORT=' | grep -vc "^CORAL_PORT=$PORT$" || true)
 tmux_parent=0
 if [[ $CORAL_TEST_BACKEND == tmux ]]; then
