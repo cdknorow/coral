@@ -29,10 +29,12 @@ func TestTheMarkIsSetClearedAndOnlyAPlainFileCounts(t *testing.T) {
 	_, err := os.Stat(filepath.Join(dir, FileName))
 	assert.NoError(t, err, "a folder is not removed")
 	require.NoError(t, os.Remove(filepath.Join(dir, FileName)))
-	target := filepath.Join(dir, "elsewhere")
-	require.NoError(t, os.WriteFile(target, []byte("x"), 0o600))
-	linktest.Symlink(t, target, filepath.Join(dir, FileName)) // skips where this user cannot make one
-	assert.False(t, Present(dir), "a link is no mark")
+	t.Run("a link", func(t *testing.T) {
+		target := filepath.Join(dir, "elsewhere")
+		require.NoError(t, os.WriteFile(target, []byte("x"), 0o600))
+		linktest.Symlink(t, target, filepath.Join(dir, FileName)) // skips where this account can't make links (Windows without Developer Mode); fails on CI
+		assert.False(t, Present(dir), "a link is no mark")
+	})
 }
 
 // Set never writes through a link planted at the marker's name (#183): a symbolic link, a junction (a folder) or a hard link is refused and its target is untouched. (The

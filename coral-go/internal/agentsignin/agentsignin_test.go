@@ -308,7 +308,10 @@ func TestCredentialedOutsideLoginIsNeverRefused(t *testing.T) {
 // after the short timeout backoff, not the signed-out one.
 func TestATimedOutCheckIsItsOwnRefusalNotSignedOut(t *testing.T) {
 	reset(t)
-	checkTimeout = 300 * time.Millisecond
+	// The stand-in is this test binary run again, and it writes its log line only once its TestMain runs. Under a loaded full run
+	// its start can take longer than a short deadline, which then kills it before it logs, so no wait finds the line (#158: 0 asks
+	// after 15 s). 3 s is long enough for that start and is still a timeout of the hanging stand-in, which is what is checked.
+	checkTimeout = 3 * time.Second
 	log := filepath.Join(t.TempDir(), "log")
 	t.Setenv("AGENTSIGNIN_LOG", log)
 	bin := standInBin(t, "hang")
@@ -319,8 +322,8 @@ func TestATimedOutCheckIsItsOwnRefusalNotSignedOut(t *testing.T) {
 		return strings.Count(string(b), "\n")
 	}
 
-	// The stand-in writes its log line when it STARTS; on a loaded host the process can start after the 300 ms deadline has
-	// already passed, so a count taken right after Require could still read 0 (#83). askedAfter waits for the line it expects
+	// The stand-in writes its log line when it STARTS, which can be after Require has returned, so a count taken right after
+	// Require could still read 0 (#83). askedAfter waits for the line it expects
 	// (at most 15 s) and then a moment more, so an extra ask would show.
 	askedAfter := func(want int) int {
 		for deadline := time.Now().Add(15 * time.Second); asked() < want && time.Now().Before(deadline); {
