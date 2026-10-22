@@ -24,6 +24,7 @@ List all live (running) agent sessions with enriched status. Archived agents are
     "agent_type": "claude",
     "session_id": "abc123-uuid",
     "tmux_session": "coral_claude_abc123",
+    "terminal": "tmux",
     "status": "Working",
     "summary": "Implementing feature X",
     "staleness_seconds": 5,
@@ -48,6 +49,8 @@ List all live (running) agent sessions with enriched status. Archived agents are
   }
 ]
 ```
+
+`terminal` is where the agent really runs, `tmux` or `pty`: a tmux agent keeps running when Coral quits, a pty agent ends with Coral. It is on every row, awake or asleep (a sleeping agent's is where it will be woken). It is not one of the roster fields an agent's token sees for other boards.
 
 Sleeping sessions (no active tmux) are included as placeholder entries with `"sleeping": true`, `"status": "Sleeping"` and `"staleness_seconds": null`. Every row carries `archived` (`true` only for an archived agent, which is always also `sleeping`; see [Sleep / Wake](#sleep--wake)). A sleeping row also carries `sleep_reason` when Coral, not the user, put the agent to sleep: `"terminal_gone"` when its terminal session no longer exists (killed, or its tmux server died). It is `""` for a sleep the user asked for and is cleared on wake. The live feed's rows carry it too.
 
