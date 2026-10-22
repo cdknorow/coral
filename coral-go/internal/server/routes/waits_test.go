@@ -261,3 +261,29 @@ func TestBoardWaitRoutes_PollWait(t *testing.T) {
 		t.Fatal("poll did not return within expected time")
 	}
 }
+
+// A timeout the server cannot read is refused (400), not turned into the default two-hour wait without a word.
+func TestBoardWaitRoutes_InvalidTimeoutIsRefused(t *testing.T) {
+	server, handler := setupBoardTestServer(t)
+	project := "wait-timeout"
+	_, err := handler.bs.Subscribe(context.Background(), project, "worker-1", "Developer", "claude-0000000c-3864-4864-8864-00000000000c", nil, "all")
+	require.NoError(t, err)
+	for _, bad := range []string{"not-a-duration", "30", "0s", "-5m"} {
+		body, _ := json.Marshal(map[string]string{"subscriber_id": "worker-1", "wait_type": "message", "target_id": "Orchestrator", "timeout": bad})
+		resp, err := http.Post(fmt.Sprintf("%s/api/board/%s/waits", server.URL, project), "application/json", bytes.NewReader(body))
+		require.NoError(t, err)
+		var out map[string]any
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&out))
+		resp.Body.Close()
+		assert.Equal(t, http.StatusBadRequest, resp.StatusCode, "timeout %q", bad)
+		assert.Equal(t, "invalid_timeout", out["code"], "timeout %q", bad)
+	}
+	resp, err := http.Get(fmt.Sprintf("%s/api/board/%s/waits?subscriber_id=worker-1", server.URL, project))
+	require.NoError(t, err)
+	var got struct {
+		Wait *board.RegisteredWait `json:"wait"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&got))
+	resp.Body.Close()
+	assert.Nil(t, got.Wait, "nothing was registered")
+}
