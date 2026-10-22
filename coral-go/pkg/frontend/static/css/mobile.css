@@ -1413,6 +1413,16 @@
     .artifact-readers > summary { min-height: 44px; }
 }
 
+/* Jobs on phones: the Jobs list lives in the page above the job's detail, as History's does (#6139). */
+#mobile-jobs-list { display: none; }
+@media (max-width: 767px) {
+    #mobile-jobs-list { display: block; width: 100%; min-height: 0; }
+    #mobile-jobs-list .sidebar-section { padding: 12px; }
+    #mobile-jobs-list .sidebar-section-header { padding: 0 0 8px; }
+    #mobile-jobs-list button, #mobile-jobs-list .session-list > li { min-height: 44px; }
+    #mobile-jobs-list button { min-width: 44px; }
+}
+
 /* Chats on phones: the existing History controls live in the page (#6013). */
 #mobile-history-list,
 .mobile-history-back { display: none; }

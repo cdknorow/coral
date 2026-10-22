@@ -99,6 +99,7 @@ export async function selectScheduledJob(jobId) {
 
     const runs = await fetchJobRuns(jobId);
     renderJobDetail(job, runs);
+    if (window.innerWidth <= 767) document.getElementById('scheduler-detail')?.scrollIntoView({ block: 'start' }); // the list is above it on a phone: show the job that was picked (#6139)
 }
 
 function renderJobDetail(job, runs) {
