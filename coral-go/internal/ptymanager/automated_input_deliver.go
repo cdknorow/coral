@@ -94,6 +94,9 @@ func (g *inputGate) sendChecked(ctx context.Context, in AutomatedInput) (enterHe
 			return true
 		}
 		open, why := PromptOnScreen(screen)
+		if at, _ := in.identity(); open && AgySlashMenuFor(at, in.Text, screen) {
+			return true // agy's own completion of the command just typed: its Enter confirms that command (#210)
+		}
 		footerOnly.Store(open && !isPromptHold(why))
 		return !open
 	}
@@ -264,7 +267,7 @@ func (g *inputGate) pasteAndEnter(ctx context.Context, in AutomatedInput, ps Pro
 			if err != nil {
 				return true
 			}
-			if open, why := PromptOnScreen(screen); open {
+			if open, why := PromptOnScreen(screen); open && !AgySlashMenuFor(agentType, in.Text, screen) {
 				promptOpened.Store(isPromptHold(why))
 				return false
 			}
