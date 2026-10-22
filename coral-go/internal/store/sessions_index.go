@@ -154,3 +154,27 @@ func (s *SessionStore) GetIndexedMtimes(ctx context.Context) (map[string]float64
 	}
 	return result, nil
 }
+
+// RemoveExcludedSessionSource forgets derived History/search data for a rollout
+// identified by its scanner as an internal thread. Source files and user data stay.
+func (s *SessionStore) RemoveExcludedSessionSource(ctx context.Context, sourceType, sourceFile string) error {
+	var present bool
+	if err := s.reader().GetContext(ctx, &present, `SELECT EXISTS(SELECT 1 FROM session_index WHERE source_type = ? AND source_file = ?)`, sourceType, sourceFile); err != nil {
+		return err
+	}
+	if !present {
+		return nil
+	}
+	return s.db.WithTx(ctx, func(tx *sqlx.Tx) error {
+		for _, query := range []string{
+			`DELETE FROM session_fts WHERE session_id IN (SELECT session_id FROM session_index WHERE source_type = ? AND source_file = ?)`,
+			`DELETE FROM summarizer_queue WHERE session_id IN (SELECT session_id FROM session_index WHERE source_type = ? AND source_file = ?)`,
+			`DELETE FROM session_index WHERE source_type = ? AND source_file = ?`,
+		} {
+			if _, err := tx.ExecContext(ctx, query, sourceType, sourceFile); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}

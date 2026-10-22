@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/subgentic/coral/internal/transcriptlink"
 )
@@ -50,6 +51,18 @@ func (a *CodexAgent) ExtractSessions(basePath string, knownMtimes map[string]flo
 		if !strings.HasPrefix(filepath.Base(path), "rollout-") || !strings.HasSuffix(path, ".jsonl") {
 			return nil
 		}
+		// Recheck metadata even for an unchanged indexed file: an older Coral
+		// may already have indexed a guardian's verdict as chat.
+		if _, indexed := knownMtimes[path]; indexed {
+			if f, err := openHistoryFile(path); err == nil {
+				guardian := IsCodexGuardianRollout(f)
+				f.Close()
+				if guardian {
+					sessions = append(sessions, IndexedSession{Excluded: true, SourceType: "codex", SourceFile: path})
+					return nil
+				}
+			}
+		}
 		mtime := float64(info.ModTime().Unix())
 		if prev, ok := knownMtimes[path]; ok && prev == mtime {
 			return nil // file unchanged since last index
@@ -77,6 +90,9 @@ func parseCodexSession(fpath string, mtime float64) (*IndexedSession, error) {
 		return nil, err
 	}
 	defer f.Close()
+	if IsCodexGuardianRollout(f) {
+		return &IndexedSession{Excluded: true, SourceType: "codex", SourceFile: fpath}, nil
+	}
 
 	// Derive session ID from filename: rollout-<timestamp>-<id>.jsonl
 	sessionID := strings.TrimSuffix(filepath.Base(fpath), ".jsonl")
@@ -84,6 +100,7 @@ func parseCodexSession(fpath string, mtime float64) (*IndexedSession, error) {
 	var firstTS, lastTS *string
 	var msgCount int
 	var summary string
+	var previousRole, previousText, previousTS, previousKind string
 	var fts FTSBodyBuilder
 	var coralSessionID string
 
@@ -111,6 +128,19 @@ func parseCodexSession(fpath string, mtime float64) (*IndexedSession, error) {
 		}
 
 		role, text := codexIndexMessage(entry)
+		kind, _ := entry["type"].(string)
+		if role != "" && kind != previousKind && role == previousRole && text == previousText {
+			prev, e1 := time.Parse(time.RFC3339Nano, previousTS)
+			now, e2 := time.Parse(time.RFC3339Nano, ts)
+			if e1 == nil && e2 == nil && now.Sub(prev).Abs() <= time.Second {
+				previousKind = kind
+				continue
+			}
+		}
+		if role != "" {
+			previousRole, previousText, previousTS, previousKind = role, text, ts, kind
+		}
+
 		if role == "user" || role == "assistant" {
 			msgCount++
 			fts.Add(text)
@@ -148,6 +178,17 @@ func extractCodexFirstText(content any) string {
 	case string:
 		return c
 	case []any:
+		var outputs []string
+		for _, raw := range c {
+			if block, ok := raw.(map[string]any); ok && block["type"] == "output_text" {
+				if text, ok := block["text"].(string); ok {
+					outputs = append(outputs, text)
+				}
+			}
+		}
+		if len(outputs) > 0 {
+			return strings.Join(outputs, "\n")
+		}
 		text, _ := CodexUserContent(c)
 		return text
 	}
@@ -159,6 +200,16 @@ func codexIndexMessage(entry map[string]any) (role, text string) {
 		return role, extractCodexFirstText(entry["content"])
 	}
 
+	if entry["type"] == "response_item" {
+		payload, _ := entry["payload"].(map[string]any)
+		if payload["type"] == "message" {
+			role, _ := payload["role"].(string)
+			if role == "user" || role == "assistant" {
+				return role, extractCodexFirstText(payload["content"])
+			}
+		}
+		return "", ""
+	}
 	if entryType, _ := entry["type"].(string); entryType != "event_msg" {
 		return "", ""
 	}

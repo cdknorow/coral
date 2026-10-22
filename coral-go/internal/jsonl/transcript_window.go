@@ -11,6 +11,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/subgentic/coral/internal/agent"
 	at "github.com/subgentic/coral/internal/agenttypes"
 )
 
@@ -327,6 +328,9 @@ func streamPart(ctx context.Context, part transcriptPart, offset, from, to int, 
 		return false
 	}
 	defer f.Close()
+	if part.agentType == at.Codex && agent.IsCodexGuardianRollout(f) {
+		return true
+	}
 	p := &entryParser{agentType: part.agentType, names: make(map[string]string)}
 	var seen map[string]uint32
 	var seq uint32

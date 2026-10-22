@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 
+	"github.com/subgentic/coral/internal/agent"
 	at "github.com/subgentic/coral/internal/agenttypes"
 	"github.com/subgentic/coral/internal/decodelimit"
 )
@@ -73,6 +74,9 @@ func ReadTail(ctx context.Context, path, agentType string, enough func([]map[str
 	info, err := f.Stat()
 	if err != nil {
 		return nil, 0, err
+	}
+	if agentType == at.Codex && agent.IsCodexGuardianRollout(f) {
+		return nil, info.Size(), nil
 	}
 	size := info.Size()
 	for window := tailChunk; ; window *= 2 {

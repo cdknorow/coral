@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/subgentic/coral/internal/agent"
 	at "github.com/subgentic/coral/internal/agenttypes"
 	"github.com/subgentic/coral/internal/transcriptlink"
 )
@@ -179,6 +180,10 @@ func (r *SessionReader) readLocked(ctx context.Context, c *sessionCache, session
 		return nil, c.total()
 	}
 	defer f.Close()
+	if agentType == at.Codex && agent.IsCodexGuardianRollout(f) {
+		c.resetMessages()
+		return nil, 0
+	}
 	size := int64(0) // the file's size when it was read, the hint for the buffer of its chunks
 	if info, err := f.Stat(); err == nil {
 		size = info.Size()
@@ -353,6 +358,10 @@ func (r *SessionReader) FirstUserPrompt(sessionID, workingDirectory, agentType s
 		return ""
 	}
 	defer f.Close()
+	if agentType == at.Codex && agent.IsCodexGuardianRollout(f) {
+		c.prompt = ""
+		return ""
+	}
 	info, err = f.Stat()
 	if err != nil {
 		return ""
@@ -459,6 +468,9 @@ func ReadFromContext(ctx context.Context, path, agentType string, offset int64) 
 	info, err := f.Stat()
 	if err != nil {
 		return nil, offset, err
+	}
+	if agentType == at.Codex && agent.IsCodexGuardianRollout(f) {
+		return nil, info.Size(), nil
 	}
 	if offset > info.Size() {
 		offset = 0
