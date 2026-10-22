@@ -7,6 +7,7 @@ package clierr
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -174,3 +175,30 @@ func Timeout(def time.Duration) time.Duration {
 }
 
 var warnOnce sync.Once
+
+// Describe is the words for a failed request in one line: the transport error if there was one (CannotReach's text), else "Coral answered HTTP <status>"
+// and the server's own message (its message or error field, else the body trimmed). It never prints "<nil>" for a request that got an answer.
+func Describe(err error, status int, body []byte) string {
+	if err != nil {
+		return err.Error()
+	}
+	var reply struct {
+		Message string `json:"message"`
+		Error   string `json:"error"`
+	}
+	text := strings.TrimSpace(string(body))
+	if json.Unmarshal(body, &reply) == nil {
+		if reply.Message != "" {
+			text = reply.Message
+		} else if reply.Error != "" {
+			text = reply.Error
+		}
+	}
+	if len(text) > 300 {
+		text = text[:300] + "..."
+	}
+	if text == "" {
+		return fmt.Sprintf("Coral answered HTTP %d", status)
+	}
+	return fmt.Sprintf("Coral answered HTTP %d: %s", status, text)
+}
