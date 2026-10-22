@@ -12,9 +12,11 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/subgentic/coral/internal/agent"
+	"github.com/subgentic/coral/internal/agentsignin"
 	"github.com/subgentic/coral/internal/cloud"
 	"github.com/subgentic/coral/internal/tmux"
 	"github.com/subgentic/coral/internal/tracking"
@@ -146,7 +148,63 @@ func (h *SystemHandler) CLICheck(w http.ResponseWriter, r *http.Request) {
 	if _, nerr := agent.NodeDirFor(resolvedPath, os.Environ()); nerr != nil {
 		reply["node_error"] = nerr.Error()
 	}
+	// A CLI that runs may still be signed out (#6048). Asked for with signin=1 (the first-run card's Check again), for the CLIs that can be asked (Claude and Codex), and fresh: a
+	// person who has just signed in must not be told the answer of five minutes ago. signed_in is left out when the CLI could not be asked or did not answer in time (signin_timeout):
+	// "not signed in" is only ever said when the CLI said so.
+	if r.URL.Query().Get("signin") == "1" && probe == probeOK && agentsignin.Supports(agentType) {
+		if signedIn, timedOut, known := askSignIn(r.Context(), agentType, resolvedPath); timedOut {
+			reply["signin_timeout"] = true
+		} else if known {
+			reply["signed_in"] = signedIn
+		}
+	}
 	writeJSON(w, http.StatusOK, hubCLIReply(r, reply))
+}
+
+// signInAskedAt is when the CLI's status command was last run for a request, per agent type, under signInAskMu: the route runs a process, so it is not a way to start one in a loop (#6048).
+// The gap is per agent type, not per caller: a Coral Hub caller's request inside the gap can make the local person's Check again read an answer up to signInAskGap old.
+var (
+	signInAskMu   sync.Mutex
+	signInAskedAt = map[string]time.Time{}
+)
+
+const signInAskGap = 3 * time.Second
+
+// claimSignInAsk reports whether this request may run agentType's status command: true for the first request in a gap, false for every other one in it, concurrent or after, atomically.
+func claimSignInAsk(agentType string) bool {
+	signInAskMu.Lock()
+	defer signInAskMu.Unlock()
+	now := time.Now()
+	if last, ok := signInAskedAt[agentType]; ok && now.Sub(last) < signInAskGap {
+		return false
+	}
+	signInAskedAt[agentType] = now
+	return true
+}
+
+// askSignIn runs agentType's own non-interactive status command now (a fixed argument list, in agentsignin, with its own deadline) and says what it found: signedIn when known, timedOut when it was slow.
+// At most one run per agent type per signInAskGap: a request that does not win the claim gets the newest answer already recorded (known false when there is none yet).
+func askSignIn(ctx context.Context, agentType, bin string) (signedIn, timedOut, known bool) {
+	if !claimSignInAsk(agentType) {
+		if st, ok := agentsignin.Snapshot(agentType); ok {
+			return st.SignedIn, false, true
+		}
+		return false, false, false
+	}
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	err := agentsignin.RequireFresh(ctx, agentType, bin)
+	var nsi *agentsignin.NotSignedInError
+	switch {
+	case errors.As(err, &nsi) && nsi.TimedOut:
+		return false, true, false
+	case errors.As(err, &nsi):
+		return false, false, true
+	}
+	if st, ok := agentsignin.Snapshot(agentType); ok {
+		return st.SignedIn, false, true
+	}
+	return false, false, false
 }
 
 // hubCLIReply shapes a prerequisite-check answer for the caller (#4579). Through Coral Hub nothing in it names this computer's

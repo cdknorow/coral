@@ -50,7 +50,7 @@ const SESSIONS = [{ name: 'first-agent', display_name: 'Agent', agent_type: 'cla
         await withStatus(false);
         await waitFor(`/Claude is not signed in/.test((document.querySelector('#live-history-messages > .chat-needs-input') || {}).textContent || '')`, 'the signed-out card', 10000);
         let c = await card();
-        assert.match(c.text, /Sign-in needed.*Claude is not signed in.*Open the terminal and sign in, then come back and type\./); assert.ok(c.open, 'Open terminal stays');
+        assert.match(c.text, /Sign-in needed.*Claude is not signed in.*Open the terminal and sign in, then check again./); assert.ok(c.open, 'Open terminal stays');
         assert.ok(!/startup prompt/.test(c.text), 'not the generic words');
         await waitFor(`document.getElementById('waiting-banner').hidden`, 'the generic pill gone beside the signed-out card', 8000);
         assert.ok(await ev(`document.getElementById('waiting-banner').hidden`), 'the signed-out card is the one message: the "hasn\'t done anything yet" pill is not shown with it');

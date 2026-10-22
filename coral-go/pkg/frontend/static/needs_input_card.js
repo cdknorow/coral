@@ -1,8 +1,9 @@
 /* Moved out of live_chat.js as it was (#3837): no behaviour change. */
 import { deriveSessionState } from './render.js';
-import { escapeHtml, renderMarkdown } from './utils.js';
+import { escapeHtml, escapeAttr, renderMarkdown } from './utils.js';
 import { state } from './state.js';
-import { claudeSignedIn, askSigninSoon, isLocalClaude } from './signin_line.js';
+import { claudeSignedIn, askSigninSoon, isLocalClaude, isLocalAgent, setClaudeSignedIn } from './signin_line.js';
+import { registerActions } from './actions.js';
 
 // ── Needs input ──────────────────────────────────────────────────────────
 // Claude Code writes a tool call to the transcript only once it completes, so
@@ -53,8 +54,14 @@ function needsInputInfo(session) {
         // Only for a session on THIS computer: claude_signed_in is this computer's Claude, and an agent on another server (or seen through Coral Hub) must not send the person to the wrong terminal.
         if (session.agent_type === "claude" && isLocalClaude(row)) {
             const signedIn = claudeSignedIn();
-            if (signedIn === false) return { kind: "startup", signedOut: true };
+            if (signedIn === false) return { kind: "startup", signedOut: true, agent: "claude" };
             if (signedIn === undefined) askSigninSoon();
+        }
+        // Codex has a status command too (#6048): asked once for a card, and again by Check again; the CLIs that cannot be asked (Antigravity, Pi) keep the generic card.
+        if (session.agent_type === "codex" && isLocalAgent(row)) {
+            const known = codexSignedIn;
+            if (known === false) return { kind: "startup", signedOut: true, agent: "codex" };
+            if (known === undefined) askCodexSignin();
         }
         return { kind: "startup" };
     }
@@ -203,8 +210,8 @@ function needsInputHtml(info, session) {
     } else {
         if (info.signedOut) {
             kicker = "Sign-in needed";
-            question = "Claude is not signed in";
-            context = `<div class="cni-context-text">Open the terminal and sign in, then come back and type.</div>`;
+            question = `${agentDisplayName(session)} is not signed in`;
+            context = `<div class="cni-context-text">Open the terminal and sign in, then check again.</div>`;
         } else {
             question = "The agent may be waiting at a startup prompt";
             context = `<div class="cni-context-text">For example, trusting this folder or signing in. Open the terminal, answer it there, then come back and type your first message.</div>`;
@@ -220,7 +227,7 @@ function needsInputHtml(info, session) {
         + context
         + reviewHtml(info)
         + controls.body
-        + `<div class="cni-foot"><button type="button" class="cni-link" data-on-click="terminal-view-open">Open terminal</button>${hint}<span class="cni-foot-spacer"></span>${controls.foot}</div>`;
+        + `<div class="cni-foot"><button type="button" class="cni-link" data-on-click="terminal-view-open">Open terminal</button>${hint}<span class="cni-foot-spacer"></span>${info.signedOut ? `<button type="button" class="btn btn-sm cni-recheck" data-on-click="startup-recheck" data-agent="${escapeAttr(info.agent || "claude")}">Check again</button>` : ""}${controls.foot}</div>`;
 }
 
 // The sign-in card (#3830): the login happens in the agent's terminal (a browser link and a code
@@ -289,7 +296,41 @@ function unwatchCardInView() {
     if (wrap) wrap.classList.remove("card-in-view");
 }
 
+// The card's Check again (#6048): the CLI's own non-interactive status command, asked now (GET /api/system/cli-check?signin=1), not the last background answer (up to five minutes old). Claude's
+// answer goes to the sign-in line as well; Codex's is kept here. An answer that does not come (signed_in absent: the CLI cannot be asked, or did not answer) leaves the card as it was and says so.
+let codexSignedIn; // true, false, or undefined (not asked, or no answer)
+let _codexAskedAt = 0;
+let _lastCard = null; // { container, session } of the last sync: the card is drawn again at once after an answer
+async function askSignin(type) {
+    try {
+        const resp = await fetch(`/api/system/cli-check?type=${encodeURIComponent(type)}&signin=1&source=cli_recheck`, { cache: "no-store" });
+        if (!resp.ok) return undefined;
+        const data = await resp.json();
+        return typeof data.signed_in === "boolean" ? data.signed_in : undefined;
+    } catch { return undefined; }
+}
+function askCodexSignin() {
+    const now = Date.now();
+    if (now - _codexAskedAt < 30_000) return;
+    _codexAskedAt = now;
+    askSignin("codex").then(v => { codexSignedIn = v; if (_lastCard) syncNeedsInputCard(_lastCard.container, _lastCard.session); });
+}
+registerActions({
+    'startup-recheck': async el => {
+        const type = el.dataset.agent === "codex" ? "codex" : "claude";
+        el.disabled = true; el.textContent = "Checking…";
+        const v = await askSignin(type);
+        if (type === "claude") setClaudeSignedIn(v); else codexSignedIn = v;
+        if (_lastCard) syncNeedsInputCard(_lastCard.container, _lastCard.session);
+        const name = type === "codex" ? "Codex" : "Claude";
+        announcePrompt(v === true ? `${name} is signed in. Type your first message.` : v === false ? `${name} is still not signed in.` : `Could not tell whether ${name} is signed in.`);
+        const again = document.querySelector(".cni-recheck");
+        if (again) { again.disabled = false; again.textContent = "Check again"; }
+    },
+});
+
 export function syncNeedsInputCard(container, session) {
+    _lastCard = { container, session };
     const info = needsInputInfo(session);
     let el = container.querySelector(":scope > .chat-needs-input");
     if (!info) {

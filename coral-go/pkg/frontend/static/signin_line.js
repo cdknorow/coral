@@ -21,6 +21,17 @@ export function isLocalClaude(row) {
     return !!row && row.agent_type === 'claude' && !isCloud() && normServer(sessionServer(row)) === LOCAL_SERVER;
 }
 
+/** Whether this agent runs on THIS computer (not another server, not seen through Coral Hub): the only place this computer's CLI sign-in says anything about it (#6048). */
+export function isLocalAgent(row) {
+    return !!row && !isCloud() && normServer(sessionServer(row)) === LOCAL_SERVER;
+}
+
+/** A fresh answer for Claude (Check again asked the CLI itself): the card and the line follow it at once instead of at the next status read (#6048). */
+export function setClaudeSignedIn(v) {
+    _known = typeof v === 'boolean' ? v : undefined;
+    applySigninStatus({ claude_signed_in: _known });
+}
+
 /** A new Claude agent that has not started, on a computer where Claude is not signed in: the card says so (#5852), so the generic "hasn't done anything yet" pill is not shown beside it (one message, not two). */
 export function startupSignedOut(row) { return _known === false && isLocalClaude(row); }
 
