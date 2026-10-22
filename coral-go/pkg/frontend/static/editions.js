@@ -137,7 +137,7 @@ const ASK_MODES = [
 function _connectHtml() {
     return `<div class="modal-content editions-content">
         <h2 id="editions-title" class="editions-title">Connect to Coral Hub</h2>
-        <p class="editions-sub">Use your agents from any browser, including your phone, at app.coralhub.dev. Coral Hub is in an invite-only beta. Nothing is sent until you connect.</p>
+        <p class="editions-sub">Use your agents from any browser, including your phone, at app.coralhub.dev. Coral Hub is in an invite-only beta.</p>
         <div class="editions-cloud">
             <div class="editions-status" data-cloud="status" role="status" aria-live="polite">Loading…</div>
             <div class="editions-code" data-cloud="code" hidden>

@@ -190,6 +190,11 @@ async function run() {
             check(`${label}: before Connect a choice is held (no request), and auto-accept is shown only with Launch`, s.modeValue === 'interact' && !s.autoRow && (await ev('window.__cloudCalls')).length === 0, JSON.stringify({ s, calls: await ev('window.__cloudCalls') }));
             await click('#editions-modal [data-cloud-mode][value="launch"]');
             await click('#editions-modal [data-cloud="allow-auto-accept"]');
+            // The switch means something only with Launch: away from Launch it is gone, and its saved value comes back with Launch.
+            await click('#editions-modal [data-cloud-mode][value="view"]');
+            check(`${label}: the auto-accept switch is shown only with Launch`, !(await screen()).autoRow);
+            await click('#editions-modal [data-cloud-mode][value="launch"]');
+            check(`${label}: back on Launch the switch is there, still as it was (off)`, (await screen()).autoRow && !(await screen()).autoOn);
             check(`${label}: the auto-accept switch is held too`, (await ev('window.__cloudCalls')).length === 0 && !(await screen()).autoOn);
             await click('#editions-modal [data-cloud="connect"]');
             check(`${label}: Connect carries the answer in the same call`, JSON.stringify(await ev('window.__cloudCalls')) === '["POST /api/cloud/connect {\\"mode\\":\\"launch\\",\\"allow_auto_accept\\":false}"]', JSON.stringify(await ev('window.__cloudCalls')));
