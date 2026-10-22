@@ -159,7 +159,9 @@ func main() {
 		log.Println("[WEBVIEW] the profile is in a local folder (not the Roaming folder)") // no path: the log carries no user name
 	}
 	// The app's sign-ins are named "Coral app" on the Sessions page: the marker goes into the web view's User-Agent (Windows: before the window).
-	markAppUserAgentBeforeWindow()
+	if os.Getenv("CORAL_PROBE_NO_UA") == "" {
+		markAppUserAgentBeforeWindow()
+	}
 	log.Printf("[WEBVIEW] creating webview (devtools=%v)", devTools)
 	w := webview.New(devTools)
 	webviewInstance = w
