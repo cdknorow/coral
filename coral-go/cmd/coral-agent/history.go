@@ -88,7 +88,7 @@ func cmdHistorySearch(args []string) {
 	if strings.TrimSpace(query) == "" {
 		fmt.Fprintln(os.Stderr, "Error: search query is required.")
 		fmt.Fprintln(os.Stderr, "Usage: coral-agent history search <query> [flags]")
-		clierr.Exit1()
+		os.Exit(2)
 	}
 
 	sid := resolveSessionID()
