@@ -265,6 +265,11 @@ your own terminal, or choose tmux. On macOS, a helper that had already detached 
 the terminal ended cannot be found (macOS does not let Coral read other processes' environments);
 whatever is still attached is ended. A Coral that is killed or crashes ends nothing itself: the
 terminals are hung up by the system, which ends an agent that exits on hangup and may leave its helpers.
+Coral keeps one small helper process beside it for that case: in a process list (Activity Monitor, `ps`)
+it appears as "coral pty-guardian". It does nothing while Coral runs; when Coral is gone it ends the
+terminals' leftovers, and it exits by itself when Coral quits. Do not kill it by hand to stop agents (a
+plain `kill` of it ends only the helper, and Coral starts another), and `pkill coral` that also matches it
+only ends it.
 
 With tmux chosen, Coral does not fail at startup when tmux is missing — it logs a warning, the dashboard
 loads normally, and only agent launch fails:

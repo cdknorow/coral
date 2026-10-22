@@ -93,9 +93,8 @@ func runGuardian(in io.Reader) {
 		wg.Wait()
 		os.Exit(0)
 	}
-	term := make(chan os.Signal, 1)
-	signal.Notify(term, syscall.SIGTERM)
-	go func() { <-term; finish() }()
+	// SIGTERM is not handled: it ends the guardian like any process, and ends no tree. The pipe reaching EOF is the one thing that makes it end terminals, so a stray "kill" or "pkill" that matches its
+	// name cannot end every agent; Coral finds a dead guardian on its next write and starts another, told every terminal.
 	go func() {
 		for range time.Tick(guardianSample) {
 			mu.Lock()
