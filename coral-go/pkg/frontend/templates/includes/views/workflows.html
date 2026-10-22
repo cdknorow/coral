@@ -45,19 +45,19 @@
     <div class="modal-content modal-content-extra-wide">
         <div class="modal-header">
             <h3 id="wf-modal-title">Create Workflow</h3>
-            <button class="modal-close" data-on-click="wf-modal-close">&times;</button>
+            <button class="modal-close" data-on-click="wf-modal-close" aria-label="Close">&times;</button>
         </div>
         <div class="modal-body wf-modal-body">
-            <label class="wf-label">Name <span class="wf-hint">(letters, numbers, hyphens, underscores)</span></label>
+            <label class="wf-label" for="wf-input-name">Name <span class="wf-hint">(letters, numbers, hyphens, underscores)</span></label>
             <input type="text" id="wf-input-name" class="wf-input" placeholder="lint-and-fix" pattern="[a-zA-Z0-9_-]+">
 
-            <label class="wf-label">Description</label>
+            <label class="wf-label" for="wf-input-desc">Description</label>
             <input type="text" id="wf-input-desc" class="wf-input" placeholder="Run linter, fix issues, verify fix">
 
-            <label class="wf-label">Repository Path</label>
+            <label class="wf-label" for="wf-input-repo">Repository Path</label>
             <input type="text" id="wf-input-repo" class="wf-input" placeholder="/path/to/project">
 
-            <label class="wf-label">Max Duration (seconds)</label>
+            <label class="wf-label" for="wf-input-max-dur">Max Duration (seconds)</label>
             <input type="number" id="wf-input-max-dur" class="wf-input" value="3600" min="1" max="86400">
 
             <label class="wf-label">Steps</label>

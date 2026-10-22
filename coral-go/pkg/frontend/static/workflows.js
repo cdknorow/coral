@@ -631,11 +631,24 @@ export function workflowAddStep(step) {
     `;
     if (step) loadedSteps.set(div, step);
     editor.appendChild(div);
+    nameStepControls();
+}
+
+// Each step's controls carry its number, so "Remove step 2" and "Step 2 command" tell the rows apart; renumbered when one is removed.
+function nameStepControls() {
+    document.querySelectorAll('#wf-steps-editor .wf-step-editor-item').forEach((item, i) => {
+        const n = i + 1;
+        item.querySelector('.wf-step-type-select')?.setAttribute('aria-label', `Step ${n} type`);
+        item.querySelector('.wf-step-name-input')?.setAttribute('aria-label', `Step ${n} name`);
+        item.querySelector('.wf-step-remove-btn')?.setAttribute('aria-label', `Remove step ${n}`);
+        item.querySelector('.wf-step-content')?.setAttribute('aria-label', `Step ${n} ${item.querySelector('.wf-step-type-select')?.value === 'agent' ? 'prompt' : 'command'}`);
+    });
 }
 
 export function workflowStepTypeChanged(select) {
     const textarea = select.closest('.wf-step-editor-item').querySelector('.wf-step-content');
     textarea.placeholder = select.value === 'shell' ? 'Shell command...' : 'Agent prompt...';
+    nameStepControls();
 }
 
 export async function saveWorkflow() {
@@ -765,5 +778,5 @@ registerActions({
     },
     'wf-step-agent': (el, event) => { event.stopPropagation(); const s = textOf(el.dataset.session); if (s) selectLiveSession(s); },
     'wf-step-type': el => workflowStepTypeChanged(el),
-    'wf-step-remove': el => el.closest('.wf-step-editor-item')?.remove(),
+    'wf-step-remove': el => { el.closest('.wf-step-editor-item')?.remove(); nameStepControls(); },
 });
