@@ -72,17 +72,18 @@ type MSI interface {
 	// Authenticode checks the held MSI's signature: signed is false for an unsigned file; err refuses an invalid signature or one not from the
 	// pinned chain and subject.
 	Authenticode(h Held) (signed bool, err error)
-	// ProductCode is the held MSI's ProductCode property; RegisteredProduct is the code of the product registered for Coral's UpgradeCode.
+	// ProductCode is the held MSI's ProductCode property; RegisteredProduct is the code of the product registered PER MACHINE for Coral's
+	// UpgradeCode (a per-user product with the same, public, UpgradeCode is never it: N1), and RegisteredVersion that product's version.
 	ProductCode(h Held) (string, error)
 	RegisteredProduct() (string, error)
+	RegisteredVersion() (string, error)
 	// Msiexec runs the system's msiexec with args, unelevated, and returns its exit code.
 	Msiexec(ctx context.Context, args ...string) (int, error)
 	// Start starts Coral (coral-tray) from the install folder as this user; Healthy waits until it is up.
 	Start(ctx context.Context, install string) error
 	Healthy(ctx context.Context, install string) error
-	// Notify tells the person something while Coral is down (a message box); ShowFolder opens a folder in Explorer.
+	// Notify tells the person something while Coral is down (a message box).
 	Notify(title, text string)
-	ShowFolder(path string)
 }
 
 // Rollback is the previous version's package for the rollback, verified when it is called (at use, not when it was staged: C): its path and
@@ -358,16 +359,15 @@ func rollBackMSI(ctx context.Context, mc MSIConfig, cfg Config, dir string, st *
 	m.Notify("Coral update", fmt.Sprintf("Coral %s didn't start. Windows will ask you twice to put back Coral %s: once to remove %s, once to install %s.", to, cfg.Installed, to, cfg.Installed))
 	code, err := m.Msiexec(ctx, msiUninstallArgs(product, filepath.Join(dir, "msi-rollback-remove.log"))...)
 	if err != nil || (code != msiSuccess && code != msiRebootRequired) {
-		// The new version stays: a complete install, just one that didn't come up.
-		m.ShowFolder(filepath.Dir(pkg))
-		m.Notify("Coral update", fmt.Sprintf("Coral %s is still installed. To go back, run the Coral %s installer in the folder that just opened.", to, cfg.Installed))
+		// The new version stays: a complete install, just one that didn't come up. The person is pointed at the release, never at the kept
+		// copy, which is no longer held once this returns (N3).
+		m.Notify("Coral update", fmt.Sprintf("Coral %s is still installed. To go back, %s", to, releaseHint(cfg.Installed, rbRec)))
 		res.RestartFailed = true
 		return done(ResultFailed, "rollback_remove_"+codeOrErr(code, err), "restart_failed")
 	}
 	code, err = m.Msiexec(ctx, msiInstallArgs(held.Path(), filepath.Join(dir, "msi-rollback-install.log"))...)
 	if err != nil || (code != msiSuccess && code != msiRebootRequired) {
-		m.ShowFolder(filepath.Dir(pkg))
-		m.Notify("Coral update", fmt.Sprintf("Coral was removed but Coral %s wasn't installed again. Run the Coral %s installer in the folder that just opened.", cfg.Installed, cfg.Installed))
+		m.Notify("Coral update", fmt.Sprintf("Coral was removed but Coral %s wasn't installed again. To install it, %s", cfg.Installed, releaseHint(cfg.Installed, rbRec)))
 		res.RestartFailed = true
 		return done(ResultFailed, "rollback_install_"+codeOrErr(code, err), "restart_failed")
 	}
@@ -378,11 +378,22 @@ func rollBackMSI(ctx context.Context, mc MSIConfig, cfg Config, dir string, st *
 	return done(ResultRolledBack, why, ResultRolledBack)
 }
 
+// releaseHint tells the person where to get version's installer and what its SHA-256 must be (the verified sums entry), instead of pointing at
+// the kept copy in a user-writable folder (N3).
+func releaseHint(version string, rec *verify.Record) string {
+	return fmt.Sprintf("download Coral %s from https://github.com/%s/releases/tag/v%s and run it (its SHA-256 is %s).", version, verify.Repo, version, rec.PackageSHA256)
+}
+
 func codeOrErr(code int, err error) string {
 	if err != nil {
 		return "error"
 	}
 	return strconv.Itoa(code)
+}
+
+// msiVersionIs reports whether an MSI ProductVersion ("1.4.130", or "1.4.130.0") is the release version ("1.4.130").
+func msiVersionIs(msi, version string) bool {
+	return msi == version || msi == version+".0"
 }
 
 // sameProductCode compares two ProductCodes ({GUID}, case-insensitive).
@@ -439,6 +450,12 @@ func recoverMSI(ctx context.Context, mc MSIConfig, cfg Config, dir, install stri
 	m := mc.MSI
 	reg, err := m.RegisteredProduct()
 	if err != nil || j.Product == "" || !sameProductCode(reg, j.Product) {
+		removeMSIJournal(dir)
+		return Result{}, false
+	}
+	// N2: the registered product must also BE the journal's new version, or nothing of this apply was installed and there is nothing to
+	// finish or roll back (a journal is a file the same user can write).
+	if v, err := m.RegisteredVersion(); err != nil || !msiVersionIs(v, j.To) {
 		removeMSIJournal(dir)
 		return Result{}, false
 	}

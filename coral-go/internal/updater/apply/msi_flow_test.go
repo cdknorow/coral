@@ -75,14 +75,14 @@ type fakeMSI struct {
 	signed     bool
 	product    string
 	registered string
-	codes      []int // msiexec's answers, popped per call
+	regVersion string // the registered product's version
+	codes      []int  // msiexec's answers, popped per call
 	msiArgs    [][]string
 	heldClosed []bool
 	sawAtExec  []byte // the bytes of the held file when msiexec ran
 	startErr   []error
 	healthErr  []error
 	notes      []string
-	shown      string
 	holdHook   func(path string)
 	// registeredAfterInstall, when set, is what Windows reports as registered after the update's install (another product).
 	registeredAfterInstall string
@@ -121,6 +121,12 @@ func (f *fakeMSI) RegisteredProduct() (string, error) {
 	}
 	return f.registered, nil
 }
+func (f *fakeMSI) RegisteredVersion() (string, error) {
+	if f.registered == "" {
+		return "", errors.New("none")
+	}
+	return f.regVersion, nil
+}
 func (f *fakeMSI) Msiexec(ctx context.Context, args ...string) (int, error) {
 	f.rec("msiexec " + args[0])
 	f.msiArgs = append(f.msiArgs, args)
@@ -136,15 +142,15 @@ func (f *fakeMSI) Msiexec(ctx context.Context, args ...string) (int, error) {
 		switch args[0] {
 		case "/i":
 			if f.product != "" && len(f.msiArgs) == 1 {
-				f.registered = f.product
+				f.registered, f.regVersion = f.product, "1.4.130"
 				if f.registeredAfterInstall != "" {
 					f.registered = f.registeredAfterInstall
 				}
 			} else {
-				f.registered = oldProduct
+				f.registered, f.regVersion = oldProduct, "1.4.125"
 			}
 		case "/x":
-			f.registered = ""
+			f.registered, f.regVersion = "", ""
 		}
 	}
 	return code, nil
@@ -168,7 +174,6 @@ func (f *fakeMSI) Healthy(context.Context, string) error {
 	return nil
 }
 func (f *fakeMSI) Notify(title, text string) { f.rec("notify"); f.notes = append(f.notes, text) }
-func (f *fakeMSI) ShowFolder(path string)    { f.rec("show"); f.shown = path }
 
 type msiRig struct {
 	t    *testing.T
@@ -186,7 +191,7 @@ func newMSIRig(t *testing.T) *msiRig {
 	t.Helper()
 	data := t.TempDir()
 	r := &msiRig{t: t, data: data, pkg: []byte("the msi bytes of 1.4.130"),
-		msi: &fakeMSI{install: filepath.Join(t.TempDir(), "Coral"), coralGone: true, product: newProduct, registered: oldProduct, signed: true}}
+		msi: &fakeMSI{install: filepath.Join(t.TempDir(), "Coral"), coralGone: true, product: newProduct, registered: oldProduct, regVersion: "1.4.125", signed: true}}
 	r.stageRelease("1.4.130", r.pkg)
 	rb := []byte("the msi bytes of 1.4.125")
 	r.rbPath = filepath.Join(t.TempDir(), msiAsset("1.4.125"))
@@ -380,8 +385,8 @@ func TestTheRollbackPackageIsVerifiedAgainWhereItIsUsed(t *testing.T) {
 	assert.NotContains(t, strings.Join(r.msi.calls, " "), "msiexec /x")
 }
 
-// A declined removal leaves the new version (a complete install) and opens the previous version's installer for the person; a declined
-// reinstall after the removal says so too. Neither is retried.
+// A declined removal leaves the new version (a complete install) and tells the person where to get the previous version's installer and its
+// SHA-256, never pointing at the kept copy, which is no longer held (N3); a declined reinstall after the removal says so too. Neither is retried.
 func TestADeclinedRollbackPromptLeavesSomethingThePersonCanFinish(t *testing.T) {
 	r := newMSIRig(t)
 	r.msi.healthErr = []error{errors.New("not up")}
@@ -390,8 +395,11 @@ func TestADeclinedRollbackPromptLeavesSomethingThePersonCanFinish(t *testing.T) 
 	assert.Equal(t, ResultFailed, res.Result)
 	assert.Equal(t, "rollback_remove_1602", res.FailedStage)
 	assert.True(t, res.RestartFailed)
-	assert.Equal(t, filepath.Dir(r.rbPath), r.msi.shown)
-	assert.Contains(t, r.msi.notes[len(r.msi.notes)-1], "is still installed")
+	last := r.msi.notes[len(r.msi.notes)-1]
+	assert.Contains(t, last, "is still installed")
+	assert.Contains(t, last, "https://github.com/"+verify.Repo+"/releases/tag/v1.4.125")
+	assert.Contains(t, last, r.rbRec.PackageSHA256, "the SHA-256 the installer must have")
+	assert.NotContains(t, last, filepath.Dir(r.rbPath), "never the kept copy's folder")
 
 	r = newMSIRig(t)
 	r.msi.healthErr = []error{errors.New("not up")}
@@ -416,7 +424,7 @@ func TestNoRollbackPackageLeavesTheNewVersionAndSaysSo(t *testing.T) {
 // accepted; not up → the rollback. A journal whose product isn't the registered one is just removed.
 func TestAnInterruptedWindowsApplyIsFinishedByTheNext(t *testing.T) {
 	r := newMSIRig(t)
-	r.msi.registered = newProduct
+	r.msi.registered, r.msi.regVersion = newProduct, "1.4.130"
 	st, _ := stage.LoadStaged(r.data)
 	j := msiJournal{Phase: "installed", From: "1.4.125", To: "1.4.130", Product: newProduct, Record: st.Record}
 	require.NoError(t, writeMSIJournal(filepath.Join(r.data, stage.UpdatesDir), j))
@@ -426,7 +434,7 @@ func TestAnInterruptedWindowsApplyIsFinishedByTheNext(t *testing.T) {
 	assert.Equal(t, "1.4.130", r.state().Version)
 
 	r = newMSIRig(t)
-	r.msi.registered = newProduct
+	r.msi.registered, r.msi.regVersion = newProduct, "1.4.130"
 	st, _ = stage.LoadStaged(r.data)
 	j.Record = st.Record
 	require.NoError(t, writeMSIJournal(filepath.Join(r.data, stage.UpdatesDir), j))
@@ -434,6 +442,17 @@ func TestAnInterruptedWindowsApplyIsFinishedByTheNext(t *testing.T) {
 	res = r.run()
 	assert.Equal(t, ResultRolledBack, res.Result, res.FailedStage)
 	assert.Equal(t, "interrupted", res.FailedStage)
+
+	// N2: the registered product matches the journal's, but it isn't the journal's new version: nothing of that apply was installed, so no
+	// rollback (two consent prompts for nothing); the journal goes and a normal apply runs.
+	r = newMSIRig(t)
+	r.msi.registered, r.msi.regVersion = newProduct, "1.4.125"
+	st, _ = stage.LoadStaged(r.data)
+	j.Record = st.Record
+	require.NoError(t, writeMSIJournal(filepath.Join(r.data, stage.UpdatesDir), j))
+	res = r.run()
+	assert.NotEqual(t, ResultRolledBack, res.Result)
+	assert.NotContains(t, strings.Join(r.msi.calls, " "), "msiexec /x")
 
 	r = newMSIRig(t)
 	j.Product = "{00000000-0000-0000-0000-000000000000}"

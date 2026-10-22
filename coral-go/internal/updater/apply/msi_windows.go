@@ -34,13 +34,18 @@ const coralExeComponent = "{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}"
 var (
 	modMsi                     = windows.NewLazySystemDLL("msi.dll")
 	procMsiEnumRelatedProducts = modMsi.NewProc("MsiEnumRelatedProductsW")
-	procMsiGetComponentPath    = modMsi.NewProc("MsiGetComponentPathW")
+	procMsiGetComponentPathEx  = modMsi.NewProc("MsiGetComponentPathExW")
+	procMsiGetProductInfoEx    = modMsi.NewProc("MsiGetProductInfoExW")
 	procMsiOpenPackageEx       = modMsi.NewProc("MsiOpenPackageExW")
 	procMsiGetProductProperty  = modMsi.NewProc("MsiGetProductPropertyW")
 	procMsiCloseHandle         = modMsi.NewProc("MsiCloseHandle")
 )
 
-const msiOpenPackageIgnoreMachineState = 1
+const (
+	msiOpenPackageIgnoreMachineState = 1
+	msiInstallContextMachine         = 4   // MSIINSTALLCONTEXT_MACHINE
+	errorNoMoreItems                 = 259 // ERROR_NO_MORE_ITEMS
+)
 
 // WindowsMSI is the real MSI.
 type WindowsMSI struct {
@@ -53,18 +58,77 @@ type WindowsMSI struct {
 
 var _ MSI = (*WindowsMSI)(nil)
 
-// RegisteredProduct is the ProductCode of the Coral product registered for CoralUpgradeCode (per machine), or an error when none is.
-func (w *WindowsMSI) RegisteredProduct() (string, error) {
+// relatedProducts lists every product registered with CoralUpgradeCode that this user can see, per machine and per user alike; a test
+// replaces it.
+var relatedProducts = func() ([]string, error) {
 	upgrade, err := windows.UTF16PtrFromString(CoralUpgradeCode)
+	if err != nil {
+		return nil, err
+	}
+	var codes []string
+	for i := uintptr(0); ; i++ {
+		buf := make([]uint16, 39)
+		r, _, _ := procMsiEnumRelatedProducts.Call(uintptr(unsafe.Pointer(upgrade)), 0, i, uintptr(unsafe.Pointer(&buf[0])))
+		if r == errorNoMoreItems {
+			return codes, nil
+		}
+		if r != 0 {
+			return nil, fmt.Errorf("MsiEnumRelatedProducts %d", r)
+		}
+		codes = append(codes, windows.UTF16ToString(buf))
+	}
+}
+
+// machineProperty is a product's property in the PER-MACHINE install context, and whether the product is installed there; a test replaces it.
+var machineProperty = func(code, property string) (string, bool) {
+	p, err1 := windows.UTF16PtrFromString(code)
+	prop, err2 := windows.UTF16PtrFromString(property)
+	if err1 != nil || err2 != nil {
+		return "", false
+	}
+	size := uint32(256)
+	buf := make([]uint16, size)
+	r, _, _ := procMsiGetProductInfoEx.Call(uintptr(unsafe.Pointer(p)), 0, msiInstallContextMachine, uintptr(unsafe.Pointer(prop)), uintptr(unsafe.Pointer(&buf[0])), uintptr(unsafe.Pointer(&size)))
+	if r != 0 {
+		return "", false
+	}
+	return windows.UTF16ToString(buf), true
+}
+
+// RegisteredProduct is the ProductCode of the Coral product registered PER MACHINE for CoralUpgradeCode. The UpgradeCode is public, so a
+// same-user process could install a per-user product with it; such a product is never the one updated or removed (N1). None, or more than one
+// per machine, is an error (fail closed).
+func (w *WindowsMSI) RegisteredProduct() (string, error) {
+	codes, err := relatedProducts()
 	if err != nil {
 		return "", err
 	}
-	buf := make([]uint16, 39)
-	r, _, _ := procMsiEnumRelatedProducts.Call(uintptr(unsafe.Pointer(upgrade)), 0, 0, uintptr(unsafe.Pointer(&buf[0])))
-	if r != 0 {
-		return "", fmt.Errorf("no Coral product is registered (MsiEnumRelatedProducts %d)", r)
+	var machine []string
+	for _, c := range codes {
+		if _, ok := machineProperty(c, "VersionString"); ok {
+			machine = append(machine, c)
+		}
 	}
-	return windows.UTF16ToString(buf), nil
+	switch len(machine) {
+	case 1:
+		return machine[0], nil
+	case 0:
+		return "", errors.New("no Coral product is registered for this machine")
+	}
+	return "", fmt.Errorf("%d Coral products are registered for this machine", len(machine))
+}
+
+// RegisteredVersion is the registered per-machine product's version (its ProductVersion).
+func (w *WindowsMSI) RegisteredVersion() (string, error) {
+	code, err := w.RegisteredProduct()
+	if err != nil {
+		return "", err
+	}
+	v, ok := machineProperty(code, "VersionString")
+	if !ok {
+		return "", errors.New("the registered product has no version")
+	}
+	return v, nil
 }
 
 // Install is the folder of the registered product: where its CoralExe component (coral.exe) is installed.
@@ -77,7 +141,8 @@ func (w *WindowsMSI) Install() (string, error) {
 	c, _ := windows.UTF16PtrFromString(coralExeComponent)
 	size := uint32(windows.MAX_LONG_PATH)
 	buf := make([]uint16, size)
-	r, _, _ := procMsiGetComponentPath.Call(uintptr(unsafe.Pointer(p)), uintptr(unsafe.Pointer(c)), uintptr(unsafe.Pointer(&buf[0])), uintptr(unsafe.Pointer(&size)))
+	// In the per-machine context only (N1), as RegisteredProduct.
+	r, _, _ := procMsiGetComponentPathEx.Call(uintptr(unsafe.Pointer(p)), uintptr(unsafe.Pointer(c)), 0, msiInstallContextMachine, uintptr(unsafe.Pointer(&buf[0])), uintptr(unsafe.Pointer(&size)))
 	const installStateLocal = 3
 	if int32(r) != installStateLocal {
 		return "", fmt.Errorf("coral.exe is not installed locally (state %d)", int32(r))
@@ -353,13 +418,4 @@ func (w *WindowsMSI) Notify(title, text string) {
 	case <-done:
 	case <-time.After(wait):
 	}
-}
-
-// ShowFolder opens path in Explorer.
-func (w *WindowsMSI) ShowFolder(path string) {
-	win, err := windows.GetWindowsDirectory()
-	if err != nil {
-		return
-	}
-	_ = exec.Command(filepath.Join(win, "explorer.exe"), filepath.Clean(path)).Start()
 }
