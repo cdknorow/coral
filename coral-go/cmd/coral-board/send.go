@@ -146,7 +146,7 @@ func runSend(args []string, id sendIdentity, out io.Writer) error {
 		if result.Error == "" {
 			result.Error = strings.TrimSpace(string(data))
 		}
-		return fmt.Errorf("send to %q failed (%d): %s", target, status, refusalText(result.Code, result.Error))
+		return fmt.Errorf("send to %q failed. Coral says: %s (HTTP %d)", target, refusalText(result.Code, result.Error), status)
 	}
 	fmt.Fprintf(out, "Sent to '%s' (message #%d, delivered to %s). A copy is on '%s'.\n",
 		target, result.Message.ID, strings.Join(result.DeliveredTo, ", "), id.Board)
@@ -221,10 +221,11 @@ func runRelaySend(id sendIdentity, address, replyTo, messageID, message string, 
 		if result.Error == "" {
 			result.Error = strings.TrimSpace(string(data))
 		}
-		msg := fmt.Sprintf("send to %q failed (%d): %s", address, status, refusalText(result.Code, result.Error))
+		words := refusalText(result.Code, result.Error)
 		if result.Message != "" {
-			msg += ": " + result.Message
+			words += ": " + result.Message
 		}
+		msg := fmt.Sprintf("send to %q failed. Coral says: %s (HTTP %d)", address, words, status)
 		switch {
 		case status == http.StatusNotImplemented:
 			// The hub doesn't relay (switched off, or too old): a retry fails the same way
@@ -301,10 +302,11 @@ func runTargets(board, subscriberID, sessionName string, out io.Writer) error {
 			result.Error = strings.TrimSpace(string(data))
 		}
 		// The same shape as send's failure: "<code>: <message>" (#3520, QA's bug bash F4).
-		msg := fmt.Sprintf("listing targets failed (%d): %s", status, result.Error)
+		words := result.Error
 		if result.Message != "" {
-			msg += ": " + result.Message
+			words += ": " + result.Message
 		}
+		msg := fmt.Sprintf("listing targets failed. Coral says: %s (HTTP %d)", words, status)
 		return fmt.Errorf("%s", msg)
 	}
 	if len(result.Targets) == 0 {

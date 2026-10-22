@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/subgentic/coral/internal/clierr"
+	"github.com/subgentic/coral/internal/clihelp"
 	"github.com/subgentic/coral/internal/taskcli"
 	"io"
 	"net/http"
@@ -160,7 +161,7 @@ func cmdTaskAdd(st *boardState, args []string) {
 		}
 	}
 
-	fs := flag.NewFlagSet("task-add", flag.ExitOnError)
+	fs := flag.NewFlagSet("task-add", flag.ContinueOnError)
 	priority := fs.String("priority", "medium", "Task priority (critical, high, medium, low)")
 	taskBody := fs.String("body", "", "Detailed description/instructions")
 	assignee := fs.String("assignee", "", "Assign task to a specific agent")
@@ -174,7 +175,7 @@ func cmdTaskAdd(st *boardState, args []string) {
 	remindAt := fs.String("remind-at", "", "A one-time reminder to the assignee (or the orchestrator) at that time: \"2026-10-19 21:58\", 21:58, 2026-10-19, 30m, 2h or 3d")
 	parent := fs.Int64("parent", 0, "Parent task ID")
 	retryOf := fs.Int64("retry-of", 0, "Finished task ID this new task retries")
-	fs.Parse(reordered)
+	clihelp.ParseFlags(fs, reordered, func() string { return commandUsage(os.Args[1], os.Args[2:]) })
 	*taskBody = flagText(*taskBody, "task body")
 
 	if title == "" {
@@ -438,13 +439,13 @@ func cmdTaskComplete(st *boardState, args []string) {
 		clierr.Exit1()
 	}
 
-	fs := flag.NewFlagSet("task-complete", flag.ExitOnError)
+	fs := flag.NewFlagSet("task-complete", flag.ContinueOnError)
 	message := fs.String("message", "", "Completion message")
 	outcome := fs.String("outcome", "success", "success or failed")
 	artifactsFile := fs.String("artifacts", "", "JSON file containing named artifacts (name, uri or content, revision, digest)")
 	expectedRevision := fs.Int("revision", 0, "Expected task revision after amendments")
 	candidateRevision := fs.String("candidate-revision", "", "Exact source/build revision represented by completion evidence")
-	fs.Parse(args[1:])
+	clihelp.ParseFlags(fs, args[1:], func() string { return commandUsage(os.Args[1], os.Args[2:]) })
 	*message = flagText(*message, "completion message")
 
 	subscriberID := resolveSubscriberID()
@@ -526,9 +527,9 @@ func cmdTaskCancel(st *boardState, args []string) {
 		clierr.Exit1()
 	}
 
-	fs := flag.NewFlagSet("task-cancel", flag.ExitOnError)
+	fs := flag.NewFlagSet("task-cancel", flag.ContinueOnError)
 	message := fs.String("message", "", "Cancellation reason")
-	fs.Parse(args[1:])
+	clihelp.ParseFlags(fs, args[1:], func() string { return commandUsage(os.Args[1], os.Args[2:]) })
 	*message = flagText(*message, "cancellation reason")
 
 	subscriberID := resolveSubscriberID()
@@ -627,13 +628,13 @@ func cmdTaskAmend(st *boardState, args []string) {
 		fmt.Fprintf(os.Stderr, "Invalid task ID: %s\n", args[0])
 		clierr.Exit1()
 	}
-	fs := flag.NewFlagSet("task-amend", flag.ExitOnError)
+	fs := flag.NewFlagSet("task-amend", flag.ContinueOnError)
 	revision := fs.Int("revision", 0, "Expected current task revision")
 	reason := fs.String("reason", "", "Why this amendment is authoritative")
 	bodyText := fs.String("body", "", "Replacement task body")
 	instructions := fs.String("workflow-instructions", "", "Replacement task-specific instructions")
 	completionGates := fs.String("completion-gates", "", "Replacement completion gates JSON (experimental and disabled by default)")
-	fs.Parse(args[1:])
+	clihelp.ParseFlags(fs, args[1:], func() string { return commandUsage(os.Args[1], os.Args[2:]) })
 	*bodyText = flagText(*bodyText, "task body")
 	if *revision <= 0 || strings.TrimSpace(*reason) == "" {
 		fmt.Fprintln(os.Stderr, "--revision and --reason are required")
@@ -684,14 +685,14 @@ func cmdTaskReview(st *boardState, args []string, action string) {
 		fmt.Fprintln(os.Stderr, "Invalid task ID")
 		os.Exit(2) // usage
 	}
-	fs := flag.NewFlagSet(action, flag.ExitOnError)
+	fs := flag.NewFlagSet(action, flag.ContinueOnError)
 	reason := fs.String("reason", "", "Reason review is needed or capacity is being released")
 	message := fs.String("message", "", "Candidate completion message")
 	revision := fs.Int("revision", 0, "Expected task revision after amendments (submit-review)")
 	outcome := fs.String("outcome", "success", "Proposed outcome: success or failed")
 	manifest := fs.String("artifacts", "", "Candidate artifact manifest")
 	candidateRevision := fs.String("candidate-revision", "", "Exact source/build revision represented by candidate evidence")
-	fs.Parse(args[1:])
+	clihelp.ParseFlags(fs, args[1:], func() string { return commandUsage(os.Args[1], os.Args[2:]) })
 	*message = flagText(*message, "completion message")
 	if strings.TrimSpace(*reason) == "" {
 		fmt.Fprintln(os.Stderr, "--reason is required")
@@ -755,12 +756,12 @@ func cmdTaskReviewFlow(st *boardState, args []string, action string) {
 		fmt.Fprintln(os.Stderr, "Invalid task ID")
 		os.Exit(2) // usage
 	}
-	fs := flag.NewFlagSet(action, flag.ExitOnError)
+	fs := flag.NewFlagSet(action, flag.ContinueOnError)
 	to := fs.String("to", "", "Reviewers, comma-separated (review)")
 	note := fs.String("note", "", "Your note (approve; required for reject)")
 	revision := fs.Int("revision", -1, "The revision of the round you read (approve): patches that joined it since it opened; default: the one task detail last showed you")
 	round := fs.Int("round", 0, "The review round you reviewed (default: the one task detail or your review task last showed you); a verdict on an earlier round is refused")
-	fs.Parse(args[1:])
+	clihelp.ParseFlags(fs, args[1:], func() string { return commandUsage(os.Args[1], os.Args[2:]) })
 	explicitRound := false
 	fs.Visit(func(f *flag.Flag) { explicitRound = explicitRound || f.Name == "round" })
 	if !explicitRound && (action == "approve" || action == "reject") {

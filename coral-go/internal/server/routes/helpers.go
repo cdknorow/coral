@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"github.com/subgentic/coral/internal/board"
 	"github.com/subgentic/coral/internal/diskguard"
 	"io"
 	"io/fs"
@@ -93,6 +94,11 @@ func errBadRequest(w http.ResponseWriter, msg string) { writeError(w, http.Statu
 // errTaskStore answers a failed task operation: 404 "Task not found" when there is no such task (the database's own "sql: no rows in result set", or the
 // "task #N is not on this board" of the merge queue), else 400 with the error's words.
 func errTaskStore(w http.ResponseWriter, err error) {
+	var notAssignee *board.NotAssigneeError
+	if errors.As(err, &notAssignee) {
+		errForbidden(w, err.Error()) // a permission refusal, like cancel's, not a malformed request (#298)
+		return
+	}
 	if errors.Is(err, sql.ErrNoRows) || taskNotOnBoard(err) {
 		errNotFound(w, "Task not found")
 		return

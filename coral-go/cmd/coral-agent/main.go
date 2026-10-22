@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"github.com/subgentic/coral/internal/cliauth"
 	"github.com/subgentic/coral/internal/clierr"
+	"github.com/subgentic/coral/internal/clihelp"
 	"github.com/subgentic/coral/internal/clitext"
 	"github.com/subgentic/coral/internal/taskcli"
 	"io"
@@ -245,7 +246,7 @@ func uploadArtifact(serverURL, file, name, mediaType, sid string, stdout, stderr
 			}
 			return fmt.Errorf("artifact upload refused (rate limited): %s", reason)
 		}
-		return fmt.Errorf("artifact upload failed (HTTP %d): %s", resp.StatusCode, reason)
+		return fmt.Errorf("artifact upload failed. Coral says: %s (HTTP %d)", reason, resp.StatusCode)
 	}
 	// A 2xx with no coral:// id is not a stored artifact: never print it as a link (#4004 (b):
 	// defends against a success-shaped refusal, so the exit code is the only thing that can be wrong).
@@ -254,7 +255,7 @@ func uploadArtifact(serverURL, file, name, mediaType, sid string, stdout, stderr
 		if reason == "" {
 			reason = resp.Status
 		}
-		return fmt.Errorf("artifact upload returned no artifact id (HTTP %d): %s", resp.StatusCode, reason)
+		return fmt.Errorf("artifact upload returned no artifact id. Coral says: %s (HTTP %d)", reason, resp.StatusCode)
 	}
 	if reply.Stripped {
 		fmt.Fprintln(stderr, "Note: Coral removed this image's metadata (camera, location) before storing it, so its id is the SHA-256 of the stored bytes, not of your file.")
@@ -352,7 +353,7 @@ func cmdLaunch(args []string) {
 		}
 	}
 
-	fs := flag.NewFlagSet("launch", flag.ExitOnError)
+	fs := flag.NewFlagSet("launch", flag.ContinueOnError)
 	agentType := fs.String("type", "", "Agent type: claude, codex, agy, pi or terminal (default: your Coral setting)")
 	name := fs.String("name", "", "Display name")
 	model := fs.String("model", "", "Model (default: your Coral setting for the agent type)")
@@ -362,7 +363,7 @@ func cmdLaunch(args []string) {
 		fmt.Fprintln(os.Stderr, `Usage: coral-agent launch [dir] [--type T] [--name N] [--model M] [--prompt P] [--board ID]`)
 		fs.PrintDefaults()
 	}
-	fs.Parse(flagArgs)
+	clihelp.ParseFlags(fs, flagArgs, func() string { return commandUsage(os.Args[1], os.Args[2:]) })
 
 	if dir == "" {
 		dir = "."
@@ -453,7 +454,7 @@ func cmdTaskAdd(args []string) {
 		}
 	}
 
-	fs := flag.NewFlagSet("task-add", flag.ExitOnError)
+	fs := flag.NewFlagSet("task-add", flag.ContinueOnError)
 	priority := fs.String("priority", "medium", "Task priority (critical, high, medium, low)")
 	taskBody := fs.String("body", "", "Detailed description/instructions")
 	blockedBy := fs.String("blocked-by", "", "Dependency IDs or rule objects as JSON")
@@ -464,7 +465,7 @@ func cmdTaskAdd(args []string) {
 	parent := fs.Int64("parent", 0, "Parent task ID")
 	retry := fs.Int64("retry-of", 0, "Finished task ID to retry")
 	completionGates := fs.String("completion-gates", "", "JSON completion gates (experimental and disabled by default)")
-	fs.Parse(reordered)
+	clihelp.ParseFlags(fs, reordered, func() string { return commandUsage(os.Args[1], os.Args[2:]) })
 
 	if title == "" {
 		fmt.Fprintln(os.Stderr, `Usage: coral-agent task add "title" [--body "details"] [--priority P]`)
@@ -659,12 +660,12 @@ func cmdTaskFinish(args []string, verb string) {
 		clierr.Exit1()
 	}
 
-	fs := flag.NewFlagSet("task-"+verb, flag.ExitOnError)
+	fs := flag.NewFlagSet("task-"+verb, flag.ContinueOnError)
 	message := fs.String(flagName, "", flagHelp)
 	outcome := fs.String("outcome", "success", "success or failed")
 	artifactsFile := fs.String("artifacts", "", "JSON artifact manifest")
 	candidateRevision := fs.String("candidate-revision", "", "Exact source/build revision represented by completion evidence")
-	fs.Parse(args[1:])
+	clihelp.ParseFlags(fs, args[1:], func() string { return commandUsage(os.Args[1], os.Args[2:]) })
 
 	body := map[string]any{"session_id": resolveSessionID()}
 	if verb == "complete" {
@@ -751,12 +752,12 @@ func cmdTaskEdit(args []string) {
 		clierr.Exit1()
 	}
 	id := positiveTaskID(args[0])
-	fs := flag.NewFlagSet("task-edit", flag.ExitOnError)
+	fs := flag.NewFlagSet("task-edit", flag.ContinueOnError)
 	fs.String("title", "", "Task title")
 	fs.String("body", "", "Task details")
 	fs.String("priority", "", "Task priority")
 	fs.String("blocked-by", "", "Dependency JSON")
-	fs.Parse(args[1:])
+	clihelp.ParseFlags(fs, args[1:], func() string { return commandUsage(os.Args[1], os.Args[2:]) })
 	body := map[string]any{"session_id": resolveSessionID()}
 	fs.Visit(func(f *flag.Flag) {
 		if f.Name == "blocked-by" {

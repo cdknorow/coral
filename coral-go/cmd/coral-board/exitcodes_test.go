@@ -114,3 +114,26 @@ func TestNoCommandPrintsARawErrorBody(t *testing.T) {
 		assert.Contains(t, res.stderr, "HTTP 403)", "%v: %q", args, res.stderr)
 	}
 }
+
+// An option a command does not have is `unknown option "--x"` with the usage, exit 2, never Go's "flag provided but not defined" and its dump of every flag (#298).
+func TestUnknownOptionOfATaskCommandIsOurs(t *testing.T) {
+	srv := newRecordingServer(t)
+	dir := subscribedDataDir(t, srv.URL)
+	for _, c := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"task", "amend", "3", "--title", "x"}, `unknown option "--title"`},
+		{[]string{"task", "amend", "3", "--reson", "x"}, "Did you mean --reason?"},
+		{[]string{"task", "complete", "3", "--mesage", "x"}, "Did you mean --message?"},
+		{[]string{"task", "add", "t", "--nope", "x"}, `unknown option "--nope"`},
+		{[]string{"task", "cancel", "3", "--bogus"}, `unknown option "--bogus"`},
+	} {
+		res := runBoard(t, srv.URL, dir, c.args...)
+		assert.Equal(t, 2, res.code, "%v: %q", c.args, res.stderr)
+		assert.Contains(t, res.stderr, c.want, "%v", c.args)
+		assert.Contains(t, res.stderr, "Usage:", "%v", c.args)
+		assert.NotContains(t, res.stderr, "flag provided but not defined", "%v", c.args)
+		assert.Empty(t, res.stdout, "%v", c.args)
+	}
+}

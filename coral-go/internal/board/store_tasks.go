@@ -565,6 +565,11 @@ func (s *Store) CompleteTask(ctx context.Context, project string, taskID int64, 
 // ErrReviewTaskReassign: a review task is not reassigned; its reviewers are changed on the task under review.
 var ErrReviewTaskReassign = errors.New("a review task cannot be reassigned")
 
+// NotAssigneeError is a refusal to complete a task assigned to someone else: a permission refusal (the routes answer 403), not a malformed request.
+type NotAssigneeError struct{ Msg string }
+
+func (e *NotAssigneeError) Error() string { return e.Msg }
+
 // ReassignTask resets a task back to pending, optionally with a new assignee.
 // Works on pending, in_progress, or blocked tasks, preserving blocked status.
 // If assignee is empty, the task becomes unassigned.

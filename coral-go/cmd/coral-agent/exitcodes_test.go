@@ -98,3 +98,26 @@ func TestAgentNoCommandPrintsARawErrorBody(t *testing.T) {
 		assert.Contains(t, stderr, "HTTP 403)", "%v: %q", args, stderr)
 	}
 }
+
+// The same for coral-agent's commands that parse their own options (#298).
+func TestAgentUnknownOptionIsOurs(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("a refused command line reached Coral: %s", r.URL)
+	}))
+	defer srv.Close()
+	for _, c := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"launch", ".", "--dir", "x"}, `unknown option "--dir"`},
+		{[]string{"task", "edit", "3", "--titel", "x"}, "Did you mean --title?"},
+		{[]string{"task", "complete", "3", "--mesage", "x"}, "Did you mean --message?"},
+		{[]string{"history", "search", "q", "--limt", "2"}, "Did you mean --limit?"},
+	} {
+		code, stdout, stderr := runAgent(t, srv.URL, c.args...)
+		assert.Equal(t, 2, code, "%v: %q", c.args, stderr)
+		assert.Contains(t, stderr, c.want, "%v", c.args)
+		assert.NotContains(t, stderr, "flag provided but not defined", "%v", c.args)
+		assert.Empty(t, stdout, "%v", c.args)
+	}
+}
