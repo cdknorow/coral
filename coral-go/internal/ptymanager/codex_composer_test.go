@@ -394,3 +394,26 @@ func TestATypedSendsTextIsRememberedOnlyBriefly(t *testing.T) {
 	now = now.Add(7 * time.Hour)
 	assert.False(t, gate.ownLeftover(name, pasted))
 }
+
+// A typed send (bracketed paste off) has no screen-confirmed Enter, so lastPasted must not outlive ownTypedMaxAge either: a person's
+// identical draft typed minutes later is theirs (QA's live re-check of #112).
+func TestTypedSendsLastPastedIsOwnOnlyForTwoMinutes(t *testing.T) {
+	now := time.Now()
+	g := &inputGate{}
+	fn := func() time.Time { return now }
+	g.nowFn.Store(&fn)
+	text := "[Task #1 available] Run 'coral-board task claim 1' to claim it."
+
+	g.noteOwnText("s", text)
+	g.setLastPasted("s", text)
+	g.markTyped("s", text)
+	assert.True(t, g.ownLeftover("s", text), "right after the send")
+	now = now.Add(ownTypedMaxAge + time.Second)
+	assert.False(t, g.ownLeftover("s", text), "past the typed bound it is a person's draft")
+
+	// a real paste keeps its record until the Enter is seen
+	g.noteOwnText("p", text)
+	g.setLastPasted("p", text)
+	now = now.Add(time.Hour)
+	assert.True(t, g.ownLeftover("p", text))
+}

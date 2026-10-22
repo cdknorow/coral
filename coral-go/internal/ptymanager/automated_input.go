@@ -197,6 +197,8 @@ type inputGate struct {
 	// lastPasted: each session's last text Coral pasted, squeezed, until its Enter is seen to
 	// submit it (#4104): left in the box (a dialog took the Enter), it is Coral's, not a draft.
 	lastPasted map[string]string
+	// lastPastedTypedAt: when lastPasted's text was typed, not pasted (bracketed paste off), so its Enter is unconfirmed: it is Coral's for ownTypedMaxAge only.
+	lastPastedTypedAt map[string]time.Time
 	// ownTexts: each session's recent texts the gate typed, squeezed (own_texts.go, #247): Coral's text left in the box is
 	// recognised as its own, alone or several in a row, and submitted rather than held as a draft.
 	ownTexts map[string][]ownText
@@ -245,6 +247,7 @@ func (g *inputGate) setLastPasted(name, text string) {
 	if g.lastPasted == nil {
 		g.lastPasted = map[string]string{}
 	}
+	delete(g.lastPastedTypedAt, name)
 	if text == "" {
 		delete(g.lastPasted, name)
 		return
