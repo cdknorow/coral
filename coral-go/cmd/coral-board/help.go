@@ -97,11 +97,11 @@ func foldOpt(arg string, known []string) string {
 
 // unknownOptionError is the refusal of an option-shaped first word of a message, with a "did you mean" when it is a typo of a real option.
 func unknownOptionError(cmd, arg string, known []string) error {
-	hint := "put -- before message text that starts with '-'"
+	hint := "To post text that starts with '-', put -- before it."
 	if near, ok := clihelp.NearFlag(arg, known); ok {
-		hint = "did you mean " + near + "? (put -- before message text that starts with '-')"
+		hint = "Did you mean " + near + "? " + hint
 	}
-	return fmt.Errorf("unknown option %q for %s (%s)", arg, cmd, hint)
+	return fmt.Errorf("unknown option %q for %s. %s", arg, cmd, hint)
 }
 
 // checkFreeText rejects free text that is really an option, so a mistyped

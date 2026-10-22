@@ -56,7 +56,7 @@ func readStdinText(what string) (string, error) {
 // byte-order mark is dropped, CRLF becomes LF and one final newline is dropped. Empty text is refused.
 func normalizeInputText(data []byte, what, where string) (string, error) {
 	if len(data) > maxStdinMessage {
-		return "", errUsage{fmt.Sprintf("the %s %s is over %d KiB", what, where, maxStdinMessage>>10)}
+		return "", errUsage{fmt.Sprintf("The %s %s is over %d KiB. Upload long text with coral-agent artifact upload <file> and post its link.", what, where, maxStdinMessage>>10)}
 	}
 	if len(data) >= 2 && ((data[0] == 0xFF && data[1] == 0xFE) || (data[0] == 0xFE && data[1] == 0xFF)) {
 		return "", errUsage{fmt.Sprintf("the %s %s is UTF-16 text, not UTF-8. In Windows PowerShell 5.1 set $OutputEncoding = [Text.UTF8Encoding]::new() before piping, or use --file with a UTF-8 file", what, where)}

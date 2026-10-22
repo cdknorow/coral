@@ -69,7 +69,7 @@ func runSend(args []string, id sendIdentity, out io.Writer) error {
 			i++
 		default:
 			if len(msgParts) == 0 && clihelp.IsFlagLike(args[i]) {
-				return fmt.Errorf("unknown option %q for send (put -- before message text that starts with '-')", args[i])
+				return fmt.Errorf("unknown option %q for send. To post text that starts with '-', put -- before it.", args[i])
 			}
 			msgParts = append(msgParts, args[i])
 		}

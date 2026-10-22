@@ -248,11 +248,11 @@ func TestPostRefusesAnUnknownOptionBeforeTheText(t *testing.T) {
 	dir := subscribedDataDir(t, srv.URL)
 	res := runBoard(t, srv.URL, dir, "post", "--too", "Lead", "hello")
 	assert.Equal(t, 2, res.code, res.stderr)
-	assert.Contains(t, res.stderr, "did you mean --to")
+	assert.Contains(t, res.stderr, "Did you mean --to")
 	res = runBoard(t, srv.URL, dir, "post", "--nope", "hello")
 	assert.Equal(t, 2, res.code)
 	assert.Contains(t, res.stderr, "unknown option")
-	assert.NotContains(t, res.stderr, "did you mean")
+	assert.NotContains(t, res.stderr, "Did you mean")
 	assert.Empty(t, srv.requests())
 }
 
@@ -295,7 +295,7 @@ func TestUsageExitAndFileFolderAndSendTypo(t *testing.T) {
 
 	res = runBoard(t, srv.URL, dir, "send", "--board", "other", "--reply-too", "4", "hello")
 	assert.Equal(t, 2, res.code, res.stderr)
-	assert.Contains(t, res.stderr, "did you mean --reply-to")
+	assert.Contains(t, res.stderr, "Did you mean --reply-to")
 	res = runBoard(t, srv.URL, dir, "send", "--BOARD", "other", "use", "--force", "here")
 	assert.NotContains(t, res.stderr, "unknown option", "options are read in any case, and --words after the text are text")
 	assert.NotContains(t, res.stderr, "needs a value")
