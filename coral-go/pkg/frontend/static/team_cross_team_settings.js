@@ -48,7 +48,7 @@ export async function mountCrossTeamSettings(host, team, info = {}) {
     // Through Coral Hub the switches change only when the machine says this request may (state.can_change: the hub's owner path is live and not locked); until it says so they are shown, disabled, with the reason: no guessing.
     const canChange = () => !hub || !!(state && state.can_change === true);
     const lockedText = () => (hub && state && state.owner_path_live === true ? 'This setting can only be changed on the computer itself, or by the owner through Coral Hub.' : 'This setting can only be changed on the computer itself.');
-    let said = '', sayError = false, how = false, serverId = '';
+    let said = '', sayError = false, how = false, serverId = '', forceMessaging = false; // forceMessaging: save the switch as an explicit on though it already shows on (teams on this computer need it, #5916)
     host.innerHTML = '';
     if (!info.settings) {
         const p = document.createElement('p');
@@ -88,6 +88,18 @@ export async function mountCrossTeamSettings(host, team, info = {}) {
     // Each switch is described by what is said about it: when it was last changed, whether Coral Hub may change it, and why it is locked
     const describedBy = key => [changedText(key) && `xt-changed-${key}`, hubMay() && 'xt-hub-may', !canChange() && 'xt-locked'].filter(Boolean);
 
+    // The two reaches of the messaging switch, told apart (#5916): teams on other computers follow the switch (on unless it is turned off; they also need a Coral Hub link), teams on this
+    // computer need an explicit on. An older Coral that does not say is not guessed about.
+    function reach() {
+        if (!state || typeof state.messaging_here !== 'boolean') return '';
+        const elsewhere = draft.messaging;
+        const here = draft.messaging && state.messaging_here;
+        const turnOn = !here && draft.messaging && canChange() && !hub ? ' <button type="button" class="btn btn-small" data-act="turn-on-here">Turn on for teams on this computer</button>' : '';
+        return `<ul class="xt-reach" aria-label="Who can message this team">
+          <li class="xt-reach-elsewhere">Teams on other computers: ${elsewhere ? 'on (needs a Coral Hub link)' : 'off'}</li>
+          <li class="xt-reach-here">Teams on this computer: ${here ? 'on' : 'off'}${turnOn}</li></ul>`;
+    }
+
     function draw(focusSel) {
         const st = status();
         const links = state && st.state !== 'old' ? cleanLinks(state.links) : [];
@@ -99,6 +111,7 @@ export async function mountCrossTeamSettings(host, team, info = {}) {
         <div class="xt-switches">
           ${switchRow({ label: 'Cross-team messaging', name: 'cross_team_messaging', checked: draft.messaging, disabled: !canChange(), describedBy: describedBy('cross_team_messaging') })}
           ${changed('cross_team_messaging')}
+          ${reach()}
           ${switchRow({ label: 'Share files with other teams', name: 'cross_team_artifacts', checked: draft.files, disabled: !canChange(), describedBy: describedBy('cross_team_artifacts') })}
           ${changed('cross_team_artifacts')}
           ${hubMay() ? '<p class="working-mode-hint xt-hub-may" id="xt-hub-may">Coral Hub can change these settings.</p>' : ''}
@@ -126,7 +139,8 @@ export async function mountCrossTeamSettings(host, team, info = {}) {
         const btn = event.target.closest('button[data-act]');
         if (!btn) return;
         const act = btn.dataset.act;
-        if (act === 'turn-on') { draft.messaging = true; said = ''; draw('[name=cross_team_messaging]'); say('Cross-team messaging is on in this form. Save to apply.'); }
+        if (act === 'turn-on-here') { forceMessaging = true; draft.messaging = true; form.requestSubmit(); }
+        else if (act === 'turn-on') { draft.messaging = true; said = ''; draw('[name=cross_team_messaging]'); say('Cross-team messaging is on in this form. Save to apply.'); }
         else if (act === 'check-hub') { if (typeof window.showSettingsModal === 'function') { const d = form.closest('dialog'); if (d && typeof d.close === 'function' && d.matches(':modal')) d.close(); window.showSettingsModal('network'); } }
         else if (act === 'new-team') { if (typeof window.showLaunchModal === 'function') { const d = form.closest('dialog'); if (d && typeof d.close === 'function' && d.matches(':modal')) d.close(); window.showLaunchModal(); window._selectLaunchType?.('team'); } }
         else if (act === 'copy-id') { const ok = await copyText(serverId); btn.textContent = ok ? 'Copied' : 'Copy failed'; setTimeout(() => { btn.textContent = 'Copy'; }, 1500); }
@@ -135,13 +149,13 @@ export async function mountCrossTeamSettings(host, team, info = {}) {
         event.preventDefault();
         const save = form.querySelector('[type=submit]');
         save.disabled = true; say('Saving…');
-        const body = { subscriber_id: 'Operator', ...(draft.messaging !== saved.messaging ? { cross_team_messaging: draft.messaging } : {}), ...(draft.files !== saved.files ? { cross_team_artifacts: draft.files } : {}) };
+        const body = { subscriber_id: 'Operator', ...(draft.messaging !== saved.messaging || forceMessaging ? { cross_team_messaging: draft.messaging } : {}), ...(draft.files !== saved.files ? { cross_team_artifacts: draft.files } : {}) };
         try {
             const resp = await boardFetch(team, '/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
             if (!resp.ok) { say(`Could not save. ${hub && (resp.status === 404 || resp.status === 403) ? lockedText() : await refusalOf(resp, local)}`, true); save.disabled = false; return; } // through Coral Hub a 404 or 403 on this save is "not changeable from here", never a raw word // the refusal in our words, never the server's (#5323)
             const fresh = await boardFetch(team, '/settings');
             if (fresh.ok) { const s = await fresh.json(); saved = { messaging: !!s.cross_team_messaging, files: !!s.cross_team_artifacts }; } else saved = { ...draft };
-            draft = { ...saved };
+            draft = { ...saved }; forceMessaging = false;
             try { const r = await boardFetch(team, '/cross-team-state'); if (r.ok) state = await r.json(); } catch { /* the line follows the switch */ }
             delete form.dataset.initialState;
             said = 'Saved.'; sayError = false;

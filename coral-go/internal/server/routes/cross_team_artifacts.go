@@ -504,5 +504,5 @@ func (h *BoardHandler) receivingOn(ctx context.Context, r *http.Request, target,
 	case doorRefuse:
 		return false, nil
 	}
-	return settings.CrossTeamMessaging && settings.AllowsServer(src) && settings.CrossTeamArtifacts, nil
+	return settings.ExplicitMessagingOn() && settings.AllowsServer(src) && settings.ExplicitFilesOn(), nil // the old door needs the owner's own ons (#5916)
 }

@@ -628,8 +628,10 @@
 1	team_cross_team_settings.js	changed('cross_team_messaging')
 1	team_cross_team_settings.js	links.length ? `<div class="xt-links"><div class="xt-h-row"><h3 class="xt-h">${escapeHtml(linksHeading)}</h3> 
 1	team_cross_team_settings.js	links.map(l => `<li><span><b>${escapeHtml(l.team)}</b></span><span class="xt-sub">${[l.machine && escapeHtml(l
+1	team_cross_team_settings.js	reach()
 1	team_cross_team_settings.js	switchRow({ label: 'Cross-team messaging', name: 'cross_team_messaging', checked: draft.messaging, disabled: !
 1	team_cross_team_settings.js	switchRow({ label: 'Share files with other teams', name: 'cross_team_artifacts', checked: draft.files, disable
+1	team_cross_team_settings.js	turnOn
 1	team_health_settings.js	extra
 1	team_health_settings.js	held
 1	team_health_settings.js	knob('interval_min', 'Every', h.interval_min, MIN_LO, MIN_HI, 'minutes')

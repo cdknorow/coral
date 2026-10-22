@@ -1754,6 +1754,8 @@
 .xt-row-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .xt-primary { text-decoration: none; display: inline-flex; align-items: center; justify-content: center; text-align: center; white-space: normal; max-width: 100%; box-sizing: border-box; } /* the label wraps: at 200% text on a phone it was one line wider than the panel and cut off */
 .xt-switches { display: grid; gap: 4px; }
+.xt-reach { list-style: none; margin: 2px 0 6px; padding: 0; display: grid; gap: 2px; color: var(--text-secondary); font-size: var(--fs-sm, 0.875rem); }
+.xt-reach li { min-width: 0; overflow-wrap: anywhere; }
 .xt-switches label { display: flex; gap: 10px; align-items: center; min-height: 36px; font-weight: 500; }
 .xt-changed { margin: -2px 0 4px 26px; font-size: .75rem; color: var(--text-secondary); }
 .settings-cloud-changed { margin: -4px 0 8px 0; font-size: .75rem; color: var(--text-secondary); } /* under the switch row it is about, like .xt-changed (#5847) */ /* under its switch, level with the label text */

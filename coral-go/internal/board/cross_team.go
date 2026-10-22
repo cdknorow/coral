@@ -66,12 +66,13 @@ type BoardSettings struct {
 	ArtifactsStored bool `json:"-"`
 }
 
-// LocalMessagingOn is whether boards of THIS Coral may message this one: an explicit opt-in only. The default-on of the switches is for the relay, where the Coral Hub team link is the
-// grant; two teams on one computer have no link to hold, so they are not opened to each other by a default (#5916).
-func (b BoardSettings) LocalMessagingOn() bool { return b.MessagingStored && b.CrossTeamMessaging }
+// ExplicitMessagingOn is whether the owner turned messaging on, as against the default (#5916). The default-on of the switches is for a team on another Coral through a Coral Hub team link,
+// which is the grant. Two teams on one computer have no link to hold, and the old server-list door (a hub that never advertised links) is not a link either: both still need the explicit on,
+// so the default opens nothing there (the Operator: no communication until explicitly permitted).
+func (b BoardSettings) ExplicitMessagingOn() bool { return b.MessagingStored && b.CrossTeamMessaging }
 
-// LocalFilesOn is LocalMessagingOn for files between boards of this Coral.
-func (b BoardSettings) LocalFilesOn() bool { return b.ArtifactsStored && b.CrossTeamArtifacts }
+// ExplicitFilesOn is ExplicitMessagingOn for the files switch.
+func (b BoardSettings) ExplicitFilesOn() bool { return b.ArtifactsStored && b.CrossTeamArtifacts }
 
 // BoardSettingsUpdate changes only the settings that are set.
 type BoardSettingsUpdate struct {

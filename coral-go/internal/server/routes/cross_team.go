@@ -481,7 +481,7 @@ func (h *BoardHandler) crossTeamRecipients(ctx context.Context, from, target, to
 		if err != nil {
 			return nil, func(w http.ResponseWriter) { errInternalServer(w, err.Error()) }
 		}
-		if !settings.LocalMessagingOn() { // an explicit opt-in: no default opens two teams of one computer to each other (#5916)
+		if !settings.ExplicitMessagingOn() { // an explicit opt-in: no default opens two teams of one computer to each other (#5916)
 			disabled = append(disabled, strconv.Quote(b))
 		}
 	}
@@ -514,7 +514,7 @@ func (h *BoardHandler) crossTeamAttachments(ctx context.Context, r *http.Request
 		if err != nil {
 			return nil, func(w http.ResponseWriter) { errInternalServer(w, err.Error()) }
 		}
-		if !settings.LocalFilesOn() {
+		if !settings.ExplicitFilesOn() {
 			off = append(off, strconv.Quote(b))
 		}
 	}

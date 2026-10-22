@@ -1,6 +1,8 @@
 package routes
 
 import (
+	"encoding/json"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -64,8 +66,12 @@ func TestTheOldServerListDoorIsNoWiderForTheDefault(t *testing.T) {
 	code, _ = e.relay("lab3", srcTeam1, e.target, false, true)
 	assert.Equal(t, 404, code)
 	assert.False(t, e.seen, "this hub never advertised links")
-	// the rule is the same one as before: a listed server is admitted, another is not
+	// a server list on a board that never stored "on" stays refused, as before the default: the old door needs the owner's own switch
 	e.servers(e.target, "lab2")
+	code, _ = e.relay("lab2", srcTeam1, e.target, false, true)
+	assert.Equal(t, 404, code, "a list is not a switch: a board that never stored its switch does not take the listed server")
+	// the owner's explicit on makes it the rule it always was: a listed server is admitted, another is not
+	e.switchOn(e.target, true)
 	code, body := e.relay("lab2", srcTeam1, e.target, false, true)
 	assert.Equal(t, 200, code, body)
 	code, _ = e.relay("lab3", srcTeam1, e.target, false, true)
@@ -74,6 +80,31 @@ func TestTheOldServerListDoorIsNoWiderForTheDefault(t *testing.T) {
 	e.switchOn(e.target, false)
 	code, _ = e.relay("lab2", srcTeam1, e.target, false, true)
 	assert.Equal(t, 404, code, "listed but switched off")
+}
+
+// The Messaging tab's two reaches are told apart: teams on other computers follow the default (on, with a Coral Hub link), teams on this computer need the explicit on.
+func TestTheStateTellsTheTwoReachesOfTheSwitchApart(t *testing.T) {
+	e := newDefaultsDoorEnv(t)
+	get := func() map[string]any {
+		t.Helper()
+		rec := httptest.NewRecorder()
+		e.r.ServeHTTP(rec, httptest.NewRequest("GET", "/api/board/"+e.target+"/cross-team-state", nil))
+		require.Equal(t, 200, rec.Code, rec.Body.String())
+		var out map[string]any
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &out))
+		return out
+	}
+	st := get()
+	assert.Equal(t, true, st["messaging_elsewhere"], "other computers: on by default (needs a link)")
+	assert.Equal(t, false, st["messaging_here"], "this computer: off until turned on")
+	e.switchOn(e.target, true)
+	st = get()
+	assert.Equal(t, true, st["messaging_elsewhere"])
+	assert.Equal(t, true, st["messaging_here"], "an explicit on")
+	e.switchOn(e.target, false)
+	st = get()
+	assert.Equal(t, false, st["messaging_elsewhere"])
+	assert.Equal(t, false, st["messaging_here"])
 }
 
 func TestTheSameComputerDoorStillNeedsAnExplicitOptIn(t *testing.T) {
@@ -114,5 +145,14 @@ func TestAFileFromALinkedTeamIsTakenByDefaultAndAnExplicitOffRefusesIt(t *testin
 	f2.r.Post("/api/board/{project}/external-artifacts", f2.h.PostExternalArtifact)
 	code, _ = f2.file("lab2", srcTeam1, f2.target, false)
 	assert.Equal(t, 403, code, "no list, no links: refused")
-	assert.Zero(t, f2.storedCount())
+	f2.servers(f2.target, "lab2")
+	code, _ = f2.file("lab2", srcTeam1, f2.target, false)
+	assert.Equal(t, 403, code, "a list is not a switch: the old door needs the owner's own ons")
+	f2.switchOn(f2.target, true)
+	code, _ = f2.file("lab2", srcTeam1, f2.target, false)
+	assert.Equal(t, 403, code, "messaging on but the files switch never stored")
+	f2.filesOn(f2.target, true)
+	code, body = f2.file("lab2", srcTeam1, f2.target, false)
+	assert.Equal(t, 200, code, body)
+	assert.Positive(t, f2.storedCount())
 }
