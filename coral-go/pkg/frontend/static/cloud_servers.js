@@ -112,38 +112,32 @@ export function lowerMode(a, b) {
     return rank(a) <= rank(b) ? a : b;
 }
 
-/** What the owner chose for a server's hub access: 'follow' (the default; the hub's old 'launch' means follow), 'interact' or 'view'. An unknown or missing value never widens: view. */
+/** What the owner chose for a server's hub access: view, interact or launch (the hub reads a stored launch as "up to what the computer allows"). An unknown or missing value never widens: view. */
 export function accessChoice(s) {
     const m = s && s.access_mode;
-    if (m === 'follow' || m === 'launch') return 'follow';
-    return m === 'interact' ? 'interact' : 'view';
+    if (m === 'follow') return 'launch'; // an older hub's word for the same thing
+    return m === 'launch' || m === 'interact' ? m : 'view';
 }
 
-/** The owner's cap in modes: following is no cap (Launch); otherwise what was chosen. */
-export function hubMode(s) {
-    const c = accessChoice(s);
-    return c === 'follow' ? 'launch' : c;
-}
+/** The owner's choice as a cap. */
+export function hubMode(s) { return accessChoice(s); }
 
-/** What actually applies: the lower of the owner's cap and the machine's announced max; a machine that has not announced counts as View. */
+/** What actually applies: the lower of the owner's choice and the machine's announced max; a machine that has not announced counts as View. */
 export function effectiveMode(s) {
     return rank(s.local_mode) < 0 ? 'view' : lowerMode(hubMode(s), s.local_mode);
 }
 
-/** Note shown under a row when the machine's own setting limits what Coral Hub may do (the announced max is below Launch, or below the owner's cap). Fixed words, never machine text. */
+/** The most this computer allows, as words for a note: "This computer allows up to Interact; change it in Coral on that computer." Fixed words, never machine text; '' when it allows Launch. */
 export function launchNote(s) {
     const local = rank(s.local_mode) >= 0 ? s.local_mode : null;
-    if (local && rank(local) < rank(hubMode(s))) {
-        return `This computer allows ${MODE_INFO[local].label} only. To allow more, open Coral on that computer: Settings > Network and Hub, and set "What may Coral Hub do on this computer?"`;
-    }
+    if (local && rank(local) < rank('launch')) return `This computer allows up to ${MODE_INFO[local].label}; change it in Coral on that computer (Settings > Network and Hub).`;
     return '';
 }
 
-/** Note shown when the owner limited Coral Hub below what the computer allows, or ''. */
-export function limitNote(s) {
-    const choice = accessChoice(s), local = rank(s.local_mode) >= 0 ? s.local_mode : null;
-    if (choice === 'follow' || !local || rank(local) <= rank(choice)) return '';
-    return `You limited Coral Hub to ${MODE_INFO[choice].label} on this computer. It allows ${MODE_INFO[local].label}.`;
+/** "Effective: Interact, limited by this computer" when what applies is lower than the owner's choice, else ''. */
+export function effectiveNote(s) {
+    const eff = effectiveMode(s);
+    return rank(eff) < rank(accessChoice(s)) ? `Effective: ${MODE_INFO[eff].label}, limited by this computer` : '';
 }
 
 let _modeCache = { at: 0, byId: null, pending: null };
@@ -235,20 +229,21 @@ function updateBadge(e) {
         title: n.text, 'aria-label': n.text, text: n.label }) : null;
 }
 
-/** Change a server's hub access (follow | interact | view). Immediate, no dialog: a lower cap is the safety valve and following is what the connect-time question allowed. Focus stays on (or returns to) the select. */
-async function setAccess(s, value, fromButton = false) {
+/** Change a server's hub access (view | interact | launch; launch is "up to what the computer allows"). Immediate, no dialog. Focus stays on the select. */
+async function setAccess(s, value) {
     await call(s.id, 'PATCH', { access_mode: value });
     const sel = document.getElementById(rowId(s.id))?.querySelector('.cs-launch select');
-    if (sel && (fromButton || document.activeElement === document.body)) sel.focus();
+    if (sel && document.activeElement === document.body) sel.focus();
 }
 
-// The list is a table (Name, Status, Coral, Agents, Hub access) with sortable headers; a row expands for everything else (health, what each side allows, the update notice, Rename, Revoke).
+// The list is a table (Name, Status, Coral, Agents, Hub access, and the row actions Rename and Revoke) with sortable headers; a row expands for the rest (health, what applies, the update notice).
 const COLUMNS = [
     { key: 'name', label: 'Name' },
     { key: 'status', label: 'Status' },
     { key: 'version', label: 'Coral' },
     { key: 'agents', label: 'Agents' },
     { key: 'access', label: 'Hub access' },
+    { key: 'actions', label: 'Actions', plain: true }, // Rename and Revoke: not sortable
 ];
 let sortKey = 'name';
 let sortDir = 'asc';
@@ -292,6 +287,7 @@ function setSort(key) {
 
 function headerRow() {
     return h('tr', { role: 'row' }, COLUMNS.map(c => {
+        if (c.plain) return h('th', { scope: 'col', role: 'columnheader', className: `cs-th cs-col-${c.key}` }, h('span', { className: 'sr-only', text: c.label }));
         const on = sortKey === c.key;
         const th = h('th', { scope: 'col', role: 'columnheader', className: `cs-th cs-col-${c.key}`, 'aria-sort': on ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none' },
             h('button', { type: 'button', className: 'cs-sort', dataset: { key: c.key }, onclick: () => setSort(c.key) },
@@ -326,41 +322,31 @@ function nameCell(s, live, online, isOpen, detailId) {
 }
 
 function accessPicker(s, isBusy, helpId) {
-    // One control, lower-only (the connect-time question on that computer is the consent to Launch): Follow this computer (default), Limit to Interact, Limit to View. Only options at or below the
-    // computer's announced max; the current choice stays offered. No Launch option and no raise: Launch is reached only by following a computer that allows it.
+    // The owner's choice, View / Interact / Launch; an option above what the computer announced is disabled (Launch means "up to what the computer allows"). The text under it says why (in the open row).
     const choice = accessChoice(s);
-    const local = rank(s.local_mode) >= 0 ? s.local_mode : null;
-    const followLabel = local ? `Follow this computer (now ${MODE_INFO[local].label})` : 'Follow this computer'; // what following gives: the announced max, whatever the owner's cap is now
-    const options = [['follow', followLabel]];
-    if ((local && rank(local) >= rank('interact')) || choice === 'interact') options.push(['interact', 'Limit to Interact']);
-    options.push(['view', 'Limit to View']);
+    const local = rank(s.local_mode) >= 0 ? s.local_mode : 'view'; // not announced yet: View
     return h('label', { className: 'cs-launch' }, h('span', { className: 'sr-only', text: `Hub access for ${s.label || 'this server'} ` }),
         h('select', { disabled: isBusy, value: choice, 'aria-describedby': helpId, onchange: e => setAccess(s, e.target.value) },
-            options.map(([v, text]) => h('option', { value: v, selected: v === choice, text }))));
+            ['view', 'interact', 'launch'].map(v => h('option', { value: v, selected: v === choice, disabled: rank(v) > rank(local) && v !== choice, text: MODE_INFO[v].label }))));
+}
+
+/** Rename and Revoke, in the row's last column; Revoke asks in place (Confirm revoke / Cancel). */
+function rowActions(s, isBusy) {
+    return confirming === s.id
+        ? [h('button', { type: 'button', className: 'btn btn-small btn-danger', text: 'Confirm revoke', onclick: () => { confirming = null; call(s.id, 'DELETE'); } }),
+           h('button', { type: 'button', className: 'btn btn-small', text: 'Cancel', onclick: () => { confirming = null; render(); } })]
+        : [h('button', { type: 'button', className: 'btn btn-small cs-rename-btn', text: 'Rename', 'aria-label': `Rename ${s.label || 'this server'}`, disabled: isBusy, onclick: () => { renaming = s.id; render(); } }),
+           h('button', { type: 'button', className: 'btn btn-small btn-danger-text cs-revoke', text: 'Revoke', 'aria-label': `Revoke ${s.label || 'this server'}`, disabled: isBusy, onclick: () => { confirming = s.id; render(); } })];
 }
 
 function detailCell(s, live, online, isBusy, helpId) {
     const local = rank(s.local_mode) >= 0 ? s.local_mode : null;
     const effective = effectiveOf(s);
-    const hubWord = { follow: 'Follow this computer', interact: 'Limit to Interact', view: 'Limit to View' }[accessChoice(s)];
-    const summary = h('div', { className: 'cs-access', role: 'group', 'aria-label': 'Access' },
-        h('span', { className: 'cs-access-item', text: `Hub: ${hubWord}` }),
-        h('span', { className: 'cs-access-item', text: `Machine: ${local ? MODE_INFO[local].label : 'unknown'}` }),
-        h('span', { className: 'cs-access-item cs-access-effective', text: `Effective: ${MODE_INFO[effective].label}` }));
-    const modeText = h('div', { className: 'cs-meta cs-access-help', id: helpId, text: local
-        ? `Coral Hub may do on this computer what you allowed in Coral. Now: ${MODE_INFO[effective].label}. ${MODE_INFO[effective].text}`
-        : 'View until this computer connects.' });
-    const limited = limitNote(s);
-    const follow = limited
-        ? h('div', { className: 'cs-meta cs-limit' }, h('span', { text: limited + ' ' }),
-            h('button', { type: 'button', className: 'btn btn-small btn-link cs-follow', disabled: isBusy, text: 'Follow this computer', onclick: () => setAccess(s, 'follow', true) }))
-        : null;
-    const actions = confirming === s.id
-        ? [h('button', { type: 'button', className: 'btn btn-small btn-danger', text: 'Confirm revoke', onclick: () => { confirming = null; call(s.id, 'DELETE'); } }),
-           h('button', { type: 'button', className: 'btn btn-small', text: 'Cancel', onclick: () => { confirming = null; render(); } })]
-        : [h('button', { type: 'button', className: 'btn btn-small', text: 'Rename', disabled: isBusy, onclick: () => { renaming = s.id; render(); } }),
-           h('button', { type: 'button', className: 'btn btn-small btn-danger-text cs-revoke', text: 'Revoke', disabled: isBusy, onclick: () => { confirming = s.id; render(); } })];
-    const note = launchNote(s);
+    // What the computer allows, and (only when lower than the choice) what applies; the select is described by this line.
+    const help = local ? launchNote(s) : 'View until this computer connects.';
+    const helpEl = h('div', { className: 'cs-meta cs-access-help', id: helpId, text: help || `${MODE_INFO[effective].label}: ${MODE_INFO[effective].text}` });
+    const eff = effectiveNote(s);
+    const effEl = eff ? h('div', { className: 'cs-meta cs-access-effective', text: eff }) : null;
     const update = updateNotice(live);
     const updateNote = update
         ? h('div', { className: `cs-note cs-update cs-update-${update.level}` },
@@ -370,12 +356,9 @@ function detailCell(s, live, online, isBusy, helpId) {
     // The row shows the status and the version; the details add only what it does not: when an offline machine was last heard from.
     const meta = online ? null : h('div', { className: 'cs-meta cs-lastseen', text: `Last contact ${formatLastSeen(s.last_seen)}` });
     return h('td', { colSpan: COLUMNS.length, role: 'cell', className: 'cs-detail-cell' },
-        h('div', { className: 'cs-detail-grid' },
-            h('div', { className: 'cs-main' }, meta, belowMinimumText(live) ? h('div', { className: 'cs-meta server-below-minimum', text: belowMinimumText(live) }) : null,
-                online ? healthCard(live.machine_health, { title: 'Health' }) : null, summary, modeText, follow),
-            h('div', { className: 'cs-actions' }, actions)),
+        h('div', { className: 'cs-main' }, meta, belowMinimumText(live) ? h('div', { className: 'cs-meta server-below-minimum', text: belowMinimumText(live) }) : null,
+            online ? healthCard(live.machine_health, { title: 'Health', online: true }) : null, effEl, helpEl),
         confirming === s.id ? h('div', { className: 'cs-note', text: 'Revoking disconnects this server now and its token stops working. To connect it again you must enroll it again.' }) : null,
-        note ? h('div', { className: 'cs-note', text: note }) : null,
         updateNote);
 }
 
@@ -394,7 +377,8 @@ function rows(s) {
         h('td', { role: 'cell', className: 'cs-col-status', dataset: { label: 'Status' } }, online ? 'Online' : 'Offline'),
         h('td', { role: 'cell', className: 'cs-col-version', dataset: { label: 'Coral' } }, h('span', { text: version ? version : '—' }), upd ? ' ' : null, upd),
         h('td', { role: 'cell', className: 'cs-col-agents', dataset: { label: 'Agents' } }, String(agents)),
-        h('td', { role: 'cell', className: 'cs-col-access' }, accessPicker(s, isBusy, helpId)));
+        h('td', { role: 'cell', className: 'cs-col-access' }, accessPicker(s, isBusy, helpId)),
+        h('td', { role: 'cell', className: 'cs-col-actions' }, h('div', { className: 'cs-actions' }, rowActions(s, isBusy))));
     const detail = h('tr', { className: 'cs-detail', id: detailId, role: 'row', hidden: !isOpen }, detailCell(s, live, online, isBusy, helpId));
     return [main, detail];
 }

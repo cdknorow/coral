@@ -161,65 +161,55 @@ const contrast = (a, b) => {
         const focusIs = (sel, what) => waitFor(`document.activeElement === document.querySelector(${JSON.stringify(sel)})`, what, 3000,
             `(() => { const a = document.activeElement; return a ? a.tagName + '#' + a.id + '.' + a.className : null; })()`);
         const rowView = id => ev(`(() => { const r = document.getElementById('server-row-${id}'), d = document.getElementById('server-row-${id}-detail'); const sel = r.querySelector('.cs-launch select');
-            return { options: [...sel.options].map(o => o.textContent), value: sel.value, label: r.querySelector('.cs-launch').firstChild.textContent.trim(), describedBy: sel.getAttribute('aria-describedby'),
+            return { options: [...sel.options].map(o => o.textContent + (o.disabled ? ' (disabled)' : '')), value: sel.value, label: r.querySelector('.cs-launch').firstChild.textContent.trim(), describedBy: sel.getAttribute('aria-describedby'),
                 help: (document.getElementById(sel.getAttribute('aria-describedby')) || {}).textContent || null,
-                notes: [...d.querySelectorAll('.cs-limit, .cs-note')].map(n => n.textContent.replace(/\\s+/g, ' ').trim()), follow: !!d.querySelector('.cs-follow'),
-                raise: !!r.querySelector('.cs-raise'), summary: !!d.querySelector('.cs-access'), dialogs: document.querySelectorAll('dialog.cs-confirm').length }; })()`);
+                effective: [...d.querySelectorAll('.cs-access-effective')].map(n => n.textContent), actions: [...r.querySelectorAll('.cs-col-actions button')].map(b => b.textContent),
+                inDetails: [...d.querySelectorAll('button')].map(b => b.textContent), follow: !!r.querySelector('.cs-follow, .cs-limit'), raise: !!r.querySelector('.cs-raise'), summary: !!d.querySelector('.cs-access'), dialogs: document.querySelectorAll('dialog.cs-confirm').length }; })()`);
         let r = Object.fromEntries((await rows()).map(x => [x.id, x]));
         assert.ok(Object.values(r).every(x => x.tabindex === '-1'), 'rows are focus targets (tabindex=-1)');
         await ev(`document.querySelectorAll('#servers-view .cs-toggle[aria-expanded="false"]').forEach(b => b.click()); true`);
         await rowShots('desktop');
-        // m1: the owner limited it to View, the computer allows Launch: the note and a way back; every option offered at or below Launch.
+        // m1: the owner chose View, the computer allows Launch: three options, none disabled; Rename and Revoke are in the row.
         let v = await rowView('m1');
-        assert.deepEqual(v.options, ['Follow this computer (now Launch)', 'Limit to Interact', 'Limit to View']);
+        assert.deepEqual(v.options, ['View', 'Interact', 'Launch']);
         assert.equal(v.value, 'view'); assert.equal(v.label, 'Hub access for Box One');
-        assert.ok(v.notes.includes('You limited Coral Hub to View on this computer. It allows Launch. Follow this computer'), JSON.stringify(v.notes));
-        assert.ok(v.follow && !v.raise && v.summary && v.dialogs === 0, 'a Follow button (in the details), no Raise, the Hub/Machine/Effective line there, no dialog');
-        assert.match(v.help, /^Coral Hub may do on this computer what you allowed in Coral\. Now: View\./);
-        assert.ok(v.describedBy && v.help, 'the helper line describes the select');
-        // m2: following, the computer allows View only: the machine's note with the path to the question; only View to limit to.
+        assert.deepEqual(v.actions, ['Rename', 'Revoke'], 'Rename and Revoke are row actions in the last column');
+        assert.deepEqual(v.inDetails, [], 'no buttons in the details');
+        assert.ok(!v.follow && !v.raise && !v.summary && v.dialogs === 0, 'no Follow, no Raise, no Hub/Machine/Effective line, no dialog');
+        assert.deepEqual(v.effective, [], 'the effective value shows only when lower than the choice');
+        assert.ok(v.describedBy && v.help, 'the help line describes the select');
+        // m2: Launch chosen, the computer allows View only: Interact is disabled and the reason is TEXT in the select's description; the effective value shows because it is lower.
         v = await rowView('m2');
-        assert.deepEqual(v.options, ['Follow this computer (now View)', 'Limit to View']);
-        assert.equal(v.value, 'follow');
-        assert.ok(v.notes.some(n => /^This computer allows View only\. To allow more, open Coral on that computer: Settings > Network and Hub, and set "What may Coral Hub do on this computer\?"$/.test(n)), JSON.stringify(v.notes));
-        assert.ok(!v.follow);
-        // m3: following a computer that allows Launch: nothing to say but what it means.
+        assert.deepEqual(v.options, ['View', 'Interact (disabled)', 'Launch']);
+        assert.equal(v.value, 'launch');
+        assert.equal(v.help, 'This computer allows up to View; change it in Coral on that computer (Settings > Network and Hub).');
+        assert.deepEqual(v.effective, ['Effective: View, limited by this computer']);
+        // m3: Launch on a computer that allows Launch: nothing limits, the help says what Launch means.
         v = await rowView('m3');
-        assert.deepEqual(v.options, ['Follow this computer (now Launch)', 'Limit to Interact', 'Limit to View']);
-        assert.equal(v.value, 'follow'); assert.deepEqual(v.notes, []); assert.match(v.help, /Now: Launch\./);
-        // m4: the computer has not announced: View until it connects, never unlimited; the current choice stays offered.
+        assert.deepEqual(v.options, ['View', 'Interact', 'Launch']);
+        assert.equal(v.value, 'launch'); assert.deepEqual(v.effective, []); assert.match(v.help, /^Launch: /);
+        // m4: the computer has not announced: View until it connects; Launch is disabled.
         v = await rowView('m4');
-        assert.deepEqual(v.options, ['Follow this computer', 'Limit to Interact', 'Limit to View']);
+        assert.deepEqual(v.options, ['View', 'Interact', 'Launch (disabled)']);
         assert.equal(v.value, 'interact'); assert.equal(v.help, 'View until this computer connects.');
-        assert.ok(Object.values(await Promise.all(['m1', 'm2', 'm3', 'm4'].map(rowView))).every(x => !x.options.some(o => /Launch$/.test(o) && !/^Follow/.test(o))), 'no Launch option anywhere');
-
+        // A choice is immediate: one PATCH with the word, no dialog, focus stays on the select.
         const accessOf = id => ev(`import((window.__coralStatic || '/static/') + 'cloud_servers.js').then(cs => cs.serverAccess(${JSON.stringify(id)})).then(a => a && { effective: a.effective, mayInteract: a.mayInteract })`);
-        // Follow this computer from the note: immediate (no dialog), one PATCH, focus lands on the select.
-        await ev(`window.__patches = []; document.querySelector('#server-row-m1-detail .cs-follow').click(); true`);
-        await waitFor(`window.__patches.length > 0`, 'the follow PATCH', 3000);
-        await settled();
-        assert.deepEqual(await ev('window.__patches'), [{ id: 'm1', body: { access_mode: 'follow' } }], 'Follow this computer sends {access_mode: follow}, no confirmation');
-        await waitFor(`document.querySelector('#server-row-m1 .cs-launch select').value === 'follow' && !document.querySelector('#server-row-m1-detail .cs-follow')`, 'm1 following', 3000);
-        assert.equal((await rowView('m1')).dialogs, 0);
-        await focusIs('#server-row-m1 .cs-launch select', 'focus on the select after Follow this computer');
-        assert.deepEqual(await accessOf('m1'), { effective: 'launch', mayInteract: true }, 'the next access check sees Launch at once (#3125)');
-        // The select: a lower cap is immediate; the note appears with the way back; focus stays on the select.
         const pick = (id, mode) => ev(`(() => { const s = document.querySelector('#server-row-${id} select'); s.focus(); s.value = ${JSON.stringify(mode)}; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
         await ev(`window.__patches = []; true`);
+        await pick('m1', 'launch');
+        await waitFor(`window.__patches.length > 0`, 'the Launch PATCH', 3000);
+        await settled();
+        assert.deepEqual(await ev('window.__patches'), [{ id: 'm1', body: { access_mode: 'launch' } }], 'choosing Launch sends {access_mode: launch}, no confirmation');
+        await waitFor(`document.querySelector('#server-row-m1 .cs-launch select').value === 'launch'`, 'm1 at Launch', 3000);
+        await focusIs('#server-row-m1 .cs-launch select', 'focus stays on the select');
+        assert.deepEqual(await accessOf('m1'), { effective: 'launch', mayInteract: true }, 'the next access check sees Launch at once (#3125)');
+        await ev(`window.__patches = []; true`);
         await pick('m3', 'interact');
-        await waitFor(`window.__patches.length > 0 && document.querySelector('#server-row-m3-detail .cs-follow')`, 'the Interact PATCH and the note', 3000);
+        await waitFor(`window.__patches.length > 0`, 'the Interact PATCH', 3000);
         await settled();
         assert.deepEqual(await ev('window.__patches'), [{ id: 'm3', body: { access_mode: 'interact' } }]);
-        assert.ok((await rowView('m3')).notes.includes('You limited Coral Hub to Interact on this computer. It allows Launch. Follow this computer'));
-        await focusIs('#server-row-m3 .cs-launch select', 'focus stays on the select after a change');
-        assert.equal((await rowView('m3')).dialogs, 0, 'a lower cap asks nothing');
-        await ev(`window.__patches = []; true`);
-        await pick('m3', 'follow');
-        await waitFor(`window.__patches.length > 0 && !document.querySelector('#server-row-m3-detail .cs-follow')`, 'the follow PATCH from the select', 3000);
-        await settled();
-        assert.deepEqual(await ev('window.__patches'), [{ id: 'm3', body: { access_mode: 'follow' } }], 'choosing Follow in the select is immediate too');
-        assert.equal((await rowView('m3')).dialogs, 0);
-        console.log('   ✓ Hub access: Follow / Limit to Interact / Limit to View, only options the computer allows, no Raise, no dialog, focus kept, the notes');
+        assert.equal((await rowView('m3')).dialogs, 0, 'a lower choice asks nothing');
+        console.log('   ✓ Hub access: View / Interact / Launch, an option above the computer disabled with its reason as text, Rename and Revoke in the row, immediate changes, focus kept');
 
         console.log('2b. Row cells (status, Coral version, agents) and the details line (last contact when offline), update badge, no "null"');
         const rowInfo = await ev(`Object.fromEntries([...document.querySelectorAll('#servers-view .cs-row')].map(r => {

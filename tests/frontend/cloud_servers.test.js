@@ -15,28 +15,27 @@ const { pathToFileURL } = require('url');
     assert.strictEqual(m.lowerMode('interact', 'bogus'), 'interact');
     assert.strictEqual(m.lowerMode('bogus', 'launch'), 'launch');
 
-    // The owner's access follows the computer (default) or is limited to Interact or View: never raised from here (the hub's old 'launch' means follow).
-    assert.strictEqual(m.accessChoice({ access_mode: 'follow' }), 'follow');
-    assert.strictEqual(m.accessChoice({ access_mode: 'launch' }), 'follow', 'an old client\'s launch means follow');
+    // The owner's choice is View, Interact or Launch (the hub reads a stored launch as "up to what the computer allows"; an older hub's follow is the same).
+    assert.strictEqual(m.accessChoice({ access_mode: 'launch' }), 'launch');
+    assert.strictEqual(m.accessChoice({ access_mode: 'follow' }), 'launch', "an older hub's follow means launch");
     assert.strictEqual(m.accessChoice({ access_mode: 'interact' }), 'interact');
     assert.strictEqual(m.accessChoice({}), 'view', 'a missing value is view');
     assert.strictEqual(m.accessChoice({ access_mode: 'root' }), 'view', 'unknown value never widens');
     assert.strictEqual(m.hubMode({ access_mode: 'interact' }), 'interact');
-    assert.strictEqual(m.hubMode({ access_mode: 'follow' }), 'launch', 'following is no cap');
 
-    assert.strictEqual(m.effectiveMode({ access_mode: 'follow', local_mode: 'view' }), 'view');
-    assert.strictEqual(m.effectiveMode({ access_mode: 'follow', local_mode: 'launch' }), 'launch', 'following gives what the computer announced');
+    assert.strictEqual(m.effectiveMode({ access_mode: 'launch', local_mode: 'view' }), 'view');
+    assert.strictEqual(m.effectiveMode({ access_mode: 'launch', local_mode: 'launch' }), 'launch', 'Launch is up to what the computer allows');
     assert.strictEqual(m.effectiveMode({ access_mode: 'view', local_mode: 'launch' }), 'view');
-    assert.strictEqual(m.effectiveMode({ access_mode: 'follow' }), 'view', 'a computer that has not announced counts as View');
+    assert.strictEqual(m.effectiveMode({ access_mode: 'launch' }), 'view', 'a computer that has not announced counts as View');
 
-    // What the row says: the computer limits (fixed words, the path to the #5915 question), or the owner did (and may follow again).
-    assert.match(m.launchNote({ access_mode: 'follow', local_mode: 'interact' }), /^This computer allows Interact only\. To allow more, open Coral on that computer: Settings > Network and Hub, and set "What may Coral Hub do on this computer\?"$/);
-    assert.strictEqual(m.launchNote({ access_mode: 'follow', local_mode: 'launch' }), '');
+    // What the row says (fixed words, never machine text): what the computer allows, and what applies only when lower than the choice.
+    assert.strictEqual(m.launchNote({ access_mode: 'launch', local_mode: 'interact' }), 'This computer allows up to Interact; change it in Coral on that computer (Settings > Network and Hub).');
+    assert.strictEqual(m.launchNote({ access_mode: 'launch', local_mode: 'launch' }), '');
     assert.strictEqual(m.launchNote({ access_mode: 'view' }), '', 'nothing announced: no machine note (the row says View until it connects)');
-    assert.strictEqual(m.limitNote({ access_mode: 'interact', local_mode: 'launch' }), 'You limited Coral Hub to Interact on this computer. It allows Launch.');
-    assert.strictEqual(m.limitNote({ access_mode: 'follow', local_mode: 'launch' }), '');
-    assert.strictEqual(m.limitNote({ access_mode: 'view', local_mode: 'view' }), '', 'the computer allows no more than the limit');
-    assert.strictEqual(m.limitNote({ access_mode: 'view' }), '');
+    assert.strictEqual(m.effectiveNote({ access_mode: 'launch', local_mode: 'interact' }), 'Effective: Interact, limited by this computer');
+    assert.strictEqual(m.effectiveNote({ access_mode: 'interact', local_mode: 'launch' }), '', 'the effective value shows only when lower than the choice');
+    assert.strictEqual(m.effectiveNote({ access_mode: 'view', local_mode: 'view' }), '');
+    assert.strictEqual(m.limitNote, undefined, 'no "you limited" note any more');
     assert.strictEqual(m.confirmLaunch, undefined, 'no Launch confirmation: the connect-time question is the consent');
 
     for (const k of ['view', 'interact', 'launch']) assert.ok(m.MODE_INFO[k].text.length > 20);
@@ -63,10 +62,10 @@ const { pathToFileURL } = require('url');
     assert.match(m.refusalMessage(403, { error: 'local_mode', mode: 'view' }, 'Work Mac'), /^Blocked: Work Mac .*This machine allows: View.*Change it in Coral on that machine/);
     assert.doesNotMatch(m.refusalMessage(403, { error: 'local_mode', mode: 'x<b>' }), /x<b>/, 'unknown mode text is never echoed');
     assert.match(m.refusalMessage(403, { error: 'access_mode', required: 'interact', hub_mode: 'view', local_mode: 'launch' }, 'Work Mac'),
-        /^Blocked: Work Mac needs Interact \(Hub: View · This machine allows: Launch · Effective: View\)\. Choose "Follow this computer" in Servers\.$/);
+        /^Blocked: Work Mac needs Interact \(Hub: View · This machine allows: Launch · Effective: View\)\. Choose a higher Hub access in Servers\.$/);
     assert.match(m.refusalMessage(403, { error: 'access_mode', required: 'interact', hub_mode: 'launch', local_mode: 'view' }), /^Blocked: this server .*Change it in Coral on that machine/);
     assert.doesNotMatch(m.refusalMessage(403, { error: 'access_mode', required: '<i>', hub_mode: '<b>' }), /<[ib]>/);
-    assert.match(m.refusalMessage(403, { error: 'access_mode', required: 'interact' }), /^Blocked: .*needs Interact.*Follow this computer/);
+    assert.match(m.refusalMessage(403, { error: 'access_mode', required: 'interact' }), /^Blocked: .*needs Interact.*higher Hub access/);
     assert.strictEqual(m.refusalMessage(403, { error: 'csrf' }), '');
     assert.strictEqual(m.refusalMessage(404, { error: 'local_mode' }), '');
     assert.strictEqual(m.refusalMessage(403, null), '');

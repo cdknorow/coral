@@ -127,7 +127,7 @@ const contrast = (a, b) => {
         const table = () => ev(`(() => { const t = document.querySelector('#servers-view table.cs-table'); if (!t) return null;
             const rows = [...t.querySelectorAll('tbody > tr.cs-row')];
             return { role: t.getAttribute('role'), label: t.getAttribute('aria-label'),
-                heads: [...t.querySelectorAll('thead th')].map(th => ({ text: th.textContent.replace(/[▲▼]/g, '').trim(), sort: th.getAttribute('aria-sort'), scope: th.getAttribute('scope'), button: !!th.querySelector('button') })),
+                actionsHead: (t.querySelector('thead th.cs-col-actions') || {}).textContent || null, heads: [...t.querySelectorAll('thead th')].filter(th => th.querySelector('button')).map(th => ({ text: th.textContent.replace(/[▲▼]/g, '').trim(), sort: th.getAttribute('aria-sort'), scope: th.getAttribute('scope'), button: !!th.querySelector('button') })),
                 names: rows.map(r => r.querySelector('.cs-name').textContent),
                 rows: rows.map(r => ({ id: r.id, status: r.querySelector('.cs-col-status').textContent, version: r.querySelector('.cs-col-version').textContent, agents: r.querySelector('.cs-col-agents').textContent,
                     select: r.querySelector('.cs-col-access select').value, selectLabel: r.querySelector('.cs-col-access .sr-only').textContent.trim(),
@@ -148,7 +148,8 @@ const contrast = (a, b) => {
         let t = await table();
         assert.equal(t.role, 'table'); assert.equal(t.label, 'Your servers');
         assert.deepEqual(t.heads.map(h => h.text), ['Name', 'Status', 'Coral', 'Agents', 'Hub access']);
-        assert.ok(t.heads.every(h => h.scope === 'col' && h.button), 'every header is a button in a column header');
+        assert.ok(t.heads.every(h => h.scope === 'col' && h.button), 'every sortable header is a button in a column header');
+        assert.equal(t.actionsHead, 'Actions', 'the last column is the row actions, named for a screen reader, not sortable');
         assert.deepEqual(t.heads.map(h => h.sort), ['ascending', 'none', 'none', 'none', 'none'], 'sorted by name, ascending, to start with');
         assert.deepEqual(t.names, ['Box Four', 'Box One', 'Box Three', 'box two'].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase())), 'by name, case ignored');
         const m1 = t.rows.find(r => r.id === 'server-row-m1');
@@ -159,6 +160,10 @@ const contrast = (a, b) => {
         assert.ok(order.indexOf('cs-add-machine') >= 0 && order.indexOf('cs-add-machine') < order.findIndex(x => /cs-table/.test(x)), 'Add a machine comes before the table: ' + order);
         console.log('   ok');
 
+        const lay = await ev(`[...document.querySelectorAll('#servers-view tr.cs-row')].map(r => { const t = r.querySelector('.cs-toggle').getBoundingClientRect(), d = r.querySelector('.machine-health-dot').getBoundingClientRect(), v = r.querySelector('.cs-col-version span').getBoundingClientRect(), b = r.querySelector('.server-update-badge'); return { sameLine: Math.abs((d.top + d.height / 2) - (t.top + t.height / 2)) < 8, badgeInline: !b || Math.abs((b.getBoundingClientRect().top + b.getBoundingClientRect().height / 2) - (v.top + v.height / 2)) < 8 }; })`);
+        const fit = await ev(`(() => { const t = document.querySelector('#servers-view .cs-table').getBoundingClientRect(), p = document.getElementById('cs-add-machine').getBoundingClientRect(); return { tr: Math.round(t.right), pr: Math.round(p.right) }; })()`);
+        assert.ok(fit.tr <= fit.pr + 1, 'the table is no wider than the Add a machine panel above it: ' + JSON.stringify(fit));
+        assert.ok(lay.every(x => x.sameLine && x.badgeInline), 'on a desktop the health dot is beside the name and the update badge beside the version: ' + JSON.stringify(lay));
         console.log('2. Sorting: each header sorts, a second press reverses, aria-sort follows, versions compare as numbers');
         await sortBy('version');
         t = await table();
@@ -185,29 +190,38 @@ const contrast = (a, b) => {
         await sortBy('name');
         console.log('   ok');
 
-        console.log('3. A row opens for its details; Rename and Revoke live there; the Hub access control stays in the row');
+        console.log('3. Rename and Revoke are row actions; a row opens for its details');
+        const acts = await ev(`[...document.querySelectorAll('#servers-view tr.cs-row')].map(r => ({ id: r.id, buttons: [...r.querySelectorAll('.cs-col-actions button')].map(b => b.textContent + '|' + b.getAttribute('aria-label')) }))`);
+        assert.ok(acts.every(x => x.buttons.length === 2 && /^Rename\|Rename /.test(x.buttons[0]) && /^Revoke\|Revoke /.test(x.buttons[1])), 'Rename and Revoke, named with the machine, in every row: ' + JSON.stringify(acts));
         await ev(`document.querySelector('#server-row-m1 .cs-toggle').focus(); document.querySelector('#server-row-m1 .cs-toggle').click(); true`);
         await waitFor(`document.querySelector('#server-row-m1 .cs-toggle').getAttribute('aria-expanded') === 'true' && !document.getElementById('server-row-m1-detail').hidden`, 'm1 open', 3000);
-        const d = await ev(`(() => { const x = document.getElementById('server-row-m1-detail'); return { text: x.textContent.replace(/\\s+/g, ' '), buttons: [...x.querySelectorAll('button')].map(b => b.textContent.trim()), health: !!x.querySelector('.machine-health-card'),
-            access: (x.querySelector('.cs-access') || {}).textContent || '', update: (x.querySelector('.cs-update a') || {}).href || null, focus: document.activeElement && document.activeElement.classList.contains('cs-toggle') }; })()`);
-        assert.ok(d.buttons.includes('Rename') && d.buttons.includes('Revoke') && d.buttons.includes('Follow this computer'), JSON.stringify(d.buttons));
-        assert.match(d.access.replace(/\s+/g, ' '), /Hub: Limit to View.*Machine: Launch.*Effective: View/);
+        const d = await ev(`(() => { const x = document.getElementById('server-row-m1-detail'); return { text: x.textContent.replace(/\\s+/g, ' '), buttons: [...x.querySelectorAll('button')].map(b => b.textContent.trim()), update: (x.querySelector('.cs-update a') || {}).href || null, focus: document.activeElement && document.activeElement.classList.contains('cs-toggle') }; })()`);
+        assert.deepEqual(d.buttons, [], 'the details hold no buttons');
         assert.equal(d.update, DOWNLOAD, 'the update notice points to the download page, not GitHub');
-        assert.match(d.text, /You limited Coral Hub to View on this computer\. It allows Launch\./);
+        assert.doesNotMatch(d.text, /Follow this computer|Limit to|Hub: |Machine: /, 'none of the old wording');
         assert.ok(d.focus, 'focus stays on the toggle');
         assert.equal(await ev(`document.querySelectorAll('#servers-view .cs-detail:not([hidden])').length`), 1, 'only the open row shows details');
+        // Status and Health agree: an online machine with no reading yet is waiting for one, never "not connected".
+        const hc = await ev(`[...document.querySelectorAll('#servers-view tr.cs-row')].map(r => ({ status: r.querySelector('.cs-col-status').textContent, note: ((document.getElementById(r.id + '-detail').querySelector('.machine-health-note')) || {}).textContent || null }))`);
+        assert.ok(hc.filter(x => x.status === 'Online').every(x => x.note === 'Waiting for a health reading from this computer.'), 'online rows wait for a reading: ' + JSON.stringify(hc));
+        assert.ok(!hc.some(x => x.status === 'Online' && /not connected/.test(x.note || '')), 'no online row says not connected');
+        await ev(`document.querySelector('#servers-view .cs-table').scrollIntoView(); true`);
+        await shot('table-desktop-open'); // a row open (Box One)
         await ev(`document.querySelector('#server-row-m1 .cs-toggle').click(); true`);
         await waitFor(`document.getElementById('server-row-m1-detail').hidden`, 'm1 closed again', 3000);
-        // Revoke asks inside the details and keeps the row open.
-        await ev(`document.querySelector('#server-row-m3 .cs-toggle').click(); true`);
-        await waitFor(`!document.getElementById('server-row-m3-detail').hidden`, 'm3 open', 3000);
-        await ev(`document.querySelector('#server-row-m3-detail .cs-revoke').click(); true`);
-        await waitFor(`/Confirm revoke/.test(document.getElementById('server-row-m3-detail').textContent)`, 'the revoke confirmation', 3000);
-        assert.ok(await ev(`document.getElementById('server-row-m3').querySelector('.cs-toggle').getAttribute('aria-expanded') === 'true'`), 'the row stays open while it asks');
-        await ev(`[...document.querySelectorAll('#server-row-m3-detail button')].find(b => b.textContent === 'Cancel').click(); true`);
-        // Opening survives the page's refresh (a re-render keeps what is open).
-        await ev(`(async () => { const cs = await import((window.__coralStatic || '/static/') + 'cloud_servers.js'); await cs.renderCloudServersInto(document.querySelector('#servers-view .servers-tab') || document.getElementById('servers-view')); return true; })()`).catch(() => {});
-        await shot('table-desktop-open');
+        // Revoke asks in the row (Confirm revoke / Cancel) and opens the details for the warning; Cancel puts the row back.
+        await ev(`document.querySelector('#server-row-m3 .cs-revoke').click(); true`);
+        await waitFor(`!!document.querySelector('#server-row-m3 .cs-col-actions .btn-danger')`, 'the revoke confirmation', 3000);
+        assert.deepEqual(await ev(`[...document.querySelectorAll('#server-row-m3 .cs-col-actions button')].map(b => b.textContent)`), ['Confirm revoke', 'Cancel']);
+        assert.match(await ev(`document.getElementById('server-row-m3-detail').textContent`), /Revoking disconnects this server now/);
+        assert.ok(await ev(`document.getElementById('server-row-m3').querySelector('.cs-toggle').getAttribute('aria-expanded') === 'true'`), 'the row opens to show the warning');
+        await ev(`[...document.querySelectorAll('#server-row-m3 .cs-col-actions button')].find(b => b.textContent === 'Cancel').click(); true`);
+        await waitFor(`!!document.querySelector('#server-row-m3 .cs-revoke')`, 'the row actions back', 3000);
+        // Rename in the row: the name cell becomes a form.
+        await ev(`document.querySelector('#server-row-m4 .cs-rename-btn').click(); true`);
+        await waitFor(`!!document.querySelector('#server-row-m4 .cs-rename input[name=label]')`, 'the rename form', 3000);
+        await ev(`[...document.querySelectorAll('#server-row-m4 .cs-rename button')].find(b => b.textContent === 'Cancel').click(); true`);
+        await waitFor(`!document.querySelector('#server-row-m4 .cs-rename')`, 'rename cancelled', 3000);
         console.log('   ok');
 
         console.log('4. Add a machine: the download link, the steps, a local picture; no brew command, no GitHub releases link');
@@ -230,7 +244,7 @@ const contrast = (a, b) => {
 
         console.log('6. Both themes at 4.5:1 and the shots (desktop, then a phone)');
         for (const [w, h, mobile, tag] of [[1280, 900, false, 'desktop'], [390, 844, true, 'phone']]) {
-            await client.Emulation.setDeviceMetricsOverride({ width: w, height: h, deviceScaleFactor: 1, mobile });
+            await client.Emulation.setDeviceMetricsOverride({ width: w, height: h, deviceScaleFactor: 1, mobile }); await client.Emulation.setTouchEmulationEnabled({ enabled: mobile }); // a phone is a touch screen: its targets are 44 px
             await open();
             await waitFor(`document.querySelectorAll('#servers-view tr.cs-row').length === ${SERVERS.length}`, 'rows', 6000);
             await ev(`document.querySelector('#server-row-m1 .cs-toggle').click(); true`);
@@ -239,6 +253,8 @@ const contrast = (a, b) => {
                 await setTheme(ev, theme);
                 const au = await auditRegion(ev, ['#cs-add-machine', '#servers-view .cs-table']);
                 assert.ok(au.checked > 0 && !au.fails.filter(f => !/Revoke/.test(f.text || '')).length, `${tag} ${theme}: 4.5:1 ${JSON.stringify(au.fails).slice(0, 400)}`);
+                const tg = await ev(`(() => { const hs = [...document.querySelectorAll('#servers-view .cs-sort, #servers-view .cs-toggle')].map(b => Math.round(b.getBoundingClientRect().height)); return Math.min(...hs); })()`);
+                assert.ok(tg >= (mobile ? 44 : 24), `${tag} ${theme}: the sort headers and row toggles are big enough targets (${tg} px: 24 with a mouse, 44 on a touch phone)`);
                 const over = await ev(`document.documentElement.scrollWidth - innerWidth`);
                 assert.ok(over <= 0, `${tag}: no sideways scroll (${over})`);
                 await ev(`document.querySelector('#servers-view .cs-table').scrollIntoView(); true`);
@@ -246,7 +262,7 @@ const contrast = (a, b) => {
             }
             await setTheme(ev, 'dark');
         }
-        await client.Emulation.clearDeviceMetricsOverride();
+        await client.Emulation.clearDeviceMetricsOverride(); await client.Emulation.setTouchEmulationEnabled({ enabled: false });
         console.log('   ok');
         console.log('\nAll Servers table checks passed');
     } finally {

@@ -98,8 +98,8 @@ export function healthDot(h, label = 'Machine') {
     return dot;
 }
 
-/** The card: the status with its reason, then Coral, agents, load, memory, disk and responsiveness. */
-export function healthCard(h, { title = 'Machine health' } = {}) {
+/** The card (`online`: the machine is connected, so no reading yet is "waiting", not "not connected"): the status with its reason, then Coral, agents, load, memory, disk and responsiveness. */
+export function healthCard(h, { title = 'Machine health', online = false } = {}) {
     const card = document.createElement('section');
     card.className = 'machine-health-card';
     const head = document.createElement('div');
@@ -115,7 +115,8 @@ export function healthCard(h, { title = 'Machine health' } = {}) {
     if (healthStatus(h) === 'unknown') {
         const note = document.createElement('p');
         note.className = 'machine-health-note';
-        note.textContent = 'No health reading right now (the machine is not connected).';
+        // An online machine has not relayed a reading yet: say so; "not connected" is for one that is not (the card's status must agree with the row's).
+        note.textContent = online ? 'Waiting for a health reading from this computer.' : 'No health reading right now (the machine is not connected).';
         card.appendChild(note);
         return card;
     }

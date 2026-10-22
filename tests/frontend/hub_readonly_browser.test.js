@@ -154,7 +154,7 @@ const CLOUD_PRELOAD = `(() => {
         assert.ok(c && c.shown, 'chip shown for a View server');
         assert.equal(c.text, 'Read-only: Hub: View');
         assert.equal(c.role, 'status');
-        const hubMsg = 'Blocked: Box M1 needs Interact (Hub: View · This machine allows: Launch · Effective: View). Choose "Follow this computer" in Servers.';
+        const hubMsg = 'Blocked: Box M1 needs Interact (Hub: View · This machine allows: Launch · Effective: View). Choose a higher Hub access in Servers.';
         assert.equal(c.title, hubMsg, 'chip title is the full message');
         await clearSends(); await clearToasts();
         await typeDraft('hello there');
@@ -263,7 +263,7 @@ const CLOUD_PRELOAD = `(() => {
         await ev(`window.__wsInject(JSON.stringify({ type: 'hub_read_only', required: 'sudo-everything', hub_mode: '<b>root</b>' })); true`);
         await clearToasts(); await pressEnter(); await afterEnter();
         t = await toasts();
-        assert.ok(t.some(x => x.text === 'Blocked: Box M4 is read-only through the Coral Hub. Choose "Follow this computer" in Servers.'), `unknown enum: generic text, nothing echoed (${JSON.stringify(t)})`);
+        assert.ok(t.some(x => x.text === 'Blocked: Box M4 is read-only through the Coral Hub. Choose a higher Hub access in Servers.'), `unknown enum: generic text, nothing echoed (${JSON.stringify(t)})`);
         assert.ok(!t.some(x => /sudo-everything|root/.test(x.text)), 'no server-sent value echoed');
         // Reselecting clears the frame state; the list says Interact now.
         await select('frame', 'm4');
@@ -287,8 +287,8 @@ const CLOUD_PRELOAD = `(() => {
         assert.ok(c.shown, `the hub's frame still holds after the slower Servers lookup resolves (${JSON.stringify(c)})`);
         console.log('   ✓ frame state survives a late Interact lookup');
 
-        console.log('7. The user choosing "Follow this computer" in the Servers tab re-decides the open agent (no reselect needed)');
-        // (a) The owner limited the server to View and the machine allows Launch: Follow this computer -> effective Launch -> the lock clears.
+        console.log('7. The user choosing Launch in the Servers tab re-decides the open agent (no reselect needed)');
+        // (a) The owner chose View and the machine allows Launch: choosing Launch -> effective Launch -> the lock clears.
         await setServers([row('m6', 'view', 'launch'), row('m7', 'interact', 'view')]);
         await ev(`window.__m.add('raised', 'R', 3, { sleeping: false, server: 'm6' }); true`);
         await ev(`window.selectLiveSession('raised', 'claude', 'raised-id', 'm6'); true`);
@@ -296,14 +296,14 @@ const CLOUD_PRELOAD = `(() => {
         await ev(`window.__wsInject(JSON.stringify({ type: 'hub_read_only', required: 'interact', hub_mode: 'view' })); window.__sessBefore = T.state.currentSession; true`);
         await waitFor(`!!(T.state.currentSession.hubReadOnly && T.state.currentSession.hubReadOnly.fromFrame)`, 'the frame lock', 3000);
         await ev(`window.switchNavTab('servers'); true`);
-        await waitFor(`!!document.querySelector('#server-row-m6-detail .cs-follow')`, 'the Follow this computer button for m6', 5000);
-        await ev(`document.querySelector('#server-row-m6-detail .cs-follow').click(); true`);
-        await waitFor(`T.state.currentSession.hubReadOnly === null`, 'the lock clearing after following the computer', 5000);
+        await waitFor(`!!document.querySelector('#server-row-m6 .cs-launch select')`, 'the Hub access select for m6', 5000);
+        await ev(`(() => { const s = document.querySelector('#server-row-m6 .cs-launch select'); s.value = 'launch'; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+        await waitFor(`T.state.currentSession.hubReadOnly === null`, 'the lock clearing after choosing Launch (up to what the computer allows)', 5000);
         const a = await ev(`({ same: T.state.currentSession === window.__sessBefore, chipHidden: document.getElementById('hub-readonly-chip').hidden, patches: window.__qaServers.patches })`);
         assert.ok(a.same, 'the same session object: no reselect');
         assert.ok(a.chipHidden, 'the read-only chip is gone');
-        assert.deepEqual(a.patches, [{ id: 'm6', body: { access_mode: 'follow' } }], 'one PATCH: m6 -> follow, no confirmation dialog');
-        console.log('   ✓ following a computer that allows Launch clears the frame lock on the open agent, no reselect');
+        assert.deepEqual(a.patches, [{ id: 'm6', body: { access_mode: 'launch' } }], 'one PATCH: m6 -> launch, no confirmation dialog');
+        console.log('   ✓ choosing Launch on a computer that allows it clears the frame lock on the open agent, no reselect');
 
         // (b) The machine's own limit keeps the effective mode at View: the lock stays, now saying why.
         await ev(`window.switchNavTab('agents'); window.__qaServers.patches = []; true`);
@@ -314,7 +314,7 @@ const CLOUD_PRELOAD = `(() => {
         await waitFor(`!!(T.state.currentSession.hubReadOnly && T.state.currentSession.hubReadOnly.fromFrame)`, 'the frame lock on m7', 3000);
         await ev(`window.switchNavTab('servers'); true`);
         await waitFor(`!!document.querySelector('#server-row-m7 .cs-launch select')`, 'the Access select for m7', 5000);
-        await ev(`(() => { const s = document.querySelector('#server-row-m7 .cs-launch select'); s.value = 'follow'; s.dispatchEvent(new Event('change')); return true; })()`);
+        await ev(`(() => { const s = document.querySelector('#server-row-m7 .cs-launch select'); s.value = 'launch'; s.dispatchEvent(new Event('change')); return true; })()`);
         await waitFor(`window.__qaServers.patches.length === 1 && T.state.currentSession.hubReadOnly && /This machine/.test(T.state.currentSession.hubReadOnly.chip)`, 'the lock re-explained by the machine limit', 5000);
         const b = await ev(`({ ro: T.state.currentSession.hubReadOnly, chip: document.getElementById('hub-readonly-chip').textContent })`);
         assert.equal(b.ro.fromFrame, true, 'still frame-sticky: a later lookup still cannot clear it');
