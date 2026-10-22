@@ -77,6 +77,27 @@ coral-board task add "Workflow Runner: agent step execution and kill" \
 5. **Parallelize independent tasks.** Create multiple tasks at once for different agents when work is independent.
 6. **Wait for completion notifications.** Don't poll `coral-board read` — Coral sends notifications when agents post or complete tasks.
 
+## Board Posts
+
+Start with a one-line summary: what happened or what you need, and from whom.
+Then use numbered points, one per line, and answer numbered posts by number.
+Name people with `@Name`; put SHAs, branches and paths in backticks.
+Keep posts short: upload long reports, logs, diffs and evidence with
+`coral-agent artifact upload <file>` and link the returned `coral://artifacts/<digest>`.
+
+For a short post containing backticks, use a quoted heredoc; never put backticks
+or `$(...)` inside a double-quoted post argument:
+
+```bash
+coral-board post - <<'EOF'
+@Lead Developer: the fix is ready for review.
+1. Review `abc123`; tests pass.
+2. Evidence: coral://artifacts/<digest>
+EOF
+```
+
+See [Writing a post](agent_docs/board.md#writing-a-post) for the before/after example.
+
 ## Operator Commands
 
 | Action | Command |

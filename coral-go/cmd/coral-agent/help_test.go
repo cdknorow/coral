@@ -114,6 +114,13 @@ func TestAgentHelpFlagsPrintUsageWithoutSideEffects(t *testing.T) {
 				if !strings.Contains(stdout, "coral-agent") {
 					t.Errorf("no usage on stdout: %q", stdout)
 				}
+				if len(args) > 1 && args[0] == "artifact" && args[1] == "upload" {
+					for _, guidance := range []string{"Upload long reports, logs, diffs and evidence", "coral://artifacts/<digest>", "one-line", "numbered points, one per line", "coral-board post - <<'EOF'"} {
+						if !strings.Contains(stdout, guidance) {
+							t.Errorf("artifact upload help missing %q", guidance)
+						}
+					}
+				}
 			})
 		}
 	})

@@ -106,7 +106,7 @@ func mentionRenudgeText(sender string, n int, since time.Time) string {
 }
 
 func statusNudgeText(id int64, minutes int) string {
-	return fmt.Sprintf("[Coral] No activity on #%d for %d minutes. Post one line on where you are: coral-board post \"#%d: ...\"", id, minutes, id)
+	return fmt.Sprintf("[Coral] No activity on #%d for %d minutes. Post a one-line summary of progress or what you need and from whom: coral-board post \"#%d: ...\"", id, minutes, id)
 }
 
 // RunOnce applies the rules to every board once.

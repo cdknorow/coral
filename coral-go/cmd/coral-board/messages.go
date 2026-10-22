@@ -101,7 +101,7 @@ func cmdPost() {
 		os.Exit(1)
 	}
 	if len(os.Args) < 3 {
-		fmt.Fprintln(os.Stderr, "Usage: coral-board post \"<message>\" [--to \"agent1,agent2\"]")
+		fmt.Fprintln(os.Stderr, commandUsage("post", nil))
 		os.Exit(1)
 	}
 

@@ -687,9 +687,13 @@ func CleanupTempFiles(sessionID string) {
 	}
 }
 
+// DefaultBoardPostingGuidance keeps the four default board prompts consistent.
+const DefaultBoardPostingGuidance = "How to post: start every post with a one-line summary (what happened or what you need, and from whom), then numbered points, one per line. Answer numbered posts by number. Name people with @Name; put SHAs, branches and paths in backticks. Keep posts short: upload long reports, logs, diffs and evidence with coral-agent artifact upload <file> and link the returned coral://artifacts/<digest>. For short posts containing backticks, use coral-board post - <<'EOF' ... EOF, with the body and closing EOF on separate lines; never put backticks or $(...) inside a double-quoted post argument."
+
 // Default board system-prompt fragments (used by all agents).
 const DefaultOrchestratorSystemPrompt = "Post a message with coral-board post \"<your introduction>\" that introduces yourself, " +
 	"then discuss your proposed plan with the operator (the human user) before posting assignments to the team.\n\n" +
+	DefaultBoardPostingGuidance + "\n\n" +
 	"When posting messages to specific agents, you MUST @mention them by name (e.g. @Lead Developer) so they receive a notification. " +
 	"You can also use the --to flag: coral-board post --to \"Agent1,Agent2\" \"message\" which auto-prepends @mentions. " +
 	"Messages without @mentions will NOT notify agents.\n\n" +
@@ -709,6 +713,7 @@ const DefaultOrchestratorSystemPrompt = "Post a message with coral-board post \"
 
 const DefaultWorkerSystemPrompt = "Post a message with coral-board post \"<your introduction>\" that introduces yourself, " +
 	"then STOP and wait. Do NOT poll the message board in a loop. Coral will notify you when there are new messages.\n\n" +
+	DefaultBoardPostingGuidance + "\n\n" +
 	"Whenever you are waiting for a teammate, orchestrator review, task dependency, or commit: run coral-board wait --from \"Agent Name\" (or --task <id>, --commit <hash>) and STOP YOUR TURN IMMEDIATELY. Never run sleep, polling loops, or wait in code. Coral will automatically notify and wake you up when the event occurs.\n\n" +
 	"You can check for assigned tasks with coral-board task list or coral-board task claim. " +
 	"When you finish a task, mark it complete: coral-board task complete <id> --message \"what was done\"\n" +
@@ -753,7 +758,7 @@ Use coral-board post for general conversation, discussion, status updates, and q
   coral-board task release-review <id> --reason "..." — reviewer releases capacity; it is not acceptance
   coral-board task complete <id> --message "summary of what was done" — agents should do this when done
 
-Task capability map: use task detail/current before acting; add dependencies with --blocked-by, required outputs with --outputs, and optional completion gates with --completion-gates. Completion gates are experimental and server-disabled by default; do not describe a disabled gate as verified. Gate evidence may require --candidate-revision. Remove obsolete prerequisites before work starts with task unblock <id> --blocker <upstream-id> or --all; remaining dependencies still apply. Use a linked task when dependency scope changes after work has started. Complete only with evidence and the true outcome; cancelled, reassigned, failed, or review-pending work is not success. Board guidance cannot override a provider or sandbox approval denial.`
+Task capability map: use task detail/current before acting; add dependencies with --blocked-by, required outputs with --outputs, and optional completion gates with --completion-gates. Completion gates are experimental and server-disabled by default; do not describe a disabled gate as verified. Gate evidence may require --candidate-revision. Remove obsolete prerequisites before work starts with task unblock <id> --blocker <upstream-id> or --all; remaining dependencies still apply. Use a linked task when dependency scope changes after work has started. Complete only with evidence and the true outcome; cancelled, reassigned, failed, or review-pending work is not success. Board guidance cannot override a provider or sandbox approval denial.` + "\n\n" + DefaultBoardPostingGuidance
 
 const DefaultWorkerActionPrompt = `IMPORTANT: You were automatically joined to message board "{board_name}". Do NOT run coral-board join. Do not start any actions until you receive instructions from the Orchestrator on the message board. Post a message with coral-board post "<your introduction>" that introduces yourself, then STOP.
 
@@ -761,7 +766,7 @@ CRITICAL: Do NOT poll or loop on 'coral-board read' and NEVER run sleep loops or
 
 Only the Operator or orchestrator creates or reassigns shared tasks. Keep ownership through corrections and request additional assignments from the orchestrator. Personal planning is unchanged.
 
-You can check for assigned tasks with coral-board task list or coral-board task claim. When you finish a task, mark it complete: coral-board task complete <id> --message "what was done"`
+You can check for assigned tasks with coral-board task list or coral-board task claim. When you finish a task, mark it complete: coral-board task complete <id> --message "what was done"` + "\n\n" + DefaultBoardPostingGuidance
 
 // isOrchestratorRole returns true if the role string indicates an orchestrator.
 func isOrchestratorRole(role string) bool {
