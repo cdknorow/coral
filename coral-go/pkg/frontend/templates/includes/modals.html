@@ -711,22 +711,22 @@
                 <dd class="settings-cli-paths settings-model-grid">
                     <label class="settings-cli-row">
                         <span class="settings-cli-label">Claude</span>
-                        <input type="text" id="settings-default-model-claude" class="settings-input settings-mono-input" list="settings-models-claude" placeholder="Leave blank for none" autocomplete="off">
+                        <input type="text" id="settings-default-model-claude" aria-label="Claude default model" class="settings-input settings-mono-input" list="settings-models-claude" placeholder="Leave blank for none" autocomplete="off">
                         <datalist id="settings-models-claude"></datalist>
                     </label>
                     <label class="settings-cli-row">
                         <span class="settings-cli-label">Codex</span>
-                        <input type="text" id="settings-default-model-codex" class="settings-input settings-mono-input" list="settings-models-codex" placeholder="Leave blank for none" autocomplete="off">
+                        <input type="text" id="settings-default-model-codex" aria-label="Codex default model" class="settings-input settings-mono-input" list="settings-models-codex" placeholder="Leave blank for none" autocomplete="off">
                         <datalist id="settings-models-codex"></datalist>
                     </label>
                     <label class="settings-cli-row">
                         <span class="settings-cli-label">Antigravity</span>
-                        <input type="text" id="settings-default-model-agy" class="settings-input settings-mono-input" list="settings-models-agy" placeholder="Leave blank for none" autocomplete="off">
+                        <input type="text" id="settings-default-model-agy" aria-label="Antigravity default model" class="settings-input settings-mono-input" list="settings-models-agy" placeholder="Leave blank for none" autocomplete="off">
                         <datalist id="settings-models-agy"></datalist>
                     </label>
                     <label class="settings-cli-row">
                         <span class="settings-cli-label">Pi</span>
-                        <input type="text" id="settings-default-model-pi" class="settings-input settings-mono-input" list="settings-models-pi" placeholder="Leave blank for none" autocomplete="off">
+                        <input type="text" id="settings-default-model-pi" aria-label="Pi default model" class="settings-input settings-mono-input" list="settings-models-pi" placeholder="Leave blank for none" autocomplete="off">
                         <datalist id="settings-models-pi"></datalist>
                     </label>
                     <span id="settings-default-models-notice" class="settings-hint" role="status"></span>
@@ -753,22 +753,22 @@
                     <details class="settings-cli-details"><summary>Set paths (empty uses PATH)</summary>
                     <label class="settings-cli-row">
                         <span class="settings-cli-label">Claude</span>
-                        <input type="text" id="settings-cli-path-claude" class="settings-input settings-mono-input" placeholder="claude">
+                        <input type="text" id="settings-cli-path-claude" aria-label="Claude CLI path" class="settings-input settings-mono-input" placeholder="claude">
                         <span id="cli-result-claude" class="cli-verify-result"></span>
                     </label>
                     <label class="settings-cli-row">
                         <span class="settings-cli-label">Codex</span>
-                        <input type="text" id="settings-cli-path-codex" class="settings-input settings-mono-input" placeholder="codex">
+                        <input type="text" id="settings-cli-path-codex" aria-label="Codex CLI path" class="settings-input settings-mono-input" placeholder="codex">
                         <span id="cli-result-codex" class="cli-verify-result"></span>
                     </label>
                     <label class="settings-cli-row">
                         <span class="settings-cli-label">Antigravity</span>
-                        <input type="text" id="settings-cli-path-agy" class="settings-input settings-mono-input" placeholder="agy">
+                        <input type="text" id="settings-cli-path-agy" aria-label="Antigravity CLI path" class="settings-input settings-mono-input" placeholder="agy">
                         <span id="cli-result-agy" class="cli-verify-result"></span>
                     </label>
                     <label class="settings-cli-row">
                         <span class="settings-cli-label">Pi</span>
-                        <input type="text" id="settings-cli-path-pi" class="settings-input settings-mono-input" placeholder="pi">
+                        <input type="text" id="settings-cli-path-pi" aria-label="Pi CLI path" class="settings-input settings-mono-input" placeholder="pi">
                         <span id="cli-result-pi" class="cli-verify-result"></span>
                     </label>
                     <div class="settings-cli-actions">
@@ -817,14 +817,14 @@
             <div class="tb-row" id="settings-terminal-backend" role="group" aria-labelledby="tb-label" hidden>
                 <div class="tb-head"><span class="tb-label" id="tb-label">Terminal backend</span><span class="tb-now" id="tb-now"></span></div>
                 <div id="tb-choice">
-                    <label class="tb-opt"><input type="radio" name="terminal-backend" value="tmux" id="tb-opt-tmux"><span><span class="tb-t">tmux: agents keep running</span><span class="tb-short">Agents keep running when you quit Coral.</span><button type="button" class="tb-learn" aria-expanded="false" aria-controls="tb-d-tmux">Learn more</button><span class="tb-d" id="tb-d-tmux" hidden>Agents keep running when Coral restarts, upgrades or crashes, and Coral picks them up again afterwards. Coral keeps its terminals in a tmux server whose socket sits in your Coral data folder. Any agent, and any other program running as you, can find that socket and read or type into other agents' terminals. Choose this if you restart or upgrade Coral often.</span></span></label>
-                    <label class="tb-opt"><input type="radio" name="terminal-backend" value="pty" id="tb-opt-pty"><span><span class="tb-t">pty: agents stop when you quit Coral <span class="tb-default">(default)</span></span><span class="tb-short">Agents end when you quit Coral and wake next time.</span><button type="button" class="tb-learn" aria-expanded="false" aria-controls="tb-d-pty">Learn more</button><span class="tb-d" id="tb-d-pty" hidden>Coral holds each terminal itself, so there is no shared socket for an agent to use against another agent. The price: agents end whenever Coral restarts, upgrades or crashes (Coral puts them to sleep first when it stops cleanly, and marks them asleep at the next start after a crash). When Coral starts again it wakes them one at a time (not if Coral has restarted several times in a row; up to the number set below; more after you confirm; you can turn this off), and they resume their conversation, but a tool that was running is not continued.</span></span></label>
+                    <label class="tb-opt"><input type="radio" name="terminal-backend" value="tmux" id="tb-opt-tmux"><span><span class="tb-t">tmux: agents keep running</span><span class="tb-short">Agents keep running when you quit Coral.</span><button type="button" class="tb-learn" aria-expanded="false" aria-controls="tb-d-tmux" aria-label="Learn more about tmux">Learn more</button><span class="tb-d" id="tb-d-tmux" hidden>Agents keep running when Coral restarts, upgrades or crashes, and Coral picks them up again afterwards. Coral keeps its terminals in a tmux server whose socket sits in your Coral data folder. Any agent, and any other program running as you, can find that socket and read or type into other agents' terminals. Choose this if you restart or upgrade Coral often.</span></span></label>
+                    <label class="tb-opt"><input type="radio" name="terminal-backend" value="pty" id="tb-opt-pty"><span><span class="tb-t">pty: agents stop when you quit Coral <span class="tb-default">(default)</span></span><span class="tb-short">Agents end when you quit Coral and wake next time.</span><button type="button" class="tb-learn" aria-expanded="false" aria-controls="tb-d-pty" aria-label="Learn more about pty">Learn more</button><span class="tb-d" id="tb-d-pty" hidden>Coral holds each terminal itself, so there is no shared socket for an agent to use against another agent. The price: agents end whenever Coral restarts, upgrades or crashes (Coral puts them to sleep first when it stops cleanly, and marks them asleep at the next start after a crash). When Coral starts again it wakes them one at a time (not if Coral has restarted several times in a row; up to the number set below; more after you confirm; you can turn this off), and they resume their conversation, but a tool that was running is not continued.</span></span></label>
                     <p class="tb-pending" id="tb-pending" role="status" hidden></p>
                 </div>
                 <!-- #3636: on pty, wake the agents that were running when Coral stopped -->
                 <div class="tb-autowake" id="tb-autowake" hidden>
                     <label class="tb-autowake-on"><input type="checkbox" id="tb-autowake-on"> Wake agents after a restart</label>
-                    <button type="button" class="tb-learn" aria-expanded="false" aria-controls="tb-d-autowake">Learn more</button>
+                    <button type="button" class="tb-learn" aria-expanded="false" aria-controls="tb-d-autowake" aria-label="Learn more about waking agents">Learn more</button>
                     <div class="tb-d" id="tb-d-autowake" hidden>
                         <label class="tb-autowake-cap">Wake up to <input type="number" id="tb-autowake-cap" min="1" max="50" step="1" inputmode="numeric"> agents without asking.</label>
                         <p class="tb-note">Agents that were running when Coral stopped. Coral wakes them one at a time when it starts, and they resume their conversation with the permissions they ran with, including an agent that bypassed permissions. More than this many: Coral asks first. Agents you put to sleep stay asleep.</p>
