@@ -136,7 +136,7 @@
          the launch has the same condition plus NOT REMOVE~="ALL", so a repair or an uninstall starts nothing. A silent or
          basic-UI install (/qn, /passive) shows no ExitDialog and starts nothing.
          From an ELEVATED client (msiexec run as administrator) that same token would start Coral elevated, with its server, agents and
-         tools running as an administrator (#5883): "--from-installer" makes coral-tray.exe start nothing when its own token is
+         tools running as an administrator (#5883): the from-installer flag below makes coral-tray.exe start nothing when its own token is
          elevated (cmd/coral-tray/installer_launch.go), before it spawns its background process. -->
     <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Launch $(var.ProductName)" />
     <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />

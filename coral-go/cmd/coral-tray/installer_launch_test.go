@@ -46,3 +46,15 @@ func TestMSILaunchPassesTheInstallerFlag(t *testing.T) {
 	require.NotNil(t, m, "the LaunchCoral action")
 	assert.Equal(t, "--"+installerLaunchFlag, string(m[1]))
 }
+
+// An XML comment cannot hold a double hyphen: wix build stops with WIX0104 and the release has no MSI (QA's run 39717624469 on the
+// first version of the launch comment, which quoted the flag). This runs everywhere; the Windows job builds the MSI when the file changes.
+func TestWxsCommentsHaveNoDoubleHyphen(t *testing.T) {
+	wxs, err := os.ReadFile("../../../tools/coral.wxs")
+	require.NoError(t, err)
+	comments := regexp.MustCompile(`(?s)<!--(.*?)-->`).FindAllSubmatch(wxs, -1)
+	require.NotEmpty(t, comments)
+	for _, c := range comments {
+		assert.NotContains(t, string(c[1]), "--", "an XML comment in tools/coral.wxs holds a double hyphen: %.60q", c[1])
+	}
+}
