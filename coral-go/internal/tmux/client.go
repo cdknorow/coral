@@ -79,6 +79,6 @@ func NewClient(coralDir ...string) *Client {
 	}
 	testguard.CheckDataPath(c.SocketPath)
 	c.FallbackToDefault = defaultSocketFallback(c.SocketPath)
-	log.Printf("[tmux] NewClient: tmux_bin=%q socket=%q fallback=%v path=%q shell=%q coral_tmux_bin=%q", c.TmuxBin, c.SocketPath, c.FallbackToDefault, os.Getenv("PATH"), os.Getenv("SHELL"), os.Getenv("CORAL_TMUX_BIN"))
+	log.Printf("[tmux] NewClient: tmux_bin=%q socket=%q fallback=%v shell=%q coral_tmux_bin_set=%t", c.TmuxBin, c.SocketPath, c.FallbackToDefault, shellName(), os.Getenv("CORAL_TMUX_BIN") != "") // no PATH value: it names profile folders (#6004 W9)
 	return c
 }
