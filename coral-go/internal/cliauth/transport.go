@@ -234,6 +234,7 @@ func (t Transport) helloOn(ctx context.Context, base string, rt http.RoundTrippe
 		Proof string `json:"proof"`
 	}
 	_ = json.NewDecoder(io.LimitReader(resp.Body, 4096)).Decode(&h)
+	io.Copy(io.Discard, io.LimitReader(resp.Body, 4096)) // to the end, so the connection (and its proof) is reused by the signed request
 	if resp.Header.Get(httputil.ActionLimitHeader) != "" {
 		return "", "", ErrServerBusy
 	}

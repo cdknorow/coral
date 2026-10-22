@@ -297,6 +297,7 @@ func (c CLIClient) Do(ctx context.Context, method, path string, body []byte, hea
 		Proof string `json:"proof"`
 	}
 	_ = json.NewDecoder(io.LimitReader(hresp.Body, 4096)).Decode(&hello)
+	io.Copy(io.Discard, io.LimitReader(hresp.Body, 4096)) // to the end, so the second request reuses the proved connection
 	hresp.Body.Close()
 	if hresp.Header.Get(httputil.ActionLimitHeader) != "" {
 		return nil, ErrServerBusy
