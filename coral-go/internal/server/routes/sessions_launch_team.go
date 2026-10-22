@@ -179,7 +179,15 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 		if agentDef.AgentType != "" {
 			memberType = agentDef.AgentType
 		}
-		if fromAgent && !inSavedTeamTemplate(userSettings, agentDef, memberType) {
+		savedMember := fromAgent && inSavedTeamTemplate(userSettings, agentDef, memberType)
+		if fromAgent && !savedMember && agentLaunchUnsupervised(memberType) {
+			// An agent does not start a member of a type that never asks (#5901), unless it is exactly one of the owner's saved entries: not started, a setup problem (the category "" makes
+			// an all-refused team a 422), as the Hub's refusal of a member is.
+			launched = append(launched, map[string]any{"name": agentDef.Name, "error": agentLaunchUnsupervisedMessage(memberType), "code": agentLaunchUnsupervisedCode})
+			categories = append(categories, "")
+			continue
+		}
+		if fromAgent && !savedMember {
 			agentDef.Flags, agentDef.Capabilities, agentDef.Tools, agentDef.Hooks = limitAgentLaunch("launch-team", agentDef.Flags, agentDef.Capabilities, agentDef.Tools, agentDef.Hooks)
 		}
 		if code, msg, stopped := h.hubMemberStopped(ctx, r, body, agentDef); stopped {

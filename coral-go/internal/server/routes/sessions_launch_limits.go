@@ -197,3 +197,17 @@ func stripAgentPermissionFlags(flags []string) []string {
 	}
 	return cleanFlags
 }
+
+// agentLaunchUnsupervisedCode is the code of the refusal of an agent starting a type that never asks (#5901, Security's ruling on #4032).
+const agentLaunchUnsupervisedCode = "agent_launch_unsupervised"
+
+// agentLaunchUnsupervised says whether an agent may not start agentType because it never asks before running tools: the type skips the prompts with no flags at all
+// (agent.SkipsPermissionPrompts, which is Pi today, so a future CLI without prompts is covered the same way). An agent never starts an agent that asks for less than itself
+// (#4032), and the only things it may choose are the model flags; such a type has no mode that asks to fall back to, so it would be a way round the stripped permission flags.
+func agentLaunchUnsupervised(agentType string) bool {
+	return agent.SkipsPermissionPrompts(agentType, nil)
+}
+
+func agentLaunchUnsupervisedMessage(agentType string) string {
+	return "an agent cannot start a " + agentType + " agent: " + agentType + " does not ask before running tools; ask the Operator to start it"
+}
