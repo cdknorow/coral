@@ -81,7 +81,6 @@
                         <button class="launch-back-btn" data-on-click="m-select-launch-type" data-arg="back" title="Back" aria-label="Back to the choices">&larr;</button>
                         New Agent
                     </h3>
-                    <p class="sd-sub">Pick a folder and launch. Everything else has a default.</p>
                 </div>
                 <div class="settings-modal-body">
                     <div class="sd-essentials">
@@ -105,7 +104,6 @@
                     <div id="launch-cli-slot" class="launch-cli-slot"></div>
                     <div class="sd-more-row">
                         <button type="button" class="sd-more-btn" id="launch-agent-more-btn" aria-expanded="false" aria-controls="launch-agent-more" data-on-click="m-toggle-launch-more"><span class="material-icons" aria-hidden="true">expand_more</span>More options</button>
-                        <span class="sd-more-hint" id="launch-agent-more-hint">Name, persona, agent, model, prompt, permissions, board</span>
                     </div>
                     <div id="launch-agent-more" class="sd-more" data-sd-more hidden>
                     <div class="settings-shell">
@@ -114,14 +112,13 @@
                             <div class="settings-tabs" role="tablist" aria-orientation="vertical" aria-label="New agent sections"></div>
                         </nav>
                         <div class="settings-panes">
-                        <section class="settings-pane" data-section="workspace" data-title="Name and persona" data-icon="badge" data-desc="What the agent is called, and the role it starts with." hidden>
+                        <section class="settings-pane" data-section="workspace" data-title="Name and persona" data-icon="badge" hidden>
                 <label>Name / Role <span class="text-muted-sm">(optional)</span>:
                     <input type="text" id="launch-agent-name-input" placeholder="e.g. QA Engineer, Frontend Dev">
                 </label>
                 <label>Persona <span class="text-muted-sm">(optional)</span>:
                     <div id="agent-preset-selector" class="agent-preset-selector"></div>
                 </label>
-                <p class="settings-hint" data-acf-enforced-for="launch-agent-acf" aria-live="polite" hidden></p>
                         <div class="import-export-row agent-persona-actions">
                             <button class="btn btn-small btn-subtle" id="agent-save-persona-btn" data-on-click="m-save-current-persona" title="Save as reusable persona">Save Persona</button>
                             <button class="btn btn-small btn-subtle" data-on-click="m-export-personas" title="Export saved personas">Export</button>

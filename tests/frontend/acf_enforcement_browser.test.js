@@ -84,12 +84,10 @@ const BASE = require('./test_base').BASE;
         await setType('terminal');
         assert.equal(await line(), null);
 
-        console.log('The Launch dialog shows the line under the persona');
+        console.log('The Launch dialog says it on Permissions only, not again under the persona (#6012)');
         await ev(`window.renderAgentConfigForm('launch-agent-acf', { showPreset: false, showName: false, value: { agentType: 'codex', capabilities: window.__presets['Security Reviewer'] } }); true`);
-        const mirror = await ev(`(() => { const m = document.querySelector('[data-acf-enforced-for="launch-agent-acf"]'); return { hidden: m.hidden, text: m.textContent, own: document.querySelector('#launch-agent-acf .acf-perms-enforced').textContent }; })()`);
-        assert.equal(mirror.hidden, false);
-        assert.equal(mirror.text, mirror.own);
-        assert.match(mirror.text, /a read-only sandbox/);
+        assert.equal(await ev(`!!document.querySelector('[data-acf-enforced-for]')`), false, 'no second copy under the persona');
+        assert.match(await ev(`document.querySelector('#launch-agent-acf .acf-perms-enforced').textContent`), /a read-only sandbox/);
         console.log('acf_enforcement: ok');
         await c.close(); process.exit(0);
     } catch (e) {

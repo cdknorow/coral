@@ -129,10 +129,10 @@ const BASE = require('./test_base').BASE;
         await click('#launch-agent-more-btn');
         assert.deepEqual(await moreState(), { hidden: false, expanded: 'true', simple: false }, 'More options opens the sections');
         assert.deepEqual(await names(NA), [['Name and persona', 'badge'], ['Agent', 'smart_toy'], ['Prompt', 'description'], ['Permissions', 'lock'], ['Advanced', 'tune']]);
-        v = await view(NA); assert.deepEqual([v.open, v.title], ['workspace', 'Name and persona']); assert.match(v.desc, /What the agent is called/);
+        v = await view(NA); assert.deepEqual([v.open, v.title], ['workspace', 'Name and persona']); assert.equal(v.desc, '', 'the pane has no sub-title (#6012)');
         assert.ok(v.footBottom <= v.contentBottom, 'Launch is in the fixed footer, in view');
         await ev(`{ const m = document.querySelector('#launch-agent-acf .acf-permission-mode'); m.value = 'bypassPermissions'; m.dispatchEvent(new Event('change', { bubbles: true })); } true`); // a Claude agent now starts in Auto (#5836): this suite is about the Bypass line, so it picks Bypass
-        assert.equal(await ev(`document.querySelector('[data-acf-enforced-for="launch-agent-acf"]').hidden`), true, 'the plain Bypass line is said on Permissions only, not again under the persona');
+        assert.equal(await ev(`!!document.querySelector('[data-acf-enforced-for]')`), false, 'the Bypass line is said on Permissions only: there is no copy under the persona (#6012)');
         assert.ok(await ev(`!document.querySelector('#launch-agent-title').closest('.launch-modal-step').querySelector('[data-on-click="m-select-launch-type"]').hidden`), 'the way back to the choices is in the header');
         await shot('new-agent-workspace-desktop');
         for (const [id, sel] of [['workspace', '#launch-agent-name-input'], ['agent', '#launch-agent-acf .acf-agent-type'], ['agent', '#launch-agent-acf .acf-model-wrap'], ['prompt', '#launch-agent-acf .acf-prompt'], ['permissions', '#launch-agent-acf .acf-permission-mode'], ['permissions', '#launch-agent-acf [data-type="allow"][data-cap="shell"]'], ['advanced', '#launch-board-select'], ['advanced', '#launch-agent-acf .acf-flags']]) {
