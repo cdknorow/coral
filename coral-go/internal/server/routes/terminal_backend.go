@@ -80,8 +80,9 @@ func (h *CloudHandler) TerminalBackend(w http.ResponseWriter, r *http.Request) {
 		saved = ""
 	}
 	// What the next start runs: the same rules the start uses (backendchoice), so the dashboard never asks for a restart the start would not make.
-	next, _, _ := backendchoice.Resolve("", saved, runtime.GOOS, func() int {
-		return len(tmux.PrivateAgentSessions(r.Context(), tmux.PrivateSocketPath(h.dataDir)))
+	next, _, _ := backendchoice.Resolve("", saved, runtime.GOOS, func() (int, bool) {
+		names, known := tmux.PrivateAgentSessionsChecked(r.Context(), tmux.PrivateSocketPath(h.dataDir))
+		return len(names), known
 	})
 	if next == "tmux" && !backendChoice() {
 		next = "pty"

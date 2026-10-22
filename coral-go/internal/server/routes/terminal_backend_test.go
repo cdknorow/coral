@@ -3,6 +3,7 @@ package routes
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -274,4 +275,25 @@ func TestTerminalBackendKeepsTmuxWhileAgentsAreInIt(t *testing.T) {
 
 	require.NoError(t, b.ss.SetSetting(t.Context(), TerminalBackendSetting, "pty"))
 	assert.Contains(t, get(), `"restart_required":true`, "a saved choice is not overridden by the exception")
+}
+
+// A tmux server that cannot be asked (a client/server version mismatch after an upgrade) is not "no agents": the next start keeps tmux, so nothing running is hidden (#6064, Security's must).
+func TestTerminalBackendKeepsTmuxWhenItsServerCannotBeAsked(t *testing.T) {
+	dataDir, err := os.MkdirTemp("/tmp", "cu")
+	require.NoError(t, err)
+	t.Cleanup(func() { os.RemoveAll(dataDir) })
+	l, err := net.Listen("unix", tmux.PrivateSocketPath(dataDir))
+	require.NoError(t, err)
+	t.Cleanup(func() { l.Close() })
+	fake := filepath.Join(dataDir, "tmux")
+	require.NoError(t, os.WriteFile(fake, []byte("#!/bin/sh\necho 'protocol version mismatch (client 8, server 7)' >&2\nexit 1\n"), 0o755))
+	t.Setenv("CORAL_TMUX_BIN", fake)
+
+	b := newBackendRig(t, dataDir)
+	body := b.req("GET", "/api/system/terminal-backend", "", "dashboard").Body.String()
+	assert.Contains(t, body, `"next":"tmux"`, body)
+	assert.Contains(t, body, `"restart_required":false`, "a server that could not be asked is taken for running agents, not for none")
+
+	require.NoError(t, b.ss.SetSetting(t.Context(), TerminalBackendSetting, "pty"))
+	assert.Contains(t, b.req("GET", "/api/system/terminal-backend", "", "dashboard").Body.String(), `"next":"pty"`, "a saved choice is never overridden")
 }

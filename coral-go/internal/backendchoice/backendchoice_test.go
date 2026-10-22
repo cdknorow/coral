@@ -3,13 +3,18 @@ package backendchoice
 import "testing"
 
 func TestResolve(t *testing.T) {
-	none := func() int { return 0 }
-	some := func() int { return 3 }
-	boom := func() int { t.Helper(); t.Error("the private tmux server was asked when a choice was already made"); return 0 }
+	none := func() (int, bool) { return 0, true }
+	some := func() (int, bool) { return 3, true }
+	unknown := func() (int, bool) { return 0, false } // the server may be there and could not be asked
+	boom := func() (int, bool) {
+		t.Helper()
+		t.Error("the private tmux server was asked when a choice was already made")
+		return 0, true
+	}
 	for _, c := range []struct {
 		name             string
 		flag, saved, os  string
-		count            func() int
+		count            func() (int, bool)
 		want             string
 		forced, wantKept bool
 	}{
@@ -31,6 +36,12 @@ func TestResolve(t *testing.T) {
 		{"an unknown saved value with agents in tmux", "", "screen", "linux", some, "tmux", false, true},
 		{"saved pty wins over agents in tmux", "", "pty", "darwin", boom, "pty", false, false},
 		{"no counter given", "", "", "linux", nil, "pty", false, false},
+		// the server could not be asked: never taken for "none"
+		{"no choice, the server could not be asked", "", "", "darwin", unknown, "tmux", false, true},
+		{"the same on Linux", "", "", "linux", unknown, "tmux", false, true},
+		{"a saved pty choice is kept even when the server could not be asked", "", "pty", "darwin", boom, "pty", false, false},
+		{"--backend pty wins over an unknown", "pty", "", "linux", boom, "pty", true, false},
+		{"Windows never asks", "", "", "windows", boom, "pty", false, false},
 	} {
 		got, forced, kept := Resolve(c.flag, c.saved, c.os, c.count)
 		if got != c.want || forced != c.forced || kept != c.wantKept {
@@ -42,7 +53,7 @@ func TestResolve(t *testing.T) {
 // Two starts, as an upgraded install sees them: the first with agents still in tmux, the next without.
 func TestAnUpgradedInstallRunsTmuxOnceThenPty(t *testing.T) {
 	running := 2
-	count := func() int { return running }
+	count := func() (int, bool) { return running, true }
 	if b, _, kept := Resolve("", "", "darwin", count); b != "tmux" || !kept {
 		t.Fatalf("first start: %s kept=%v", b, kept)
 	}

@@ -89,26 +89,26 @@ export async function loadTerminalBackendRow() {
         $('tb-autowake-cap').value = cap >= 1 && cap <= 50 ? cap : 8;
         _autoWakeShown = aw.hidden ? null : { on, cap: Number($('tb-autowake-cap').value) };
     }
+    // Every Learn more in the row opens its text (also the auto-wake one, which a system with no choice shows without the backend options).
+    for (const b of document.querySelectorAll('#settings-terminal-backend .tb-learn')) {
+        if (b._tbWired) continue;
+        b._tbWired = true;
+        b.addEventListener('click', () => {
+            const target = document.getElementById(b.getAttribute('aria-controls'));
+            if (!target) return;
+            target.hidden = !target.hidden;
+            b.setAttribute('aria-expanded', String(!target.hidden));
+            b.textContent = target.hidden ? 'Learn more' : 'Show less';
+        });
+    }
     if (_status.choice) {
         const next = nextBackend(_status);
         for (const r of document.querySelectorAll('input[name="terminal-backend"]')) {
             r.checked = r.value === next;
             if (!r._tbWired) { r._tbWired = true; r.addEventListener('change', renderPending); }
         }
-        // Each choice says it in a line; the whole explanation (Security's wording) opens under it.
-        for (const b of document.querySelectorAll('#settings-terminal-backend .tb-learn')) {
-            if (b._tbWired) continue;
-            b._tbWired = true;
-            b.addEventListener('click', () => {
-                const target = document.getElementById(b.getAttribute('aria-controls'));
-                if (!target) return;
-                target.hidden = !target.hidden;
-                b.setAttribute('aria-expanded', String(!target.hidden));
-                b.textContent = target.hidden ? 'Learn more' : 'Show less';
-            });
-        }
         // The operating system's security note is the end of each backend's own Learn more, not a third control under both (UI/UX's #5985 note): said once there, whole.
-        for (const d of document.querySelectorAll('#settings-terminal-backend .tb-d')) {
+        for (const d of document.querySelectorAll('#settings-terminal-backend .tb-opt .tb-d')) {
             if (!d.querySelector('.tb-d-os')) d.append(' ', Object.assign(document.createElement('span'), { className: 'tb-d-os', textContent: osNote() }));
         }
         renderPending();
