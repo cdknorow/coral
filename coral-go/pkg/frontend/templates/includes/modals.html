@@ -737,7 +737,10 @@
                 </div>
                 <div class="settings-row settings-row-wide" id="settings-custom-models-row" hidden>
                 <dt>Custom models</dt>
-                <dd id="settings-custom-models" class="settings-custom-models"></dd>
+                <dd>
+                    <div id="settings-custom-models" class="settings-custom-models"></div>
+                    <span class="settings-hint" data-info>Model ids are passed to the CLI as they are written here. They appear in every model picker, including the one that switches a running agent's model.</span>
+                </dd>
                 </div>
                 {{ template "includes/toggle_row" (toggle "settings-auto-resume" "Resume after API errors" "When an agent's CLI stops on a rate limit, an overload or another API error, Coral wakes it again after about 2, then 5, then 15 minutes, and stops trying after the third. Waking the agent yourself starts the count again.") }}
                 {{ template "includes/toggle_row" (toggle "settings-auto-goals" "Name each agent's goal" "Coral asks Claude Code's smallest model (Haiku) for a short goal line for each agent, from your requests only: once when the agent first answers, then for a new request at most every 30 minutes. Each one is a short call made with your Claude Code account (about 1,300 input tokens). When off, the goal shows your first prompt.") }}
