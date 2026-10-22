@@ -119,7 +119,11 @@ func TestHumanSendWithGoneHooks(t *testing.T) {
 	t.Run("the screen echo confirms it", func(t *testing.T) {
 		h := setupHooksGone(t, goneDir(t))
 		h.term.show(codexReady(t, ""))
-		h.term.onType = func(text string) { h.term.show(codexReady(t, "") + "\n• " + text + "\n") } // the agent's echo of the message
+		// The agent's echo of the message is in its history, above an input box that is empty again: not below the footer, where no screen draws it
+		// and where the box reader (rightly) reads it as the box holding something.
+		h.term.onType = func(text string) {
+			h.term.show(strings.Replace(codexReady(t, ""), "  Tip:", "› "+text+"\n\n  Tip:", 1))
+		}
 		code, res := run(h, "deploy to staging now")
 		assert.Equal(t, http.StatusOK, code, res.body)
 	})
