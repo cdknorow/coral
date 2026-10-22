@@ -434,6 +434,19 @@ func TestTheUpdaterProgramsAnswerIsBoundedAndItsFailureIsAnError(t *testing.T) {
 	assert.Less(t, time.Since(start), 10*time.Second, "a hung program does not hang the request")
 }
 
+// A program killed at the timeout that left a child holding its output must not hold the call: the child here keeps the pipe open for 30 s, so only WaitDelay ends the wait.
+func TestAKilledUpdaterWhoseChildKeepsItsOutputOpenDoesNotHoldTheCall(t *testing.T) {
+	dir := t.TempDir()
+	holder := filepath.Join(dir, "holder")
+	require.NoError(t, os.WriteFile(holder, []byte("#!/bin/sh\nsleep 30 &\nsleep 30\n"), 0o755))
+	ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	_, err := execProgram{path: holder}.Status(ctx)
+	assert.Error(t, err)
+	assert.Less(t, time.Since(start), 10*time.Second, "a child holding the output does not hang the request")
+}
+
 func TestTheProgramBesideThisOneIsAPlainFileOrNothing(t *testing.T) {
 	_, err := programPath() // the test binary has no coral-update beside it
 	assert.Error(t, err)
