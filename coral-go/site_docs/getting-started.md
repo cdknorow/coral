@@ -87,7 +87,7 @@ Use the address printed at startup if it differs from the default. If the browse
 | `--host <addr>` | Address to bind (also `CORAL_HOST`). Only honored for network addresses when [remote access](remote-access.md) is enabled. |
 | `--remote` | Allow remote access for this run without saving the setting (see [remote access](remote-access.md)). With no `--host`, Coral then listens on every interface. |
 | `--port <n>` | Port (default 8420; also `CORAL_PORT`) |
-| `--backend tmux\|pty` | Terminal backend. Default `pty` (the built-in terminal: agents stop when you quit Coral); `tmux` keeps agents running after Coral quits. `pty` only on Windows. |
+| `--backend tmux\|pty` | Terminal backend. Default `pty` (the built-in terminal: agents stop when you quit Coral); `tmux` keeps agents running after Coral quits. Windows has only `pty`. |
 | `--no-browser` | Do not open a browser on startup |
 
 `coral --version` (or `coral -v`, or `coral version`) prints the version of the program you run. A running server's version is in its startup log and in `/api/system/status`.

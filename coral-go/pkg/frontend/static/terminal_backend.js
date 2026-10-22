@@ -255,7 +255,8 @@ export async function dismissDefaultNotice() {
     const r = await post('/api/system/terminal-backend/notice-seen');
     if (!r.ok) { showToast(r.body.error || 'Could not dismiss this', true); return; }
     const banner = $('default-notice-banner');
-    if (banner) banner.hidden = true;
+    // The button that had focus is hidden with the line: focus goes to the Agents search box, so a keyboard user is not left on the page body.
+    if (banner) { banner.hidden = true; $('agent-search-input')?.focus(); }
 }
 
 // ── More agents to wake than Coral wakes by itself (#3636) ───────────────

@@ -146,6 +146,7 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
         check('its link opens Settings on the Terminal tab', await ev(`!!document.getElementById('settings-pane-terminal') && !document.getElementById('settings-pane-terminal').hidden && getComputedStyle(document.getElementById('settings-pane-terminal')).display !== 'none'`));
         await ev(`window.hideSettingsModal(); window.__tbCalls.length = 0; document.getElementById('default-notice-dismiss').click(); true`);
         await until(`document.getElementById('default-notice-banner').hidden`, 'the notice dismissed');
+        check('after Got it, focus is on the Agents search box, not the page body', await ev(`document.activeElement && document.activeElement.id === 'agent-search-input'`), await ev(`document.activeElement ? document.activeElement.tagName + '#' + document.activeElement.id : 'none'`));
         check('Got it is recorded on the server (not in the browser) and the line goes', await ev(`window.__tbFake.seen === true && window.__tbCalls.includes('POST /api/system/terminal-backend/notice-seen')`), JSON.stringify(await ev(`window.__tbCalls`)));
         await ev(`import((window.__coralStatic || '/static/') + 'terminal_backend.js').then(m => m.checkDefaultNotice()).then(() => true)`);
         check('once dismissed it is not shown again', await ev(`document.getElementById('default-notice-banner').hidden`));
