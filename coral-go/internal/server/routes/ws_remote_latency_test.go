@@ -135,10 +135,14 @@ func TestWSCoral_RemoteBurstIsStillCoalesced(t *testing.T) {
 	server, h := setupTestServer(t)
 	h.cfg.WSPollInterval = time.Hour   // no tick in the test
 	h.cfg.WSRemoteDebounce = time.Hour // the window never ends by itself
-	windows := make(chan chan time.Time, 4)
-	h.remoteAfter = func(time.Duration) <-chan time.Time {
+	type opened struct {
+		fire chan time.Time
+		wait time.Duration
+	}
+	windows := make(chan opened, 4)
+	h.remoteAfter = func(d time.Duration) <-chan time.Time {
 		w := make(chan time.Time, 1)
-		windows <- w
+		windows <- opened{w, d}
 		return w
 	}
 	src := &fakeSource{}
@@ -186,7 +190,11 @@ func TestWSCoral_RemoteBurstIsStillCoalesced(t *testing.T) {
 	}
 	var window chan time.Time
 	select {
-	case window = <-windows:
+	case w := <-windows:
+		window = w.fire
+		// The test's timer ignores how long it is asked for, so the length is checked here: a real window (more than 0) and never longer than the debounce (WSRemoteDebounce, an hour).
+		assert.Positive(t, w.wait, "the window the feed asks for has a length")
+		assert.LessOrEqual(t, w.wait, h.cfg.WSRemoteDebounce, "and is not longer than the remote debounce")
 	case <-time.After(30 * time.Second):
 		t.Fatal("the burst opened no debounce window")
 	}
