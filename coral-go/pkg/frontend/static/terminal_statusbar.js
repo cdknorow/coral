@@ -18,12 +18,20 @@ import { importOnce } from './import_once.js';
 import { registerActions } from './actions.js';
 import { copyText, showToast } from './utils.js';
 
+/** The typing hint names the way out of the terminal on this computer (#287): F6 everywhere; Ctrl+Shift+Esc too where the system
+ *  leaves that key to the page (on Windows it opens Task Manager, and a Mac's F-keys may need Fn). */
+export function leaveHint(platformName = (typeof navigator !== 'undefined' && (navigator.userAgentData?.platform || navigator.platform)) || '') {
+    return /^Win/i.test(platformName) ? 'Click to type · F6 to leave the terminal' : 'Click to type · Ctrl+Shift+Esc or F6 to leave the terminal';
+}
+
 /** Show the bar with the terminal (the Terminal view) or hide it with it. */
 let keyBarWired = false;
 
 export function showTerminalStatusbar(on) {
     const b = bar();
     if (b) b.style.display = on ? '' : 'none';
+    const hint = b?.querySelector('.xterm-focus-hint');
+    if (hint) hint.textContent = leaveHint();
     if (on) startKeyboardWatch();
     const copy = document.getElementById('terminal-copy-screen-btn');
     if (copy) copy.hidden = !on;

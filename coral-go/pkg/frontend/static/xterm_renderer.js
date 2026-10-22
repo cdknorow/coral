@@ -699,9 +699,20 @@ export function createTerminal(containerEl) {
 
     _wireTerminalInput();
 
-    // Escape hatch: Ctrl+Shift+Escape unfocuses terminal
+    // The ways out of the terminal, which keeps Tab, Shift+Tab and Esc for the agent (#287): F6 moves the focus to the next
+    // control of the page and Shift+F6 to the one before (the Windows and browser "next pane" key; no agent CLI binds it);
+    // Ctrl+Shift+Escape lets go of the terminal where the system leaves it to the page (not Windows: Task Manager takes it).
     // (attachCustomKeyEventHandler can be called before open)
     terminal.attachCustomKeyEventHandler((ev) => {
+        if (ev.key === 'F6' && !ev.ctrlKey && !ev.altKey && !ev.metaKey) {
+            if (ev.type === 'keydown') {
+                ev.preventDefault(); // not the browser's own F6 (its address bar)
+                const back = ev.shiftKey;
+                terminal.blur();
+                focusBesideTerminal(terminal.element, back);
+            }
+            return false; // never sent to the agent
+        }
         if (ev.type === 'keydown' && ev.key === 'Escape' && ev.ctrlKey && ev.shiftKey) {
             terminal.blur();
             return false;
@@ -720,6 +731,26 @@ export function createTerminal(containerEl) {
     _wireFocusAndResize(containerEl);
 
     return terminal;
+}
+
+// The controls the keyboard can reach: visible, enabled, and in the Tab order.
+const FOCUSABLE = 'a[href], button, input, select, textarea, summary, [tabindex], [contenteditable="true"]';
+function tabbable(el) {
+    if (el.disabled || el.tabIndex < 0 || el.closest('[inert], [hidden], [aria-hidden="true"]')) return false;
+    if (el.matches('input[type="hidden"]')) return false;
+    return el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
+}
+
+/** Focus the page's next control after the terminal (back: the one before), in document order, wrapping round (#287). */
+export function focusBesideTerminal(termEl, back = false) {
+    if (!termEl) return false;
+    const all = [...document.querySelectorAll(FOCUSABLE)].filter(el => !termEl.contains(el) && tabbable(el));
+    if (!all.length) return false;
+    const after = all.filter(el => termEl.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING);
+    const before = all.filter(el => termEl.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_PRECEDING);
+    const target = back ? (before.length ? before[before.length - 1] : all[all.length - 1]) : (after.length ? after[0] : all[0]);
+    target.focus();
+    return document.activeElement === target;
 }
 
 export function connectTerminalWs(name, agentType, sessionId, server) {
