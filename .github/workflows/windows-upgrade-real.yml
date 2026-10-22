@@ -6,7 +6,7 @@ name: Windows real upgrade
 # Windows apply (apply.RunMSI) with the real Windows Installer, and the rollback is exercised for real. It downloads the two releases' MSIs and
 # SHA256SUMS.txt with their Sigstore bundles, verifies the checksums against the signed file (the identity of this repository's release.yml at that tag),
 # checks both MSIs against it, then runs the script and keeps the msiexec and apply logs as an artifact. Nothing is built, signed or published, and there
-# are no secrets. The Windows apply stays off in releases (windowsApplyEnabled=false); the test drives apply.RunMSI directly.
+# are no secrets. The Windows apply stays off in releases (applyEnabledWindows=false); the test drives apply.RunMSI directly.
 #
 # Pick the two versions, or leave them empty for the two newest published plain-tag releases (by version, drafts excluded).
 on:

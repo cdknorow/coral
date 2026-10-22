@@ -16,7 +16,7 @@
 
   It INSTALLS AND REMOVES software on the machine it runs on. So it refuses to run unless that machine is a GitHub-hosted runner (GITHUB_ACTIONS=true and RUNNER_ENVIRONMENT=github-hosted) or you
   pass -ThrowawayMachine, it needs an administrator (so Windows Installer asks no consent), and it refuses when any Coral is installed. It never
-  starts Coral (a runner has no tray to supervise it) and shows no message box. The windows apply is OFF in releases (windowsApplyEnabled=false); this
+  starts Coral (a runner has no tray to supervise it) and shows no message box. The windows apply is OFF in releases (applyEnabledWindows=false); this
   test drives apply.RunMSI directly.
 
   Check the two MSIs against the releases' SHA256SUMS.txt first, as the updater does: -SumsFile does it here.
