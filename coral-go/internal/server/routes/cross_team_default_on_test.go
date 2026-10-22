@@ -95,14 +95,17 @@ func TestTheStateTellsTheTwoReachesOfTheSwitchApart(t *testing.T) {
 		return out
 	}
 	st := get()
+	assert.Equal(t, false, st["was_open"], "a board that never stored its switch was never open: no legacy notice (#5916)")
 	assert.Equal(t, true, st["messaging_elsewhere"], "other computers: on by default (needs a link)")
 	assert.Equal(t, false, st["messaging_here"], "this computer: off until turned on")
 	e.switchOn(e.target, true)
 	st = get()
+	assert.Equal(t, true, st["was_open"], "an explicit on with no list: open, as the notice always said")
 	assert.Equal(t, true, st["messaging_elsewhere"])
 	assert.Equal(t, true, st["messaging_here"], "an explicit on")
 	e.switchOn(e.target, false)
 	st = get()
+	assert.Equal(t, false, st["was_open"])
 	assert.Equal(t, false, st["messaging_elsewhere"])
 	assert.Equal(t, false, st["messaging_here"])
 }
