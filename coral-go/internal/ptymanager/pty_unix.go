@@ -64,10 +64,12 @@ func startPTYProcess(name string, args []string, dir string, env []string, cols,
 		}
 	}
 
+	guardian.add(p.root, tag) // Coral dying without cleaning up ends this terminal's tree (#6129)
 	go func() {
 		defer safego.Recover("ptymanager/pty_unix:55")
 		cmd.Wait()
 		close(p.done)
+		guardian.remove(p.root.pid) // ended: nothing left for the guardian to end (#6129)
 	}()
 
 	return p, nil
