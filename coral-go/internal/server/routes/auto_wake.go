@@ -311,6 +311,13 @@ func (h *SessionsHandler) autoWakeOne(ctx context.Context, ls store.LiveSession)
 		slog.Warn("[auto-wake] wake failed", "session_id", ls.SessionID, "err", err)
 		return "the wake failed"
 	}
+	// Resume the board as the dashboard's Wake does, or the woken agent reads nothing: Coral paused it at startup for its
+	// sleeping agents (RestoreSleepingBoards). Only that pause: one a person set with Pause stays (#286).
+	if bn := ptr.Value(ls.BoardName); bn != "" && h.boardHandler != nil {
+		if h.boardHandler.LiftSleepPause(bn) {
+			slog.Info("[auto-wake] resumed the board", "board", bn)
+		}
+	}
 	h.sendAutoWakeNotice(ctx, ls)
 	return ""
 }

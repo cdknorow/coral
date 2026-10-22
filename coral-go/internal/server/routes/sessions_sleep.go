@@ -80,7 +80,7 @@ func (h *SessionsHandler) Sleep(w http.ResponseWriter, r *http.Request) {
 	// Pause the message board
 	boardPaused := false
 	if h.boardHandler != nil {
-		h.boardHandler.SetPaused(boardName, true)
+		h.boardHandler.PauseForSleep(boardName) // auto-wake may lift it; a person's own Pause is kept (#286)
 		boardPaused = true
 	}
 
@@ -537,7 +537,7 @@ func (h *SessionsHandler) SleepAll(w http.ResponseWriter, r *http.Request) {
 	// Pause all affected boards
 	if h.boardHandler != nil {
 		for b := range boards {
-			h.boardHandler.SetPaused(b, true)
+			h.boardHandler.PauseForSleep(b)
 		}
 	}
 

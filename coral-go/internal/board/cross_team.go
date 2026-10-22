@@ -125,16 +125,40 @@ func (s *Store) ensureBoardSettingsSchema(ctx context.Context) error {
 // settingPaused marks a board the Operator (or a team sleep) paused (#3668).
 const settingPaused = "paused"
 
-// SetBoardPaused stores whether a board is paused.
+// settingPausedBy says who paused a board (#286): PausedBySleep for a team sleep or Coral's restart, which auto-wake lifts. A
+// person's Pause has no row, so a pause stored before this key existed counts as a person's and survives auto-wake.
+const settingPausedBy = "paused_by"
+
+// PausedBySleep is settingPausedBy's value for a pause that sleep (or Coral's restart, with agents left sleeping) put there.
+const PausedBySleep = "sleep"
+
+// SetBoardPaused stores whether a board is paused, as a person's pause; unpausing also forgets who paused it.
 func (s *Store) SetBoardPaused(ctx context.Context, project string, paused bool) error {
-	if !paused {
-		_, err := s.db.ExecContext(ctx, `DELETE FROM board_settings WHERE project = ? AND key = ?`, project, settingPaused)
+	return s.SetBoardPausedBy(ctx, project, paused, "")
+}
+
+// SetBoardPausedBy stores whether a board is paused and, for a pause, who paused it ("" for a person, or PausedBySleep), in one
+// transaction.
+func (s *Store) SetBoardPausedBy(ctx context.Context, project string, paused bool, by string) error {
+	tx, err := s.db.BeginTxx(ctx, nil)
+	if err != nil {
 		return err
 	}
-	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO board_settings (project, key, value) VALUES (?, ?, 'true')
-		 ON CONFLICT (project, key) DO UPDATE SET value = excluded.value`, project, settingPaused)
-	return err
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `DELETE FROM board_settings WHERE project = ? AND key IN (?, ?)`, project, settingPaused, settingPausedBy); err != nil {
+		return err
+	}
+	if paused {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO board_settings (project, key, value) VALUES (?, ?, 'true')`, project, settingPaused); err != nil {
+			return err
+		}
+		if by != "" {
+			if _, err := tx.ExecContext(ctx, `INSERT INTO board_settings (project, key, value) VALUES (?, ?, ?)`, project, settingPausedBy, by); err != nil {
+				return err
+			}
+		}
+	}
+	return tx.Commit()
 }
 
 // PausedBoards lists the boards stored as paused.
@@ -142,6 +166,25 @@ func (s *Store) PausedBoards(ctx context.Context) ([]string, error) {
 	var out []string
 	err := s.db.SelectContext(ctx, &out, `SELECT project FROM board_settings WHERE key = ? AND value = 'true'`, settingPaused)
 	return out, err
+}
+
+// PausedBoardsBy is PausedBoards with who paused each ("" for a person's pause, or one stored before #286).
+func (s *Store) PausedBoardsBy(ctx context.Context) (map[string]string, error) {
+	var rows []struct {
+		Project string `db:"project"`
+		By      string `db:"paused_by"`
+	}
+	err := s.db.SelectContext(ctx, &rows, `SELECT p.project AS project, COALESCE(b.value, '') AS paused_by FROM board_settings p
+		LEFT JOIN board_settings b ON b.project = p.project AND b.key = ?
+		WHERE p.key = ? AND p.value = 'true'`, settingPausedBy, settingPaused)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]string, len(rows))
+	for _, r := range rows {
+		out[r.Project] = r.By
+	}
+	return out, nil
 }
 
 // GetBoardSettings returns a board's settings (defaults when none are stored).

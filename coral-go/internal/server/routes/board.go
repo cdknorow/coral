@@ -30,6 +30,7 @@ type BoardHandler struct {
 	terminal                      ptymanager.SessionTerminal
 	mu                            sync.RWMutex
 	paused                        map[string]bool      // in-memory set of paused project names
+	sleepPaused                   map[string]bool      // the paused boards whose pause sleep or Coral's restart put there, which auto-wake lifts (#286)
 	notifyFn                      func(project string) // triggers an immediate notification pass for project's board
 	coralDir                      string
 	alsoMu                        sync.Mutex    // serialises adding a later receipt to a received row (#4449)
@@ -198,6 +199,7 @@ func NewBoardHandler(bs *board.Store) *BoardHandler {
 	return &BoardHandler{
 		bs:                            bs,
 		paused:                        make(map[string]bool),
+		sleepPaused:                   make(map[string]bool),
 		reminders:                     make(map[string]context.CancelFunc),
 		subscriberReminderIntervals:   make(map[string]int),
 		subscriberReminderGenerations: make(map[string]uint64),
