@@ -335,7 +335,7 @@ func (h *BoardHandler) PostExternalArtifact(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	// One uniform answer for every switch that is off, so a sender cannot tell which.
-	if on, err := h.receivingOn(ctx, target, src, "", false); err != nil {
+	if on, err := h.receivingOn(ctx, r, target, src, "", false); err != nil {
 		errInternalServer(w, "could not read the board's settings")
 		return
 	} else if !on {
@@ -395,7 +395,7 @@ func (h *BoardHandler) PostExternalArtifact(w http.ResponseWriter, r *http.Reque
 	}
 	// The sender's claimed board, now that the metadata is read: in force, a file from a sender that is not on the list is the same uniform refusal as every other "no" (#5508). It has cost the
 	// sender's transfer quota, as an accepted file does.
-	if on, err := h.receivingOn(ctx, target, src, meta.FromCrossTeamID, true); err != nil {
+	if on, err := h.receivingOn(ctx, r, target, src, meta.FromCrossTeamID, true); err != nil {
 		errInternalServer(w, "could not read the board's settings")
 		return
 	} else if !on {
@@ -434,7 +434,7 @@ func (h *BoardHandler) PostExternalArtifact(w http.ResponseWriter, r *http.Reque
 	if receivedBeforeStore != nil {
 		receivedBeforeStore()
 	}
-	if on, err := h.receivingOn(ctx, target, src, meta.FromCrossTeamID, true); err != nil {
+	if on, err := h.receivingOn(ctx, r, target, src, meta.FromCrossTeamID, true); err != nil {
 		errInternalServer(w, "could not read the board's settings")
 		return
 	} else if !on {
@@ -483,7 +483,7 @@ var receivedBeforeStore func()
 // receivingOn reports whether the board takes files from src right now. Allowlist off: messaging on, src listed (the server list), files on. In force (#5508): files on, and (once the frame's metadata
 // has been read, claimKnown) the sender is on the board's list by BOTH the hub-verified server and the cross-team id it claims; before that only the files switch can be asked. Every "no" is the
 // same uniform answer.
-func (h *BoardHandler) receivingOn(ctx context.Context, target, src, claim string, claimKnown bool) (bool, error) {
+func (h *BoardHandler) receivingOn(ctx context.Context, r *http.Request, target, src, claim string, claimKnown bool) (bool, error) {
 	settings, err := h.bs.GetBoardSettings(ctx, target)
 	if err != nil {
 		return false, err
@@ -493,6 +493,16 @@ func (h *BoardHandler) receivingOn(ctx context.Context, target, src, claim strin
 			return false, nil
 		}
 		return !claimKnown || settings.AllowsRelayedSender(src, claim), nil
+	}
+	// The door follows what the connection's hub advertised, as for a message (#5865, #5862). A links connection admits by a fresh link from the sending team as Coral Hub names it
+	// (X-Coral-Hub-Source-Team, never the frame's own claim) with the board's messaging and files switches on; a connection whose hub no longer advertises links after one did admits
+	// nothing; a hub that never did keeps the switch, the board's server list and the files switch. The link table is read in every mode, so the reads do not tell the modes apart.
+	linked := h.links.admits(src, hubSourceTeam(r), target, h.linkNow())
+	switch h.DoorMode(ctx, r) {
+	case doorLinks:
+		return linked && settings.CrossTeamMessaging && settings.CrossTeamArtifacts, nil
+	case doorRefuse:
+		return false, nil
 	}
 	return settings.CrossTeamMessaging && settings.AllowsServer(src) && settings.CrossTeamArtifacts, nil
 }

@@ -692,7 +692,7 @@ func (h *BoardHandler) postRelayedExternalMessage(w http.ResponseWriter, r *http
 	// The files this message names (pushed before it, with its message id) are listed now, if the board
 	// still takes files (#4440).
 	if settings.CrossTeamArtifacts {
-		if on, err := h.receivingOn(ctx, target, src, validIDOrEmpty(body.FromCrossTeamID), true); err == nil && on {
+		if on, err := h.receivingOn(ctx, r, target, src, validIDOrEmpty(body.FromCrossTeamID), true); err == nil && on {
 			h.promotePending(target, src, body.Relay.MessageID, inbound.ID)
 		}
 	}
