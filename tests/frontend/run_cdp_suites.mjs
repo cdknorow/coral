@@ -534,7 +534,7 @@ async function startShard(n, gen = 0, strict = false, backend = MAIN_BACKEND) {
   // port read back is the one this Chrome bound (no race with other shards or processes).
   const profile = path.join(dir, 'profile');
   const chromeArgs = ['--headless=new', '--remote-debugging-port=0', `--user-data-dir=${profile}`,
-    '--no-first-run', '--no-default-browser-check', '--disable-gpu', '--window-size=1400,900',
+    '--no-first-run', '--no-default-browser-check', '--disable-gpu', '--window-size=1400,900', ...(process.env.CDP_NO_HOVER ? ['--blink-settings=primaryHoverType=1,availableHoverTypes=1,primaryPointerType=1,availablePointerTypes=1'] : []),
     ...(process.env.CI ? ['--no-sandbox', '--disable-dev-shm-usage'] : []),
     // CDP_NETLOG=1: Chrome writes its network log to <shard>/netlog.json, to see why a request failed.
     ...(process.env.CDP_NETLOG ? [`--log-net-log=${path.join(dir, 'netlog.json')}`] : []), 'about:blank'];

@@ -1688,13 +1688,13 @@
 .chat-attachment-unshare[hidden] { display: none; }
 .chat-attachment-unshare:hover { color: var(--text-primary); background: var(--bg-hover); }
 .chat-attachment-unshare:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-/* A trash icon, there on hover or focus; the focus-visible outline above shows it to the keyboard. On a touch screen or a phone it is not on the thumbnail: it is in the opened image's toolbar (#6137). */
+/* A trash icon, there on hover or focus; the focus-visible outline above shows it to the keyboard. On a touch screen or a phone it is not on the thumbnail: it is in the opened image's toolbar (#6137). These rules read the pointer type and the width, never (hover): a headless browser on a CI runner reports no hover at all and would have hidden the button on a desktop. */
 .chat-attachment-unshare .material-icons { font-size: 1.1rem; vertical-align: middle; }
-@media (hover: hover) and (min-width: 768px) {
+@media (min-width: 768px) and (not (pointer: coarse)) {
     .chat-attachment-unshare { opacity: 0; }
     .chat-attachment-image:hover > .chat-attachment-unshare, .chat-attachment-image:focus-within > .chat-attachment-unshare, .chat-attachment-unshare:focus-visible { opacity: 1; }
 }
-@media (hover: none), (max-width: 767px) { .chat-attachment-unshare { display: none !important; } }
+@media (pointer: coarse), (max-width: 767px) { .chat-attachment-unshare { display: none !important; } }
 
 /* A pasted image is one compact chip (the operator's report): the thumbnail with its remove button as a strip on its right edge, in one bordered box. The name chip shows
    only while there is no thumbnail (the image has not loaded, the link is gone, the shared copy was removed). */
