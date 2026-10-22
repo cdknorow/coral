@@ -62,12 +62,13 @@ const (
 	reasonNoRunRecord = "no_run_record"
 
 	// install_kind: how this Coral was installed, as the updater found it (#5388).
-	installApp        = "app"
-	installMSI        = "msi"
-	installPortable   = "portable"
-	installTarball    = "tarball"
-	installHomebrew   = "homebrew"
-	installUnwritable = "unwritable"
+	installApp          = "app"
+	installMSI          = "msi"
+	installPortable     = "portable"
+	installTarball      = "tarball"
+	installHomebrew     = "homebrew"
+	installUnwritable   = "unwritable"
+	installUnregistered = "unregistered"
 
 	// upgradeCommandHomebrew is what a Homebrew install is told to run: fixed text, never from the updater's record.
 	upgradeCommandHomebrew = "brew upgrade --cask coral"
@@ -112,7 +113,7 @@ type UpdateTrust struct {
 
 // installKinds, notReadyReasons and rollbackReasons are the vocabularies the status sends for the #5388 fields: anything else is not sent (or, for a roll-back's reason, is "other").
 var (
-	installKinds     = map[string]bool{installApp: true, installMSI: true, installPortable: true, installTarball: true, installHomebrew: true, installUnwritable: true}
+	installKinds     = map[string]bool{installApp: true, installMSI: true, installPortable: true, installTarball: true, installHomebrew: true, installUnwritable: true, installUnregistered: true}
 	notReadyReasons  = map[string]bool{"not_checked": true, "up_to_date": true, "not_promoted": true, "backoff": true, "check_failed": true, "unsupported_install": true, "switch_off": true, "applying": true}
 	rollbackReasons  = map[string]bool{"did_not_start": true, "not_healthy": true, "swap_failed": true, "verify_failed": true}
 	rollbackOtherTag = "other"

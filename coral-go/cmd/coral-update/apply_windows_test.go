@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/subgentic/coral/internal/updater/apply"
+	"github.com/subgentic/coral/internal/updater/status"
 	"github.com/subgentic/coral/internal/updater/trigger"
 	"github.com/subgentic/coral/internal/updater/verify"
 )
@@ -117,14 +118,33 @@ func TestRunApplyThatInstallsNothingStartsCoralFromTheMarkersFolder(t *testing.T
 	})
 }
 
-// The status says whether the apply can update this install, for the server to ask before it quits.
+// The status says what this install is and whether the apply can update it, as the one install object every platform fills, for the server to ask before it quits
+// (trigger.Preflight reads it).
 func TestStatusSaysWhetherThisInstallCanBeUpdated(t *testing.T) {
 	old := newWindowsMSI
 	t.Cleanup(func() { newWindowsMSI = old })
-	newWindowsMSI = func(string) apply.MSI { return noProductMSI{asked: new(bool)} }
-	assert.Equal(t, "no_registered_product", installSupport())
-	newWindowsMSI = func(string) apply.MSI { return portableMSI{why: "portable_install"} }
-	assert.Equal(t, "portable_install", installSupport())
+	for name, tc := range map[string]struct {
+		msi  apply.MSI
+		want status.Install
+	}{
+		"no registered product":        {noProductMSI{asked: new(bool)}, status.Install{Kind: "unregistered", Unsupported: "no_registered_product"}},
+		"a portable copy":              {portableMSI{why: "portable_install"}, status.Install{Kind: "portable", Unsupported: "portable_install"}},
+		"an unreadable install folder": {portableMSI{why: "unreadable_install"}, status.Install{Kind: "unwritable", Unsupported: "unreadable_install"}},
+		"a registered per-machine MSI": {portableMSI{why: ""}, status.Install{Kind: "msi", Writable: true}},
+	} {
+		newWindowsMSI = func(string) apply.MSI { return tc.msi }
+		got := probeInstall()
+		require.NotNil(t, got, name)
+		assert.Equal(t, tc.want, *got, name)
+	}
+	// and it is in the status the server reads, as the object
 	newWindowsMSI = func(string) apply.MSI { return portableMSI{why: ""} }
-	assert.Equal(t, "supported", installSupport())
+	var out bytes.Buffer
+	require.Equal(t, 0, runStatus([]string{"status", "--json"}, func(string) string { return "" }, &out))
+	var got struct {
+		Install *status.Install `json:"install"`
+	}
+	require.NoError(t, json.Unmarshal(out.Bytes(), &got))
+	require.NotNil(t, got.Install)
+	assert.Equal(t, status.Install{Kind: "msi", Writable: true}, *got.Install)
 }
