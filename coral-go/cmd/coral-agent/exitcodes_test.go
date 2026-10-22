@@ -95,6 +95,6 @@ func TestAgentNoCommandPrintsARawErrorBody(t *testing.T) {
 		code, _, stderr := runAgent(t, srv.URL, args...)
 		assert.NotEqual(t, 0, code, "%v", args)
 		assert.NotContains(t, stderr, `{"code"`, "%v prints the words, not the JSON: %q", args, stderr)
-		assert.Contains(t, stderr, "(HTTP 403)", "%v: %q", args, stderr)
+		assert.Contains(t, stderr, "HTTP 403)", "%v: %q", args, stderr)
 	}
 }

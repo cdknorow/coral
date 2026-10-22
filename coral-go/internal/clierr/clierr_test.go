@@ -163,3 +163,12 @@ func TestDescribeCutsAtACharacterBoundary(t *testing.T) {
 		assert.Contains(t, got, "...")
 	}
 }
+
+// The server's machine-readable code stays in the words, so a script or an agent that matches on it still can (#126: agent_task_cli wants session_token_required).
+func TestDescribeKeepsTheServersCode(t *testing.T) {
+	assert.Equal(t, "Coral says: Unknown session (session_token_required, HTTP 401)", Describe(nil, 401, []byte(`{"error":"Unknown session","code":"session_token_required"}`)))
+	assert.Equal(t, "Coral says: not on that board (identity_mismatch, HTTP 403)", Describe(nil, 403, []byte(`{"code":"identity_mismatch","detail":{"a":1},"message":"not on that board"}`)))
+	assert.Equal(t, "Coral returned an error (not_linked, HTTP 503)", Describe(nil, 503, []byte(`{"code":"not_linked"}`)))
+	assert.Equal(t, "Coral says: no (HTTP 400)", Describe(nil, 400, []byte(`{"error":"no","code":"has space and \u001b[31mcontrol"}`)), "a code that is not plain is dropped")
+	assert.Equal(t, "Coral says: no (HTTP 400)", Describe(nil, 400, []byte(`{"error":"no"}`)), "no code: as before")
+}

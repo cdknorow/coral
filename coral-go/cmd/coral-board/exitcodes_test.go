@@ -111,6 +111,6 @@ func TestNoCommandPrintsARawErrorBody(t *testing.T) {
 		res := runBoard(t, srv.URL, dir, args...)
 		assert.NotEqual(t, 0, res.code, "%v", args)
 		assert.NotContains(t, res.stderr, `{"code"`, "%v prints the words, not the JSON: %q", args, res.stderr)
-		assert.Contains(t, res.stderr, "(HTTP 403)", "%v: %q", args, res.stderr)
+		assert.Contains(t, res.stderr, "HTTP 403)", "%v: %q", args, res.stderr)
 	}
 }

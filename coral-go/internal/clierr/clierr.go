@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -205,6 +206,9 @@ var warnOnce sync.Once
 
 // Describe is the words for a failed request in one line: the transport error if there was one (CannotReach's text), else "Coral says: <its message> (HTTP <status>)"
 // (its message or error field, else the body trimmed). It never prints "<nil>" for a request that got an answer.
+// codeShape is a plain error code: letters, digits, underscore, dot and dash.
+var codeShape = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,64}$`)
+
 func Describe(err error, status int, body []byte) string {
 	if err != nil {
 		return err.Error()
@@ -212,13 +216,21 @@ func Describe(err error, status int, body []byte) string {
 	var reply struct {
 		Message string `json:"message"`
 		Error   string `json:"error"`
+		Code    string `json:"code"`
 	}
 	text := strings.TrimSpace(string(body))
+	code := ""
 	if json.Unmarshal(body, &reply) == nil {
 		if reply.Message != "" {
 			text = reply.Message
 		} else if reply.Error != "" {
 			text = reply.Error
+		} else {
+			text = "" // a JSON answer without words (only a code): never print the raw JSON
+		}
+		// A machine-readable code (session_token_required, identity_mismatch) is what scripts and agents match on: it stays in the words. Only a plain code is kept.
+		if codeShape.MatchString(reply.Code) {
+			code = reply.Code
 		}
 	}
 	// The words come from whatever answered at CORAL_URL: no terminal control, one line, cut at a character boundary.
@@ -230,8 +242,12 @@ func Describe(err error, status int, body []byte) string {
 		}
 		text = text[:cut] + "..."
 	}
-	if text == "" {
-		return fmt.Sprintf("Coral returned an error (HTTP %d)", status)
+	where := fmt.Sprintf("HTTP %d", status)
+	if code != "" {
+		where = code + ", " + where
 	}
-	return fmt.Sprintf("Coral says: %s (HTTP %d)", text, status)
+	if text == "" {
+		return fmt.Sprintf("Coral returned an error (%s)", where)
+	}
+	return fmt.Sprintf("Coral says: %s (%s)", text, where)
 }
