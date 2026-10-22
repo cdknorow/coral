@@ -154,6 +154,10 @@ func main() {
 	// DevTools give script access to the signed-in dashboard: only a dev build opens them, whatever --debug or CORAL_DEBUG
 	// say (they switch the debug LOG on in every build, #78 W2).
 	devTools := debugMode && config.TierDevTools
+	// WebView2's profile (the dashboard's sign-in cookie) belongs on this computer, not in the Roaming folder: set before the window exists.
+	if useLocalWebViewProfile() != "" {
+		log.Println("[WEBVIEW] the profile is in a local folder (not the Roaming folder)") // no path: the log carries no user name
+	}
 	log.Printf("[WEBVIEW] creating webview (devtools=%v)", devTools)
 	w := webview.New(devTools)
 	webviewInstance = w
