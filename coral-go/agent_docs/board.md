@@ -514,7 +514,7 @@ DELETE /api/board/{project}/groups/{groupID}/members/{subscriberID}
 
 ## Cross-team messaging
 
-Orchestrators can message other teams' Orchestrators with `coral-board send`. It is off by default; see [cross-team.md](cross-team.md) for the rules. The API:
+Orchestrators can message other teams' Orchestrators with `coral-board send`. For teams on other computers, the messaging and file switches default to on as kill switches: a fresh Coral Hub team link grants permission, and an explicit off holds. Teams on this computer, and a hub that never advertised links, still need explicit opt-ins; see [cross-team.md](cross-team.md) for the rules. The API:
 
 ### Send a Cross-team Message
 
