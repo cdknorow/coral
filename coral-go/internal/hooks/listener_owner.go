@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"strconv"
 	"sync"
+	"time"
 )
 
 // ForeignListenerError: the agent's session token was not sent to a Coral on this computer, because the process listening on
@@ -32,9 +33,18 @@ func (e *ForeignListenerError) TokenWithheld() bool { return true }
 // owner. It does nothing on platforms without the check.
 var AllowTestServerListener bool
 
-// listenerVerified remembers, for this process, each local Coral address already checked ("host:port" -> its error, nil when the
-// listener is this user's), so the check (the platform's checkListener) runs once per address, not once per request.
+// Cache only briefly: another process may take Coral's port after it stops, and a
+// transient lookup failure must not refuse a long-running tool forever.
+const listenerPassTTL = 30 * time.Second
+const listenerErrorTTL = 2 * time.Second
+
+type listenerVerdict struct {
+	err   error
+	until time.Time
+}
+
 var listenerVerified sync.Map
+var listenerNow = time.Now
 
 // verifyLocalListener: u is a Coral on this computer (loopback or one of its own addresses); its listener must be this user's.
 func verifyLocalListener(u *url.URL) error {
@@ -48,17 +58,18 @@ func verifyLocalListener(u *url.URL) error {
 		}
 	}
 	key := net.JoinHostPort(host, strconv.Itoa(port))
+	now := listenerNow()
 	if v, ok := listenerVerified.Load(key); ok {
-		if v == nil {
-			return nil
+		verdict := v.(listenerVerdict)
+		if now.Before(verdict.until) {
+			return verdict.err
 		}
-		return v.(error)
 	}
 	err = checkListener(host, port)
-	if err == nil {
-		listenerVerified.Store(key, nil)
-	} else {
-		listenerVerified.Store(key, err)
+	ttl := listenerPassTTL
+	if err != nil {
+		ttl = listenerErrorTTL
 	}
+	listenerVerified.Store(key, listenerVerdict{err: err, until: now.Add(ttl)})
 	return err
 }
