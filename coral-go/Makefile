@@ -23,13 +23,13 @@ DEV_LDFLAGS := -ldflags "-X github.com/subgentic/coral/internal/config.DevBase=$
 .PHONY: dev
 dev: sync-docs
 	@mkdir -p $(BINDIR)
-	$(CGO_OPENSSL_FLAGS) go build -tags "dev fts5" $(DEV_LDFLAGS) -o $(BINDIR)/ $(CMD_PACKAGES)
+	$(CGO_OPENSSL_FLAGS) go build -trimpath -tags "dev fts5" $(DEV_LDFLAGS) -o $(BINDIR)/ $(CMD_PACKAGES)
 
 # Production build
 .PHONY: build
 build: sync-docs
 	@mkdir -p $(BINDIR)
-	$(CGO_OPENSSL_FLAGS) go build -tags fts5 $(DEV_LDFLAGS) -o $(BINDIR)/ $(CMD_PACKAGES)
+	$(CGO_OPENSSL_FLAGS) go build -trimpath -tags fts5 $(DEV_LDFLAGS) -o $(BINDIR)/ $(CMD_PACKAGES)
 
 # Dev build + run
 .PHONY: run

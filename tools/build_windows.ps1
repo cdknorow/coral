@@ -36,25 +36,25 @@ $env:GOOS = "windows"
 $env:GOARCH = "amd64"
 $env:CGO_ENABLED = "0"
 
-go build -ldflags "-s -w -X github.com/subgentic/coral/internal/config.Version=$Version" -o (Join-Path $BinDir "coral.exe") ./cmd/coral/
+go build -trimpath -ldflags "-s -w -X github.com/subgentic/coral/internal/config.Version=$Version" -o (Join-Path $BinDir "coral.exe") ./cmd/coral/
 if ($LASTEXITCODE -ne 0) { throw "Go build failed for coral" }
 
 Write-Host "Building launch-coral.exe..." -ForegroundColor Yellow
-go build -ldflags "-s -w -X github.com/subgentic/coral/internal/config.Version=$Version" -o (Join-Path $BinDir "launch-coral.exe") ./cmd/launch-coral/
+go build -trimpath -ldflags "-s -w -X github.com/subgentic/coral/internal/config.Version=$Version" -o (Join-Path $BinDir "launch-coral.exe") ./cmd/launch-coral/
 if ($LASTEXITCODE -ne 0) { throw "Go build failed for launch-coral" }
 
 Write-Host "Building coral-board.exe..." -ForegroundColor Yellow
-go build -ldflags "-s -w -X github.com/subgentic/coral/internal/config.Version=$Version" -o (Join-Path $BinDir "coral-board.exe") ./cmd/coral-board/
+go build -trimpath -ldflags "-s -w -X github.com/subgentic/coral/internal/config.Version=$Version" -o (Join-Path $BinDir "coral-board.exe") ./cmd/coral-board/
 if ($LASTEXITCODE -ne 0) { throw "Go build failed for coral-board" }
 
 Write-Host "Building coral-agent.exe..." -ForegroundColor Yellow
-go build -ldflags "-s -w -X github.com/subgentic/coral/internal/config.Version=$Version" -o (Join-Path $BinDir "coral-agent.exe") ./cmd/coral-agent/
+go build -trimpath -ldflags "-s -w -X github.com/subgentic/coral/internal/config.Version=$Version" -o (Join-Path $BinDir "coral-agent.exe") ./cmd/coral-agent/
 if ($LASTEXITCODE -ne 0) { throw "Go build failed for coral-agent" }
 
 # Hook binaries
 foreach ($hook in @("coral-hook-agentic-state", "coral-hook-task-sync", "coral-hook-message-check", "coral-hook-session-start", "coral-update")) {
     Write-Host "Building $hook.exe..." -ForegroundColor Yellow
-    go build -ldflags "-s -w" -o (Join-Path $BinDir "$hook.exe") "./cmd/$hook/"
+    go build -trimpath -ldflags "-s -w" -o (Join-Path $BinDir "$hook.exe") "./cmd/$hook/"
     if ($LASTEXITCODE -ne 0) { throw "Go build failed for $hook" }
 }
 
@@ -62,7 +62,7 @@ foreach ($hook in @("coral-hook-agentic-state", "coral-hook-task-sync", "coral-h
 $env:CGO_ENABLED = "1"
 
 Write-Host "Building coral-tray.exe..." -ForegroundColor Yellow
-go build -ldflags "-s -w -X github.com/subgentic/coral/internal/config.Version=$Version -H windowsgui" -o (Join-Path $BinDir "coral-tray.exe") ./cmd/coral-tray/
+go build -trimpath -ldflags "-s -w -X github.com/subgentic/coral/internal/config.Version=$Version -H windowsgui" -o (Join-Path $BinDir "coral-tray.exe") ./cmd/coral-tray/
 if ($LASTEXITCODE -ne 0) {
     Write-Host "  WARN: coral-tray build failed (requires C compiler) — skipping" -ForegroundColor Yellow
 } else {
@@ -70,7 +70,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host "Building coral-app.exe..." -ForegroundColor Yellow
-go build -tags webview -ldflags "-s -w -H windowsgui" -o (Join-Path $BinDir "coral-app.exe") ./cmd/coral-app/
+go build -trimpath -tags webview -ldflags "-s -w -H windowsgui" -o (Join-Path $BinDir "coral-app.exe") ./cmd/coral-app/
 if ($LASTEXITCODE -ne 0) {
     Write-Host "  WARN: coral-app build failed (requires C compiler + WebView2) — skipping" -ForegroundColor Yellow
 } else {
