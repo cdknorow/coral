@@ -257,3 +257,24 @@ func TestPostRefusesAMisspeltOptionAfterTheText(t *testing.T) {
 	res = runBoard(t, srv.URL, dir, "post", "--", "see", "--help")
 	assert.Equal(t, 0, res.code, res.stderr)
 }
+
+// Flags inside the text of a post are text: only a separate argument one letter off --to or --file, after the words, is taken for a typo.
+func TestPostTreatsFlagsInTextAsText(t *testing.T) {
+	for _, args := range [][]string{
+		{"post", "use --force here"},
+		{"post", "run go test --count=1"},
+		{"post", "use", "--force", "here"},
+		{"post", "pass", "--verbose", "to", "it"},
+		{"post", "hello", "--on"},
+	} {
+		srv := newRecordingServer(t)
+		res := runBoard(t, srv.URL, subscribedDataDir(t, srv.URL), args...)
+		assert.Equal(t, 0, res.code, "%v: %q", args, res.stderr)
+		assert.Len(t, srv.requests(), 1, "%v", args)
+	}
+	srv := newRecordingServer(t)
+	res := runBoard(t, srv.URL, subscribedDataDir(t, srv.URL), "post", "hello", "--too", "Lead")
+	assert.Equal(t, 2, res.code)
+	assert.Contains(t, res.stderr, "did you mean --to")
+	assert.Empty(t, srv.requests())
+}
