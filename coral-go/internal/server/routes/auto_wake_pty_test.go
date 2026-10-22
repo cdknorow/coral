@@ -96,12 +96,17 @@ func TestAutoWakeOnARealPTYResumesTheConversation(t *testing.T) {
 	assert.Empty(t, launches.sentTo(naming.SessionName("claude", slept)), "nothing is launched for the Operator's sleep")
 	// And it reached the shell: the screen shows the launch line itself, or the handoff script's path
 	// (so a handoff that never runs still fails here).
-	reached := regexp.MustCompile(`--resume ` + stopped + `|coral-command-[0-9]+\.(ps1|sh)`)
+	// Compared with the white space taken out: a shell that edits its line (macOS's /bin/sh is bash 3.2 with readline) redraws it where it wraps at the terminal's 80 columns, and the redraw leaves a
+	// space inside whatever word the wrap fell in ("--resume 5c1 e0a7d-..."), at a place that depends on how long the temp paths are.
+	reached := regexp.MustCompile(`--resume` + stopped + `|coral-command-[0-9]+\.(ps1|sh)`)
+	flat := func(b []byte) string {
+		return strings.Join(strings.Fields(ansiSeq.ReplaceAllString(string(b), "")), "")
+	}
 	deadline := time.Now().Add(5 * time.Second)
 	var replay string
 	for time.Now().Before(deadline) {
 		b, _ := pty.Replay(name)
-		if replay = ansiSeq.ReplaceAllString(string(b), ""); reached.MatchString(replay) { // PowerShell colours the words
+		if replay = flat(b); reached.MatchString(replay) { // PowerShell colours the words
 			break
 		}
 		time.Sleep(100 * time.Millisecond) // sleep-ok: the shell echoes the typed line
