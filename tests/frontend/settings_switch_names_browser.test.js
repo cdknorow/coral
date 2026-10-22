@@ -28,10 +28,12 @@ const REPEAT_OK = new Set([]);
         await ev(`window.__coralReady.startup('liveList', 'settings')`);
         await ev(`(async () => { await window.showSettingsModal(); return true; })()`);
         await waitFor(`getComputedStyle(document.getElementById('settings-modal')).display !== 'none'`, 'Settings opens', 10000);
-        // Show every pane and every row that is hidden until a state holds, so each switch is in the accessibility tree.
-        await ev(`(() => { const m = document.getElementById('settings-modal'); for (const e of m.querySelectorAll('[hidden]')) { if (e.querySelector('input[type=checkbox]') || e.matches('input[type=checkbox]') || e.closest('[data-cloud], .settings-cloud-switch-row, #tb-autowake')) e.hidden = false; }
+        // The Hub block re-hides its rows while it reads the status after Settings opens: wait for that first render, then show every pane and every row that is hidden until a state holds, so each switch is in the accessibility tree.
+        await waitFor(`!!document.querySelector('#settings-cloud[data-cloud-bound]')`, 'the Hub block is bound', 10000);
+        const reveal = () => ev(`(() => { const m = document.getElementById('settings-modal'); for (const e of m.querySelectorAll('[hidden]')) { if (e.querySelector('input[type=checkbox]') || e.matches('input[type=checkbox]') || e.closest('[data-cloud], .settings-cloud-switch-row, #tb-autowake')) e.hidden = false; }
             for (const e of m.querySelectorAll('.settings-pane')) { e.hidden = false; e.style.display = 'block'; } for (const id of ['tb-autowake', 'settings-terminal-backend']) { const e = document.getElementById(id); if (e) { e.hidden = false; e.style.display = 'block'; } }
             for (const e of m.querySelectorAll('[hidden]')) if (e.contains(m.querySelector('input[type=checkbox]:not([data-x])')) === false && e.querySelector('input[type=checkbox]')) e.hidden = false; return true; })()`);
+        await reveal(); await new Promise(r => setTimeout(r, 400)); await reveal(); // sleep-ok: a second reveal after the status answer, which is the thing being waited out
         await Accessibility.enable(); await DOM.enable();
         const { root } = await DOM.getDocument({ depth: 0 });
         const ids = await ev(`[...document.querySelectorAll('#settings-modal input[type=checkbox]')].map((e, i) => { e.setAttribute('data-ax-probe', i); return e.id || e.name || ('#' + i); })`);
