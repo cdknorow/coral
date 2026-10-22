@@ -2,9 +2,9 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"github.com/subgentic/coral/internal/cliauth"
+	"github.com/subgentic/coral/internal/clierr"
 	"github.com/subgentic/coral/internal/hooks"
 	"github.com/subgentic/coral/internal/testguard"
 	"github.com/subgentic/coral/internal/tmux"
@@ -174,11 +174,10 @@ func resolveViaPID() *pidResolution {
 	}
 
 	resp, err := http.Get(serverURL + "/api/sessions/resolve?pids=" + strings.Join(pidStrs, ","))
-	var plainHTTP *hooks.PlainHTTPTokenError
-	var foreign *hooks.ForeignListenerError
-	if errors.As(err, &plainHTTP) || errors.As(err, &foreign) {
-		// Say why the token wasn't sent, or the agent only sees "Not subscribed to any board" (#224).
-		fmt.Fprintln(os.Stderr, "[coral-board] "+errors.Unwrap(err).Error())
+	if err != nil && clierr.KindOf(err) == clierr.Refused {
+		// The token was withheld (a foreign program on Coral's port, #99): the command that then fails ("Not subscribed to any
+		// board") exits refused (5), as coral-agent does, not 1 (Security's #260 pass).
+		clierr.Note(clierr.Refused)
 	}
 	if err != nil || resp.StatusCode != http.StatusOK {
 		return nil
