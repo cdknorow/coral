@@ -1,7 +1,7 @@
 // Ctrl+C and Ctrl+V in the agent's terminal on Windows (#312, QA's #311 in the real Coral app), as Windows Terminal has them:
 //  - Ctrl+C with a selection copies it (to the clipboard) and clears it, and sends nothing; with no selection it is ^C to the agent;
 //  - Ctrl+V pastes the clipboard's text through the terminal's paste path (bracketed when the program asked for it);
-//  - Ctrl+V with an image and no text sends ^V, which Claude Code and Codex read as "paste the image from the clipboard";
+//  - Ctrl+V with an image and no text sends the agent's image-paste key: Alt+V (ESC v) to Claude Code, ^V to Codex, nothing to others;
 //  - on another platform (Linux here) Ctrl+C stays ^C even with a selection, and Ctrl+V does not paste.
 // The page is told it runs on Windows (or Linux) before it loads; keys are real key events (Input.dispatchKeyEvent; a paste
 // key carries the editing command a real press runs). A fake socket records what reaches the agent.
@@ -122,12 +122,16 @@ const BASE = require('./test_base').BASE;
         // a paste's newline reaches the program as Enter (CR), as in any terminal; inside the brackets it is text, not a command
         assert.equal(await sent(), '\u001b[200~a[201~echo hi\r\u001b[201~','the inner marker is plain text inside the one paste; the line is pasted, not run');
 
-        console.log('4. Windows: Ctrl+V with an image and no text sends ^V (the agent\'s own image paste)');
+        console.log('4. Windows: Ctrl+V with an image and no text sends the agent\'s own image-paste key, by its type (QA on #138)');
         await ev(`(async () => { const c = document.createElement('canvas'); c.width = c.height = 2; const blob = await new Promise(r => c.toBlob(r, 'image/png'));
             await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]); return true; })()`);
-        await fresh();
-        await press('v', { ctrl: true, commands: ['paste'] });
-        assert.equal(await sent(), '\u0016');
+        // the type comes from the session the socket was opened for (each case is a new session, so a new socket)
+        for (const [type, key] of [['claude', '\u001bv'], ['codex', '\u0016'], ['agy', ''], ['', '']]) {
+            await ev(`window.T.x.connectTerminalWs('t1', ${JSON.stringify(type)}, 'sess-img-${type || 'none'}', 'local'); new Promise(r => setTimeout(r, 60))`); // sleep-ok: the fake socket opens on a timer
+            await fresh();
+            await press('v', { ctrl: true, commands: ['paste'] });
+            assert.equal(await sent(), key, `the image key for agent type '${type}' (Claude Code: Alt+V; Codex: ^V; any other: nothing)`);
+        }
 
         console.log('5. Ctrl+Shift+C and Ctrl+Shift+V are not taken (they keep their own behaviour)');
         await writeClipboard('kept');

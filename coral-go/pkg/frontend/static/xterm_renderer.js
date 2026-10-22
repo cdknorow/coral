@@ -335,6 +335,7 @@ export function updateTerminalTheme() {
 // and a generation counter to suppress stale onclose reconnects.
 let _connectedSessionId = null;
 let _connectedServer = 'local';
+let _connectedAgentType = ''; // the session's agent type (claude, codex, ...), for its image-paste key
 let _wsGeneration = 0;
 // Reconnect pacing (#3944): a dropped terminal socket retries with the live feed's backoff and jitter, so every open
 // terminal does not knock in the same second after a server restart, and a refused socket does not retry every 3 s
@@ -426,14 +427,19 @@ function _onPaste(e) {
     const fromCtrlV = _ctrlVAt && Date.now() - _ctrlVAt < 1000;
     _ctrlVAt = 0;
     const text = e.clipboardData ? e.clipboardData.getData('text/plain') : '';
-    // Ctrl+V with an image and no text (#312): the agent's own ^V, which Claude Code and Codex read as "paste the image from the
-    // clipboard", so taking Ctrl+V for text paste costs them nothing.
-    if (fromCtrlV && !text && clipboardHasImage(e.clipboardData)) {
-        terminal.input('\x16', true);
+    // Ctrl+V with an image and no text (#312): the key the agent reads as "paste the image from the clipboard", so taking
+    // Ctrl+V for text paste costs it nothing. Another agent gets nothing (an empty paste).
+    const imageKey = IMAGE_PASTE_KEYS[_connectedAgentType];
+    if (fromCtrlV && !text && imageKey && clipboardHasImage(e.clipboardData)) {
+        terminal.input(imageKey, true);
         return;
     }
     pasteText(text);
 }
+
+// The image-paste key of each agent's CLI on Windows, checked live (#312, QA): Claude Code takes Alt+V (ESC v), not Ctrl+V;
+// Codex takes ^V. Fixed keys, by the session's agent type; never anything from the clipboard.
+const IMAGE_PASTE_KEYS = { claude: '\x1bv', codex: '\x16' };
 
 function clipboardHasImage(data) {
     if (!data || !data.items) return false;
@@ -833,6 +839,7 @@ export function connectTerminalWs(name, agentType, sessionId, server) {
     const myGeneration = ++_wsGeneration;
     _connectedSessionId = sessionId;
     _connectedServer = srv;
+    _connectedAgentType = String(agentType || '').toLowerCase();
     _paneClosed = false;
     _pane = null;       // until this server reports the pane's size (terminal_size, #3422)
     _seq = 0;
