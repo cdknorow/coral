@@ -144,3 +144,51 @@ func TestLoginTokenRefusesAnotherUser(t *testing.T) {
 	}
 	assert.Equal(t, 1, strings.Count(logs.String(), "can't tell which user"), "logged once")
 }
+
+// #6100: the Coral app opens its sign-in link with coral_client=app, and the session that link makes is named "Coral app on ..." on the Sessions
+// page, so a person can tell it from their own browser and sign it out. The name is the only difference: another value, or another way of
+// signing in, gets the ordinary browser label, and the parameter never stays in the address.
+func TestTheCoralAppsSignInLinkNamesItsSession(t *testing.T) {
+	dir := t.TempDir()
+	ks, err := NewKeyStore(dir)
+	require.NoError(t, err)
+	h := Middleware(ks)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(299) }))
+	const edge = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36 Edg/155.0.0.0"
+	signIn := func(query string) (location string) {
+		token, err := ks.WriteLoginTokenFile(dir)
+		require.NoError(t, err)
+		r := httptest.NewRequest("GET", "/?"+query+"login_token="+token, nil)
+		r.RemoteAddr = "203.0.113.5:1234"
+		r.Host = "localhost:8420"
+		r.Header.Set("User-Agent", edge)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, r)
+		require.Equal(t, http.StatusFound, rec.Code)
+		return rec.Header().Get("Location")
+	}
+	labels := func() []string {
+		list, err := ks.backend().ListSessions(t.Context())
+		require.NoError(t, err)
+		var out []string
+		for _, s := range list {
+			out = append(out, s.Label)
+		}
+		return out
+	}
+
+	assert.Equal(t, "/", signIn("coral_client=app&"), "the mark is not left in the address")
+	assert.Equal(t, []string{"Coral app on Windows"}, labels(), "the app's link names its session")
+
+	assert.Equal(t, "/", signIn(""))
+	assert.ElementsMatch(t, []string{"Coral app on Windows", "Edge on Windows"}, labels(), "a link without the mark is the person's own browser")
+
+	assert.Equal(t, "/", signIn("coral_client=other&"))
+	assert.ElementsMatch(t, []string{"Coral app on Windows", "Edge on Windows", "Edge on Windows"}, labels(), "another value changes nothing")
+
+	// Only a sign-in link carries the name: a session from the API-key form is a browser's, whatever the address says.
+	r := httptest.NewRequest("POST", "/?coral_client=app", nil)
+	r.Header.Set("User-Agent", edge)
+	assert.Equal(t, "Edge on Windows", newSessionLabel(r, SessionByKey))
+	assert.Equal(t, "Coral app on Windows", newSessionLabel(r, SessionByLink))
+	assert.Equal(t, "Coral app", appSessionLabel("Mozilla/5.0 (X11; U; unknown)"), "an unknown system: just the app's name")
+}

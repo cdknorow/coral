@@ -44,6 +44,13 @@ var loginFileExpiry = loginTokenTTL
 // LoginTokenParam is the query parameter that carries a login token.
 const LoginTokenParam = "login_token"
 
+// AppClientParam is the query parameter the Coral app adds to the sign-in link it opens (AppClientApp as its value): the session that link makes
+// is named "Coral app on ..." on the Sessions page (#6100), so a person can tell it from their own browser and sign it out. Only a name.
+const (
+	AppClientParam = "coral_client"
+	AppClientApp   = "app"
+)
+
 // LoginTokenFile is the file in the data folder that holds the startup token.
 const LoginTokenFile = "login_token"
 
@@ -199,6 +206,7 @@ func (ks *KeyStore) handleLoginToken(w http.ResponseWriter, r *http.Request) boo
 	// link means (%40 would read as the @server marker, %2F as a segment; #3532).
 	q := r.URL.Query()
 	q.Del(LoginTokenParam)
+	q.Del(AppClientParam)
 	target := (&url.URL{Path: r.URL.Path, RawPath: r.URL.RawPath, RawQuery: q.Encode()}).String()
 	// One leading "/": "//host/..." (or "/\host", which browsers read the same) would be
 	// another host (Security, #3532).

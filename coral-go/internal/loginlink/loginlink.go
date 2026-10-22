@@ -129,6 +129,26 @@ func Redact(link string) string {
 	return u.String()
 }
 
+// AppParam and AppValue mark a sign-in link as the Coral app's (auth.AppClientParam, auth.AppClientApp): the session it makes is named "Coral app
+// on ..." on the Sessions page.
+const (
+	AppParam = "coral_client"
+	AppValue = "app"
+)
+
+// MarkApp adds the Coral app's mark to a link that carries a login token, leaving its path exactly as it is; any other URL is returned as it was.
+func MarkApp(link string) string {
+	u, err := url.Parse(link)
+	if err != nil || u.Query().Get(Param) == "" || u.Query().Get(AppParam) == AppValue {
+		return link
+	}
+	if u.RawQuery != "" {
+		u.RawQuery += "&"
+	}
+	u.RawQuery += AppParam + "=" + AppValue
+	return u.String()
+}
+
 // HasToken reports whether link already carries a login token.
 func HasToken(link string) bool {
 	u, err := url.Parse(link)

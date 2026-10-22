@@ -69,3 +69,20 @@ func TestOnPage(t *testing.T) {
 		t.Errorf("a link without a token is unchanged, got %q", got)
 	}
 }
+
+// #6100: the Coral app marks the sign-in link it opens; the path stays as it was, and a URL with no login token is left alone.
+func TestMarkApp(t *testing.T) {
+	for in, want := range map[string]string{
+		"http://127.0.0.1:8420/?login_token=t%2Bk":              "http://127.0.0.1:8420/?login_token=t%2Bk&coral_client=app",
+		"http://127.0.0.1:8420/team/@m2/qa?login_token=t&q=x":   "http://127.0.0.1:8420/team/@m2/qa?login_token=t&q=x&coral_client=app",
+		"http://127.0.0.1:8420/board/%40odd?login_token=t":      "http://127.0.0.1:8420/board/%40odd?login_token=t&coral_client=app",
+		"http://127.0.0.1:8420/?login_token=t&coral_client=app": "http://127.0.0.1:8420/?login_token=t&coral_client=app",
+		"http://127.0.0.1:8420/":                                "http://127.0.0.1:8420/",
+		"http://127.0.0.1:8420/chats?q=x":                       "http://127.0.0.1:8420/chats?q=x",
+		"::not a url":                                           "::not a url",
+	} {
+		if got := MarkApp(in); got != want {
+			t.Errorf("MarkApp(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
