@@ -2085,7 +2085,7 @@
 .server-group-state { color: var(--text-secondary); font-weight: 400; font-style: italic; white-space: nowrap; }
 .server-group-header.is-down .server-group-icon,
 .server-group-header.is-down .server-group-name { opacity: 0.5; }
-/* A team or folder header is the button that collapses its group (no chevron, #3507 v4). */
+/* A folder header is the button that collapses its group; a team header opens the team, and its chevron (#5989) is the one control that collapses. */
 .session-group-header[role="button"]:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: var(--radius-md); }
 .server-group-toggle .session-group-count { margin-left: auto; }
 .server-group-more > summary.sidebar-kebab-btn { display: block; } /* a <summary> sized and placed as the other headers' kebab buttons */
@@ -2191,3 +2191,18 @@
 /* Team settings > Workflow: the preset editor is behind "Edit presets"; the working mode comes first (UI audit #5589, finding 9). */
 .workflow-presets-section { --dz-width: auto; --dz-pad: 2px 0; --dz-gap: 10px; }
 .workflow-presets-section:not([open]) { gap: 0; }
+
+.group-chevron { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; margin-left: -6px; padding: 0; border: 0; border-radius: var(--radius-md); background: transparent; color: var(--text-secondary); cursor: pointer; }
+.group-chevron:hover { background: var(--bg-hover); color: var(--text-primary); }
+.group-chevron:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.group-chevron svg { transition: transform .12s; }
+.group-chevron[aria-expanded="false"] svg { transform: rotate(-90deg); }
+@media (pointer: coarse) { .group-chevron { width: 44px; height: 44px; margin-left: -12px; } }
+@media (prefers-reduced-motion: reduce) { .group-chevron svg { transition: none; } }
+#team-agents-list:not(:empty) + .team-agents-empty { display: none; }
+.team-agents-empty { margin: .6rem 0; color: var(--text-secondary); font-size: var(--fs-base); }
+#team-goal { width: 100%; box-sizing: border-box; resize: vertical; font: inherit; }
+.group-chevron-deco { pointer-events: none; margin-left: -8px; }
+.session-group-header[aria-expanded="false"] > .group-chevron-deco svg { transform: rotate(-90deg); }
+@media (pointer: coarse) { .group-chevron-deco { width: 44px; height: 24px; margin-left: -12px; } }
+.req-mark { font-weight: 400; color: var(--text-secondary); font-size: var(--fs-sm, .8125rem); }

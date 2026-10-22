@@ -217,6 +217,26 @@
                             <input type="text" id="team-board-name" placeholder="e.g. auth-feature, sprint-42" maxlength="64" data-on-input="m-validate-team-name" aria-describedby="team-board-name-hint">
                             <div id="team-board-name-hint" class="team-field-hint">This will also be used as the message board name.</div>
                         </div>
+                        <label for="launch-team-dir">Folder <span class="req-mark">(required)</span></label>
+                        <div class="sd-name-field">
+                            <div class="dir-input-row">
+                                <input type="text" id="launch-team-dir" placeholder="/path/to/project" data-coral-root="{{ .CoralRoot }}" required aria-required="true">
+                                <button class="btn" id="btn-browse-team" data-on-click="m-toggle-browser" data-browser="launch-team-dir dir-browser-team browser-list-team browser-current-path-team">Browse</button>
+                            </div>
+                            <div id="dir-browser-team" class="dir-browser" style="display:none">
+                                <div class="dir-browser-header">
+                                    <button class="btn btn-small dir-browser-up" data-on-click="m-browser-navigate-up" title="Go up">..</button>
+                                    <span class="dir-browser-path" id="browser-current-path-team">~</span>
+                                </div>
+                                <ul class="dir-browser-list" id="browser-list-team">
+                                    <li class="empty-state">Loading...</li>
+                                </ul>
+                            </div>
+                        </div>
+                        <label for="team-goal">First task</label>
+                        <div class="sd-name-field">
+                            <textarea id="team-goal" rows="2" maxlength="2000" placeholder="What should the team work on? Sent to the Orchestrator (optional)"></textarea>
+                        </div>
                     </div>
                     <div class="settings-shell">
                         <nav class="settings-nav" aria-label="Team sections">
@@ -243,28 +263,14 @@
                                         </div>
                                     </details>
                                     <div id="team-agents-list" class="team-agents-scroll" role="group" aria-label="Team agents"></div>
+                                    <p class="team-agents-empty">Pick a template above, or add agents one by one.</p>
                                     <div class="team-agents-footer">
                                         <button class="btn btn-primary team-add-agent-btn team-add-agent-btn-full" data-on-click="m-show-team-agent-modal">+ Add Agent</button>
                                     </div>
                                 </div>
 
                         </section>
-                        <section class="settings-pane" data-section="board" data-title="Board &amp; workspace" data-icon="forum" data-desc="The folder the team works in, and where it runs." hidden>
-                            <label>Working Directory:
-                                <div class="dir-input-row">
-                                    <input type="text" id="launch-team-dir" placeholder="/path/to/project" data-coral-root="{{ .CoralRoot }}" value="{{ .CoralRoot }}">
-                                    <button class="btn" id="btn-browse-team" data-on-click="m-toggle-browser" data-browser="launch-team-dir dir-browser-team browser-list-team browser-current-path-team">Browse</button>
-                                </div>
-                            </label>
-                            <div id="dir-browser-team" class="dir-browser" style="display:none">
-                                <div class="dir-browser-header">
-                                    <button class="btn btn-small dir-browser-up" data-on-click="m-browser-navigate-up" title="Go up">..</button>
-                                    <span class="dir-browser-path" id="browser-current-path-team">~</span>
-                                </div>
-                                <ul class="dir-browser-list" id="browser-list-team">
-                                    <li class="empty-state">Loading...</li>
-                                </ul>
-                            </div>
+                        <section class="settings-pane" data-section="board" data-title="Board &amp; workspace" data-icon="forum" data-desc="A git worktree, and a remote server to run on." hidden>
                             <div id="team-worktree-option" style="display:none">
                                 <label class="settings-toggle team-settings-toggle">
                                     <input type="checkbox" id="launch-team-worktree" data-on-change="m-team-worktree">

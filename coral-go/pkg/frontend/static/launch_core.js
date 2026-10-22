@@ -144,6 +144,7 @@ export function showTeamLaunchFailures(failed, started, openSettings) {
 /** The words shown under a rejected field: what is wrong and what to do next (UI audit #5589, finding 25). */
 function inlineProblem(input, message) {
     const dir = /^launch-(terminal-)?dir$|^launch-team-dir$/.test(input.id || '');
+    if (message === 'Choose a folder for the team') return 'Choose a folder: type a path, or use Browse.';
     if (message === 'Working directory is required') return 'Choose a working directory: type a path, or use Browse.';
     if (message === 'Team name is required') return "Type a name for the team, for example auth-feature. Letters, digits, '-' and '_' only.";
     if (message === 'Agent name is required') return 'Type a name for the agent.';
@@ -193,10 +194,10 @@ function inlineProblem(input, message) {
     }
 }
 
-/** Refresh the agent list after a launch; on a remote wait for the hub poller to see the new agent. */
+/** Refresh the agent list after a launch; on a remote wait for the hub poller to see the new agent. Returns a promise of whether it was seen. */
 function _refreshAfterLaunch(server, target) {
-    if (normServer(server) === LOCAL_SERVER) return;
-    waitForLaunched(server, target, loadLiveSessions);
+    if (normServer(server) === LOCAL_SERVER) return Promise.resolve(true);
+    return waitForLaunched(server, target, loadLiveSessions); // resolves once the new agent shows (true) or the schedule runs out
 }
 
 export function hideLaunchModal() {

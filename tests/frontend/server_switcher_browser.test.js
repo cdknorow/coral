@@ -287,12 +287,12 @@ const SETTINGS_PRELOAD = `(() => {
             assert.ok(ic.n >= 3 && ic.withIcon === ic.n, `${grouped ? 'grouped' : 'ungrouped'}: every folder group has the named folder icon (${JSON.stringify(ic)})`);
             assert.ok(ic.teamX.length > 0 && ic.folderX.every(x => Math.abs(x - ic.teamX[0]) <= 1), `${grouped ? 'grouped' : 'ungrouped'}: aligned with the team icons (${JSON.stringify(ic)})`);
         }
-        // #3507 v4: no collapse chevrons; the header row is the button (aria-expanded, Enter or Space).
+        // #3507 v4: the header row is the button (aria-expanded, Enter or Space); a team header opens the team and its chevron button collapses (#5989).
         await ev(`localStorage.setItem('coral-group-by-server', 'true'); T.render.renderLiveSessions(T.state.liveSessions); true`);
         const chev = await ev(`(() => { const L = document.getElementById('live-sessions-list');
             const heads = [...L.querySelectorAll('.session-group-header[data-group-name]')];
             return { chevrons: L.querySelectorAll('.server-group-chevron').length + [...L.querySelectorAll('.server-group-header, .session-group-header')].filter(h => /[▸▾]/.test(h.textContent)).length,
-                heads: heads.length, buttons: heads.filter(h => h.getAttribute('role') === 'button' && h.tabIndex === 0 && ['true', 'false'].includes(h.getAttribute('aria-expanded'))).length,
+                heads: heads.length, buttons: heads.filter(h => h.getAttribute('role') === 'button' && h.tabIndex === 0 && ['true', 'false'].includes(h.getAttribute('aria-expanded') ?? h.querySelector('.group-chevron')?.getAttribute('aria-expanded'))).length,
                 servers: [...L.querySelectorAll('.server-group-toggle')].every(b => ['true', 'false'].includes(b.getAttribute('aria-expanded'))) }; })()`);
         assert.equal(chev.chevrons, 0, 'no collapse chevron in the sidebar groups');
         assert.ok(chev.heads >= 5 && chev.buttons === chev.heads, `every team and folder header is a button with aria-expanded (${JSON.stringify(chev)})`);

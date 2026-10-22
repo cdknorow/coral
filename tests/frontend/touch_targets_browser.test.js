@@ -93,7 +93,9 @@ const UNDERSIZED = `(() => {
 
         // #4976: the Agent Team dialog's member cards (move up and down, edit, remove) and its Back arrow.
         await ev(`window.showLaunchModal(); window._selectLaunchType('team'); true`);
-        await waitFor(`!!document.querySelector('#team-agents-list .team-agent-row') && getComputedStyle(document.getElementById('launch-step-team')).display !== 'none'`, 'the team dialog with its member cards');
+        await waitFor(`!!document.getElementById('team-template-selector') && getComputedStyle(document.getElementById('launch-step-team')).display !== 'none'`, 'the team step');
+        await ev(`window._addTeamAgent('Amy', 'First.'); window._addTeamAgent('Bo', 'Second.'); true`); // the dialog starts with no members (#5989)
+        await waitFor(`!!document.querySelector('#team-agents-list .team-agent-row')`, 'the team dialog with its member cards');
         const teamSmall = await ev(UNDERSIZED);
         assert.deepEqual(teamSmall, [], 'phone 390, Agent Team dialog: every control, the cards\' buttons too, is at least 44x44: ' + JSON.stringify(teamSmall));
         const cardButtons = await ev(`[...document.querySelectorAll('#team-agents-list .team-agent-row:first-child .team-agent-summary-actions > button')].map(b => { const r = b.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; })`);

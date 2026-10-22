@@ -5,7 +5,7 @@ import { distillChip } from './knowledge_distill.js';
 import { escapeAttr, escapeHtml } from './utils.js';
 import { _sortByOrder, _getGroupOrder, _sortGroups } from './list_order.js';
 import { kebabId, _renderAgentListWithSubgroups, _renderSessionItem } from './session_rows.js';
-import { _collapseAttrs, _isGroupCollapsed } from './group_collapse.js';
+import { CHEVRON_DECO, _chevron, _collapseAttrs, _isGroupCollapsed, _teamHeaderAttrs } from './group_collapse.js';
 import { getFolderTags, renderFolderTagPills } from './folder_tags.js';
 import { pinPathForKey, emptyPins, notePinKeys } from './pinned_folders.js';
 import { localFirst } from './server_status.js';
@@ -80,7 +80,7 @@ function _renderTeamCard(boardName, boardSessions) {
         </div>`;
         const sleepingClass = boardIsSleeping ? ' team-sleeping' : '';
         html += `<li class="session-board-card session-team-group session-board-card-toplevel${sleepingClass}"${accentStyle}>
-            <div class="session-group-header board-card-header" data-group-name="${escapeAttr(boardName)}" data-on-click="group-collapse" data-group="${escapeAttr(boardName)}"${_collapseAttrs(boardCollapsed)}>
+            <div class="session-group-header board-card-header" data-group-name="${escapeAttr(boardName)}" data-on-click="team-name-open" data-board="${escapeAttr(boardName)}" data-group="${escapeAttr(boardName)}"${_teamHeaderAttrs(boardName)}>${_chevron(boardName, boardCollapsed)}
                 <div class="group-header-text"><div class="group-name-line"><svg class="team-group-icon" aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg><span class="group-name-text" title="${escapeAttr(keyLabel(boardName))}">${_rowNameWithServer(boardName)}</span>${boardSleepIcon}${distillChip(boardName)} <span class="session-group-count">${boardSessions.length}</span></div></div><span class="session-name-spacer"></span>${boardLink}${teamHealthBtn(boardName, boardSessions)}<button type="button" class="folder-copy-btn team-open-btn${escapeAttr(state.selectedTeam === boardName ? ' is-selected' : '')}" data-on-click="team-enter" data-board="${escapeAttr(boardName)}" title="Team view: members, availability and knowledge" aria-label="Open team view for ${escapeAttr(keyLabel(boardName))}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg></button>${bKebab}
             </div>
             <ul class="board-card-agents${boardCollapsed ? ' board-card-collapsed' : ''}">`;
@@ -120,7 +120,7 @@ function _renderWorkflowCard(wfName, wfSessions) {
         </div>`;
 
         html += `<li class="session-board-card session-board-card-toplevel session-wf-card" style="border-left-color: var(--color-tool-agent)">
-            <div class="session-group-header board-card-header" data-group-name="wf:${escapeAttr(wfName)}" data-on-click="group-collapse" data-group="wf:${escapeAttr(wfName)}"${_collapseAttrs(wfCollapsed)}>
+            <div class="session-group-header board-card-header" data-group-name="wf:${escapeAttr(wfName)}" data-on-click="group-collapse" data-group="wf:${escapeAttr(wfName)}"${_collapseAttrs(wfCollapsed)}>${CHEVRON_DECO}
                 <div class="group-header-text"><div class="group-name-line"><span class="material-icons" style="font-size:0.875rem;vertical-align:-2px;margin-right:3px;color:var(--color-tool-agent)" aria-hidden="true">account_tree</span>${escapeHtml(wfName)}</div>${wfSubline}</div><span class="session-name-spacer"></span>${wfKebab}
             </div>
             <ul class="board-card-agents${wfCollapsed ? ' board-card-collapsed' : ''}">`;
@@ -179,7 +179,7 @@ function _renderFolderGroup(groupName, groupSessions) {
         const tagDots = renderFolderTagPills(fTags);
         const groupWorkDir = groupDirRaw;
         const copyBtn = `<button class="folder-copy-btn" data-on-click="folder-copy" data-dir="${escapeAttr(groupWorkDir)}" title="Copy path"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M5.5 10.5h-1a1.5 1.5 0 0 1-1.5-1.5v-5a1.5 1.5 0 0 1 1.5-1.5h5a1.5 1.5 0 0 1 1.5 1.5v1"/></svg></button>`;
-        html += `<li class="session-group-header" data-group-name="${escapeAttr(groupName)}" data-on-click="group-collapse" data-group="${escapeAttr(groupName)}"${_collapseAttrs(collapsed)}>
+        html += `<li class="session-group-header" data-group-name="${escapeAttr(groupName)}" data-on-click="group-collapse" data-group="${escapeAttr(groupName)}"${_collapseAttrs(collapsed)}>${CHEVRON_DECO}
             <div class="group-header-text"><div class="group-name-line">${FOLDER_GROUP_ICON}${_rowNameWithServer(groupName)}${countBadge}</div></div>${tagDots}<span class="session-name-spacer"></span>${copyBtn}${groupKebab}</li>`;
 
         if (!collapsed && sorted.length) {
@@ -235,7 +235,7 @@ function _renderFolderFirstGroup(groupName, groupSessions) {
         const tagDots = renderFolderTagPills(fTags);
         const groupWorkDir = groupDirRaw;
         const copyBtn = `<button class="folder-copy-btn" data-on-click="folder-copy" data-dir="${escapeAttr(groupWorkDir)}" title="Copy path"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M5.5 10.5h-1a1.5 1.5 0 0 1-1.5-1.5v-5a1.5 1.5 0 0 1 1.5-1.5h5a1.5 1.5 0 0 1 1.5 1.5v1"/></svg></button>`;
-        html += `<li class="session-group-header" data-group-name="${escapeAttr(groupName)}" data-on-click="group-collapse" data-group="${escapeAttr(groupName)}"${_collapseAttrs(collapsed)}>
+        html += `<li class="session-group-header" data-group-name="${escapeAttr(groupName)}" data-on-click="group-collapse" data-group="${escapeAttr(groupName)}"${_collapseAttrs(collapsed)}>${CHEVRON_DECO}
             <div class="group-header-text"><div class="group-name-line">${FOLDER_GROUP_ICON}${_rowNameWithServer(groupName)}${countBadge}</div></div>${tagDots}<span class="session-name-spacer"></span>${copyBtn}${groupKebab}</li>`;
 
         if (collapsed || !sorted.length) {
@@ -308,7 +308,7 @@ function _renderFolderFirstGroup(groupName, groupSessions) {
                     </div>
                 </div>`;
                 html += `<li class="session-board-card session-team-group"${accentStyle}>
-                    <div class="session-group-header board-card-header" data-group-name="${escapeAttr(boardName)}" data-on-click="group-collapse" data-group="${escapeAttr(boardName)}"${_collapseAttrs(boardCollapsed)}>
+                    <div class="session-group-header board-card-header" data-group-name="${escapeAttr(boardName)}" data-on-click="team-name-open" data-board="${escapeAttr(boardName)}" data-group="${escapeAttr(boardName)}"${_teamHeaderAttrs(boardName)}>${_chevron(boardName, boardCollapsed)}
                         <div class="group-header-text"><div class="group-name-line"><svg class="team-group-icon" aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg><span class="group-name-text" title="${escapeAttr(keyLabel(boardName))}">${_rowNameWithServer(boardName)}</span>${boardSleepIcon}${distillChip(boardName)} <span class="session-group-count">${boardSessions.length}</span></div></div><span class="session-name-spacer"></span>${boardLink}${teamHealthBtn(boardName, boardSessions)}<button type="button" class="folder-copy-btn team-open-btn${escapeAttr(state.selectedTeam === boardName ? ' is-selected' : '')}" data-on-click="team-enter" data-board="${escapeAttr(boardName)}" title="Team view: members, availability and knowledge" aria-label="Open team view for ${escapeAttr(keyLabel(boardName))}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg></button>${bKebab}
                     </div>
                     <ul class="board-card-agents${boardCollapsed ? ' board-card-collapsed' : ''}">`;

@@ -1,14 +1,13 @@
 /* Moved out of modals.js as it was (#4684): The AI team wizard, the team-agent dialog, and the Launch dialog's team form: its agents, templates, quick launch and Launch Team. No behaviour change. */
 import { importOnce } from './import_once.js';
 import { scrollBehavior } from './motion.js';
-import { showToast, escapeHtml, escapeAttr, boardNameProblem } from './utils.js';
+import { showToast, escapeHtml, escapeAttr, boardNameProblem, OPERATOR_ID } from './utils.js';
 import { loadLiveSessions } from './api.js';
 import { loadBoardProjects } from './message_board.js';
 import { recordRecentDir } from './browser.js';
-import { serverFetch, LOCAL_SERVER } from './server_base.js';
+import { serverFetch, boardFetch, identityKey, LOCAL_SERVER } from './server_base.js';
 const { launch } = await importOnce('./launch_state.js');
 const { _acfServer, _effectiveServer, _settingsFor } = await importOnce('./launch_models.js');
-const { AGENT_PRESETS } = await importOnce('./agent_presets.js');
 const { syncDefaultPermissionMode, _getPermissionFlagsForAgentMode, _normalizePermFlagsForAgent, _updatePermModeDescription } = await importOnce('./permission_flags.js');
 const { _findPersona, _getSavedTeamTemplates, _upsertSavedTeamTemplates } = await importOnce('./persona_store.js');
 const { getAgentConfig, renderAgentConfigForm, setAgentConfig } = await importOnce('./agent_config_form.js');
@@ -108,7 +107,6 @@ function _applyACFPresetFor(containerId, name) {
 }
 
 // Default team: first 3 presets
-const DEFAULT_TEAM_PRESETS = AGENT_PRESETS.slice(0, 4);
 
 /** Worktree option is offered when the working directory is a git repo ON THE TARGET SERVER. */
 async function _checkTeamGitDir() {
@@ -165,6 +163,10 @@ async function _initTeamForm() {
     // Pre-fill working dir from the target server's settings
     const s = _settingsFor(_effectiveServer(launch.server));
     const dirInput = document.getElementById("launch-team-dir");
+    // No folder is chosen for the person (#5989): the Settings default if they set one, else empty and required, never the home folder.
+    if (dirInput) dirInput.value = '';
+    const goalEl = document.getElementById("team-goal");
+    if (goalEl) goalEl.value = "";
     if (launch.server !== LOCAL_SERVER) _resetDirInputs(['launch-team-dir'], launch.server, s, { switching: true });
     else if (s.default_working_dir && dirInput) dirInput.value = s.default_working_dir;
 
@@ -197,12 +199,7 @@ async function _initTeamForm() {
     // Render team template selector
     _renderTeamTemplateSelector();
 
-    // Add three default agents (skip if wizard is populating)
-    if (!launch.skipDefaultTeamAgents) {
-        for (const preset of DEFAULT_TEAM_PRESETS) {
-            _addTeamAgent(preset.name, preset.prompt, preset.capabilities, preset.agent_type, preset.model);
-        }
-    }
+    // The dialog opens on the template choice with no members (#5989): four agents nobody picked were launched by a first-time Launch Team.
     launch.skipDefaultTeamAgents = false;
 
     // (no focus into the team name here: it sits in Board & workspace, which is not the section the dialog opens on, and focusing it would scroll that pane; section_dialog.js puts the keyboard in the list)
@@ -419,8 +416,8 @@ async function launchTeam() {
 
     const workingDir = document.getElementById("launch-team-dir").value.trim();
     if (!workingDir) {
-        showToast("Working directory is required", true);
-        markFieldInvalid(document.getElementById("launch-team-dir"), "Working directory is required");
+        showToast("Choose a folder for the team", true);
+        markFieldInvalid(document.getElementById("launch-team-dir"), "Choose a folder for the team");
         return;
     }
 
@@ -461,6 +458,7 @@ async function launchTeam() {
         agents.push(agent);
     }
 
+    const goal = document.getElementById("team-goal")?.value.trim() || "";
     const boardServer = document.getElementById("team-board-server").value.trim();
     const useWorktree = document.getElementById("launch-team-worktree")?.checked;
     const baseBranch = document.getElementById("launch-team-base-branch")?.value.trim();
@@ -499,7 +497,10 @@ async function launchTeam() {
                 hideLaunchModal();
                 setTimeout(loadLiveSessions, 2000);
                 setTimeout(loadBoardProjects, 4000);
-                _refreshAfterLaunch(server, { boardName });
+                const boardId = result.board_id || boardName; // the id the server made (a repeated name gets its own, "Create another"), not the label that was typed
+                const seen = _refreshAfterLaunch(server, { boardName: boardId });
+                // The team opens the way a single agent does (#5989): its board with the Team view beside it, and the goal, if one was typed, as the Operator's first message to the lead. On a remote this waits for the hub to see the team.
+                if (launched.length - failed.length > 0) _openLaunchedTeam(server, boardId, goal, agents, seen);
             }
         }
     } catch (e) {
@@ -508,6 +509,35 @@ async function launchTeam() {
         if (launchBtn) { launchBtn.disabled = false; launchBtn.textContent = 'Launch Team'; }
     }
 }
+/** Open the launched team, and post the goal to its lead: the agent named Orchestrator, else the first member. The goal that could not be sent is left in the board's message box with a toast, to send again without launching the team twice. */
+async function _openLaunchedTeam(server, boardName, goal, agents, seen) {
+    const key = identityKey(server, boardName);
+    const lead = (agents.find(a => a.name === 'Orchestrator') || agents[0]).name;
+    const content = goal ? `@${lead} ${goal}` : '';
+    let sent = !goal;
+    try {
+        await seen; // on a remote, until the hub lists the team (or the wait runs out: the post and the open are still tried)
+        if (goal) {
+            const r = await boardFetch(key, '/messages', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ subscriber_id: OPERATOR_ID, as: 'Operator', content }),
+            });
+            sent = r.ok;
+        }
+    } catch { sent = false; }
+    try {
+        await loadLiveSessions();
+        const { enterTeamContext } = await importOnce('./team_context.js');
+        await enterTeamContext(key);
+    } catch { /* the toast and the row are still there */ }
+    const input = document.getElementById('board-panel-input');
+    if (!sent) {
+        if (input && !input.value) input.value = content;
+        showToast('The team started, but the first task was not sent. It is in the message box: press Send to try again.', true);
+    }
+    if (!goal || !sent) input?.focus();
+}
 window.launchTeam = launchTeam;
 
-export { _addTeamAgent, _applyACFPresetFor, _checkTeamGitDir, _initTeamForm, _loadExistingTeamBoards, _moveTeamAgent, _renderTeamTemplateSelector };
+export { _openLaunchedTeam, _addTeamAgent, _applyACFPresetFor, _checkTeamGitDir, _initTeamForm, _loadExistingTeamBoards, _moveTeamAgent, _renderTeamTemplateSelector };

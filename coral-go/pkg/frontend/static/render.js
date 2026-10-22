@@ -50,7 +50,7 @@ export { expandSleepingGroup, toggleGroupByServer, toggleGroupByTeam, toggleSess
 export { renderHistoryChat, renderHistoryNodes, renderHistorySessions } from './history_list.js';
 export { updateSessionBranch, updateSessionFolder, updateSessionStatus, updateSessionSummary, updateWaitingIndicator } from './session_header_updates.js';
 export { distillTeamKnowledge, showTeamTokenUsage, updateHistoryTokenUsage, updateTokenUsage } from './token_usage_ui.js';
-export { groupHeaderKey, toggleGroupCollapse } from './group_collapse.js';
+export { groupHeaderKey, teamHeaderKey, toggleGroupCollapse } from './group_collapse.js';
 export { hideConfirmModal, showConfirmModal } from './confirm_dialog.js';
 export { applySessionSummaryPref, isSessionSummaryShown, toggleArchivedSection } from './session_rows.js';
 export { moveGroupDown, moveGroupUp, moveSessionDown, moveSessionUp } from './list_order.js';
@@ -398,6 +398,9 @@ registerActions({
     'group-kill': menu(el => { const g = textOf(el.dataset.group); if (g) W('killGroup')(g); }),
     'group-collapse': el => { const g = textOf(el.dataset.group); if (g) window.toggleGroupCollapse(g); },
     'group-header-key': (el, event) => window.groupHeaderKey(event, el),
+    'team-header-key': (el, event) => window.teamHeaderKey(event, el),
+    'team-name-open': el => { const b = textOf(el.dataset.board); if (b) window.enterTeamContext(b); },
+    'group-chevron': (el, event) => { event.stopPropagation(); const g = textOf(el.dataset.group); if (g) window.toggleGroupCollapse(g); },
     'group-sleeping-expand': el => { const g = textOf(el.dataset.group); if (g) window.expandSleepingGroup(g); },
     'archived-toggle': () => window.toggleArchivedSection(),
     'folder-tag': menu(el => { const g = textOf(el.dataset.group); if (g) window.showFolderTagDropdown(g, el.closest('.session-group-header')); }),

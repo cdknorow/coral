@@ -14,7 +14,7 @@ const BASE = require('./test_base').BASE;
         await Page.navigate({ url: BASE }); await Page.loadEventFired(); await install();
         await ev(`window.__coralReady.startup('liveList', 'settings')`);
         await ev(`(async () => {
-            window.__teamLaunches = []; window.__generates = []; window.__templates = []; window.__boards = ['taken'];
+            window.__teamLaunches = []; window.__posts = []; window.__entered = []; window.__generates = []; window.__templates = []; window.__boards = ['taken'];
             window.__launchAnswer = { status: 200, body: { agents: [{ name: 'A', session_id: 's' }] } };
             window.__generateAnswer = { status: 200, body: { error: 'the model is down' } };
             window.__jobAnswer = { status: 'pending' };
@@ -23,6 +23,7 @@ const BASE = require('./test_base').BASE;
                 if (p.pathname === '/api/sessions/launch-team' && m === 'POST') { window.__teamLaunches.push(JSON.parse(o.body)); return json(window.__launchAnswer.body, window.__launchAnswer.status); }
                 if (p.pathname === '/api/teams/generate' && m === 'POST') { window.__generates.push(JSON.parse(o.body)); return json(window.__generateAnswer.body, window.__generateAnswer.status); }
                 if (p.pathname.startsWith('/api/teams/generate/')) return json(window.__jobAnswer);
+                if (p.pathname.startsWith('/api/board/crew-1') && p.pathname.endsWith('/messages') && m === 'POST') { window.__posts.push({ ...JSON.parse(o.body), path: p.pathname }); return json({ id: 1 }, window.__postStatus || 200); }
                 if (p.pathname === '/api/board/projects') return json(window.__boards.map(b => ({ project: b })));
                 if (p.pathname === '/api/filesystem/is-git') return json({ is_git: p.searchParams.get('path') === '/work/repo' });
                 return real(u, o); };
@@ -36,10 +37,14 @@ const BASE = require('./test_base').BASE;
             await waitFor(`getComputedStyle(document.getElementById('launch-step-team')).display !== 'none'`, 'the team step');
         };
 
-        console.log('The team form starts with the default agents, a hint for the name, and moves its agents');
+        console.log('The team form starts with no members (#5989), a hint for the name, and moves its agents');
         await openTeam();
-        const first = await teamRows();
-        assert.ok(first.length >= 1, 'default agents: ' + JSON.stringify(first));
+        await waitFor(`!!document.getElementById('team-template-selector')`, 'the template choice');
+        assert.deepEqual(await teamRows(), [], 'no members nobody picked');
+        assert.equal(await ev(`getComputedStyle(document.querySelector('#launch-step-team .team-agents-empty')).display !== 'none'`), true, 'the line that says what to do');
+        assert.equal(await ev(`document.getElementById('launch-team-dir').value === '' && document.getElementById('launch-team-dir').required && document.getElementById('launch-team-dir').getBoundingClientRect().height > 0`), true, 'the folder is on the first screen, empty and required');
+        assert.equal(await ev(`!!document.getElementById('team-goal') && document.getElementById('team-goal').getBoundingClientRect().height > 0`), true, 'the optional first task');
+        await ev(`window._addTeamAgent('Amy', 'First.'); true`);
         // #4950: the team form is a sectioned dialog that opens on Members; the name is above the sections (#5589 finding 6), so every section has it and Launch Team without it stays where it is.
         assert.equal(await ev(`document.querySelector('#launch-step-team .settings-tabs [aria-selected=true] .settings-tab-name').textContent`), 'Members');
         await ev(`document.getElementById('team-board-name').value = ''; document.querySelector('#launch-step-team [data-on-click="m-launch-team"]').click(); true`);
@@ -99,14 +104,32 @@ const BASE = require('./test_base').BASE;
         await ev(`document.getElementById('team-board-name').value = ''; window.launchTeam(); true`);
         assert.ok((await toasts()).some(t => /Team name is required/.test(t)));
         await ev(`document.getElementById('team-board-name').value = 'crew-1'; document.getElementById('launch-team-dir').value = ''; window._validateTeamName(); window.launchTeam(); true`);
-        assert.ok((await toasts()).some(t => /Working directory is required/.test(t)));
-        await ev(`document.getElementById('launch-team-dir').value = '/work/project'; window.launchTeam(); true`);
+        assert.ok((await toasts()).some(t => /Choose a folder for the team/.test(t)));
+        await ev(`document.getElementById('launch-team-dir').value = '/work/project'; document.getElementById('team-goal').value = 'Build the login page.'; window.launchTeam(); true`);
         await waitFor(`window.__teamLaunches.length === 1`, 'the request');
         const sent = await ev(`window.__teamLaunches[0]`);
         assert.equal(sent.board_name, 'crew-1'); assert.equal(sent.working_dir, '/work/project'); assert.ok(Array.isArray(sent.flags)); assert.ok(sent.agents.length >= 8 && sent.agents.every(a => a.name));
         await waitFor(`getComputedStyle(document.getElementById('launch-modal')).display === 'none'`, 'the dialog closed');
         await waitFor(`[...document.querySelectorAll('.toast')].some(t => /Launched team: 1 agents on "crew-1"/.test(t.textContent))`, 'the launched toast');
+        // #5989: the team opens (its board with the Team view), and the first task is the Operator's first message to the lead.
+        await waitFor(`window.__posts.length === 1`, 'the first task is posted to the board');
+        const post = await ev(`window.__posts[0]`), leadName = sent.agents.find(a => a.name === 'Orchestrator')?.name || sent.agents[0].name;
+        assert.equal(post.path, '/api/board/crew-1/messages'); delete post.path;
+        assert.deepEqual(post, { subscriber_id: 'Operator', as: 'Operator', content: '@' + leadName + ' Build the login page.' }, 'to the Orchestrator, else the first member');
+        await waitFor(`T.state.selectedTeam === 'crew-1'`, 'the launched team is opened');
+        assert.equal(await ev(`document.getElementById('team-goal').value`), 'Build the login page.', 'the field keeps what was typed until the dialog is opened again');
+        // The first task that could not be sent (the board answers 500) is not lost: it waits in the board's message box, with a toast, to send again.
         await openTeam();
+        await ev(`window._addTeamAgent('Amy', 'First.'); window.__postStatus = 500; window.__posts.length = 0; window.__launchAnswer = { status: 200, body: { board_id: 'crew-1-2', agents: [{ name: 'A', session_id: 's' }] } }; document.querySelectorAll('.toast').forEach(t => t.remove()); true`);
+        await ev(`document.getElementById('team-board-name').value = 'crew-1'; document.getElementById('launch-team-dir').value = '/work/project'; document.getElementById('team-goal').value = 'Try again.'; window._validateTeamName(); window.launchTeam(); true`);
+        await waitFor(`window.__posts.length === 1`, 'the post that fails');
+        assert.equal(await ev(`window.__posts[0].path`), '/api/board/crew-1-2/messages', 'the first task goes to the id the server made ("Create another" on a name in use), not the label typed');
+        await waitFor(`[...document.querySelectorAll('.toast')].some(t => /first task was not sent/.test(t.textContent))`, 'the toast that says so');
+        await waitFor(`document.getElementById('board-panel-input')?.value === '@Amy Try again.'`, 'the draft in the message box');
+        assert.equal(await ev(`T.state.selectedTeam`), 'crew-1-2', 'and the team that opens is that board');
+        await ev(`window.__postStatus = 200; window.__launchAnswer = { status: 200, body: { agents: [{ name: 'A', session_id: 's' }] } }; true`);
+        await openTeam();
+        await ev(`window._addTeamAgent('Amy', 'First.'); true`); // a new dialog starts with no members (#5989)
         await ev(`window.__launchAnswer = { status: 200, body: { agents: [{ name: 'A' }, { name: 'B', error: 'no cli' }] } }; document.getElementById('team-board-name').value = 'crew-2'; document.getElementById('launch-team-dir').value = '/work/project'; window._validateTeamName(); window.launchTeam(); true`);
         await waitFor(`!!document.querySelector('body > .modal:not([id]) ul li')`, 'the failed-agents dialog');
         assert.deepEqual(await ev(`[document.querySelector('body > .modal:not([id]) h3').textContent, document.querySelector('body > .modal:not([id]) ul li').textContent]`), ['Team Launch — 1 agent failed', 'B: no cli']);
@@ -115,11 +138,20 @@ const BASE = require('./test_base').BASE;
         // A team in which nobody started (#122): the server answers an error with each member's error; the same per-member dialog (with its Settings
         // button) shows, and the launch dialog stays open to try again.
         await openTeam();
+        await ev(`window._addTeamAgent('Amy', 'First.'); true`); // a new dialog starts with no members (#5989)
         await ev(`window.__launchAnswer = { status: 422, body: { ok: false, code: 'team_launch_failed', error: 'no agent in the team started (A: no cli; B: no cli)', agents: [{ name: 'A', error: 'no cli' }, { name: 'B', error: 'no cli' }] } }; document.getElementById('team-board-name').value = 'crew-3'; document.getElementById('launch-team-dir').value = '/work/project'; window._validateTeamName(); window.launchTeam(); true`);
         await waitFor(`!!document.querySelector('body > .modal:not([id]) ul li')`, 'the all-failed dialog');
         assert.deepEqual(await ev(`[document.querySelector('body > .modal:not([id]) h3').textContent, document.querySelectorAll('body > .modal:not([id]) ul li').length, !!document.querySelector('body > .modal:not([id]) [data-action=settings]')]`), ['Team Launch — 2 agents failed', 2, true]);
         assert.notEqual(await ev(`getComputedStyle(document.getElementById('launch-modal')).display`), 'none', 'the launch dialog stays open');
         await ev(`document.querySelector('body > .modal:not([id]) [data-action=close]').click(); true`);
+
+        // A team launched on another server: the first task goes to that server's board, and the team opens under its server-qualified key (#5989).
+        const remote = await ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'team_dialogs.js'); const urls = []; const real = window.fetch;
+            window.fetch = (u, o = {}) => { const p = new URL(String(u), location.href); if (p.pathname.endsWith('/messages') && (o.method || 'GET') === 'POST') { urls.push(p.pathname); return Promise.resolve(new Response('{}', { status: 200 })); } return real(u, o); };
+            await m._openLaunchedTeam('box-b', 'crew-r', 'Go.', [{ name: 'Orchestrator' }, { name: 'Dev' }], Promise.resolve(true)); window.fetch = real; return { urls, team: T.state.selectedTeam }; })()`);
+        assert.equal(remote.urls.length, 1, 'the first task is posted: ' + JSON.stringify(remote));
+        assert.match(remote.urls[0], /box-b/); assert.match(remote.urls[0], /crew-r/);
+        assert.equal(remote.team, '@box-b/crew-r', 'the team opens under its server-qualified key');
 
         console.log('Quick Launch from the welcome screen: an unknown template is refused, a partly failed launch says how many');
         await ev(`document.querySelectorAll('.toast').forEach(t => t.remove()); document.getElementById('quick-launch-template').value = 'No Such Team'; document.getElementById('quick-launch-board-name').value = 'quick-1'; document.getElementById('quick-launch-workdir').value = '/work/project'; window._quickLaunchTeam(); true`);

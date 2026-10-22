@@ -276,13 +276,15 @@
 1	folder_tags.js	currentHtml
 1	folder_tags.js	currentTags.map(t => `<span class="tag-pill" style="background:${escapeAttr(tagColor(t.color))}"> ${escapeHtml
 1	folder_tags.js	tags.map(t => `<span class="sidebar-tag-pill" style="background:${escapeAttr(tagColor(t.color))}" title="${esc
+3	group_cards.js	CHEVRON_DECO
 2	group_cards.js	FOLDER_GROUP_ICON
-2	group_cards.js	_collapseAttrs(boardCollapsed)
+2	group_cards.js	_chevron(boardName, boardCollapsed)
 2	group_cards.js	_collapseAttrs(collapsed)
 1	group_cards.js	_collapseAttrs(wfCollapsed)
 2	group_cards.js	_pinMenuItem(groupName, groupDirRaw)
 2	group_cards.js	_rowNameWithServer(boardName)
 2	group_cards.js	_rowNameWithServer(groupName)
+2	group_cards.js	_teamHeaderAttrs(boardName)
 2	group_cards.js	accentStyle
 2	group_cards.js	bKebab
 2	group_cards.js	boardLink

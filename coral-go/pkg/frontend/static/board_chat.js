@@ -256,11 +256,18 @@ async function _loadEarlierBoardChat() {
 }
 (window.__coral ||= {})._loadEarlierBoardChat = _loadEarlierBoardChat;
 
+/** An empty board says what to do next (#5989): tell the lead what to build, the agent named Orchestrator, else the board's first member; the compose box is focused by the caller. */
+function _emptyBoardLine() {
+    const subs = (_boardSubscribers[_activeBoardChat] || []).filter(s => !isOperatorId(s.subscriber_id));
+    const lead = subs.find(s => (s.job_title || s.subscriber_id) === 'Orchestrator') || subs[0];
+    return lead ? `Tell @${lead.job_title || lead.subscriber_id} what to build` : 'No messages yet';
+}
+
 function _renderBoardPanelMessages(msgsEl, scrollToBottom) {
     if (!msgsEl) return;
     const messages = _boardChatMessages;
     if (!messages.length && _boardChatOffset <= 0) {
-        msgsEl.innerHTML = '<div class="board-chat-empty">No messages yet</div>';
+        msgsEl.innerHTML = `<div class="board-chat-empty">${escapeHtml(_emptyBoardLine())}</div>`;
         msgsEl.dataset.rendered = '1';
         return;
     }
@@ -481,6 +488,8 @@ async function _syncMentionNames(boardName) {
     if (_activeBoardChat !== boardName) return;
     const subs = Array.isArray(_boardSubscribers[boardName]) ? _boardSubscribers[boardName] : [];
     if (setBoardMentionNames(subs.flatMap(s => [s.job_title, s.subscriber_id]))) highlightMentionsIn(document.getElementById('board-panel-msgs')); // in place: nothing is redrawn
+    const empty = document.querySelector('#board-panel-msgs > .board-chat-empty'); // an empty board names its lead once the members are known
+    if (empty && empty.textContent !== _emptyBoardLine()) empty.textContent = _emptyBoardLine();
 }
 export async function _boardMentionInput(event, boardName) {
     const input = event.target;

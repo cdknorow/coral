@@ -69,8 +69,8 @@ const BASE = require('./test_base').BASE;
         assert.equal(await ev(`!!document.getElementById('team-board-name').closest('.settings-pane')`), false, 'the name is above the sections, in view on every tab');
         assert.equal(await ev(`!!document.getElementById('launch-team-health') || /health monitor/i.test(document.getElementById('launch-step-team').textContent)`), false, 'no health check option in the launch dialog');
         await ev(`document.getElementById('team-board-name').value = 'inline-err'; window._validateTeamName(); document.getElementById('launch-team-dir').value = ''; window.launchTeam(); true`);
-        assert.equal(await ev(`document.querySelector('#launch-step-team [role=tab][aria-selected=true]').dataset.section`), 'board', 'a folder problem opens the tab with the folder');
-        f = await inline('launch-team-dir'); assert.match(f.text, /Choose a working directory/, JSON.stringify(f));
+        assert.equal(await ev(`!!document.getElementById('launch-team-dir').closest('.settings-pane')`), false, 'the folder is above the sections (#5989), in view on every tab');
+        f = await inline('launch-team-dir'); assert.match(f.text, /Choose a folder/, JSON.stringify(f));
         await ev(`window.hideLaunchModal(); true`);
 
         console.log('4. The launch dialogs say their defaults come from Settings');

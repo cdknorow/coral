@@ -22,7 +22,7 @@ const { connect } = require('./agent_view_harness');
                 window.__LIVE = Object.values(window.__m.agents).map(x => window.__m.entry(x)); T.state.liveSessions = window.__LIVE; T.render.renderLiveSessions(window.__LIVE);
                 if (${dev === 'phone'}) window.syncMobileAgentList && window.syncMobileAgentList(); return true; })()`);
             const state = () => ev(`(() => { const r = document.querySelector(${JSON.stringify(root)}); const vis = e => e.getClientRects().length > 0 && getComputedStyle(e).display !== 'none'; const heads = [...r.querySelectorAll('.session-group-header[data-group-name]')];
-                return { heads: heads.length, collapsed: heads.filter(h => h.getAttribute('aria-expanded') === 'false').length, rows: [...r.querySelectorAll('li[data-session-id]')].filter(vis).length, stored: JSON.parse(localStorage.getItem('coral_collapsed_groups') || '[]').length }; })()`);
+                return { heads: heads.length, collapsed: heads.filter(h => (h.getAttribute('aria-expanded') ?? h.querySelector('.group-chevron')?.getAttribute('aria-expanded')) === 'false').length, rows: [...r.querySelectorAll('li[data-session-id]')].filter(vis).length, stored: JSON.parse(localStorage.getItem('coral_collapsed_groups') || '[]').length }; })()`);
             const toggle = `document.querySelector('${dev === 'phone' ? '.mobile-list-header' : '.sidebar-header'} [data-group-toggle]')`;
             const label = () => ev(`${toggle}.getAttribute('aria-label')`);
             // Pressing it says what it will do; the name changes once the list is redrawn.

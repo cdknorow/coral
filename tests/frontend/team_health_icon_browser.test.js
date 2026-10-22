@@ -144,7 +144,7 @@ const { setTheme } = require('./helpers/contrast');
         await shot('dialog');
         await ev(`document.getElementById('team-board-name').value = 'hl-launch'; document.getElementById('launch-team-dir').value = '/work/project'; window._validateTeamName(); true`);
         await waitFor(`!document.getElementById('team-board-name-hint').classList.contains('error')`, 'the team name to be accepted');
-        await ev(`window.launchTeam(); true`);
+        await ev(`window._addTeamAgent('Amy', 'First.'); window.launchTeam(); true`); // the dialog starts with no members (#5989)
         await waitFor(`window.__launches.length === 1`, 'the launch request');
         assert.equal('health_monitor' in await ev(`window.__launches[0]`), false, 'not sent: the team gets the default (off) and is set in Team settings > Health check');
         console.log('PASS team health monitor: off by default, the icon (dimmed off, accent on, 44 px on a phone, none through the Hub), it opens the setting, none in the launch dialog');

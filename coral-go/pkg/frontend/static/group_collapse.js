@@ -1,6 +1,7 @@
 /* Moved out of render.js (#3836): group collapse. It asks agent_filter.js whether a search is on, rather than reading render.js's
  * mutable filter. */
 import { escapeAttr } from './utils.js';
+import { keyLabel } from './server_base.js';
 import { redrawLiveList } from './list_hooks.js';
 import { isAgentFiltering } from './agent_filter.js';
 import { browserLocal } from './safe_storage.js';
@@ -24,6 +25,15 @@ export function _isGroupCollapsed(groupName) {
  *  Enter or Space. */
 export function _collapseAttrs(collapsed) {
     return ` role="button" tabindex="0" aria-expanded="${escapeAttr(collapsed ? 'false' : 'true')}" data-on-keydown="group-header-key"`;
+}
+
+/** A team's header opens the team (its name is the way in, #5989); the chevron before the name is the one control that collapses the group, a button with aria-expanded. */
+export function _teamHeaderAttrs(boardName) {
+    return ` role="button" tabindex="0" aria-label="${escapeAttr('Open team ' + keyLabel(boardName))}" data-on-keydown="team-header-key"`;
+}
+export function _chevron(boardName, collapsed) {
+    const label = (collapsed ? 'Expand ' : 'Collapse ') + keyLabel(boardName);
+    return `<button type="button" class="group-chevron" data-on-click="group-chevron" data-group="${escapeAttr(boardName)}" aria-expanded="${escapeAttr(collapsed ? 'false' : 'true')}" aria-label="${escapeAttr(label)}" title="${escapeAttr(label)}"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg></button>`;
 }
 
 /** Enter or Space on a focused team or folder header toggles its group (not a key meant for a
@@ -54,7 +64,7 @@ const GROUP_HEADERS = '.session-group-header[data-group-name]';
 function groupState() {
     const list = document.getElementById('live-sessions-list') || document.getElementById('mobile-session-list'); // the group headers are in the list, not anywhere on the page
     const headers = list ? [...list.querySelectorAll(GROUP_HEADERS)] : [];
-    return { any: headers.length > 0, allClosed: headers.length > 0 && headers.every(h => h.getAttribute('aria-expanded') === 'false') };
+    return { any: headers.length > 0, allClosed: headers.length > 0 && headers.every(h => (h.getAttribute('aria-expanded') ?? h.querySelector('.group-chevron')?.getAttribute('aria-expanded')) === 'false') };
 }
 
 /** The one Collapse / Expand toggle in the list header (#4947): closes every group, or, when they are all closed already, opens them. */
@@ -69,6 +79,16 @@ export function syncGroupToggle() {
         setTitle(b, label); setAttr(b, 'aria-label', label);
         setData(b, 'next', allClosed ? 'expand' : 'collapse');
     }
+}
+
+/** A folder or workflow header collapses as a whole, so its chevron only shows the state (the header carries aria-expanded); it keeps the icons of all three kinds of group in one column. */
+export const CHEVRON_DECO = '<span class="group-chevron group-chevron-deco" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l4 4 4-4"/></svg></span>';
+
+/** Enter or Space on a focused team header opens the team. */
+export function teamHeaderKey(event, header = event.currentTarget) {
+    if (event.target !== header || (event.key !== 'Enter' && event.key !== ' ')) return;
+    event.preventDefault();
+    window.enterTeamContext(header.dataset.board);
 }
 
 export function toggleGroupCollapse(groupName) {
