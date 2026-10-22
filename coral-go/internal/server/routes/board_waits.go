@@ -68,9 +68,13 @@ func (h *BoardHandler) RegisterWait(w http.ResponseWriter, r *http.Request) {
 	}
 	timeout := board.DefaultWaitTimeout
 	if body.Timeout != "" {
-		if d, err := time.ParseDuration(body.Timeout); err == nil && d > 0 {
-			timeout = d
+		d, err := time.ParseDuration(body.Timeout)
+		if err != nil || d <= 0 {
+			msg := "timeout must be a duration such as 30m or 2h"
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": msg, "message": msg, "code": "invalid_timeout", "not_saved": true})
+			return
 		}
+		timeout = d
 	}
 	wait, err := h.bs.RegisterWait(r.Context(), project, body.SubscriberID, body.SessionName, body.WaitType, body.TargetID, body.Reason, timeout)
 	if errors.Is(err, board.ErrTooManyWaits) {
