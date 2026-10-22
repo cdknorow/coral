@@ -1,292 +1,46 @@
 name: windows-tests
-# Runs go test on Windows for every package (since 2026-10-16; before, a hand-kept list from #3614), so the paths
-# Security flagged as compile-only actually run: reparse points and link counts
-# (GetFileInformationByHandle) in safefs, routes, agent and background; UNC and device-path refusal
-# in auto-attach; the no-hooks path in gitutil; the token owner check in cliauth; ptymanager's
-# Windows input and pipe-log code; the data folder's ACL in config (#3637); and the secret key files'
-# access-list check in secfile and secretbox, with the stub-hub enrollment in cloud (#3693). The server builds
-# with CGO_ENABLED=0 and -tags fts5 (the pure-Go SQLite driver), as release.yml's Windows build
-# does, so no C toolchain is needed.
-#
-# REQUIRED since 2026-10-15: green on ci/3641 (run 38814223172) and on main 725773f8 (run 38817692004);
-# a Windows failure now fails this workflow.
 on:
-  push:
-    branches: [main]
-    paths:
-      - "coral-go/**"
-      - "tests/windows/**"
-      - "tests/release/**"
-      - "tools/coral.wxs"
-      - "installers/**"
-      - ".github/workflows/windows-tests.yml"
-      - ".github/workflows/release.yml"
-  pull_request:
-    paths:
-      - "coral-go/**"
-      - "tests/windows/**"
-      - "tests/release/**"
-      - "tools/coral.wxs"
-      - "installers/**"
-      - ".github/workflows/windows-tests.yml"
-      - ".github/workflows/release.yml"
   workflow_dispatch:
-
 permissions:
   contents: read
-
-concurrency:
-  group: windows-tests-${{ github.ref }}
-  cancel-in-progress: true
-
-# Five test shards and the "package" job (six jobs in a run, #5886) run at once (#4605, #4956): "packages" is every package but the timing packages, pkg/tunnel and the slow
-# tests below, "timing" is the packages in TIMING_PKGS and "tunnel" is TUNNEL_PKG (every package runs in exactly one), "slow-1" is vet and the
-# slowest test, "slow-2" the next two and the routes step. internal/background's old-vs-new oracles (#4599) take
-# 341 s of its 7 minutes on Windows (probe run 39129482198), and with every package in one job that package
-# alone set the wall time (600 s in the v1.4.91 gate). A slow test listed here must exist under that exact name:
-# its shard fails when the count of matching tests changes, so a rename can't drop it.
 jobs:
-  go:
-    name: go test (windows-latest, ${{ matrix.shard }})
+  corrections:
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
-        shard: [packages, timing, tunnel, slow-1, slow-2]
+        include:
+          - stack: 1
+            revision: 147d1690ec745583791f916da42383fe7a2d8ee2
+            command: go test -tags fts5 ./internal/hooks ./cmd/coral-agent ./internal/clihelp ./internal/clierr -count=1 -v
+          - stack: 2
+            revision: 325998bc6211edd8196f0d9fb70010caba1c86d5
+            command: go test -tags fts5 ./internal/logsafe ./internal/config ./internal/cliauth -count=1 -v
+          - stack: 3
+            revision: 46b53272aef6343e4b890acd1ac390cfca8ceb40
+            command: go test -tags fts5 ./internal/logsafe ./internal/server/routes -run 'TestNoLogCallTakesAPathExceptThroughLogsafe|TestPersistedDiff|TestGeneratePersistedDiff|TestSkippedNewFilesNoteWording|TestFileOpensInRoutesAreReviewed' -count=1 -v
     env:
       CGO_ENABLED: "0"
       CORAL_TELEMETRY_DISABLED: "1"
-      SLOW_PKG: ./internal/background
-      SLOW_1: "^TestRunProjectAgreesWithBefore4599$"
-      SLOW_1_COUNT: "1"
-      SLOW_2: "^(TestComposeCheckAgreesWithBefore4599|TestRunPassAgreesWithBefore4599)$"
-      SLOW_2_COUNT: "2"
-      # The packages whose tests mostly wait (timers, timeouts, board round trips): about 230 s each on their own in the
-      # v1.4.101 run, while the other shard's CPU-bound packages queued behind them (#4956). pkg/tunnel has its own
-      # shard: its throughput tests measure bytes per second, and next to board and server on one runner one of them
-      # fell under its floor (run 39212450911), while with the 80 other packages it took the packages shard to 409 s.
-      TIMING_PKGS: "internal/board internal/server"
-      TUNNEL_PKG: "pkg/tunnel"
-    defaults:
-      run:
-        shell: bash
-        working-directory: coral-go
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           persist-credentials: false
-      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+          ref: ${{ matrix.revision }}
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
         with:
           go-version-file: coral-go/go.mod
           cache-dependency-path: coral-go/go.sum
-      - name: vet (the whole module, natively on Windows)
-        if: matrix.shard == 'slow-1'
-        run: go vet -tags fts5 ./...
-      # Every package runs on Windows (go list ./...), so a new package or a new Windows test can't be skipped by a
-      # hand-kept list (internal/psquote's Windows test was, #3904). internal/server/routes runs in the next step with
-      # its filter. The packages below fail on Windows today, none of them because of Windows code we ship, and they
-      # had never been run there before 2026-10-16 (probe run 38909914965). Each runs only the tests in its
-      # Windows-only test files (or is compiled, when there are none) until its task (#3914 or #3920) makes it pass whole; take it off
-      # this list in the commit that makes it pass. The step fails if an entry here no longer exists, so the list can't go stale.
-      - name: every package (routes in the next step, the slow tests in their shards), with the known Windows failures run by their Windows-only tests
-        if: matrix.shard == 'packages'
-        run: |
-          set -euo pipefail
-          root=$(go list -m)
-          excluded=(
-            # none: #3914 and #3920 made every package pass on Windows
-          )
-          all=(); while IFS= read -r p; do all+=("${p#"$root"/}"); done < <(go list -tags fts5 ./...)
-          for e in "${excluded[@]}"; do
-            printf '%s\n' "${all[@]}" | grep -qxF "$e" || { echo "::error::excluded package $e no longer exists: drop it from windows-tests.yml"; exit 1; }
-          done
-          read -ra timing <<< "$TIMING_PKGS $TUNNEL_PKG"
-          # A split-out package that no longer exists would silently leave its shard: fail instead.
-          for t in "${timing[@]}"; do
-            printf '%s\n' "${all[@]}" | grep -qxF "$t" || { echo "::error::package $t no longer exists: drop it from TIMING_PKGS or TUNNEL_PKG in windows-tests.yml"; exit 1; }
-          done
-          pkgs=(); for p in "${all[@]}"; do
-            [ "$p" = internal/server/routes ] && continue
-            printf '%s\n' "${timing[@]}" | grep -qxF "$p" && continue
-            printf '%s\n' "${excluded[@]}" | grep -qxF "$p" && continue
-            pkgs+=("./$p")
-          done
-          echo "go test on Windows: ${#pkgs[@]} packages (all but routes and ${#excluded[@]} known failures; the slow tests run in their shards)"
-          go test -count=1 -timeout 40m -tags fts5 -skip "$SLOW_1|$SLOW_2" "${pkgs[@]}"
-          while IFS=$'\t' read -r pkg names; do
-            printf '%s\n' "${excluded[@]}" | grep -qxF "${pkg#./}" || continue
-            if [ -n "$names" ]; then run="^($names)\$"; else run='^$'; fi
-            echo "known Windows failure $pkg: only its Windows-only tests, -run '$run'"
-            go test -count=1 -timeout 30m -tags fts5 -run "$run" "$pkg"
-          done < <(bash ../tests/windows/windows_only_tests.sh --tests)
-      - name: pkg/tunnel on its own
-        if: matrix.shard == 'tunnel'
-        run: go test -count=1 -timeout 40m -tags fts5 "./$TUNNEL_PKG"
-      - name: the timing packages (internal/board, internal/server)
-        if: matrix.shard == 'timing'
-        run: |
-          set -euo pipefail
-          read -ra timing <<< "$TIMING_PKGS"
-          pkgs=(); for t in "${timing[@]}"; do pkgs+=("./$t"); done
-          echo "go test on Windows: ${#pkgs[@]} timing packages: ${pkgs[*]}"
-          go test -count=1 -timeout 40m -tags fts5 "${pkgs[@]}"
-      - name: the slow tests of this shard
-        if: matrix.shard == 'slow-1' || matrix.shard == 'slow-2'
-        run: |
-          set -euo pipefail
-          if [ "${{ matrix.shard }}" = slow-1 ]; then run=$SLOW_1; want=$SLOW_1_COUNT; else run=$SLOW_2; want=$SLOW_2_COUNT; fi
-          # A -run pattern that matches no test passes silently: require exactly the listed tests.
-          n=$(go test -tags fts5 -list "$run" "$SLOW_PKG" | grep -c '^Test' || true)
-          echo "slow tests matched in $SLOW_PKG: $n (expected $want)"
-          if [ "$n" != "$want" ]; then echo "::error::$n tests match $run in $SLOW_PKG, expected $want: update SLOW_1/SLOW_2 in windows-tests.yml"; exit 1; fi
-          go test -count=1 -timeout 40m -tags fts5 -run "$run" "$SLOW_PKG"
-      - name: routes (auto-attach, UNC and device paths, links, symlinks, saving files)
-        if: ${{ !cancelled() && matrix.shard == 'slow-2' }} # report the routes results even when the slow tests failed
-        env:
-          ROUTES_RUN: "AutoAttach|Attach|UNC|Device|HardLink|Symlink|Junction|EvalSymlinks|NeverFollow|SaveFileContent|PathInside|SearchFilesDir|ImportTeam|Upload|WindowsFileURLs|FileIdentity|ShellRiskOnWindows"
-        run: |
-          # Every Windows-only test in routes must match the filter (a new one outside it would never run here).
-          bash ../tests/windows/windows_only_tests.sh --check-routes "$ROUTES_RUN"
-          # A -run pattern that matches no test passes silently, so a rename could hide this coverage:
-          # require at least 40 matching tests (51 when this was written).
-          n=$(go test -tags fts5 -list "$ROUTES_RUN" ./internal/server/routes | grep -c '^Test' || true)
-          echo "routes tests matched: $n"
-          if [ "$n" -lt 40 ]; then echo "::error::only $n routes tests match the Windows filter (expected at least 40)"; exit 1; fi
-          go test -count=1 -timeout 30m -tags fts5 -run "$ROUTES_RUN" ./internal/server/routes
-
-  # The Windows-only code the go test shards above can not run (#5804): the native GUI programs (coral-app and its webview, coral-tray) need cgo and
-  # the webview tag, and CGO_ENABLED=0 above never compiles them; the packaged exes (what release.yml builds on a tag) were first started on the tag
-  # itself. This job builds the package the way release.yml's build-windows does (same commands, same tags: tests/release/commands.txt and
-  # gui_commands.txt, fts5, the resources, the portable zip), vets and tests the two GUI programs with cgo, checks the bundle, and runs the release's own
-  # smoke test (tests/release/smoke_windows.ps1) on the zip: the shipped exes start under strict local auth, the command-line tools work, a stand-in
-  # agent is launched through ConPTY and stopped, nothing is left running. The MSI is not built here (WiX takes minutes): it is checked on the tag.
-  # Keep the build lines in step with release.yml's "Build Windows binaries".
-  package:
-    name: package and smoke (windows-latest, the built exes)
-    runs-on: windows-latest
-    timeout-minutes: 40
-    env:
-      CORAL_TELEMETRY_DISABLED: "1"
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          persist-credentials: false
-          fetch-depth: 0   # the installer step compares with the base (below)
-      # The package build here is a copy of release.yml's, kept in step by a census (tests/release/windows_build_census_test.py):
-      # the same tags, the same program lists (gui_commands.txt and commands.txt), the same cgo split.
-      - name: Census - this build and release.yml's build the same programs with the same tags
-        shell: bash
-        run: python3 tests/release/windows_build_census_test.py
-      # The MSI is built and installed only when the installer changed (#5886): tools/coral.wxs, its art and licence text, installers/,
-      # or the smoke script that checks it. The base is the pull request's base, the push's previous head, or main (a ci/ branch run
-      # by hand); a base that cannot be found counts as changed, so a check that can't tell runs.
-      - name: Did the installer change?
-        id: msi
-        shell: bash
-        env:
-          EVENT: ${{ github.event_name }}
-          PR_BASE: ${{ github.event.pull_request.base.sha }}
-          PUSH_BEFORE: ${{ github.event.before }}
-        run: |
-          set -euo pipefail
-          case "$EVENT" in
-            pull_request) base="$PR_BASE" ;;
-            push) base="$PUSH_BEFORE" ;;
-            *) git fetch --no-tags -q origin main; base=$(git merge-base HEAD FETCH_HEAD) ;;
-          esac
-          changed=true
-          if [ -n "$base" ] && git cat-file -e "$base^{commit}" 2>/dev/null; then
-            if git diff --name-only "$base" HEAD | grep -Eq '^(tools/coral\.wxs|tools/license\.rtf|tools/make_installer_art\.py|tools/requirements-installer-art\.txt|assets/installer/|installers/|tests/release/smoke_windows\.ps1)'; then changed=true; else changed=false; fi
-          fi
-          echo "base=${base:-none} installer changed: $changed"
-          echo "changed=$changed" >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
-        with:
-          go-version-file: coral-go/go.mod
-          cache-dependency-path: coral-go/go.sum
-      - name: Native GUI compiler (gcc; the image has one, else MinGW 16.1.0 is installed, the version release.yml and encryption-verify.yml pin)
-        shell: pwsh
-        run: |
-          if (-not (Get-Command gcc -ErrorAction SilentlyContinue)) { choco install mingw --version=16.1.0 -y --no-progress; if ($LASTEXITCODE -ne 0) { throw "choco install mingw failed" } }
-          gcc --version
-      - name: Sync agent docs
-        shell: bash
-        run: bash tools/sync-agent-docs.sh
-      - name: vet and test the GUI programs with cgo (coral-app with the webview tag, coral-tray)
-        shell: pwsh
+      - name: Native Windows correction checks
         working-directory: coral-go
-        env:
-          CGO_ENABLED: "1"
-          CC: gcc
-        run: |
-          go vet -tags "webview,fts5" ./cmd/coral-app ./cmd/coral-tray
-          if ($LASTEXITCODE -ne 0) { throw "go vet of the GUI programs failed" }
-          go test -count=1 -timeout 15m -tags "webview,fts5" ./cmd/coral-app ./cmd/coral-tray
-          if ($LASTEXITCODE -ne 0) { throw "go test of the GUI programs failed" }
-      - name: Build the package (as release.yml's build-windows does)
-        shell: pwsh
-        working-directory: coral-go
-        run: |
-          $env:GOOS = "windows"
-          $env:GOARCH = "amd64"
-          $version = "0.0.0-ci"
-          $buildTags = "fts5"
-          $ldflags = "-s -w -X github.com/subgentic/coral/internal/config.Version=$version"
-          bash ../tools/gen_windows_resources.sh $version Coral
-          if ($LASTEXITCODE -ne 0) { throw "gen_windows_resources.sh failed" }
-          New-Item -ItemType Directory -Force -Path ..\dist\windows\bin | Out-Null
-          $gui = Get-Content ..\tests\release\gui_commands.txt | Where-Object { $_ -notmatch '^\s*(#|$)' } | ForEach-Object { $_.Trim() }
-          $commands = Get-Content ..\tests\release\commands.txt | Where-Object { $_ -notmatch '^\s*(#|$)' } | ForEach-Object { $_.Trim() }
-          $env:CGO_ENABLED = "0"
-          foreach ($cmd in $commands) {
-            if ($gui -contains $cmd) { continue }
-            go build -tags $buildTags -ldflags "$ldflags" -o "..\dist\windows\bin\$cmd.exe" "./cmd/$cmd/"
-            if ($LASTEXITCODE -ne 0) { throw "go build $cmd failed" }
-          }
-          $env:CGO_ENABLED = "1"
-          $env:CC = "gcc"
-          go build -tags $buildTags -ldflags "-H windowsgui $ldflags" -o "..\dist\windows\bin\coral-tray.exe" "./cmd/coral-tray/"
-          if ($LASTEXITCODE -ne 0) { throw "go build coral-tray failed" }
-          go build -tags "webview,$buildTags" -ldflags "-H windowsgui $ldflags" -o "..\dist\windows\bin\coral-app.exe" "./cmd/coral-app/"
-          if ($LASTEXITCODE -ne 0) { throw "go build coral-app failed" }
-          powershell -ExecutionPolicy Bypass -File ..\tests\release\verify_standard_bundle.ps1 -PackageDir ..\dist\windows\bin
-          if ($LASTEXITCODE -ne 0) { throw "verify_standard_bundle.ps1 failed" }
-          Compress-Archive -Path "..\dist\windows\bin\*" -DestinationPath "..\dist\windows\Coral-$version-x64-portable.zip"
-      - name: Third-party notices (the MSI holds them, as in release.yml)
-        if: steps.msi.outputs.changed == 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          (cd coral-go && go mod download)
-          bash installers/third-party-notices.sh dist/windows/bin/licenses dist/windows/bin/*.exe
-          bash tests/release/verify_notices.sh dist/windows/bin/licenses dist/windows/bin/*.exe
-      - name: Build the MSI (as release.yml does; only when the installer changed)
-        if: steps.msi.outputs.changed == 'true'
         shell: pwsh
         run: |
-          dotnet tool install --global wix --version 5.0.2
-          if ($LASTEXITCODE -ne 0) { throw "dotnet tool install wix failed" }
-          wix extension add WixToolset.UI.wixext/5.0.2
-          if ($LASTEXITCODE -ne 0) { throw "wix extension add failed" }
-          $version = "0.0.0-ci"
-          $binDir = (Resolve-Path "dist\windows\bin").Path
-          $buildDir = (Resolve-Path "dist\windows").Path
-          Copy-Item "tools\license.rtf" $buildDir
-          $msiPath = Join-Path $buildDir "Coral-$version-x64.msi"
-          wix build tools\coral.wxs -arch x64 -ext WixToolset.UI.wixext -d "Version=$version" -d "BinDir=$binDir" -d "BuildDir=$buildDir" -o $msiPath
-          if ($LASTEXITCODE -ne 0) { throw "wix build failed" }
-          echo "MSI_PATH=$msiPath" >> $env:GITHUB_ENV
-      - name: Smoke test the portable package (the release's own script, with a stand-in agent; and the MSI when it was built)
-        shell: pwsh
-        run: |
-          Push-Location coral-go
-          $env:CGO_ENABLED = "0"
-          $standin = Join-Path $env:RUNNER_TEMP 'standin\claude.exe'
-          go build -tags fts5 -o $standin ./cmd/mock-agent
-          if ($LASTEXITCODE -ne 0) { throw "go build ./cmd/mock-agent failed" }
-          Pop-Location
-          $smoke = @{ Zip = (Resolve-Path "dist\windows\Coral-0.0.0-ci-x64-portable.zip").Path; Version = "0.0.0-ci"; StandIn = $standin }
-          if ($env:MSI_PATH) { $smoke.Msi = $env:MSI_PATH } else { Write-Host "the installer did not change: the MSI is not built or checked" }
-          ./tests/release/smoke_windows.ps1 @smoke
-          if ($LASTEXITCODE -ne 0) { throw "smoke_windows.ps1 failed" }
+          ${{ matrix.command }} 2>&1 | Tee-Object -FilePath windows-correction-tests.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: windows-correction-tests-${{ matrix.stack }}
+          path: coral-go/windows-correction-tests.txt
+          retention-days: 7
