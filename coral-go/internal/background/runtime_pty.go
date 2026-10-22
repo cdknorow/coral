@@ -116,3 +116,12 @@ func (r *PTYRuntime) AgentScreenStyled(_ context.Context, name, _, _ string) (st
 
 // HasRenderedScreen implements ptymanager.RenderedScreen: AgentScreen is the rendered screen.
 func (r *PTYRuntime) HasRenderedScreen() bool { return true }
+
+// RepaintSession implements ptymanager.Repainter: the gate asks for a redraw when the agent's input box isn't on the rendered
+// screen (#247). The board's nudges and the health checks come through this runtime: without it they waited for ever for a
+// Codex box the replay had lost after a long reply.
+func (r *PTYRuntime) RepaintSession(_ context.Context, name, _, _ string) error {
+	return r.backend.Repaint(name)
+}
+
+var _ ptymanager.Repainter = (*PTYRuntime)(nil)
