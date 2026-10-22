@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"github.com/subgentic/coral/internal/hooks"
 	"github.com/subgentic/coral/internal/testguard"
 	"io"
 	"net/http"
@@ -25,6 +26,7 @@ func TestHelperRunAgent(t *testing.T) {
 		os.Exit(99)
 	}
 	os.Args = append([]string{"coral-agent"}, args...)
+	hooks.AllowTestServerListener = true // the test binary serves on the port this CLI talks to (#224 B)
 	main()
 	os.Exit(0)
 }

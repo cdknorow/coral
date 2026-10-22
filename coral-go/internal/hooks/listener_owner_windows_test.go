@@ -22,6 +22,7 @@ import (
 // The tests below set the lookups themselves.
 func TestMain(m *testing.M) {
 	listenerPIDs = func(string, int) ([]uint32, error) { return nil, nil }
+	AllowTestServerListener = true // the tests' own servers
 	os.Exit(m.Run())
 }
 
@@ -269,4 +270,18 @@ func TestTheDataFolderOwnerIsAnAllowedListenerOwner(t *testing.T) {
 	pidOwner = func(uint32) (*windows.SID, string, error) { return system, folder + `\coral.exe`, nil }
 	fileOwner = func(string) (*windows.SID, error) { return system, nil }
 	assert.True(t, errors.As(checkListener("127.0.0.1", 8450), &foreign), "a data folder owned by SYSTEM does not make a SYSTEM listener Coral")
+}
+
+// The install folders come from the system (KnownFolderPath), as the updater reads them, not from %ProgramFiles%, which the
+// environment sets (Security's note on #99).
+func TestTheInstallFoldersComeFromTheSystemNotTheEnvironment(t *testing.T) {
+	t.Setenv("ProgramFiles", `C:\not-program-files`)
+	t.Setenv("ProgramFiles(x86)", `C:\not-program-files-x86`)
+	want, err := windows.KnownFolderPath(windows.FOLDERID_ProgramFiles, 0)
+	require.NoError(t, err)
+	folders := allowedCoralFolders()
+	assert.Contains(t, folders, filepath.Join(want, "Coral"))
+	for _, f := range folders {
+		assert.NotContains(t, f, "not-program-files", "the environment's %ProgramFiles% is not used")
+	}
 }
