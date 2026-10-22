@@ -1753,6 +1753,9 @@
 .health-line { display: flex; align-items: flex-start; gap: 6px; }
 .health-line > label { flex: 0 1 auto; min-width: 0; }
 .health-line > .settings-info-btn { margin-top: 1px; }
+/* The (i) is a circle in Team settings as in Settings (#6042): the dialog's generic button rule (padding, radius, min-height) must not reshape it. */
+.team-availability-dialog .settings-info-btn { min-height: 0; padding: 0; border-radius: 50%; width: 1.5rem; height: 1.5rem; }
+.team-availability-dialog .settings-info-btn:not([aria-expanded="true"]) { background: none; color: var(--text-secondary); }
 .health-form .settings-info-text { margin: 0 0 0 26px; font-size: calc(var(--fs-md) * .9); color: var(--text-secondary); }
 .working-mode-note { margin: 2px 0 0; font-size: 0.75rem; color: var(--text-secondary); }
 .health-form .health-rule-head { display: flex; align-items: flex-start; gap: 8px; font-weight: 600; }
@@ -2186,7 +2189,7 @@
 .health-form select, .health-form input[type="text"] { max-width: 100%; }
 /* A phone or a touch screen: the check rows and the inputs are touch-size targets. */
 @media (max-width: 767px), (pointer: coarse) {
-    .health-line > .settings-info-btn, .prompt-inspection-meta .settings-info-btn { width: var(--control-touch-height, 44px); height: var(--control-touch-height, 44px); border-radius: var(--radius-md); margin-top: 0; }
+    .health-line > .settings-info-btn, .prompt-inspection-meta .settings-info-btn { width: var(--control-touch-height, 44px); height: var(--control-touch-height, 44px); min-height: var(--control-touch-height, 44px); border-radius: 50%; margin-top: 0; }
     .health-form .health-rule-head { min-height: var(--control-touch-height, 44px); align-items: center; }
     .health-form .health-rule-head input { margin-top: 0; }
     .health-form input[type="number"], .health-form input[type="text"], .health-form select { min-height: var(--control-touch-height, 44px); }

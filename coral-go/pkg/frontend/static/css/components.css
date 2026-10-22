@@ -4430,7 +4430,7 @@ a.ibx-open, a.ibx-open:visited { color: var(--link-text); }
     .settings-nav .settings-group-pick { display: block; }
     .settings-group-pick select { width: 100%; min-height: 44px; }
     .settings-panes { padding: .8rem 1rem 1.2rem; }
-    .settings-info-btn { width: 44px; height: 44px; border-radius: var(--radius-md); }
+    .settings-info-btn { width: 44px; height: 44px; border-radius: 50%; } /* a circle at every size (#6042); the 44 px is the target */
     .settings-row > dt > label { flex: 1 1 0; min-width: 0; } /* the label wraps so its (i) button stays beside it, not on a row of its own (#5057) */
     .settings-modal-body select, .settings-modal-body input[type="text"], .settings-modal-body input[type="number"], .settings-modal-body input[type="password"], .settings-modal-body .btn { min-height: 44px; }
 }
@@ -4571,3 +4571,7 @@ a.ibx-open, a.ibx-open:visited { color: var(--link-text); }
 /* New Agent (#5990): a Launch that is off (the CLI it needs is missing) looks off; the line under the folder is its reason. */
 #launch-modal .btn:disabled { opacity: .5; cursor: not-allowed; }
 .launch-dir-note { margin: 6px 0 0; }
+
+/* Default models (#6042): four short boxes, two by two, not four full-width boxes stacked (the loudest block of Settings > Agents for a rarely changed setting); one column on a phone. */
+.settings-cli-paths.settings-model-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; align-items: end; }
+@media (max-width: 600px) { .settings-cli-paths.settings-model-grid { grid-template-columns: minmax(0, 1fr); } }
