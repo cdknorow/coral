@@ -1,6 +1,8 @@
 /* Which view the dashboard shows (moved out of utils.js, #5065; no behaviour change). */
 import { checkAgentView } from './agent_view.js';
 import { setDockPage } from './dock_page.js';
+import { state } from './state.js';
+import { isCloud, normServer, LOCAL_SERVER } from './server_base.js';
 
 const VIEW_IDS = [
     "mobile-agent-list",
@@ -71,6 +73,11 @@ export function showView(activeId) {
     const layout = document.querySelector('.layout');
     if (layout) layout.classList.toggle('sidebar-hidden', FULL_WIDTH_VIEWS.has(activeId));
     document.body.classList.toggle('live-session-active', activeId === 'live-session-view');
+    // Which CLI the agent page on screen is, for the lines that are about one CLI only (the "Claude is not signed in" line, #6070): its type, or "remote" for an agent on another computer or seen through
+    // Coral Hub (this computer's CLI says nothing about it); empty off an agent's page. Plain CSS reads it, so no listener is needed at startup.
+    const open = activeId === 'live-session-view' ? state.currentSession : null;
+    const cli = !open || open.type !== 'live' || !open.agent_type ? '' : (isCloud() || normServer(open.server) !== LOCAL_SERVER) ? 'remote' : open.agent_type;
+    if ((document.body.getAttribute('data-agent-cli') || '') !== cli) document.body.setAttribute('data-agent-cli', cli); // (written only when it changes: the startup sequence does not gain a write)
     setDockPage(activeId); // the right sidebar follows the kind of page: its tabs and its own open state (#4539)
     checkAgentView(); // the agent's pollers and terminal socket follow whether its page is on screen (#3719)
 }

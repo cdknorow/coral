@@ -42,6 +42,7 @@ const CODEX = [{ name: 'first-codex', display_name: 'Agent', agent_type: 'codex'
         assert.equal(await ev(`${btn} && ${btn}.textContent`), 'Check again');
         assert.ok(await ev(`${btn}.getBoundingClientRect().height >= 24`), 'a big enough target');
         // still signed out: the card stays, and the CLI's own check was asked (fresh, signin=1)
+        await ev(`window.__checks = []; true`); // (the card itself asked the CLI once while the status had not said yet, #6070: what is counted below is the button's)
         await ev(`window.__cliSigned = false; ${btn}.click(); true`);
         await waitFor(`(window.__checks || []).length === 1`, 'the check', 8000);
         assert.match(await ev(`window.__checks[0]`), /type=claude&signin=1/);

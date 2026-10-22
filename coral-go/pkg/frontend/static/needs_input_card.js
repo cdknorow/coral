@@ -53,9 +53,10 @@ function needsInputInfo(session) {
         // A new Claude agent that has not started: when the server says Claude is not signed in (#5838's check after the first launch), the card says that, not the generic "startup prompt" (#5852).
         // Only for a session on THIS computer: claude_signed_in is this computer's Claude, and an agent on another server (or seen through Coral Hub) must not send the person to the wrong terminal.
         if (session.agent_type === "claude" && isLocalClaude(row)) {
+            // The last status answer is the server's own check of Claude (up to five minutes old, and none at all on a fresh install): when it has not said, the CLI's own status command is asked now, as Codex's is (#6070).
             const signedIn = claudeSignedIn();
             if (signedIn === false) return { kind: "startup", signedOut: true, agent: "claude" };
-            if (signedIn === undefined) askSigninSoon();
+            if (signedIn === undefined) { askSigninSoon(); askClaudeSignin(); } // the server's last answer, and the CLI itself: whichever says first
         }
         // Codex has a status command too (#6048): asked once for a card, and again by Check again; the CLIs that cannot be asked (Antigravity, Pi) keep the generic card.
         if (session.agent_type === "codex" && isLocalAgent(row)) {
@@ -308,6 +309,13 @@ async function askSignin(type) {
         const data = await resp.json();
         return typeof data.signed_in === "boolean" ? data.signed_in : undefined;
     } catch { return undefined; }
+}
+let _claudeAskedAt = 0;
+function askClaudeSignin() {
+    const now = Date.now();
+    if (now - _claudeAskedAt < 30_000) return;
+    _claudeAskedAt = now;
+    askSignin("claude").then(v => { if (typeof v === "boolean") setClaudeSignedIn(v); if (_lastCard) syncNeedsInputCard(_lastCard.container, _lastCard.session); });
 }
 function askCodexSignin() {
     const now = Date.now();

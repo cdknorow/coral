@@ -20,6 +20,7 @@ const SESSIONS = [{ name: 'first-agent', display_name: 'Agent', agent_type: 'cla
               if (m !== 'GET') return json({ ok: true });
               if (path === '/api/system/status' && opts && opts.cache === 'no-store') window.__freshStatus = (window.__freshStatus || 0) + 1;
               if (path === '/api/system/status') return window.__origFetch(url, opts).then(r => r.json()).then(d => { if (window.__signedIn !== undefined) d.claude_signed_in = window.__signedIn; else delete d.claude_signed_in; return json(d); });
+              if (path === '/api/system/cli-check') { window.__cliAsks = (window.__cliAsks || 0) + 1; return json(window.__cli === undefined ? { found: true } : { found: true, signed_in: window.__cli }); } // the CLI's own status command, as the card asks it (#6070)
               if (path === '/api/sessions/live') return json(window.__sessions);
               if (/^\\/api\\/sessions\\/live\\/[^/]+\\/chat$/.test(path)) return json({ messages: [], total: 0, has_more: false, pending: null });
               if (/^\\/api\\/board\\//.test(path)) return json({});
@@ -75,6 +76,37 @@ const SESSIONS = [{ name: 'first-agent', display_name: 'Agent', agent_type: 'cla
         for (let i = 0; i < 3; i++) await ev(`import((window.__coralStatic || '/static/') + 'live_chat.js').then(m => m.refreshLiveHistory()).then(() => true)`);
         assert.equal(await ev(`window.__freshStatus`), 0, 'a card for another server asks for no status');
         assert.ok(!/not signed in/.test((await card()).text));
+
+        // #6070 (a): no status answer yet (a fresh install: no background check has run), so the card asks the CLI's own status command and shows the sign-in card at once, as Codex's does
+        console.log('4. a signed-out Claude with no status answer yet gets the sign-in card from the CLI check');
+        await ev(`const t0 = Date.now.bind(Date); Date.now = () => t0() + 60000; window.__sessions[0].server = undefined; window.__cli = false; window.__cliAsks = 0; window._coralSetLiveSessions(JSON.parse(JSON.stringify(window.__sessions))); true`);
+        await withStatus(undefined);
+        await waitFor(`/Claude is not signed in/.test((document.querySelector('#live-history-messages > .chat-needs-input') || {}).textContent || '')`, 'the sign-in card from the CLI check alone', 10000);
+        c = await card();
+        assert.match(c.text, /Sign-in needed.*Claude is not signed in.*Open the terminal and sign in, then check again./); assert.ok(c.open, 'Open terminal stays');
+        assert.equal(await ev(`window.__cliAsks`), 1, 'the CLI is asked once, not on every look');
+        for (let i = 0; i < 3; i++) await ev(`import((window.__coralStatic || '/static/') + 'live_chat.js').then(m => m.refreshLiveHistory()).then(() => true)`);
+        assert.equal(await ev(`window.__cliAsks`), 1, 'later looks at the card do not ask again');
+
+        // #6070 (c): the "Claude is not signed in" line is about Claude: not on a Codex agent's page, nor an agent on another computer; on a Claude agent's page and off agent pages it stays
+        console.log('5. the Claude sign-in line shows on Claude, not on a Codex agent');
+        const lineShown = () => ev(`(() => { const l = document.getElementById('claude-signin-line'); return !l.hidden && l.getClientRects().length > 0; })()`);
+        await withStatus(false);
+        await waitFor(`!document.getElementById('claude-signin-line').hidden`, 'the line for a signed-out Claude', 10000);
+        assert.ok(await lineShown(), 'on the Claude agent: shown');
+        const CODEX = require('crypto').randomUUID();
+        await ev(`window.__sessions.push({ name: 'codex-agent', display_name: 'Codex agent', agent_type: 'codex', session_id: ${JSON.stringify(CODEX)}, working_directory: '/repo/c' }); window._coralSetLiveSessions(JSON.parse(JSON.stringify(window.__sessions))); Promise.resolve(window.selectLiveSession('codex-agent', 'codex', ${JSON.stringify(CODEX)})).then(() => true)`);
+        await waitFor(`document.body.dataset.agentCli === 'codex'`, 'the Codex agent open', 10000);
+        assert.ok(!(await lineShown()), 'on a Codex agent: not shown, though Claude is signed out');
+        await ev(`Promise.resolve(window.selectLiveSession('first-agent', 'claude', ${JSON.stringify(SID)})).then(() => true)`);
+        await waitFor(`document.body.dataset.agentCli === 'claude'`, 'the Claude agent open again', 10000);
+        assert.ok(await lineShown(), 'back on the Claude agent: shown again');
+        await ev(`window.__sessions[0].server = 'other'; window._coralSetLiveSessions(JSON.parse(JSON.stringify(window.__sessions))); Promise.resolve(window.selectLiveSession('first-agent', 'claude', ${JSON.stringify(SID)}, 'other')).then(() => true)`);
+        await waitFor(`document.body.dataset.agentCli === 'remote'`, 'an agent on another computer open', 10000);
+        assert.ok(!(await lineShown()), 'a Claude on another computer: not shown (this computer\'s Claude says nothing about it)');
+        await ev(`import((window.__coralStatic || '/static/') + 'view_switch.js').then(m => { m.showView('welcome-screen'); return true; })`);
+        assert.equal(await ev(`document.body.dataset.agentCli`), '', 'off an agent page: no CLI');
+        assert.ok(await lineShown(), 'off the agent pages the line still says background jobs wait');
 
         console.log('PASS the first-run card is readable and says what to do');
     } finally { await client.close(); }

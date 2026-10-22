@@ -4003,6 +4003,8 @@ button.terminal-gone-header { margin: 0 4px 0 0; font-size: 0.6875rem; line-heig
 /* One calm line while Claude is not signed in (#5478): quiet type, no box, no warning colour */
 .signin-line { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-sm) var(--space-md); margin: var(--space-sm) var(--space-xl) 0; font-size: var(--fs-base); color: var(--text-secondary); }
 .signin-line[hidden] { display: none; }
+/* about Claude only: not on the page of a Codex or other agent, nor of an agent on another computer (#6070); elsewhere it still says background jobs wait */
+body[data-agent-cli]:not([data-agent-cli=""], [data-agent-cli="claude"]) .signin-line { display: none; }
 .main-content > .signin-line { flex: none; order: -1; }
 .signin-line-btn { display: inline-flex; align-items: center; gap: var(--space-sm); padding: 2px 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: help; }
 .signin-line-btn .material-icons { font-size: 1rem; }
