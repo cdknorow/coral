@@ -30,6 +30,7 @@ const (
 	HubRedactTokens          = "hub_redact_tokens"
 	CloudAllowHubAutoAccept  = "cloud_allow_hub_auto_accept"
 	HubRelaunchUpdates       = "hub_relaunch_updates"
+	CodexTrustCoralHooks     = "codex_trust_coral_hooks"
 	HubCrossTeamSettings     = "hub_cross_team_settings"
 	CrossTeamLinksSeen       = "cross_team_links_seen"
 	HubAutoAcceptChanged     = "cloud_hub_auto_accept_changed"
@@ -203,6 +204,7 @@ func init() {
 	register(Spec{Key: IdentityActor, Kind: KindEnum, Values: []string{"log", "enforce"}, Default: "log", Class: ClassOwnRoute, Apply: ApplyLive, Doc: "Whether the actor header is enforced."})
 	ownRoute(CloudMaxMode, KindText, "", "The most access Coral Hub may have.")
 	ownRoute(CloudAllowHubAutoAccept, KindBool, "true", "The Hub may auto-accept, or start an agent that skips permission prompts (on unless the owner turned it off; the Hub owner may change it, #5840).")
+	ownRoute(CodexTrustCoralHooks, KindBool, "true", "Coral trusts its own hooks for each Codex it launches, when only an administrator can change them (#153); off, Codex asks the person to review them.")
 	ownRoute(HubRelaunchUpdates, KindBool, "true", "The Hub's owner may relaunch this Coral to install a staged update (#5280).")
 	ownRoute(HubCrossTeamSettings, KindBool, "true", "Coral Hub's owner may turn cross-team messaging and file sharing on or off for this computer's teams (#5572); off, Coral Hub changes neither, in either direction.")
 	coral(HubAutoAcceptChanged, "Who last changed the Coral Hub auto-accept switch, the Coral Hub owner or this computer, and when, as JSON: written by Coral, shown beside the switch in Settings > Network and Hub (#5840).")

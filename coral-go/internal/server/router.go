@@ -425,8 +425,10 @@ func (s *Server) registerCloud(r *chi.Mux) {
 	r.Put("/api/cloud/allow-auto-accept", s.cloudHandler.SetAllowHubAutoAccept)
 	r.Post("/api/hub-auto-accept", s.cloudHandler.HubOwnerSetAutoAccept) // #5840: Coral Hub's owner, through the tunnel only
 	r.Put("/api/cloud/redact-tokens", s.cloudHandler.SetRedactTokens)
-	r.Put("/api/cloud/hub-relaunch", s.cloudHandler.SetHubRelaunch)    // #5280
-	r.Put("/api/cloud/hub-cross-team", s.cloudHandler.SetHubCrossTeam) // #5572
+	r.Put("/api/cloud/hub-relaunch", s.cloudHandler.SetHubRelaunch)        // #5280
+	r.Put("/api/cloud/hub-cross-team", s.cloudHandler.SetHubCrossTeam)     // #5572
+	r.Get("/api/system/codex-trust-hooks", s.cloudHandler.CodexTrustHooks) // #153
+	r.Put("/api/system/codex-trust-hooks", s.cloudHandler.SetCodexTrustHooks)
 	// Coral Hub's relaunch into a staged update (#5280): 404 until the feature is switched on and the updater exists.
 	// Where the owner routes read the owner's label recorded at enrolment (#5307).
 	routes.SetHubOwnerLabel(store.NewCloudStore(s.db, store.NewRemoteServerStore(s.db, s.cfg.CoralDir())).OwnerUser)
