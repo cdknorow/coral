@@ -15,7 +15,7 @@ func TestSkipsPermissionPrompts(t *testing.T) {
 	keeps := map[string][]string{
 		"claude": {
 			"", "--model opus", "--model=opus", "-m opus", "--effort high", "--effort=high",
-			"--permission-mode default", "--permission-mode plan", "--permission-mode=plan", "--model opus --effort low --permission-mode plan",
+			"--permission-mode default", "--permission-mode manual", "--permission-mode=manual", "--model opus --effort low --permission-mode default",
 		},
 		"agy":         {"--model x", "--effort high", "--mode plan", "--mode=plan", "--approval-mode default", "--approval-mode=plan", "--permission-mode plan"},
 		"antigravity": {"--effort medium", "--mode plan"},
@@ -35,6 +35,7 @@ func TestSkipsPermissionPrompts(t *testing.T) {
 			"--settings s.json", "--settings={}", "--add-dir /", "--mcp-config m.json", "--permission-prompt-tool t", "--verbose",
 			"--yolo", "--mode accept-edits", "-a never", "--effort", "--effort --dangerously-skip-permissions", "--model --yolo",
 			"--model=", "opus", "--", "--model opus --dangerously-skip-permissions", "--Permission-Mode plan",
+			"--permission-mode plan", "--permission-mode=plan", "--model opus --effort low --permission-mode plan", // Claude's Plan runs classifier-approved commands without asking (#5894)
 		},
 		"agy":         {"--dangerously-skip-permissions", "--yolo", "--mode accept-edits", "--mode=accept-edits", "--approval-mode yolo", "--allowed-tools x", "--settings s"},
 		"antigravity": {"--yolo", "--mode accept-edits"},
@@ -69,10 +70,14 @@ func TestSkipsPermissionPrompts(t *testing.T) {
 	}
 	// The mode flags Coral itself makes for a mode that keeps the prompts pass for that type; those
 	// for a mode that doesn't (Claude's acceptEdits, every type's bypass) count as skipping.
-	for _, agentType := range []string{"claude", "agy", "antigravity", "gemini", "codex"} {
-		assert.False(t, SkipsPermissionPrompts(agentType, PermissionFlagsForAgent(agentType, "plan")), "%s plan", agentType)
+	for _, agentType := range []string{"agy", "antigravity", "gemini", "codex"} {
+		assert.False(t, SkipsPermissionPrompts(agentType, PermissionFlagsForAgent(agentType, "plan")), "%s plan keeps the prompts: the other CLIs' plan modes are their own (#5894)", agentType)
 		assert.True(t, SkipsPermissionPrompts(agentType, PermissionFlagsForAgent(agentType, "bypassPermissions")), "%s bypass", agentType)
 	}
+	assert.True(t, SkipsPermissionPrompts("claude", PermissionFlagsForAgent("claude", "plan")), "Claude's Plan is not prompt-keeping (#5894)")
+	assert.True(t, SkipsPermissionPrompts("", []string{"--permission-mode", "plan"}), "no type is Claude")
+	assert.False(t, SkipsPermissionPrompts("claude", []string{"--permission-mode", "default"}))
+	assert.True(t, SkipsPermissionPrompts("claude", PermissionFlagsForAgent("claude", "bypassPermissions")), "claude bypass")
 	assert.True(t, SkipsPermissionPrompts("claude", PermissionFlagsForAgent("claude", "acceptEdits")))
 	assert.True(t, SkipsPermissionPrompts("codex", PermissionFlagsForAgent("codex", "auto")))
 }

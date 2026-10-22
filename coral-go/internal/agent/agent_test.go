@@ -226,8 +226,8 @@ func TestClaude_PermissionModeAllValues(t *testing.T) {
 		{"auto", true},
 		{"bypassPermissions", true},
 		{"dontAsk", true},
-		{"default", false},
-		{"", false},
+		{"default", true}, // Coral means "ask": Claude 2.1.283+ would start in Auto with no flag (#5894)
+		{"", true},
 	}
 	for _, tt := range tests {
 		t.Run("mode="+tt.mode, func(t *testing.T) {
@@ -243,8 +243,12 @@ func TestClaude_PermissionModeAllValues(t *testing.T) {
 			if !tt.expectFlag && hasFlag {
 				t.Errorf("did not expect --permission-mode flag for mode %q, got %q", tt.mode, cmd)
 			}
-			if tt.expectFlag && !strings.Contains(cmd, "--permission-mode "+tt.mode) {
-				t.Errorf("expected '--permission-mode %s', got %q", tt.mode, cmd)
+			want := tt.mode
+			if want == "" {
+				want = "default"
+			}
+			if tt.expectFlag && !strings.Contains(cmd, "--permission-mode "+want) {
+				t.Errorf("expected '--permission-mode %s', got %q", want, cmd)
 			}
 		})
 	}

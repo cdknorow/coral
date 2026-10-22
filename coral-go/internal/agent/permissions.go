@@ -330,13 +330,13 @@ func ValidPermissionMode(mode string) bool {
 }
 
 // SkipsPermissionPrompts reports whether flags could let an agentType agent act without asking:
-// a permission mode other than default or plan, a bypass, pre-allowed tools, extra folders, another
+// a permission mode other than default (or, for the other CLIs than Claude, plan), a bypass, pre-allowed tools, extra folders, another
 // settings or config file, or any flag it does not know (#126 F4). It is an allowlist, so a spelling
 // nobody listed counts as skipping: false only when every word is a flag below with a value that
 // keeps the prompts on. Each flag is "--flag value" or "--flag=value"; a value that is itself a flag
 // counts as skipping.
 //
-//   - every type: --model / -m, and --permission-mode default|plan (Coral translates it per type)
+//   - every type: --model / -m, and --permission-mode default|plan (Coral translates it per type; for Claude only default|manual: its Plan mode runs classifier-approved commands without asking, #5894)
 //   - Claude, agy, Antigravity: --effort (the thinking level, agentmodels.ThinkingArgs)
 //   - agy, Antigravity, Gemini: --mode plan, --approval-mode default|plan
 //   - Codex: -a / --ask-for-approval / --approval-mode untrusted|on-request, -s / --sandbox
@@ -380,6 +380,11 @@ func promptKeepingFlag(agentType, name string) func(string) bool {
 	case "--model", "-m":
 		return anyValue
 	case "--permission-mode":
+		if agentType == at.Claude || agentType == "" { // no type is Claude, the default agent
+			// Claude's Plan mode is not prompt-keeping (#5894, Anthropic's permission-modes page): with auto mode available it runs the commands its classifier approves
+			// instead of asking, and only blocks source edits. Default (Manual) is the mode that asks. The other CLIs' plan modes are their own and are left as they were.
+			return oneOf("default", "manual")
+		}
 		return oneOf("default", "plan")
 	}
 	switch agentType {
