@@ -87,7 +87,8 @@ func Endpoint(hostPort string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("address %q: %w", hostPort, err)
 	}
-	return netip.AddrPortFrom(ap.Addr().Unmap(), ap.Port()).String(), nil
+	// No zone: "fe80::1%en0" names the interface the address is on, which each end may write its own way; the address and port are what tell connections apart.
+	return netip.AddrPortFrom(ap.Addr().Unmap().WithZone(""), ap.Port()).String(), nil
 }
 
 // Proof is the answer for a challenge on a connection: port is the port Coral listens on (its end of the connection), client and server are the connection's two endpoints as "addr:port".

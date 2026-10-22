@@ -244,8 +244,9 @@ On macOS and Linux a tool checks that the program on Coral's port is your Coral 
 
 - Start Coral, or stop the program that holds the port (`lsof -nP -iTCP:8420` shows it).
 - "cannot prove who it is" (a 404): the Coral on that port is older than the tool, or does not know this agent's session. Restart Coral, and restart the agent.
-- "too many proof requests": Coral limits the challenges from one computer; try again in a few seconds.
-- An agent started before this check existed has an unmarked token and is not asked to prove anything; restarting it brings the check.
+- "too many proof requests": Coral limits the challenges for each identity (the command line, and each agent's session); try again in a few seconds. Coral answers only this computer's own programs, so a host on your network cannot use up the challenges.
+- An agent started before this check existed (before Coral 158) holds a token Coral has no proof key for, and its tools are not asked to prove anything: a token's key can only be made when the token is made, because Coral never keeps the token itself. Restarting that agent gives it a new token and brings the check; until then it is as exposed as before. Coral 158 or later verifies every agent started after it.
+- What a tool sends before it knows it is talking to Coral is the SHA-256 of its session token, to name the session. It is a name for a 256-bit random value, not a credential: nothing in Coral accepts it. The key Coral keeps for a session lets a program answer the check for that session's own tools, and nothing else; it cannot be turned back into the token, and is deleted when the session's token ends.
 - Windows does not use this challenge: its tools check which account and program own the port.
 
 ### Terminal backend and tmux launch errors

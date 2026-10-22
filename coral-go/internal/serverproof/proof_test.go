@@ -454,7 +454,7 @@ func TestHandlerAnswersOnlyAWellFormedChallenge(t *testing.T) {
 
 func TestHandlerIsRateBounded(t *testing.T) {
 	var n atomic.Int32
-	srv := httptest.NewServer(Handler(func(context.Context, string, string) ([]byte, bool) { return []byte("k"), true }, func() bool { return n.Add(1) <= 2 },
+	srv := httptest.NewServer(Handler(func(context.Context, string, string) ([]byte, bool) { return []byte("k"), true }, func(string) bool { return n.Add(1) <= 2 },
 		func(w http.ResponseWriter) { w.Header().Set(httputil.ActionLimitHeader, "action"); w.WriteHeader(429) }))
 	t.Cleanup(srv.Close)
 	q := "?k=operator&n=" + strings.Repeat("cd", 16)
@@ -469,7 +469,7 @@ func TestHandlerIsRateBounded(t *testing.T) {
 }
 
 func TestEndpointsAreWrittenTheSameFromBothEnds(t *testing.T) {
-	for in, want := range map[string]string{"127.0.0.1:8420": "127.0.0.1:8420", "[::ffff:127.0.0.1]:8420": "127.0.0.1:8420", "[::1]:8420": "[::1]:8420", "[fe80::1]:9": "[fe80::1]:9"} {
+	for in, want := range map[string]string{"127.0.0.1:8420": "127.0.0.1:8420", "[::ffff:127.0.0.1]:8420": "127.0.0.1:8420", "[::1]:8420": "[::1]:8420", "[fe80::1]:9": "[fe80::1]:9", "[fe80::1%en0]:9": "[fe80::1]:9", "[fe80::1%2]:9": "[fe80::1]:9"} {
 		got, err := Endpoint(in)
 		require.NoError(t, err)
 		assert.Equal(t, want, got, in)

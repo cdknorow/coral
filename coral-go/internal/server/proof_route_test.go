@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"database/sql"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -69,6 +70,9 @@ func TestTheRealRouterProvesItselfToTheCommandLineAndToAnAgentsTools(t *testing.
 		err = healthThrough(t, ts.URL, serverproof.Credential{Kind: serverproof.KindSession, Secret: session})
 		var re *serverproof.RefusedError
 		require.ErrorAs(t, err, &re, "a revoked session token cannot be proved to")
+		var stored sql.NullString
+		require.NoError(t, db.GetContext(context.Background(), &stored, `SELECT proof_key FROM session_tokens WHERE token_hash = ?`, serverproof.TokenHash(session)))
+		assert.False(t, stored.Valid, "the revoked token's proof key is dropped from the database, not only refused")
 	}
 }
 

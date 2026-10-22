@@ -53,7 +53,7 @@ func (db *DB) MintSessionToken(ctx context.Context, sessionID, sessionName strin
 		return "", err
 	}
 	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, `UPDATE session_tokens SET revoked_at = ? WHERE session_id = ? AND revoked_at IS NULL`, now, sessionID); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE session_tokens SET revoked_at = ?, proof_key = NULL WHERE session_id = ? AND revoked_at IS NULL`, now, sessionID); err != nil {
 		return "", err
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO session_tokens (token_hash, session_id, session_name, created_at, proof_key) VALUES (?, ?, ?, ?, ?)`,
@@ -71,7 +71,7 @@ func (db *DB) MintSessionToken(ctx context.Context, sessionID, sessionName strin
 func revokeSessionTokensTx(ctx context.Context, tx interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
 }, sessionID string) error {
-	_, err := tx.ExecContext(ctx, `UPDATE session_tokens SET revoked_at = ? WHERE session_id = ? AND revoked_at IS NULL`, nowUTC(), sessionID)
+	_, err := tx.ExecContext(ctx, `UPDATE session_tokens SET revoked_at = ?, proof_key = NULL WHERE session_id = ? AND revoked_at IS NULL`, nowUTC(), sessionID)
 	return err
 }
 
@@ -145,6 +145,10 @@ func (db *DB) SessionTokenCacheStats() (lookups, hits int64) {
 
 // SessionProofKey is the proof key of the live token whose SHA-256 is tokenHash (#6103), for the route that proves Coral to a tool before it sends the token. ok is false for a token Coral does not
 // know, one that was revoked, and one minted before proof keys were kept.
+//
+// The key is derived one way from the token (serverproof.DeriveKey), so it cannot be turned back into the token: a copy of this database does not let anyone act as the agent. What it does let a
+// program do is answer the proof for this session, that is pass as Coral to that agent's own tools while the session lives; so it is dropped when the session's token is revoked (a restart, an
+// end), and the proof route answers only this computer's own processes.
 func (db *DB) SessionProofKey(ctx context.Context, tokenHash string) (key []byte, ok bool) {
 	var k sql.NullString
 	err := db.Reader().GetContext(ctx, &k, `SELECT proof_key FROM session_tokens WHERE token_hash = ? AND revoked_at IS NULL`, tokenHash)

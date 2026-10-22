@@ -74,6 +74,7 @@ func TestASessionTokenGoesOnlyAfterTheServerProvedItself(t *testing.T) {
 	for i := 0; i < 2; i++ {
 		resp, err := c.Get(srv.URL + "/api/board/x/messages")
 		require.NoError(t, err)
+		io.Copy(io.Discard, resp.Body) // read to the end, as a client that reuses its connection does
 		resp.Body.Close()
 	}
 	assert.Equal(t, []string{v2Token, v2Token}, seen.tokens)
