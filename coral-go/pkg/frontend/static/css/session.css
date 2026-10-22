@@ -2224,7 +2224,7 @@
 @media (pointer: coarse) { .group-chevron-deco { width: 44px; height: 24px; margin-left: -12px; } }
 .req-mark { font-weight: 400; color: var(--text-secondary); font-size: var(--fs-sm, .8125rem); }
 .availability-help { margin: 4px 0 8px; }
-.availability-help > summary { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; cursor: pointer; color: var(--text-secondary); font-weight: 600; list-style: none; border-radius: var(--radius-md); }
+.availability-help > summary { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; cursor: pointer; color: var(--text-secondary); font-weight: 600; list-style: none; border: 1px solid var(--border); border-radius: var(--radius-md); }
 .availability-help > summary::-webkit-details-marker { display: none; }
 .availability-help > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .availability-help > .availability-note { margin: 0; }
