@@ -263,7 +263,7 @@ func unwrappedSinks(fset *token.FileSet, file *ast.File) []string {
 		arg, ok := call.Args[0].(*ast.CallExpr)
 		if ok {
 			if s, ok := arg.Fun.(*ast.SelectorExpr); ok {
-				if id, ok := s.X.(*ast.Ident); ok && id.Name == "logsafe" && s.Sel.Name == "Writer" {
+				if id, ok := s.X.(*ast.Ident); ok && id.Name == "logsafe" && (s.Sel.Name == "Writer" || s.Sel.Name == "PathWriter") {
 					return true
 				}
 			}

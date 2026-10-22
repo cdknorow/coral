@@ -122,3 +122,86 @@ func TestPath(t *testing.T) {
 		t.Errorf("Path = %q", got)
 	}
 }
+
+// #6069 (Security's follow-ups to #6053).
+
+func TestTheShortComputerNameIsHiddenToo(t *testing.T) {
+	r := newRedactor(nil, "build-mac.local")
+	for in, want := range map[string]string{
+		"host build-mac.local is up":    "host <host> is up",
+		"host build-mac is up":          "host <host> is up", // the part before the first dot
+		"BUILD-MAC":                     "<host>",
+		"build-mac2 stays":              "build-mac2 stays",
+		"the mac and localhost stay":    "the mac and localhost stay",
+		"build-mac.local:8420 and more": "<host>:8420 and more",
+	} {
+		if got := string(r.redact([]byte(in))); got != want {
+			t.Errorf("redact(%q) = %q, want %q", in, got, want)
+		}
+	}
+	// a short name before the dot is too short to hide alone ("mac.local"): the whole name still goes
+	r = newRedactor(nil, "mac.local")
+	if got := string(r.redact([]byte("mac.local and the mac"))); got != "<host> and the mac" {
+		t.Errorf("got %q", got)
+	}
+}
+
+func TestProfileFoldersAreOnlyWhereAPathStarts(t *testing.T) {
+	r := newRedactor(nil, "")
+	for in, want := range map[string]string{
+		"opened /Users/bob/x":                      "opened /Users/<user>/x",
+		`path="/home/bob/x"`:                       `path="/home/<user>/x"`,
+		"path=/home/bob/x failed":                  "path=/home/<user>/x failed",
+		"(/Users/bob/x)":                           "(/Users/<user>/x)",
+		"/home/bob/x":                              "/home/<user>/x",
+		"GET /api/home/bob/x":                      "GET /api/home/bob/x", // a URL, not a profile
+		"GET /api/users/bob":                       "GET /api/users/bob",
+		"/home/linuxbrew/.linuxbrew/bin/tmux":      "/home/linuxbrew/.linuxbrew/bin/tmux", // a shared account
+		"/Users/Shared/x and C:\\Users\\Public\\y": "/Users/Shared/x and C:\\Users\\Public\\y",
+		"C:\\Users\\Default\\z":                    "C:\\Users\\Default\\z",
+		"see /home/bob/a and /home/linuxbrew/b":    "see /home/<user>/a and /home/linuxbrew/b",
+		`opened C:\Users\Bob\AppData`:              `opened C:\Users\<user>\AppData`,
+	} {
+		if got := string(r.redact([]byte(in))); got != want {
+			t.Errorf("redact(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestWriterRedactsSecretsAndFailsClosed(t *testing.T) {
+	var rec recorder
+	w := Writer(&rec)
+	line := "request failed: Authorization: Bearer abcdefghijklmnopqrstuvwxyz0123456789ABCDEF for /home/bob/x\n"
+	if n, err := w.Write([]byte(line)); err != nil || n != len(line) {
+		t.Fatalf("Write = %d, %v", n, err)
+	}
+	got := rec.writes[0]
+	for _, leak := range []string{"abcdefghijklmnopqrstuvwxyz0123456789ABCDEF", "/home/bob"} {
+		if strings.Contains(got, leak) {
+			t.Errorf("the line carries %q: %q", leak, got)
+		}
+	}
+	if !strings.Contains(got, "request failed") {
+		t.Errorf("the rest of the line is lost: %q", got)
+	}
+
+	// a check that fails withholds the line: nothing unchecked is written
+	prev := secretsText
+	t.Cleanup(func() { secretsText = prev })
+	secretsText = func([]byte) ([]byte, error) { return nil, errors.New("out of budget") }
+	rec.writes = nil
+	if n, err := w.Write([]byte("password=hunter2hunter2\n")); err != nil || n != len("password=hunter2hunter2\n") {
+		t.Fatalf("Write = %d, %v", n, err)
+	}
+	if len(rec.writes) != 1 || strings.Contains(rec.writes[0], "hunter2") || !strings.Contains(rec.writes[0], "withheld") {
+		t.Errorf("an unchecked line was written: %q", rec.writes)
+	}
+
+	// PathWriter has no secrets pass: its own sink has one
+	rec.writes = nil
+	secretsText = func([]byte) ([]byte, error) { t.Error("PathWriter ran the secrets pass"); return nil, nil }
+	_, _ = PathWriter(&rec).Write([]byte("/home/bob/x\n"))
+	if rec.writes[0] != "/home/<user>/x\n" {
+		t.Errorf("PathWriter: %q", rec.writes[0])
+	}
+}
