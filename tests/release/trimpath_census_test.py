@@ -9,9 +9,12 @@ import sys
 import unittest
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
+# Not listed on purpose: encryption-verify.yml builds the opt-in sqlcipher variant for verification only and uploads nothing that ships; a step there that
+# ships a program needs -trimpath and an entry below.
 # file -> the least number of go build commands it holds today (a floor per file, not a total)
 FILES = {
     ".github/workflows/release.yml": 8,
+    ".github/workflows/release-cache-warm.yml": 5,   # warms the Go build cache the release reuses: -trimpath changes the compile action ids, so it must match
     ".github/workflows/windows-tests.yml": 3,   # the CI package build, kept in step with release.yml (windows_build_census_test.py)
     "installers/build-linux.sh": 1,
     "installers/build-macos.sh": 6,
