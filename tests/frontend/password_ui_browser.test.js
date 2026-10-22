@@ -134,8 +134,8 @@ const BASE = require('./test_base').BASE;
             out.signOutCall = calls[calls.length - 1].url;
             // a caller with no browser sign-in: the list says so inline, never "signed out" (a 403, not dashboard_auth_required)
             window.__needSignIn = true;
-            await sec.loadSecurityRow(); await waitFor(() => $('settings-security') && !$('settings-security').hidden && /Sign in in this browser to see/.test(row.textContent), 'the inline note');
-            out.needSignInNote = /Sign in in this browser to see signed-in browsers and sign the others out\./.test(row.textContent);
+            await sec.loadSecurityRow(); await waitFor(() => $('settings-security') && !$('settings-security').hidden && /Sign in here to manage browsers/.test(row.textContent), 'the inline note');
+            out.needSignInNote = /Sign in here to manage browsers\./.test(row.textContent);
             out.noSignedOutPanel = !document.getElementById('signed-out-panel') && !document.querySelector('dialog[open]');
             window.__needSignIn = false;
             window.fetch = RealFetch; $('set-password-modal')?.remove(); row.remove();
