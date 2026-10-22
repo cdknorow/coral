@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/subgentic/coral/internal/agent"
+	"github.com/subgentic/coral/internal/agentsignin"
 )
 
 // The test binary is its own mock: with MOCK_AGENT_TEST_MAIN=1 it runs main(), so a test can start "the mock" with real arguments and watch what it does.
@@ -61,6 +62,43 @@ func TestOnlyALoneInfoFlagIsAnInfoCall(t *testing.T) {
 		var out bytes.Buffer
 		if answerInfoCall(args, &out) || out.Len() != 0 {
 			t.Fatalf("%q was taken for an info call", args)
+		}
+	}
+}
+
+// #5838: Coral asks "claude auth status --json" once after it launches a Claude agent, and background jobs ask it too (#5469). A mock that went on into its agent loop would stay
+// running and register like a launched agent; it answers "signed in" and exits, as a CLI does.
+func TestTheSignInCheckAnswersSignedInAndExits(t *testing.T) {
+	t.Setenv("MOCK_AGENT_TEST_MAIN", "1")
+	for _, args := range [][]string{{"auth", "status", "--json"}, {"auth", "status"}} {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		var out bytes.Buffer
+		cmd := exec.CommandContext(ctx, os.Args[0], args...)
+		cmd.Stdout = &out
+		err := cmd.Run()
+		timedOut := ctx.Err() != nil
+		cancel()
+		if err != nil || timedOut {
+			t.Fatalf("mock-agent %q: err %v (it must exit 0 at once)", args, err)
+		}
+		if !strings.Contains(out.String(), `"loggedIn": true`) {
+			t.Fatalf("mock-agent %q printed %q", args, out.String())
+		}
+	}
+	// the answer comes from Coral's own check (with no credential in the environment or the home folder that would make it say Unknown)
+	for _, k := range []string{"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY"} {
+		t.Setenv(k, "")
+	}
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", t.TempDir())
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
+	if st := agentsignin.Check(context.Background(), "claude", os.Args[0]); st != agentsignin.SignedIn {
+		t.Fatalf("Coral's sign-in check of the mock found %v, want signed in", st)
+	}
+	for _, args := range [][]string{{"auth"}, {"auth", "login"}, {"auth", "status", "--x"}, {"--session-id", "x", "auth", "status"}} {
+		var out bytes.Buffer
+		if answerInfoCall(args, &out) {
+			t.Fatalf("%q was taken for the sign-in check", args)
 		}
 	}
 }

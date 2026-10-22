@@ -378,6 +378,12 @@ func printOneShot(in io.Reader, out io.Writer) {
 // recorded none, so the mock's sessions keep their empty cli_version (tests that read it are unchanged). Only a call of exactly one argument counts: a launch always
 // passes more, and a flag inside one is the agent's own.
 func answerInfoCall(args []string, out io.Writer) bool {
+	// Claude's sign-in check ("claude auth status --json", #5469) is asked once after Coral launches a Claude agent (#5838) and by background jobs: a CLI answers it and exits, a
+	// mock that went on into its agent loop would stay running, register and dump its environment like a launched agent. The mock is "signed in".
+	if len(args) >= 2 && len(args) <= 3 && args[0] == "auth" && args[1] == "status" && (len(args) == 2 || args[2] == "--json") {
+		fmt.Fprintln(out, `{"loggedIn": true}`)
+		return true
+	}
 	if len(args) != 1 {
 		return false
 	}
