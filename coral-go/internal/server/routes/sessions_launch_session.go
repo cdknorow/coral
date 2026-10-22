@@ -559,7 +559,8 @@ var tmuxAvailable = func() bool { _, ok := tmux.IsAvailable(); return ok }
 
 // spawnError is a failed terminal start as the launch says it: when tmux is what is missing, that and the one command for this computer (#6046), not "pty spawn failed: tmux new-session: exec: not found".
 func spawnError(err error) error {
-	if !tmuxAvailable() {
+	// Only a failure of the tmux backend is blamed on a missing tmux: the pure pty backend never runs tmux, and its start failures keep their own words.
+	if errors.Is(err, ptymanager.ErrTmuxBackend) && !tmuxAvailable() {
 		return errors.New(tmux.MissingMessage())
 	}
 	return fmt.Errorf("pty spawn failed: %w", err)
