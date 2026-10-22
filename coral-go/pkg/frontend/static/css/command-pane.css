@@ -522,7 +522,7 @@
     background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-ml); box-shadow: 0 8px 24px rgba(var(--black-rgb), 0.35); }
 .model-chip-menu[hidden] { display: none; }
 .model-chip-head { padding: 6px 8px 2px; font-size: 0.6875rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
-.model-chip-how { text-transform: none; letter-spacing: 0; margin-left: 6px; color: var(--accent); }
+.model-chip-how { text-transform: none; letter-spacing: 0; margin-left: 6px; color: var(--link-text); } /* the accent was 4.44:1 on the menu in the light theme */
 .model-chip-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-height: 36px; padding: 6px 8px; border: 0; border-radius: var(--radius-md);
     background: transparent; color: var(--text-primary); font: inherit; font-size: 0.8125rem; text-align: left; cursor: pointer; }
 .model-chip-item:hover, .model-chip-item:focus-visible { background: var(--bg-tertiary); }
@@ -530,10 +530,22 @@
 .model-chip-item.checked { font-weight: 600; }
 .model-chip-item .material-icons { font-size: 1rem; }
 .model-chip-empty { padding: 10px; font-size: 0.8125rem; color: var(--text-muted); }
+/* "Add a model…" at the end of the model menu (#5938): a separated item, and its small form (the id, an optional name) in the same panel */
+.model-chip-add-row { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--border); }
+.model-chip-add-form { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; padding: 8px; border-top: 1px solid var(--border); }
+.model-chip-add-field { display: flex; flex-direction: column; gap: 2px; font-size: 0.8125rem; color: var(--text-secondary); }
+.model-chip-add-field input { width: 100%; min-height: 32px; padding: 4px 8px; border: 1px solid var(--control-border); border-radius: var(--radius-md); background: var(--bg-primary); color: var(--text-primary); font: inherit; }
+.model-chip-add-field input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.model-chip-add-field input[aria-invalid="true"] { border-color: var(--error-text, var(--fx-red-hot)); }
+.model-chip-add-help { margin: 0; font-size: 0.75rem; color: var(--text-secondary); }
+.model-chip-add-err { margin: 0; font-size: 0.8125rem; color: var(--error-text, var(--fx-red-hot)); }
+.model-chip-add-actions { display: flex; gap: 6px; }
+
 @media (max-width: 767px) {
     /* A phone: the menu is a sheet over the bottom of the screen, with room for 44 px targets. */
     .model-chip-menu { position: fixed; left: 8px; right: 8px; bottom: 8px; max-width: none; max-height: 60vh; }
     .model-chip-item { min-height: 44px; }
+    .model-chip-add-field input, .model-chip-add-actions .btn { min-height: 44px; }
     .model-chip { min-height: 44px; min-width: 44px; } /* a touch target (#4276) */
     /* The toolbar is hidden on a phone except for the chip: it is the row under the input and the send buttons, the last row of the composer (it sat on the bottom edge of the screen, #5036; the command pane already adds the safe area). */
     .model-chip-bar { margin-left: 0; }
@@ -543,4 +555,8 @@
     /* A phone with the keyboard up, or on its side: the conversation needs the room more than the chip (#4969). */
     .model-chip-bar, .model-chip-note:not(:empty) { display: none; }
     .command-pane-toolbar { display: none !important; }
+    /* ...except while the add-a-model form is open: its keyboard is what makes the screen this short, and the form must stay where it is typed in (#5938) */
+    .command-pane-toolbar:has(.model-chip-bar.adding) { display: flex !important; }
+    .command-pane-toolbar:has(.model-chip-bar.adding) > :not(.model-chip-bar) { display: none; }
+    .model-chip-bar.adding { display: flex; }
 }

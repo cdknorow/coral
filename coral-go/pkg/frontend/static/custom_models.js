@@ -9,6 +9,10 @@ const PROVIDERS = [['claude', 'Claude'], ['codex', 'Codex'], ['agy', 'Antigravit
 // the same rule as the server's agentmodels.ValidModelValue: one argument for --model, never flag-shaped, no spaces or control characters
 const VALID_ID = /^[A-Za-z0-9][A-Za-z0-9._:/@[\]+-]{0,127}$/;
 const MAX_NAME = 80;
+/** The id rule and its words, for a place that adds one model without the Settings form (the model chip's "Add a model…", #5938). */
+export const MODEL_ID_RULE = VALID_ID;
+export const MODEL_ID_MISSING = 'Enter the model id the CLI takes after --model.';
+export const MODEL_ID_INVALID = 'Use letters, numbers and . _ : / @ [ ] + - only, starting with a letter or number, up to 128 characters.';
 
 let saved = {};           // what the server has, grouped by family: { family: [{ value, display_name, efforts }] }
 let draft = {};           // what the form shows

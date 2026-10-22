@@ -7,7 +7,7 @@
 import { serverFetch } from './server_base.js';
 import { escapeHtml, escapeAttr, showToast } from './utils.js';
 import { importOnce } from './import_once.js';
-import { modelLabel, readModelsCache, writeModelsCache, levelName } from './model_labels.js';
+import { modelLabel, readModelsCache, writeModelsCache, clearModelsCache, levelName } from './model_labels.js';
 import { setText, setHidden, setTitle, setData, setAttr } from './dom_write.js';
 
 /** The agent types whose CLI takes /model and /effort in a running session (the server's liveSwitchTypes). */
@@ -20,6 +20,7 @@ let _local = null;          // { until, text, kind }: "switching" shown on the c
 let _open = '';             // which menu is open: 'model', 'thinking' or ''
 let _loading = false;       // the list has not arrived (or the server is still asking the CLI for it): the menu says so instead of "No models"
 let _loadToken = 0;
+let _add = null;           // the "Add a model…" form while it is open: { id, name, error, busy } (kept here so a redraw of the menu does not lose what was typed)
 const LOAD_DELAYS_MS = [600, 1000, 1500, 2500, 4000, 4000, 4000, 4000, 4000, 4000]; // about 30 s of asking while the server says it is refreshing
 
 const $ = id => document.getElementById(id);
@@ -146,6 +147,22 @@ export function levelsFor(data, modelId) {
 
 function _levelsFor(modelId) { return levelsFor(_data, modelId); }
 
+/** The provider whose custom models an agent type's CLI reads (the server's agentmodels families), '' for a type that has none. */
+function _familyOf(agentType) { return { claude: 'claude', codex: 'codex', agy: 'agy', antigravity: 'agy', gemini: 'agy', pi: 'pi' }[agentType] || ''; }
+
+/** The end of the model menu: "Add a model…", or its form. A person whose model is missing adds it here and picks it, instead of going to Settings. */
+function _addHtml(s) {
+    if (!_familyOf(s.agent_type) || _loading) return '';
+    if (!_add) return '<div class="model-chip-add-row"><button type="button" role="menuitem" class="model-chip-item model-chip-add" data-add><span class="model-chip-item-label">Add a model…</span><span class="material-icons" aria-hidden="true">add</span></button></div>';
+    const a = _add, dis = a.busy ? ' disabled' : '';
+    return `<form class="model-chip-add-form" role="group" aria-label="Add a model" aria-busy="${escapeAttr(String(a.busy))}" novalidate>`
+        + `<label class="model-chip-add-field"><span>Model id</span><input type="text" class="model-chip-add-id" name="id" value="${escapeAttr(a.id)}" autocomplete="off" spellcheck="false" maxlength="128" aria-describedby="model-chip-add-help${a.error ? ' model-chip-add-err' : ''}"${a.error ? ' aria-invalid="true"' : ''}${escapeAttr(dis)}></label>`
+        + `<label class="model-chip-add-field"><span>Display name (optional)</span><input type="text" class="model-chip-add-name" name="name" value="${escapeAttr(a.name)}" autocomplete="off" maxlength="80"${escapeAttr(dis)}></label>`
+        + `<p class="model-chip-add-help" id="model-chip-add-help">The id the CLI takes after --model. Thinking levels can be added in Settings &gt; Agents.</p>`
+        + (a.error ? `<p class="model-chip-add-err" id="model-chip-add-err" role="alert">${escapeHtml(a.error)}</p>` : '')
+        + `<div class="model-chip-add-actions"><button type="submit" class="btn btn-small btn-primary"${escapeAttr(dis)}>${a.busy ? 'Adding…' : 'Add'}</button><button type="button" class="btn btn-small" data-add-cancel${escapeAttr(dis)}>Cancel</button></div></form>`;
+}
+
 function _renderMenu(kind) {
     const { menu } = parts()[kind];
     if (!menu || !_cur) return;
@@ -176,9 +193,14 @@ function _renderMenu(kind) {
         html = _loading ? `<div class="model-chip-empty" role="status">${kind === 'model' ? 'Loading models…' : 'Loading thinking levels…'}</div>`
             : `<div class="model-chip-empty">${kind === 'model' ? 'No models to choose from for this agent.' : 'No thinking levels to choose from for this model.'}</div>`;
     }
-    if (menu.dataset.sig === html) return; // nothing changed: the feed's ticks do not redraw the menu (a redraw would announce the loading line again and drop the focused item)
-    menu.dataset.sig = html;
+    if (kind === 'model') html += _addHtml(s);
+    const sig = html.replace(/ value="[^"]*"/g, ''); // what is typed in the form is not part of the shape
+    if (menu.dataset.sig === sig) return; // nothing changed: the feed's ticks do not redraw the menu (a redraw would announce the loading line again, drop the focused item and what is being typed)
+    menu.dataset.sig = sig;
+    const had = menu.contains(document.activeElement) ? document.activeElement : null;
+    const spot = had && had.matches('input') ? { sel: '.' + [...had.classList].find(c => /^model-chip-add-/.test(c)), at: had.selectionStart } : null;
     menu.innerHTML = html;
+    if (spot && spot.sel) { const el = menu.querySelector(spot.sel); if (el && !el.disabled) { el.focus(); try { el.setSelectionRange(spot.at, spot.at); } catch { /* not a text field */ } } }
 }
 
 async function _openMenu(kind) {
@@ -202,7 +224,7 @@ function menuHasFocus() {
 
 function _closeMenu() {
     const p = parts();
-    _open = ''; _loading = false;
+    _open = ''; _loading = false; _add = null; _addingFlag(false);
     for (const k of KINDS) {
         if (p[k].menu) { p[k].menu.hidden = true; delete p[k].menu.dataset.sig; }
         if (p[k].chip) p[k].chip.setAttribute('aria-expanded', 'false');
@@ -258,6 +280,47 @@ async function _viaRestart(change) {
     });
 }
 
+// ── Add a model… ─────────────────────────────────────────────────────────
+
+function _focusInMenu(sel) { const el = parts().model.menu && parts().model.menu.querySelector(sel); if (el) el.focus(); }
+
+const _addingFlag = on => { const b = $('model-chip-bar'); if (b) b.classList.toggle('adding', on); }; // the bar stays on screen on a short phone while the form is open (css)
+function _openAdd() { _add = { id: '', name: '', error: '', busy: false }; _addingFlag(true); _renderMenu('model'); _focusInMenu('.model-chip-add-id'); }
+function _closeAdd() { _add = null; _addingFlag(false); _renderMenu('model'); _focusInMenu('.model-chip-add'); }
+function _addError(text) { if (_add) { _add.error = text; _add.busy = false; _renderMenu('model'); _focusInMenu('.model-chip-add-id'); } }
+
+/** Add the model to the operator's custom models (the same list as Settings > Agents > Custom models): read the whole list, add one row, write it back; never write after a read that failed
+ *  (the route replaces the whole list). The new model shows in the menu and takes the keyboard; it is not applied: the person picks it. */
+async function _submitAdd() {
+    const s = _cur && _cur.session, family = s && _familyOf(s.agent_type);
+    if (!_add || _add.busy || !family) return;
+    const id = _add.id.trim(), name = _add.name.trim();
+    const { MODEL_ID_RULE, MODEL_ID_MISSING, MODEL_ID_INVALID } = await importOnce('./custom_models.js');
+    if (!id) { _addError(MODEL_ID_MISSING); return; }
+    if (!MODEL_ID_RULE.test(id)) { _addError(MODEL_ID_INVALID); return; }
+    if (((_data && _data.models) || []).some(m => m.value === id)) { _addError(`${id} is already in the list.`); return; }
+    _add.busy = true; _add.error = ''; _renderMenu('model');
+    const server = _cur.server, route = '/api/custom-models', json = { 'Content-Type': 'application/json' };
+    try {
+        const got = await serverFetch(server, route);
+        if (got.status === 401 || got.status === 403) { _addError('Only the Operator can add models.'); return; }
+        const data = got.ok ? await got.json().catch(() => null) : null;
+        if (!data || !Array.isArray(data.models)) { _addError('Could not read the custom models, so nothing was changed. Try again.'); return; }
+        if (data.models.some(m => m.family === family && m.value === id)) { _addError(`${id} is already in the list.`); return; }
+        const max = (data.limits && data.limits.max_per_family) || 50;
+        if (data.models.filter(m => m.family === family).length >= max) { _addError(`At most ${max} custom models per provider. Remove one in Settings > Agents first.`); return; }
+        const put = await serverFetch(server, route, { method: 'PUT', headers: json, body: JSON.stringify({ models: [...data.models, { family, value: id, display_name: name, efforts: [] }] }) });
+        if (put.status === 401 || put.status === 403) { _addError('Only the Operator can add models.'); return; }
+        if (!put.ok) { const d = await put.json().catch(() => ({})); _addError((d && (d.message || d.error)) || 'The model was not added.'); return; }
+    } catch { _addError('Could not reach Coral to add the model.'); return; }
+    // the catalog every picker reads has it now: forget the lists this page kept, ask again, and show it
+    clearModelsCache(); _data = null; _dataKey = ''; _add = null; _addingFlag(false); _loading = true;
+    if (_open === 'model') _renderMenu('model');
+    await _loadList();
+    showToast(`Model added: ${name || id}`);
+    if (_open === 'model') { _renderMenu('model'); const added = [...parts().model.menu.querySelectorAll('.model-chip-item[data-model]')].find(b => b.dataset.model === id); (added || parts().model.menu.querySelector('.model-chip-item'))?.focus(); }
+}
+
 /** Wire the chips once: open and close each menu, choose an item. */
 export function wireModelChip() {
     const p = parts();
@@ -267,18 +330,24 @@ export function wireModelChip() {
     for (const k of KINDS) {
         const { chip, menu } = p[k];
         chip.addEventListener('click', () => { if (_open === k) { _closeMenu(); } else { _openMenu(k); } });
+        menu.addEventListener('input', e => { if (_add && e.target.name === 'id') _add.id = e.target.value; else if (_add && e.target.name === 'name') _add.name = e.target.value; });
+        menu.addEventListener('submit', e => { e.preventDefault(); _submitAdd(); });
         menu.addEventListener('click', e => {
+            if (e.target.closest('[data-add-cancel]')) { _closeAdd(); return; }
             const b = e.target.closest('.model-chip-item');
             if (!b) return;
+            if (b.hasAttribute('data-add')) { _openAdd(); return; }
             if (b.dataset.model !== undefined) _apply({ model: b.dataset.model });
             else if (b.dataset.level !== undefined) _apply({ thinking: b.dataset.level });
         });
     }
-    document.addEventListener('click', e => { if (_open && !e.target.closest('#model-chip-bar')) _closeMenu(); });
+    // The path as it was when the click started: a menu item that redraws the menu (Add a model…, Cancel) is no longer inside the bar by the time this runs, and that is not a click outside it
+    document.addEventListener('click', e => { if (_open && !e.composedPath().some(n => n && n.id === 'model-chip-bar')) _closeMenu(); });
     document.addEventListener('keydown', e => {
         if (!_open) return;
         const { chip, menu } = p[_open];
-        if (e.key === 'Escape') { _closeMenu(); chip.focus(); return; }
+        if (e.key === 'Escape') { if (_add && !_add.busy) { _closeAdd(); return; } _closeMenu(); chip.focus(); return; } // inside the add form Escape first goes back to the list
+        if (_add && menu.contains(document.activeElement)) return; // a form is a place to tab and type in: no menu keys while it is open
         if (e.key === 'Tab' && menu.contains(document.activeElement)) { _closeMenu(); return; } // the menu is not a place to tab through: it closes and focus goes on from where it was
         if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Home' || e.key === 'End') {
             const items = [...menu.querySelectorAll('.model-chip-item')];

@@ -28,7 +28,7 @@ const STUB = answers => `(() => { const R = window.fetch; window.__asks = 0; win
             await ev(`T.ws.handleCoralMessage({ type: 'coral_diff', changed: [{ ...window.__m.entry(window.__m.agents['rf-codex-id']), agent_type: 'codex', model: 'gpt-x', thinking_actual: 'low' }] }); true`);
             await waitFor(`!document.getElementById('model-chip-bar').hidden && /gpt.x/i.test(document.getElementById('model-chip-text').textContent)`, `${tag}: the chip`, 8000);
         };
-        const menu = () => ev(`(() => { const m = document.getElementById('model-chip-menu'); const e = m.querySelector('.model-chip-empty'); return { open: !m.hidden, items: [...m.querySelectorAll('.model-chip-item-label')].map(i => i.textContent.trim()), empty: e ? e.textContent : '', role: e ? e.getAttribute('role') : null }; })()`);
+        const menu = () => ev(`(() => { const m = document.getElementById('model-chip-menu'); const e = m.querySelector('.model-chip-empty'); return { open: !m.hidden, items: [...m.querySelectorAll('.model-chip-item[data-model] .model-chip-item-label')].map(i => i.textContent.trim()), empty: e ? e.textContent : '', role: e ? e.getAttribute('role') : null }; })()`);
         const openIt = () => ev(`document.getElementById('model-chip').click(); true`);
         const closeIt = () => ev(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); true`);
         const LIST = { models: [{ value: 'gpt-x', display_name: 'GPT X' }, { value: 'gpt-y', display_name: 'GPT Y' }], refreshing: false };
@@ -47,12 +47,12 @@ const STUB = answers => `(() => { const R = window.fetch; window.__asks = 0; win
             assert.ok(au.checked > 0 && !au.fails.length, `${tag}: the loading words hold 4.5:1: ` + JSON.stringify(au.fails).slice(0, 200));
             await ev(`window.__loadingNode = document.querySelector('#model-chip-menu .model-chip-empty'); T.ws.handleCoralMessage({ type: 'coral_diff', changed: [{ ...window.__m.entry(window.__m.agents['rf-codex-id']), agent_type: 'codex', model: 'gpt-x', thinking_actual: 'low' }] }); true`);
             assert.ok(await ev(`window.__loadingNode === document.querySelector('#model-chip-menu .model-chip-empty')`), `${tag}: a feed tick does not redraw the loading line (it is announced once)`);
-            await waitFor(`document.querySelectorAll('#model-chip-menu .model-chip-item').length === 2`, `${tag}: the list arrives without a reload`, 12000);
+            await waitFor(`document.querySelectorAll('#model-chip-menu .model-chip-item[data-model]').length === 2`, `${tag}: the list arrives without a reload`, 12000);
             m = await menu();
             assert.deepEqual(m.items, ['GPT X', 'GPT Y'], `${tag}: the list`);
             assert.equal(await ev(`window.__asks`), 3, `${tag}: it asked until the list came`);
             await closeIt(); await openIt();
-            await waitFor(`document.querySelectorAll('#model-chip-menu .model-chip-item').length === 2`, `${tag}: reopened`, 5000);
+            await waitFor(`document.querySelectorAll('#model-chip-menu .model-chip-item[data-model]').length === 2`, `${tag}: reopened`, 5000);
             assert.equal(await ev(`window.__asks`), 3, `${tag}: a list that arrived is kept (no new request)`);
 
             // 2. a final empty answer: says there are no models, is not kept, and the next open asks again
@@ -63,7 +63,7 @@ const STUB = answers => `(() => { const R = window.fetch; window.__asks = 0; win
             await closeIt();
             await ev(`window.__answers = [{ models: [{ value: 'gpt-z', display_name: 'GPT Z' }], refreshing: false }]; true`);
             await openIt();
-            await waitFor(`document.querySelectorAll('#model-chip-menu .model-chip-item').length === 1`, `${tag}: the next open asks again and shows the list`, 5000);
+            await waitFor(`document.querySelectorAll('#model-chip-menu .model-chip-item[data-model]').length === 1`, `${tag}: the next open asks again and shows the list`, 5000);
             assert.equal(await ev(`window.__asks`), 2, `${tag}: the empty answer was not kept`);
             console.log(`   ok ${tag}`);
         }
