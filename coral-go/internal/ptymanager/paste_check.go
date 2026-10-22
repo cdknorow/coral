@@ -73,6 +73,9 @@ func boxStartLine(lines []string) int {
 			break
 		}
 	}
+	if low >= 0 && codexHistoryLine(lines, low) {
+		return -1 // the box itself isn't drawn: the caller holds (and has Codex redraw) rather than read a past prompt as a draft
+	}
 	start := low
 	bounded := false
 	for i := low - 1; i >= 0 && low >= 0; i-- {
@@ -108,6 +111,24 @@ func boxStartLine(lines []string) int {
 		}
 	}
 	return start
+}
+
+// codexHistoryLine reports whether lines[i], a Codex marker line ("› …"), is a prompt in Codex's history rather than its input box
+// (#262): Codex's output follows it ("• …", Codex's reply). Nothing is drawn under the box but its own wrapped lines and the footer,
+// and Codex's working line and queued messages sit above it. When the rendered screen loses the box's marker (a replay that no
+// longer holds Codex's terminal state), the lowest marker line left is such a past prompt, and it was read as a person's draft:
+// every send was held behind it, with no redraw asked for, since a box seemed to be there.
+func codexHistoryLine(lines []string, i int) bool {
+	m := inputBoxRe.FindStringSubmatch(lines[i])
+	if m == nil || m[1] != "›" {
+		return false
+	}
+	for _, l := range lines[i+1:] {
+		if strings.HasPrefix(strings.TrimSpace(l), "• ") {
+			return true
+		}
+	}
+	return false
 }
 
 // isBoxBorder: a horizontal rule or box corner that bounds an agent's input box.
