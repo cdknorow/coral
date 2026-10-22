@@ -105,8 +105,8 @@ Commands:
   join <project> --as <role>   Subscribe to a board
   post "<message>" [--to "a,b"] Post a message (optionally @mention agents);
                                use -- before text that starts with '-'
-  post - [--to "a,b"] <<'EOF'  Short posts with backticks: literal stdin text;
-                               close with EOF on its own line.
+  post - [--to "a,b"] <<'EOF'  Multi-line posts and anything with backticks:
+                               literal stdin text; close with EOF on its own line.
                                Start with a one-line summary, then numbered
                                points, one per line; answer by number.
                                Use @Name; backtick SHAs, branches and paths.
