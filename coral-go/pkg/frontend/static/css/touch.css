@@ -3,6 +3,9 @@
    smaller touch sizes in mobile.css and popout.css. Fine pointers (mouse,
    trackpad) keep the desktop layout: nothing here applies to them. */
 @media (pointer: coarse) {
+    .modal-content label.create-task-draft-toggle {
+        min-height: var(--control-touch-height, 44px);
+    }
     .working-mode-docs-link { display: flex; align-items: center; min-height: var(--control-touch-height, 44px); } /* the docs link under Team working mode is a control: its own line, a 44 px target (it was 15 px) */
     /* Square icon buttons: top bar, side-panel and sidebar toggles, Send,
        Open Agent Tab, refresh, Agent UI panel actions, Copy path, row kebabs. */
