@@ -61,7 +61,7 @@ func startPprofOn(ctx context.Context, addr string) (net.Addr, error) {
 	if err := checkLoopbackAddr(addr); err != nil {
 		return nil, err
 	}
-	ln, err := net.Listen("tcp", addr)
+	ln, err := listenTCP(addr)
 	if err != nil {
 		return nil, err
 	}
