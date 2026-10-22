@@ -348,3 +348,33 @@ func TestUploadRecordsOfAgentsHaveNoPasteFields(t *testing.T) {
 	assert.Empty(t, rec.Source)
 	_ = store.LiveSession{}
 }
+
+// The answer says whether the object went too: removing one agent's shared copy of bytes another agent was also given leaves the object ("artifact_removed": false), and removing the last record takes it (true). A
+// suite that pastes the same few images into one server over and over (pasted_image_artifact_browser did) sees false when another session's leftover record holds the same bytes.
+func TestRemovingASharedCopyAnswersWhetherTheObjectWentToo(t *testing.T) {
+	rig := uploadRig(t)
+	data := cleanPNG(t)
+	_, o1 := postImage(t, "a.png", data, "s1")
+	_, o2 := postImage(t, "b.png", data, "s2")
+	id := artifactOf(o1)["id"].(string)
+	require.Equal(t, id, artifactOf(o2)["id"])
+	del := func(sid string) (int, map[string]any) {
+		req, err := http.NewRequest(http.MethodDelete, rig.srv.URL+"/api/shared-images/"+id+"?session_id="+sid, nil)
+		require.NoError(t, err)
+		req.Header.Set(testDashboardHeader, "1")
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		var out map[string]any
+		_ = json.NewDecoder(resp.Body).Decode(&out)
+		return resp.StatusCode, out
+	}
+	code, out := del("s1")
+	require.Equal(t, http.StatusOK, code)
+	assert.Equal(t, map[string]any{"removed": true, "artifact_removed": false}, out, "s2 still holds the same bytes: the object stays")
+	assert.Equal(t, http.StatusOK, getArtifact(t, rig, id, false))
+	code, out = del("s2")
+	require.Equal(t, http.StatusOK, code)
+	assert.Equal(t, map[string]any{"removed": true, "artifact_removed": true}, out, "the last record takes the object")
+	assert.Equal(t, http.StatusNotFound, getArtifact(t, rig, id, false))
+}

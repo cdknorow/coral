@@ -45,7 +45,9 @@ async function httpJson(method, p, body, headers = {}) {
                     return resp; }; return true; })()`);
             await ev(`window.selectLiveSession(${JSON.stringify(name)}, 'claude', ${JSON.stringify(sid)}, 'local'); true`);
             await waitFor(`!!window.T && T.state.currentSession && T.state.currentSession.session_id === ${JSON.stringify(sid)}`, 'the agent is open', { timeout: 15000 });
-            const png = () => ev(`(async () => { const c = document.createElement('canvas'); c.width = 40; c.height = 30; const x = c.getContext('2d'); x.fillStyle = '#c33'; x.fillRect(0, 0, 40, 30); x.fillStyle = '#3c3'; x.fillRect(${Math.floor(Math.random() * 20)}, 0, 10, 30); const b = await new Promise(r => c.toBlob(r, 'image/png')); window.__file = new File([b], 'shot-' + Math.random().toString(36).slice(2, 8) + '.png', { type: 'image/png' }); return true; })()`);
+            // Every image is its own bytes (a random colour as well as a random place): the same bytes are one artifact that another session's record of them keeps, which is right for the product and made this suite fail 8 runs in 10 on a
+            // server it had already run on (the leftover records of its earlier runs held the same few images).
+            const png = () => ev(`(async () => { const c = document.createElement('canvas'); c.width = 40; c.height = 30; const x = c.getContext('2d'); x.fillStyle = '#c33'; x.fillRect(0, 0, 40, 30); x.fillStyle = '#${Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0')}'; x.fillRect(${Math.floor(Math.random() * 20)}, 0, 10, 30); const b = await new Promise(r => c.toBlob(r, 'image/png')); window.__file = new File([b], 'shot-' + Math.random().toString(36).slice(2, 8) + '.png', { type: 'image/png' }); return true; })()`);
             const upload = async () => { await png(); return ev(`import(${S} + 'controls.js').then(m => m.uploadAndInsertImage(window.__file))`); };
 
             // 1. a paste: the reply has the artifact; a strip shows the attachment
