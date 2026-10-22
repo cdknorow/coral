@@ -58,6 +58,6 @@ func main() {
 		"model":      model,
 	}
 
-	hooks.CoralAPI(base, "POST", hooks.LivePath(agentName, "/context-window"), payload)
+	_ = hooks.CoralPost(base, hooks.LivePath(agentName, "/context-window"), payload)
 	hooks.DebugLog(fmt.Sprintf("SESSION_START DONE: agent=%s model=%s", hooks.LogID(agentName), hooks.LogID(model)))
 }

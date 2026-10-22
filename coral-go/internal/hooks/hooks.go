@@ -104,7 +104,10 @@ func LivePath(agentName, route string) string {
 }
 
 // MaxHookStdin bounds what a hook reads from the agent CLI: a tool's whole output rides in a PostToolUse payload, and every tool call runs a hook.
-const MaxHookStdin = 32 << 20
+//
+// 4 MiB: the largest record in 110,000 lines of real Claude Code transcripts (tool results included) is 674 KB, so this is six times the largest payload seen. The cap was
+// 32 MiB, and a hostile 31 MB array of numbers peaked near 1.2 GB when decoded (Security's #244); at 4 MiB the same shape peaks around 150 MB.
+const MaxHookStdin = 4 << 20
 
 // ReadStdin reads a hook's stdin up to MaxHookStdin. A longer payload (a tool that printed a huge file) is not held and not parsed: the hook
 // records nothing for that call, as for one that is not JSON, and the CLI goes on.
@@ -141,8 +144,27 @@ func BoardStateFileName(sessionName string) string {
 	return "board_state_" + strings.NewReplacer("/", "_", "\\", "_").Replace(sessionName) + ".json"
 }
 
-// CoralAPI sends a request to the Coral dashboard API.
+// APITimeout is how long a hook waits for Coral when its reply matters (or the request must have been taken before the agent goes on): a silent Coral costs the
+// agent this on every call. FastTimeout is for a post whose reply nothing reads (a tool call that ended, a token count, a task created): the agent should not
+// wait seconds on it every tool call when Coral is stopped or stuck.
+const (
+	APITimeout  = 3 * time.Second
+	FastTimeout = 800 * time.Millisecond
+)
+
+// CoralAPI sends a request to the Coral dashboard API and waits up to APITimeout.
 func CoralAPI(base, method, path string, data any) (json.RawMessage, error) {
+	return CoralAPITimeout(base, method, path, data, APITimeout)
+}
+
+// CoralPost is a fire-and-forget post: it waits up to FastTimeout for Coral and nothing reads the reply.
+func CoralPost(base, path string, data any) error {
+	_, err := CoralAPITimeout(base, "POST", path, data, FastTimeout)
+	return err
+}
+
+// CoralAPITimeout is CoralAPI with its own wait.
+func CoralAPITimeout(base, method, path string, data any, timeout time.Duration) (json.RawMessage, error) {
 	var body io.Reader
 	if data != nil {
 		b, err := json.Marshal(data)
@@ -160,7 +182,7 @@ func CoralAPI(base, method, path string, data any) (json.RawMessage, error) {
 		req.Header.Set("Content-Type", "application/json")
 	}
 
-	client := &http.Client{Timeout: 3 * time.Second}
+	client := &http.Client{Timeout: timeout}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
