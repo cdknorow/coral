@@ -21,17 +21,20 @@ func TestOnlyUserAndRootReadsDirectoryServicesAnswers(t *testing.T) {
 		read, primary string
 		alone         bool
 	}{
-		"the user and root":                           {"GroupMembership: root alice\n", "alice 80\nbob 20\n", true},
-		"the user alone":                              {"GroupMembership: alice\n", "alice 80\n", true},
-		"nobody listed (no such key)":                 {"No such key: GroupMembership\n", "alice 80\n", true},
-		"as a real Mac lists admin":                   {"No such key: NestedGroups\n" + three + "GroupMembership: root _mbsetupuser alice\n", "alice 80\n", true},
-		"Setup Assistant's hidden account is allowed": {"GroupMembership: root _mbsetupuser alice\n", "alice 80\n", true},
-		"a second member":                             {"GroupMembership: root alice bob\n", "alice 80\n", false},
-		"a second account whose primary group it is":  {"GroupMembership: root alice\n", "alice 80\nbob 80\n", false},
-		"another group's primary users do not count":  {"GroupMembership: root alice\n", "alice 80\nbob 20\n_www 70\n", true},
-		"a nested group (a managed Mac)":              {"GroupMembership: root alice\nNestedGroups: AAAA-BBBB\n", "alice 80\n", false},
-		"more GUID members than accepted names":       {"GroupMembers: A B C D\nGroupMembership: root alice\n", "alice 80\n", false},
-		"GUID members continued on the next line":     {"GroupMembers: A B C\n D\nGroupMembership: root alice\n", "alice 80\n", false},
+		"the user and root":                                        {"GroupMembership: root alice\n", "alice 80\nbob 20\n", true},
+		"the user alone":                                           {"GroupMembership: alice\n", "alice 80\n", true},
+		"nobody listed (no such key)":                              {"No such key: GroupMembership\n", "alice 80\n", true},
+		"as a real Mac lists admin":                                {"No such key: NestedGroups\n" + three + "GroupMembership: root _mbsetupuser alice\n", "alice 80\n", true},
+		"Setup Assistant's hidden account is allowed":              {"GroupMembership: root _mbsetupuser alice\n", "alice 80\n", true},
+		"a second member":                                          {"GroupMembership: root alice bob\n", "alice 80\n", false},
+		"a second account whose primary group it is":               {"GroupMembership: root alice\n", "alice 80\nbob 80\n", false},
+		"another group's primary users do not count":               {"GroupMembership: root alice\n", "alice 80\nbob 20\n_www 70\n", true},
+		"a nested group (a managed Mac)":                           {"GroupMembership: root alice\nNestedGroups: AAAA-BBBB\n", "alice 80\n", false},
+		"more GUID members than accepted names":                    {"GroupMembers: A B C D\nGroupMembership: root alice\n", "alice 80\n", false},
+		"two names, three GUIDs (one member shown only as a GUID)": {"GroupMembers: A B C\nGroupMembership: root alice\n", "alice 80\n", false},
+		"three names, three GUIDs":                                 {"GroupMembers: A B C\nGroupMembership: root _mbsetupuser alice\n", "alice 80\n", true},
+		"a GUID and no GroupMembership line":                       {"GroupMembers: A\n", "alice 80\n", false},
+		"GUID members continued on the next line":                  {"GroupMembers: A B C\n D\nGroupMembership: root alice\n", "alice 80\n", false},
 	} {
 		assert.Equal(t, tc.alone, onlyUserAndRoot(tc.read, tc.primary, "alice", gid), name)
 	}
