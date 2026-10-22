@@ -18,6 +18,9 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+	"unicode/utf8"
+
+	"github.com/subgentic/coral/internal/clitext"
 )
 
 // Kind is why a command failed.
@@ -194,8 +197,14 @@ func Describe(err error, status int, body []byte) string {
 			text = reply.Error
 		}
 	}
+	// The words come from whatever answered at CORAL_URL: no terminal control, one line, cut at a character boundary.
+	text = strings.Join(strings.FieldsFunc(clitext.Clean(text), func(r rune) bool { return r == 10 || r == 13 }), " ")
 	if len(text) > 300 {
-		text = text[:300] + "..."
+		cut := 300
+		for cut > 0 && !utf8.RuneStart(text[cut]) {
+			cut--
+		}
+		text = text[:cut] + "..."
 	}
 	if text == "" {
 		return fmt.Sprintf("Coral returned an error (HTTP %d)", status)

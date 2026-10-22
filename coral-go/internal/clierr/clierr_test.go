@@ -7,9 +7,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -113,4 +115,26 @@ func TestDescribe(t *testing.T) {
 	assert.Equal(t, "Coral returned an error (HTTP 500)", Describe(nil, 500, nil))
 	assert.Equal(t, "boom", Describe(errors.New("boom"), 0, nil))
 	assert.NotContains(t, Describe(nil, 404, []byte(`{}`)), "nil")
+}
+
+// A reply is printed in a terminal, so what answered at CORAL_URL cannot drive it: control sequences go, newlines become spaces, tabs stay (Security's note on #101).
+func TestDescribeStripsTerminalControl(t *testing.T) {
+	esc := string([]byte{27})
+	body := []byte(`{"error":"bad` + `\u001b]0;pwned\u0007` + `\u001b[31m red\u001b[0m` + `\nline two` + `\ttabbed"}`)
+	got := Describe(nil, 400, body)
+	assert.NotContains(t, got, esc)
+	assert.NotContains(t, got, "pwned\u0007")
+	assert.NotContains(t, got, "\n")
+	assert.Contains(t, got, "line two")
+	assert.Contains(t, got, "\ttabbed")
+	assert.True(t, strings.HasSuffix(got, "(HTTP 400)"), got)
+}
+
+// A long reply is cut at a character, not in the middle of one.
+func TestDescribeCutsAtACharacterBoundary(t *testing.T) {
+	for pad := 0; pad < 4; pad++ {
+		got := Describe(nil, 500, []byte(strings.Repeat("a", 298+pad)+strings.Repeat("é", 20)))
+		assert.True(t, utf8.ValidString(got), "pad %d: %q", pad, got)
+		assert.Contains(t, got, "...")
+	}
 }

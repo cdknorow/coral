@@ -77,10 +77,10 @@ func downloadArtifactOpts(base, ref, output string, force bool) (string, error) 
 	} else {
 		defer resp.Body.Close()
 		if resp.StatusCode == http.StatusNotFound {
-			return "", fmt.Errorf("artifact download failed: HTTP 404: this artifact is not on this computer. It may live on another Coral (a link from a message sent by another team or computer is only a name here): ask the sender to attach the file with coral-board send --attach coral://artifacts/<id>")
+			return "", fmt.Errorf("Coral says: this artifact is not on this computer. It may live on another Coral (a link from a message sent by another team or computer is only a name here): ask the sender to attach the file with coral-board send --attach coral://artifacts/<id> (HTTP 404)")
 		}
 		if resp.StatusCode != http.StatusOK {
-			return "", fmt.Errorf("artifact download failed: HTTP %d", resp.StatusCode)
+			return "", fmt.Errorf("%s", clierr.Describe(nil, resp.StatusCode, nil))
 		}
 		mediaType, _, _ = mime.ParseMediaType(resp.Header.Get("Content-Type"))
 		src = resp.Body
