@@ -210,6 +210,8 @@
     background: var(--bg-secondary);
     border-right: none;
     overflow-y: auto;
+    /* The pinned New Agent footer covers the bottom of the scroll area: a row the keyboard focuses at that edge is scrolled clear of it (#6159). */
+    scroll-padding-bottom: 5rem;
     display: flex;
     flex-direction: column;
     flex-shrink: 0;

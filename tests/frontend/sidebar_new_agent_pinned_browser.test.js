@@ -33,6 +33,13 @@ const BASE = require('./test_base').BASE;
                         hit: !!r && (t => !!t && (t === b[0] || b[0].contains(t)))(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)) }; })()`);
                 check(`${tag} ${theme}: "+ New Agent" is in the viewport at the top of the list, not scrolled to, and nothing covers it`, m.n >= 1 && m.top >= 0 && m.bottom <= m.vh && m.left >= 0 && m.right <= m.vw && m.hit, JSON.stringify(m));
                 if (!mobile) {
+                    // a row the keyboard focuses just below the fold is scrolled clear of the pinned button, not left under it
+                    const f = await ev(`(() => { const s = document.querySelector('.sidebar'); document.activeElement && document.activeElement.blur(); s.scrollTop = 0; const footer = document.querySelector('.sidebar-footer').getBoundingClientRect();
+                        const rows = [...document.querySelectorAll('[data-section="live-sessions"] .session-list > li')]; const below = rows.find(r => r.getBoundingClientRect().bottom > footer.top);
+                        const target = below && below.querySelector('button, [tabindex], a[href]'); if (!target) return { noTarget: true, rows: rows.length };
+                        target.focus(); const r = target.getBoundingClientRect(); const ft = document.querySelector('.sidebar-footer').getBoundingClientRect();
+                        return { focused: document.activeElement === target, bottom: Math.round(r.bottom), footerTop: Math.round(ft.top), top: Math.round(r.top) }; })()`);
+                    check(`${tag} ${theme}: a row focused by the keyboard below the fold is scrolled clear of the pinned button`, f.focused && f.bottom <= f.footerTop + 1 && f.top >= 0, JSON.stringify(f));
                     // scrolled to the end, the last agent row is whole and clear of the button
                     const e = await ev(`(() => { const s = document.querySelector('.sidebar'); s.scrollTop = s.scrollHeight; const rows = [...document.querySelectorAll('[data-section="live-sessions"] .session-list > li')], last = rows[rows.length - 1].getBoundingClientRect(), f = document.querySelector('.sidebar-footer').getBoundingClientRect(), b = document.querySelector('.sidebar-footer [data-on-click="launch-show"]').getBoundingClientRect();
                         const t = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
