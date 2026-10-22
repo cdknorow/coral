@@ -19,6 +19,7 @@ import (
 	"github.com/subgentic/coral/internal/agentmodels"
 	"github.com/subgentic/coral/internal/agentsignin"
 	at "github.com/subgentic/coral/internal/agenttypes"
+	"github.com/subgentic/coral/internal/executil"
 	"github.com/subgentic/coral/internal/logsafe"
 	"github.com/subgentic/coral/internal/naming"
 	"github.com/subgentic/coral/internal/proxy"
@@ -534,6 +535,10 @@ func launchDirError(dir string) string {
 	abs, err := filepath.Abs(dir)
 	if err != nil || !isDir(abs) {
 		return fmt.Sprintf("directory not found: %s", dir)
+	}
+	// Windows: CreateProcess refuses a working folder of 259+ characters; say so here (the dialog marks the field) instead of a 500 from the spawn.
+	if _, err := executil.StartDir(abs); err != nil {
+		return err.Error()
 	}
 	return ""
 }
