@@ -5,13 +5,14 @@ const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
 const BASE = require('./test_base').BASE;
 
-const BUDGET = { chooser: 17, agent: 16, more: 40 }; // agent: 12 + the new-account line under the folder ("Pick your project folder.", #6370 item 3: gone once a folder was used) // the phone's select shows one section name, so it is under these
+const BUDGET = { chooser: 17, agent: 16, more: 41 }; // more: 40 + one: counted with the agent choice built ("Agent:" and the four names, which replaced the form's own Agent Type label and select), the machine's "not installed" marks left out; agent: 12 + the new-account line under the folder ("Pick your project folder.", #6370 item 3: gone once a folder was used) // the phone's select shows one section name, so it is under these
 
 (async () => {
     const { client, Page, Emulation, ev, waitFor, PRELOAD, install } = await connect();
+    // (the "not installed" marks are the machine's words, not the dialog's: left out)
     const words = () => ev(`(() => { let n = 0; const shown = e => { for (let p = e; p; p = p.parentElement) { const s = getComputedStyle(p); if (s.display === 'none' || s.visibility === 'hidden' || p.hidden || (p.parentElement && p.parentElement.matches('details:not([open])') && p.tagName !== 'SUMMARY')) return false; } return true; };
         const w = document.createTreeWalker(document.getElementById('launch-modal'), NodeFilter.SHOW_TEXT);
-        for (let t = w.nextNode(); t; t = w.nextNode()) { const e = t.parentElement; if (!e || e.closest('script, style, .material-icons, select, option') || !shown(e)) continue; n += t.nodeValue.trim().split(/\\s+/).filter(Boolean).length; }
+        for (let t = w.nextNode(); t; t = w.nextNode()) { const e = t.parentElement; if (!e || e.closest('script, style, .material-icons, select, option, .launch-agent-missing') || !shown(e)) continue; n += t.nodeValue.trim().split(/\\s+/).filter(Boolean).length; }
         return n; })()`);
     try {
         await Page.enable(); await Page.addScriptToEvaluateOnNewDocument({ source: PRELOAD });
@@ -32,6 +33,7 @@ const BUDGET = { chooser: 17, agent: 16, more: 40 }; // agent: 12 + the new-acco
             assert.ok(n <= BUDGET.agent, `${tag}: New Agent step 1 (the folder) shows ${n} words, budget ${BUDGET.agent}`);
             await ev(`document.getElementById('launch-dir').value = '/tmp'; document.getElementById('launch-agent-next').click(); true`);
             await waitFor(`!document.getElementById('launch-agent-more').hidden`, `${tag}: More options open`, 8000);
+            await waitFor(`document.getElementById('launch-agent-acf').classList.contains('has-agent-pick')`, `${tag}: the agent choice is built`, 8000); // counted with the agent choice in it, which the CLI probes build when they answer: a runner without the CLIs answers later than a laptop with them
             n = await words();
             assert.ok(n <= BUDGET.more, `${tag}: New Agent with More options shows ${n} words, budget ${BUDGET.more}`);
             const title = await ev(`getComputedStyle(document.querySelector('#launch-agent-more .settings-pane:not([hidden]) .settings-pane-title')).display`);

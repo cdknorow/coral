@@ -135,7 +135,9 @@ const BASE = require('./test_base').BASE;
         assert.equal(await ev(`!!document.querySelector('[data-acf-enforced-for]')`), false, 'the Bypass line is said on Permissions only: there is no copy under the persona (#6012)');
         assert.ok(await ev(`!document.querySelector('#launch-agent-title').closest('.launch-modal-step').querySelector('[data-on-click="m-select-launch-type"]').hidden`), 'the way back to the choices is in the header');
         await shot('new-agent-workspace-desktop');
-        for (const [id, sel] of [['workspace', '#launch-agent-name-input'], ['agent', '#launch-agent-acf .acf-agent-type'], ['agent', '#launch-agent-acf .acf-model-wrap'], ['prompt', '#launch-agent-acf .acf-prompt'], ['permissions', '#launch-agent-acf .acf-permission-mode'], ['permissions', '#launch-agent-acf [data-type="allow"][data-cap="shell"]'], ['advanced', '#launch-board-select'], ['advanced', '#launch-agent-acf .acf-flags']]) {
+        // the agent is named once, by the radio group of step 2 (#6407): the form's own select follows it and is not on screen, so Agent reaches the group, once it is built (the CLI probes answer when they do)
+        await waitFor(`document.getElementById('launch-agent-acf').classList.contains('has-agent-pick')`, 'the agent choice is built', 8000);
+        for (const [id, sel] of [['workspace', '#launch-agent-name-input'], ['agent', '#launch-agent-pick input[type=radio]:checked'], ['agent', '#launch-agent-acf .acf-model-wrap'], ['prompt', '#launch-agent-acf .acf-prompt'], ['permissions', '#launch-agent-acf .acf-permission-mode'], ['permissions', '#launch-agent-acf [data-type="allow"][data-cap="shell"]'], ['advanced', '#launch-board-select'], ['advanced', '#launch-agent-acf .acf-flags']]) {
             await go(NA, id);
             // The Allow row is not shown in Claude's Bypass Permissions mode (it pre-approves nothing, #5589): any other mode shows it.
             if (sel.includes('[data-type="allow"]')) await ev(`{ const m = document.querySelector('#launch-agent-acf .acf-permission-mode'); m.value = 'default'; m.dispatchEvent(new Event('change', { bubbles: true })); } true`);
