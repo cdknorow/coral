@@ -19,7 +19,7 @@ const BASE = require('./test_base').BASE;
             const realSet = window.setTimeout; const delays = [];
             window.setTimeout = (fn, ms, ...a) => { delays.push(ms); return realSet(() => {}, 1e9, ...a); };   // never fires: only the delays matter
             const res = {};
-            const made = (msg, err, ms, action) => { delays.length = 0; n.showToast(msg, err, ms, action ? { action: { label: action, onClick() {} } } : {}); const t = [...document.querySelectorAll('.toast')].pop(); return { t, timers: delays.length, ms: delays[0] }; };
+            const made = (msg, err, ms, action) => { delays.length = 0; n.showToast(msg, err, ms, action ? { action: { label: action, onClick() {} } } : {}); const t = [...document.querySelectorAll('.toast')].pop(); const mine = delays.filter(d => ![0, 100, 900].includes(d)); /* the notices' own announcement timers are not the toast's */ return { t, timers: mine.length, ms: mine[0] }; };
             const retry = made('Upload stalled', true, 10000, 'Retry'); res.retry = { timers: retry.timers, hasAction: retry.t.classList.contains('has-action'), button: !!retry.t.querySelector('.toast-action') };
             const undo = made('Removed from saved.', false, 6000, 'Undo'); res.undo = { timers: undo.timers, hasAction: undo.t.classList.contains('has-action') };
             const plain = made('Sent: hi', false); res.plain = { timers: plain.timers, ms: plain.ms, hasAction: plain.t.classList.contains('has-action') };

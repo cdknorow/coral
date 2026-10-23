@@ -112,7 +112,8 @@ const HOLD = `(() => {
         await answer(409, { error: "Your message is in the agent's input box but wasn't submitted. Send it again to submit it, or press Enter in its terminal.", code: 'not_submitted', not_sent: false });
         await waitFor(`document.getElementById('command-input').value === 'second message'`, 'the text back');
         assert.deepEqual(await pending(), [{ text: 'first message', label: 'Sent' }], 'its bubble is gone');
-        assert.equal(await ev(`${REGION}.textContent`), 'Message not sent, your text is back in the box', 'the region says so');
+        // one failure, one announcement (#6213): the status says it, or the composer's own alert does when that is on screen (a moment later)
+        await waitFor(`${REGION}.textContent === 'Message not sent, your text is back in the box' || !document.getElementById('composer-error').hidden`, 'the failure is said', 3000);
         assert.equal(await ev(`${REGION} === window.__sendRegion`), true, 'the same element again');
         assert.equal(await ev(`document.getElementById('composer-error').hidden`), false, 'the reason is shown');
         assert.match(await ev(`document.getElementById('composer-error').textContent`), /wasn't submitted/);

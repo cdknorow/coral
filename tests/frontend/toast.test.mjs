@@ -11,11 +11,18 @@ const wait = (ms) => new Promise(r => setTimeout(r, ms));
 const toasts = () => Array.from(w.document.querySelectorAll('.toast'));
 const clear = () => toasts().forEach(t => t.remove());
 
-// Info: role=status, polite, text as given, a close button.
+// Info: no live role of its own (the notices' polite region says it once, #6213), text as given, a close button.
 {
     const t = showToast('Sent: hello');
-    assert.strictEqual(t.getAttribute('role'), 'status');
-    assert.strictEqual(t.getAttribute('aria-live'), 'polite');
+    assert.strictEqual(t.getAttribute('role'), null);
+    assert.strictEqual(t.getAttribute('aria-live'), null);
+    await wait(150); // sleep-ok: the announcement is timed
+    assert.strictEqual(w.document.getElementById('notice-live').textContent.trim(), 'Sent: hello', 'said once by the notices\' polite region');
+    const quiet = showToast('Quiet', false, 4000, { silent: true });
+    assert.strictEqual(quiet.querySelector('.toast-message').textContent, 'Quiet', 'a silent toast is still drawn');
+    quiet.remove();
+    await wait(1100); // sleep-ok: the announcement is timed
+    assert.strictEqual(w.document.getElementById('notice-live').textContent.trim(), 'Sent: hello', 'a silent toast says nothing');
     assert.strictEqual(t.querySelector('.toast-message').textContent, 'Sent: hello');
     assert.ok(!t.classList.contains('error'));
     const close = t.querySelector('button.toast-close');
@@ -25,11 +32,12 @@ const clear = () => toasts().forEach(t => t.remove());
     assert.strictEqual(toasts().length, 0, 'close removes it');
 }
 
-// Errors: role=alert, assertive. Existing callers pass true or the string "error".
+// Errors: said assertively by the notices' alert region. Existing callers pass true or the string "error".
 for (const flag of [true, 'error']) {
     const t = showToast('Server error 500', flag);
-    assert.strictEqual(t.getAttribute('role'), 'alert', String(flag));
-    assert.strictEqual(t.getAttribute('aria-live'), 'assertive');
+    assert.strictEqual(t.getAttribute('role'), null, String(flag));
+    await wait(1000); // sleep-ok: the announcement is timed
+    assert.strictEqual(w.document.getElementById('notice-alert').textContent.replace(/\u00a0/g, '').trim(), 'Server error 500', 'said by the alert region');
     assert.ok(t.classList.contains('error'));
     assert.strictEqual(t.querySelector('.toast-message').textContent, 'Server error 500', 'no prefix unless asked');
     clear();

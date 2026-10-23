@@ -4,7 +4,7 @@ import { escapeHtml, showToast, escapeAttr } from './utils.js';
 import { registerActions, textOf } from './actions.js';
 import { browserLocal } from './safe_storage.js';
 import { reportUpdate } from './dashboard_analytics.js';
-import { noticeColumn } from './notifications.js';
+import { noticeColumn, announceNotice } from './notifications.js';
 
 /**
  * Fetch update info from the backend and show a toast if a new version is available.
@@ -89,6 +89,7 @@ function showUpdateToast(data) {
         </div>`;
 
     warningStack().prepend(toast); // first in the column: on a desktop it is still drawn at the top right; on a phone it heads the column of notices at the top, above the warnings (#6162)
+    announceNotice(`Coral v${data.latest} is available`); // said once by the notices' own region: the notice carries no live role of its own (#6213)
     reportUpdate('update_notice_shown', data.latest, data.channel); // the toast is on the page (#5952)
 }
 
@@ -115,7 +116,6 @@ function showWarningToast(id, heading, message) {
     const toast = document.createElement("div");
     toast.id = id;
     toast.className = "update-toast security-warning-toast";
-    toast.setAttribute("role", "alert");
     const body = document.createElement("div");
     body.className = "update-toast-body";
     const header = document.createElement("div");
@@ -145,6 +145,7 @@ function showWarningToast(id, heading, message) {
     body.append(header, text);
     toast.append(body);
     warningStack().appendChild(toast);
+    announceNotice(`${heading}: ${message}`, true); // the warning and its details, once, assertively, from the notices' own region: the buttons inside it are not read with it (#6213)
 }
 
 // The warnings (security, firewall, database) and the update notice share the page's column of notices (notifications.js noticeColumn), so two at once are not drawn over each other.

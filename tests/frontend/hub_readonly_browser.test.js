@@ -168,7 +168,8 @@ const CLOUD_PRELOAD = `(() => {
         assert.ok(!t.some(x => /^Sent/.test(x.text)), `no 'Sent' toast (${JSON.stringify(t)})`);
         const blocked = t.find(x => x.text === hubMsg);
         assert.ok(blocked, `refusal toast with the exact message (${JSON.stringify(t)})`);
-        assert.equal(blocked.role, 'alert');
+        assert.equal(blocked.role, null, 'the refusal is said by the notices\' alert region, not by a role of its own (#6213)');
+        await waitFor(`document.getElementById('notice-alert').textContent.includes(${JSON.stringify(hubMsg.slice(0, 30))})`, 'the refusal is announced', 5000);
         assert.equal(blocked.action, 'Open Servers');
         await ev(`[...document.querySelectorAll('.toast .toast-action')].find(b => b.textContent.trim() === 'Open Servers').click(); true`);
         // 'Open Servers' opens the Servers tab at the refused server's row (#3070).

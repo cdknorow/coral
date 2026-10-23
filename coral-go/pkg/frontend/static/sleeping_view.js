@@ -7,6 +7,9 @@
 import { importOnce } from './import_once.js';
 import { state } from './state.js';
 
+const lastState = new Map(); // session_id -> the words its state last had, to say a change once (#6213)
+let stateFlip = false;
+
 const PLACEHOLDER = 'Agent is sleeping — wake it to send commands';
 const ARCHIVED_PLACEHOLDER = 'Agent is archived — unarchive or wake it to send commands';
 let waking = false;
@@ -51,6 +54,15 @@ export function applySleepingView(sleeping, { manageInput = true, archived } = {
     if (text) {
         const next = archived ? 'This agent is archived' : gone ? "This agent's terminal is gone" : ended ? endedText : 'This agent is sleeping';
         if (text.textContent !== next) text.textContent = next; // a status line: written only when it changes, so it is announced once
+    }
+    // A change of the open agent's state is said once, in a status that stays in the page: asleep (or ended, archived), then awake. Opening an agent that already sleeps says nothing: that is not a change.
+    if (cur && cur.session_id) {
+        const name = who === 'This agent' ? 'The agent' : who;
+        const words = sleeping ? (text ? text.textContent : 'This agent is asleep').replace(/^This agent/, name) : `${name} is awake`;
+        const before = lastState.get(cur.session_id);
+        lastState.set(cur.session_id, words);
+        const live = document.getElementById('agent-state-status');
+        if (live && before !== undefined && before !== words) { stateFlip = !stateFlip; live.textContent = words + (stateFlip ? '' : '\u00a0'); }
     }
     const icon = document.getElementById('sleeping-composer-icon');
     if (icon) icon.textContent = archived ? '🗄️' : gone || ended ? '⚠️' : '🌙';

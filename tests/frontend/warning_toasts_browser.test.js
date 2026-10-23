@@ -31,7 +31,7 @@ const DATABASE = 'The sessions database is damaged (page 12 is corrupt). Stop Co
                 return { stack: { l: st.left, t: st.top, r: st.right, b: st.bottom }, vw: innerWidth, vh: innerHeight, r, overflowX: document.scrollingElement.scrollWidth > innerWidth + 1 }; })()`);
             assert.equal(m.r.length, 3);
             for (const t of m.r) {
-                assert.equal(t.role, 'alert', t.id + ' is announced');
+                assert.equal(t.role, null, t.id + ' is announced by the notices\' own assertive region (announcements_census), not by a role of its own with its buttons inside');
                 assert.ok(/^Dismiss: /.test(t.closeName), t.id + ' close button has a name: ' + t.closeName);
                 assert.equal(t.closeTag, 'BUTTON:button');
                 assert.ok(t.cw >= 24 && t.ch >= 24, t.id + ' close target is 24 px or more: ' + t.cw + 'x' + t.ch);

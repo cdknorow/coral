@@ -114,6 +114,8 @@
                             </div>
                             <!-- What a send is doing (#4680): one region that stays in the page, its text changed in place (Sending message, Message sent, Message not sent...), so a screen reader announces each change; the bubbles' own labels have no role -->
                             <div id="chat-send-status" class="chat-send-status" role="status" aria-live="polite" aria-atomic="true"></div>
+                            <div id="chat-reply-status" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+                            <div id="agent-state-status" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
                             <div id="session-ended-overlay" class="session-ended-overlay" style="display:none">
                                 <div class="session-ended-content" id="session-ended-default">
                                     <p>Session ended</p>
@@ -144,7 +146,7 @@
 
                         <div class="command-pane" id="command-pane">
                             <!-- Sleeping agent: replaces the toolbar and send controls (sleeping_view.js) -->
-                            <div id="sleeping-composer" class="sleeping-composer" role="status" hidden>
+                            <div id="sleeping-composer" class="sleeping-composer" hidden>
                                 <span class="sleeping-composer-label"><span aria-hidden="true" id="sleeping-composer-icon">🌙</span> <span id="sleeping-composer-text">This agent is sleeping</span></span>
                                 <span class="sleeping-composer-actions">
                                     <button class="btn btn-primary btn-small" id="sleeping-unarchive-btn" type="button" data-action="unarchive" hidden>Unarchive</button>
@@ -188,8 +190,8 @@
                             <!-- The chip's note ("Switches after this reply", a failure's reason): a small line under the buttons, not between the text and them (#5116) -->
                             <span id="model-chip-note" class="model-chip-note" role="status"></span>
                             <!-- A failed send, said where the user typed (#3218); Restart when the agent's terminal is gone -->
-                            <div id="composer-error" class="composer-error" role="alert" hidden>
-                                <span class="composer-error-text"></span>
+                            <div id="composer-error" class="composer-error" hidden>
+                                <span class="composer-error-text" role="alert"></span>
                                 <button class="btn btn-primary btn-small composer-error-restart" type="button" hidden>Restart</button>
                                 <button class="composer-error-dismiss" type="button" aria-label="Dismiss">×</button>
                             </div>

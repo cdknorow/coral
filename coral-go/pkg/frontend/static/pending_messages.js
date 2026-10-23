@@ -12,6 +12,7 @@ import { importOnce } from './import_once.js';
 import { state } from './state.js';
 import { storeKey } from './local_store.js';
 import { browserLocal } from './safe_storage.js';
+import { flushReply } from './chat_announce.js';
 
 // ── Pending (sent, not yet in the transcript) messages ───────────────────
 // A message typed into the command box only reaches the transcript once the
@@ -237,7 +238,8 @@ export function removePendingMessage(sessionId, sentAt) {
         syncPendingBubbles(container, sessionId);
         syncWorkingIndicator(container, state.currentSession);
     }
-    announceSend(sessionId, "Message not sent, your text is back in the box");
+    // The error under the composer (an alert) says why, a moment after this: say it here only when that did not appear (one failure, one announcement, #6213).
+    setTimeout(() => { if (document.getElementById("composer-error")?.hidden !== false) announceSend(sessionId, "Message not sent, your text is back in the box"); }, 50);
 }
 
 // An interrupt ends the current work; Claude Code then submits whatever was
@@ -437,7 +439,7 @@ export function syncWorkingIndicator(container, session) {
     let el = container.querySelector(":scope > .chat-working");
     // A card asking for input replaces the Working row
     if (!agentIsWorking(session) || container.querySelector(":scope > .chat-needs-input")) {
-        if (el) { clearInterval(el._tick); el.remove(); }
+        if (el) { clearInterval(el._tick); el.remove(); if (!container.querySelector(":scope > .chat-needs-input")) flushReply(session.session_id); } // the turn is over: the reply is said once
         return;
     }
     if (!el) {

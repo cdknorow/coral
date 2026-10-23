@@ -21,12 +21,10 @@ export function showToast(message, isError = false, duration = 4000, opts = {}) 
     const error = !!isError;
     const toast = document.createElement("div");
     toast.className = `toast ${error ? "error" : ""}`;
-    toast.setAttribute("role", error ? "alert" : "status");
-    toast.setAttribute("aria-live", error ? "assertive" : "polite");
-    toast.setAttribute("aria-atomic", "true");
 
     let text = String(message ?? "");
     if (opts.blocked && !/^Blocked:/.test(text)) text = `Blocked: ${text}`;
+    if (!opts.silent) announceNotice(text, error); // said once by the Notifications column's own regions, not by the toast (a region that appears already filled is not reliably announced); silent: another region already says it (a send's status)
     const body = document.createElement("span");
     body.className = "toast-message";
     body.textContent = text;
@@ -81,7 +79,12 @@ export function noticeColumn() {
         warnings.id = "warning-toasts";
         const toasts = document.createElement("div");
         toasts.id = "toast-host";
-        col.append(warnings, toasts);
+        // What the notices say is said here, once, in two regions that stay in the page: polite for a toast, a notification or a status, assertive (an alert) for an error (#6213).
+        const polite = document.createElement("div");
+        polite.id = "notice-live"; polite.className = "sr-only"; polite.setAttribute("role", "status"); polite.setAttribute("aria-live", "polite"); polite.setAttribute("aria-atomic", "true");
+        const loud = document.createElement("div");
+        loud.id = "notice-alert"; loud.className = "sr-only"; loud.setAttribute("role", "alert");
+        col.append(warnings, toasts, polite, loud);
         // A named region, so a screen reader can jump to the notices (they are drawn fixed, wherever they are in the page).
         col.setAttribute("role", "region");
         col.setAttribute("aria-label", "Notifications");
@@ -89,6 +92,31 @@ export function noticeColumn() {
     }
     placeNotices();
     return col;
+}
+
+let _noticeFlip = false;
+const _noticeQueue = []; // { text, assertive } waiting to be said, one at a time: two said in one tick would be one replacing the other
+let _noticeTimer = 0;
+const NOTICE_GAP_MS = 900; // a notice has this long to be spoken before the next replaces it in the same region
+
+function sayNextNotice() {
+    const next = _noticeQueue.shift();
+    if (!next) { _noticeTimer = 0; return; }
+    const el = document.getElementById(next.assertive ? "notice-alert" : "notice-live");
+    if (el) {
+        _noticeFlip = !_noticeFlip;
+        el.textContent = String(next.text || "").replace(/\s+/g, " ").trim() + (_noticeFlip ? "" : "\u00a0"); // the same words twice are still a change
+    }
+    _noticeTimer = setTimeout(sayNextNotice, NOTICE_GAP_MS);
+}
+
+/** Say `text` once to a screen reader through the Notifications column's own regions: polite, or assertive for an error. Several in a row are said one after another. */
+export function announceNotice(text, assertive = false) {
+    const fresh = !document.getElementById("notices");
+    noticeColumn();
+    _noticeQueue.push({ text, assertive });
+    if (_noticeTimer) return; // one is being spoken: this follows it
+    _noticeTimer = setTimeout(sayNextNotice, fresh ? 100 : 0); // the regions of a fresh column get a moment before they speak
 }
 
 function toastHost() {
@@ -119,6 +147,7 @@ export function showWorkflowNotification(title, message, level = 'info', duratio
         </div>`;
     toast.querySelector(".notification-toast-close").addEventListener("click", () => toast.remove());
     document.body.appendChild(toast);
+    announceNotice([title || 'Notification', message].filter(Boolean).join(': '));
     setTimeout(() => toast.remove(), duration);
 }
 
@@ -188,6 +217,7 @@ export function showAlertNotification(title, message, level = 'info', link = nul
         });
     }
     document.body.appendChild(overlay);
+    announceNotice([title || 'Notification', message].filter(Boolean).join(': '), level === 'error' || level === 'warning');
 }
 
 export function showNotificationToast(agentLabel, detail, onClick) {
@@ -211,5 +241,6 @@ export function showNotificationToast(agentLabel, detail, onClick) {
     });
     toast.querySelector(".notification-toast-close").addEventListener("click", () => toast.remove());
     document.body.appendChild(toast);
+    announceNotice(`${toast.querySelector(".notification-toast-title").textContent.replace(/^\S+\s/, "")}${detail ? ": " + toast.querySelector(".notification-toast-detail").textContent : ""}`);
     setTimeout(() => toast.remove(), 10000);
 }

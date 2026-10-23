@@ -30,6 +30,7 @@ import { freshKeptPage, keepFirstPage, keepMore, keptPages } from './chat_kept_p
 import { noteUnseenChat, syncJumpToLatest } from './chat_jump_latest.js';
 import { sendPromptAnswer, syncEmptyState } from './chat_prompt_empty.js';
 import { autosizeCommandInput } from './command_autosize.js';
+import { noteReplyText, forgetReplies } from './chat_announce.js';
 export { clearKeptChatPages } from './chat_kept_pages.js';
 export { renderTranscript } from './chat_messages.js';
 export { initCommandInputAutosize } from './command_autosize.js';
@@ -305,6 +306,7 @@ function _renderHistoryReply(container, session, data) {
             noteUnseenChat(data.messages); // read higher up: counted on the jump-to-latest button
             for (const msg of data.messages) {
                 renderMessage(msg, container, session.agent_type);
+                if (msg.type === "assistant") noteReplyText(session, msg); // said once when the turn ends (chat_announce.js)
             }
             keepMore(session.session_id, data.messages, data.total);
         }
@@ -683,6 +685,7 @@ export function stopLiveHistoryPoll() {
 // keeps the same pane but allocates a new Coral session ID; callers can ask us
 // to resume an already-running poll so the new transcript is loaded from zero.
 export function resetLiveHistory({ resume = false } = {}) {
+    if (!resume) forgetReplies(); // another agent: what was waiting to be said belongs to the one before
     const wasPolling = !!historyPollInterval;
     stopLiveHistoryPoll();
     // Free the connections of the previous chat's fetches right away: through

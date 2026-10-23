@@ -194,7 +194,7 @@ export async function sendCommand({ nudge = false } = {}) {
                 clearAttachments(targetSession);
                 const key = sessionKey(targetSession);
                 if (key) saveSessionDraft(key, "");
-                showToast(sentToastText(command));
+                showToast(sentToastText(command), false, 4000, { silent: true }); // the send status says "Message sent": the toast is for the eyes
                 _getXtermModule().then(m => m.focusTerminal());
             }
         } catch (e) {
@@ -217,7 +217,7 @@ function _settleSocketSend(session, command, sentAt, ok) {
         confirmPendingMessage(session.session_id, sentAt);
         // Text typed since the send is a new draft and stays.
         if (key && saved.trim() === command) saveSessionDraft(key, "");
-        showToast(sentToastText(command));
+        showToast(sentToastText(command), false, 4000, { silent: true }); // the send status says "Message sent": the toast is for the eyes
         return;
     }
     removePendingMessage(session.session_id, sentAt);
