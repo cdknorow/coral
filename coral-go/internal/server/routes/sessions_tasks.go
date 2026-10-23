@@ -529,6 +529,9 @@ func (h *SessionsHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.notePendingToolEvent(body.SessionID, body.EventType, body.ToolUseID)
+	if hasToken {
+		h.remindClaudeArtifact(r.Context(), owner, body.EventType, body.ToolName, body.ToolUseID, body.DetailJSON)
+	}
 	if hasToken && body.EventType == "session_end" {
 		// The agent's process ended (Claude's SessionEnd): nothing held for it may be
 		// typed into whatever runs in that terminal next (#3481). Not on SessionStart:

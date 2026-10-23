@@ -574,6 +574,9 @@ async function _fillMachineSettings(s) {
         // Off unless the Operator turned it on (#3563); an empty value is unset.
         if (autoAttach) autoAttach.checked = settingBool(s.board_auto_attach || undefined, false);
         loadCodexTrustHooks(); // its own local route, saved when it changes (#153)
+        const nudgeArtifacts = document.getElementById('settings-nudge-claude-artifacts');
+        // On unless the Operator turned it off (#6583); an empty value is unset.
+        if (nudgeArtifacts) nudgeArtifacts.checked = settingBool(s.nudge_claude_artifacts || undefined, true);
         const healthMonitor = document.getElementById('settings-board-health-monitor');
         // On unless the Operator turned it off (#5128).
         if (healthMonitor) healthMonitor.checked = settingBool(s.board_health_monitor || undefined, true);
@@ -919,6 +922,7 @@ function readSettingsForm() {
     const agentPriority = lowBox ? (lowBox.checked ? "low" : "normal") : (state.settings?.agent_priority === "normal" ? "normal" : "low");
     const telemetryEnabled = document.getElementById("settings-telemetry-enabled")?.checked ?? settingBool(state.settings?.telemetry_enabled, true);
     const boardAutoAttach = document.getElementById("settings-board-auto-attach")?.checked ?? settingBool(state.settings?.board_auto_attach || undefined, false);
+    const nudgeClaudeArtifacts = document.getElementById("settings-nudge-claude-artifacts")?.checked ?? settingBool(state.settings?.nudge_claude_artifacts || undefined, true);
     const boardHealthMonitor = document.getElementById("settings-board-health-monitor")?.checked ?? settingBool(state.settings?.board_health_monitor || undefined, true);
     const autoResume = document.getElementById("settings-auto-resume")?.checked ?? settingBool(state.settings?.auto_resume_after_api_error || undefined, false);
     const autoGoals = document.getElementById("settings-auto-goals")?.checked ?? settingBool(state.settings?.auto_goals || undefined, true);
@@ -968,6 +972,7 @@ function readSettingsForm() {
         agent_priority: agentPriority,
         telemetry_enabled: telemetryEnabled,
         board_auto_attach: boardAutoAttach,
+        nudge_claude_artifacts: nudgeClaudeArtifacts,
         board_health_monitor: boardHealthMonitor,
         auto_resume_after_api_error: autoResume,
         auto_goals: autoGoals,

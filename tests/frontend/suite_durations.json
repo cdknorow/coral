@@ -336,6 +336,7 @@
  "terminal_silent_socket_browser.test.js": 0.7,
  "auto_accept_pause_toast_browser.test.js": 0.6,
  "auto_goals_settings.test.js": 0.6,
+ "nudge_claude_artifacts_settings.test.js": 0.6,
  "auto_resume_settings.test.js": 0.6,
  "board_delete_running_agents_browser.test.js": 0.6,
  "dashboard_tracking_route_browser.test.js": 0.6,

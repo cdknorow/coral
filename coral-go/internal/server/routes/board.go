@@ -26,6 +26,8 @@ func taskClaimNudge(taskID int64) string {
 
 // BoardHandler handles message board HTTP endpoints.
 type BoardHandler struct {
+	// artifactNudge reminds an agent whose own post links a claude.ai artifact (#6583); nil: never.
+	artifactNudge                 *ClaudeArtifactNudger
 	bs                            *board.Store
 	terminal                      ptymanager.SessionTerminal
 	mu                            sync.RWMutex
@@ -143,6 +145,9 @@ func (h *BoardHandler) refuseArchivedAssignee(w http.ResponseWriter, ctx context
 	)
 	return true
 }
+
+// SetArtifactNudger sets who reminds an agent that links a claude.ai artifact in its own post (#6583).
+func (h *BoardHandler) SetArtifactNudger(n *ClaudeArtifactNudger) { h.artifactNudge = n }
 
 // SetTaskArtifactWriter configures persistence of task patches under .coral.
 // SetAutoAttacher turns on auto-attach for agents' own posts (#3515).

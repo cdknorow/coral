@@ -181,6 +181,9 @@ export async function loadSettings() {
         const autoAttach = document.getElementById('settings-board-auto-attach');
         // Off unless the Operator turned it on (#3563); an empty value is unset.
         if (autoAttach) autoAttach.checked = settingBool(s.board_auto_attach || undefined, false);
+        const nudgeArtifacts = document.getElementById('settings-nudge-claude-artifacts');
+        // On unless the Operator turned it off (#6583); an empty value is unset.
+        if (nudgeArtifacts) nudgeArtifacts.checked = settingBool(s.nudge_claude_artifacts || undefined, true);
         const healthMonitor = document.getElementById('settings-board-health-monitor');
         // On unless the Operator turned it off (#5128); an empty value is unset.
         if (healthMonitor) healthMonitor.checked = settingBool(s.board_health_monitor || undefined, true);

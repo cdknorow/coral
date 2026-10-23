@@ -659,6 +659,9 @@ func (s *Server) registerBoard(r *chi.Mux, h *routeHandlers) {
 	boardHandler.SetTaskArtifactWriter(s.cfg.CoralDir(), sessHandler.PersistTaskChanges)
 	sessStore := store.NewSessionStore(s.db)
 	boardHandler.SetAllowlistFlag(routes.AllowlistEnabled(sessStore))
+	artifactNudger := routes.NewClaudeArtifactNudger(sessStore, s.terminal)
+	boardHandler.SetArtifactNudger(artifactNudger)
+	sessHandler.SetArtifactNudger(artifactNudger)
 	boardHandler.SetHubCrossTeamLock(routes.HubCrossTeamLockFromSettings(sessStore.GetSettings))
 	boardHandler.SetLinksSeen(routes.LinksSeenFromSettings(sessStore.GetSettings), routes.MarkLinksSeen(sessStore.SetSetting))
 	boardHandler.SetOwnServerID(func(ctx context.Context) (string, error) {
