@@ -16,7 +16,7 @@ import { addPendingMessage, confirmPendingMessage, removePendingMessage, resetLi
 import { serverFetch, currentServer, serverForSession, sessionServer, isCloud } from './server_base.js';
 import { applySleepingView } from './sleeping_view.js';
 import { hubBlocked, blockedReason } from './hub_access.js';
-import { prepareImage, artifactErrorText, PICKER_ACCEPT, parseUploadReply, uploadStatusFailure, UPLOAD_UNFINISHED } from './image_attach.js';
+import { prepareImage, artifactErrorText, PICKER_ACCEPT, parseUploadReply, uploadStatusFailure, uploadCodeFailure, UPLOAD_UNFINISHED } from './image_attach.js';
 import { attachmentsLead, sentToastText } from './shared_images.js';
 import { loadModals } from './lazy_panels.js';
 import { responseErrorText, responseError } from './server_status.js';
@@ -1028,7 +1028,8 @@ export async function uploadAndInsertImage(file, session = state.currentSession)
             // A failed upload says so in a sentence, with Retry where trying again can work (#6088: through Coral Hub an upload can be cut short and answered with an EMPTY 200).
             const failed = (text, retry) => showToast(text, true, 10000, retry ? { action: { label: "Retry", onClick: () => uploadAndInsertImage(file, targetSession) } } : {});
             if (!resp.ok) {
-                const known = uploadStatusFailure(resp.status);
+                const said = await resp.clone().json().catch(() => null); // the hub's proxy names the limit it hit in "code" (#6190); it wins over the status
+                const known = uploadCodeFailure(said && said.code) || uploadStatusFailure(resp.status);
                 if (known) failed(known.text, known.retry);
                 else showToast(`Image not uploaded: ${await responseErrorText(resp, sessionServer(targetSession), `HTTP ${resp.status}`)}`, true);
                 return false;

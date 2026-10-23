@@ -80,6 +80,13 @@ export function parseUploadReply(text) {
     return typeof r.path === 'string' && r.path ? r : null;
 }
 
+/** The sentence for a fixed "code" the hub's proxy answers when it ends an upload (408): the stall limit (no bytes for 30 s) or the total cap. null for any other code. */
+export function uploadCodeFailure(code) {
+    if (code === 'upload_stalled') return { text: 'The upload stalled. Try again.', retry: true };
+    if (code === 'upload_too_slow') return { text: 'Upload timed out. Try a smaller image.', retry: true };
+    return null;
+}
+
 /** A plain sentence and whether Retry makes sense, for an upload answered with a failing status: 413 (too big for the server or the hub), 408 (too slow for the hub's time limit), a hub that is not
  *  answering. null for any other status: the server's own words are shown. */
 export function uploadStatusFailure(status) {
