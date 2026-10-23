@@ -23,7 +23,8 @@ const BASE = require('./test_base').BASE;
 const CDP_PORT = Number(process.env.CDP_PORT || 9222);
 const SOCK = process.env.CORAL_TEST_TMUX_SOCKET || '';
 const sleep = ms => new Promise(r => setTimeout(r, ms)); // sleep-ok: poll interval inside condition waits
-const MIN_FONT = 7;
+const MIN_FONT = 7;          // a phone's (its own choice)
+const DESKTOP_MIN_FONT = 11; // a window with room: readable at a glance (#6231)
 
 if (!SOCK || /\/\.coral\//.test(SOCK)) {
     console.error(`CORAL_TEST_TMUX_SOCKET must name the test server's own tmux socket (got ${JSON.stringify(SOCK)}); run through run.sh or run_cdp_suites.mjs`);
@@ -260,6 +261,20 @@ function assertFits(v, what) {
         assert.equal(v.font, 13);
         assert.equal(v.btn.shown, false, 'no toggle where the window fits the pane');
         console.log(`   ✓ ${v.cols} cols at 13 px, toggle hidden`);
+
+        console.log('8. A desktop viewing a pane wider than its window (a View-only hub): fit never goes below a readable font (#6231)');
+        const wider = { cols: 120, rows: 24 };
+        setPane(A.name, wider.cols, wider.rows);
+        const deskHubCtx = await newContext(); contexts.push(deskHubCtx);
+        const deskHub = await openTab({ contextId: deskHubCtx, width: 1280, height: 900, mobile: false, fakeHubView: true });
+        tabs.push(deskHub);
+        await deskHub.ev(`localStorage.setItem('coral-terminal-fit-width', '1'); true`);
+        await deskHub.load();
+        await deskHub.ev(`(() => { setLiveViewMode('terminal'); selectLiveSession(${JSON.stringify(A.name)}, 'terminal', ${JSON.stringify(A.sid)}); return true; })()`);
+        v = await deskHub.waitFor(`(async () => { const v = await ${VIEW}; return v && v.wsOpen && v.following && v.btn && v.btn.pressed === 'true' ? v : null; })()`, 'the desktop following a pane with fit on');
+        assert.ok(v.font >= DESKTOP_MIN_FONT, `a desktop never fits below ${DESKTOP_MIN_FONT} px (it was ${v.font}, ${v.cols} columns in ${v.clientW} px)`);
+        console.log(`   ✓ ${v.font} px at 1280 px with ${v.cols} columns in ${v.clientW} px (${v.scrolls ? 'the rest scrolls' : 'all fit'}), never below ${DESKTOP_MIN_FONT}`);
+        await deskHub.close(); tabs.pop();
 
         console.log('\nAll terminal fit-to-width checks passed');
     } finally {

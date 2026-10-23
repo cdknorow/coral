@@ -46,7 +46,9 @@ const PHONE_MAX_WIDTH = 767; // the mobile layout's breakpoint (mobile.js, css/m
 // pane keeps its size for everyone. Below MIN_FIT_FONT it stops shrinking and scrolls the rest.
 // Remembered per device.
 const FIT_WIDTH_KEY = 'coral-terminal-fit-width';
-const MIN_FIT_FONT = 7;
+const MIN_FIT_FONT = 11;       // a window with room (a desktop beside two sidebars): never smaller than this, a cell of about 6.5 px, so a prompt can be read at a glance (#6231); the rest scrolls sideways
+const MIN_FIT_FONT_PHONE = 7; // a phone that asked to see every column of a pane made for a wider screen: small, and the person's own choice (the toggle) until they turn it off
+const _minFitFont = () => (_isPhoneWidth() ? MIN_FIT_FONT_PHONE : MIN_FIT_FONT);
 let _baseFont = 13;      // the font size from Settings, used whenever not fitting
 let _fitWidth = (() => { try { return browserLocal.get(FIT_WIDTH_KEY) === '1'; } catch { return false; } })();
 
@@ -86,10 +88,11 @@ function _applyFitWidth() {
     if (!(avail > 0 && w > 0)) return; // not laid out yet: the next size change applies it
     // The drawn width roughly scales with the font: start at the size that just fits, then, as cells
     // are whole pixels, step down while it overflows and up while the next size still fits.
-    let size = Math.max(MIN_FIT_FONT, Math.min(_baseFont, Math.floor((cur * avail / w) * 2) / 2));
+    const floor = Math.min(_minFitFont(), _baseFont); // a Settings font below the minimum is the person's own
+    let size = Math.max(floor, Math.min(_baseFont, Math.floor((cur * avail / w) * 2) / 2));
     _setFont(size);
-    while (size > MIN_FIT_FONT && _screenWidth() > avail) {
-        size = Math.max(MIN_FIT_FONT, size - 0.5);
+    while (size > floor && _screenWidth() > avail) {
+        size = Math.max(floor, size - 0.5);
         _setFont(size);
     }
     while (size < _baseFont && _screenWidth() <= avail) {
