@@ -16,4 +16,6 @@ holds_fake_identity "$T/mutant" || { echo "FAIL: a program holding the fake iden
 # the marker is the one the rig uses, and the check sits in check_programs
 grep -rqF 'rehearsal.invalid' "$here/../../coral-go/internal/updater/testrig/release.go" || { echo "FAIL: the testrig no longer uses the marker: update the check" >&2; exit 1; }
 sed -n '/^check_programs()/,/^}/p' "$script" | grep -q 'holds_fake_identity "\$f"' || { echo "FAIL: check_programs does not call holds_fake_identity" >&2; exit 1; }
+n="$(grep -c 'holds_fake_identity "' "$script")"
+[ "$n" -ge 2 ] || { echo "FAIL: holds_fake_identity is called from $n sites, want check_programs (tarballs and zip) and the DMG" >&2; exit 1; }
 echo "PASS verify_release_fake_identity: the check refuses a mutant and is wired into the program check"

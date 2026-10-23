@@ -1,5 +1,9 @@
 name: Promote release
 
+# THIS COPY ON MAIN IS NEVER THE PINNED ONE. The updater pins this file at refs/heads/promote; the copy here exists so the real bytes are tested on every release
+# run and so workflow_dispatch can find the file. A dispatch of this copy gets the certificate ref refs/heads/main (the client refuses it), and its promote job cannot
+# start at all: the release-promote environment deploys from promote only, so it has no seed. The copy on refs/heads/promote must be byte-identical to this one whenever it
+# is changed (tools/devops/promote-copy-check.sh), because two copies drift.
 # Promotes a published release: signs promote.json, the manifest Coral's updater checks, and uploads it with its Sigstore bundle to the release (#6274).
 # Run by the release owner from the browser (Actions > Promote release > Run workflow). Team rule: no agent dispatches this workflow.
 #

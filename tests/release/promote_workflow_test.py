@@ -111,6 +111,10 @@ class Workflow(unittest.TestCase):
     def test_the_revoke_input_says_a_revocation_cannot_be_undone(self):
         self.assertIn("A revocation cannot be undone on a Coral that has seen it: a mistaken revoke is fixed by promoting a new version", WF)
 
+    def test_the_copy_on_main_says_it_is_never_the_pinned_one(self):
+        self.assertIn("THIS COPY ON MAIN IS NEVER THE PINNED ONE", WF)
+        self.assertIn("tools/devops/promote-copy-check.sh", WF)
+
     def test_both_jobs_have_a_timeout(self):
         for job in ("validate", "promote"):
             self.assertRegex(job_block(job), r"(?m)^    timeout-minutes: 15\b", job)

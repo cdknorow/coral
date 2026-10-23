@@ -513,6 +513,13 @@ if [ -n "${DMGBIN:-}" ]; then
   if unstripped "$c"; then fail build "DMG coral" "carries the dashboard's source comments: built without the strip-static overlay"; else
     [ "$t" = "$want_tags" ] && [ "${v:-$want_ver}" = "$want_ver" ] && pass build "DMG coral" "version ${v:-$want_ver}, tags $t" || fail build "DMG coral" "version '$v', tags '$t' (want $want_ver, $want_tags)"
   fi
+  # no program of the app holds the updater rehearsal's fake identity (#6290): the same refusal as the tarballs and the zip
+  bad=""
+  for c in $commands; do
+    [ -f "$DMGBIN/$c" ] || continue
+    if holds_fake_identity "$DMGBIN/$c"; then bad="$bad $c"; fi
+  done
+  [ -z "$bad" ] && pass build "DMG fake identity" "no program holds the rehearsal's fake identity" || fail build "DMG fake identity" "holds the updater rehearsal's fake identity:$bad"
 fi
 
 # ---- summary ----
