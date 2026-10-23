@@ -72,7 +72,8 @@ type fakeRelease struct {
 	hits     map[string]int
 	status   map[string]int // a path suffix -> a status to answer
 	redirect map[string]string
-	extra    int // bytes appended to the package body past its declared length (chunked)
+	extra    int    // bytes appended to the package body past its declared length (chunked)
+	list     string // when set, the list of releases the API answers instead of the real one
 }
 
 func asset(version string) string { return "coral-linux-amd64-" + version + ".tar.gz" }
@@ -124,6 +125,15 @@ func (r *fakeRelease) serve(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	switch {
+	case req.URL.Path == "/list":
+		// the newest releases, newest first: the promotion release (#6393) of the newest version, then its product release
+		pt := fmt.Sprintf("promote-v%s-%d", r.version, 7)
+		list := `[{"tag_name":"` + pt + `","draft":false,"prerelease":true,"assets":[{"name":"promote.json"},{"name":"promote.json.sigstore.json"}]},` +
+			`{"tag_name":"v` + r.version + `","draft":false,"prerelease":false,"assets":[{"name":"SHA256SUMS.txt"}]}]`
+		if r.list != "" {
+			list = r.list
+		}
+		w.Write([]byte(list))
 	case strings.HasPrefix(req.URL.Path, "/latest/download/"):
 		http.Redirect(w, req, "/download/v"+r.version+"/"+name, http.StatusFound)
 	case strings.HasPrefix(req.URL.Path, "/download/"):
@@ -161,8 +171,8 @@ func newEnv(t *testing.T, installed string) *env {
 	e := &env{t: t, rel: newFakeRelease(t, "1.4.130"), data: t.TempDir(), signer: &fakeSigner{}, now: testNow}
 	e.cfg = Config{
 		DataDir: e.data, Installed: installed, Pins: verify.DefaultPins(), Verifier: e.signer, Asset: asset,
-		Fetcher:    &verify.Fetcher{Scheme: "http", Allow: func(h string) bool { return h == "127.0.0.1" }},
-		LatestBase: e.rel.srv.URL + "/latest/download/", DownloadBase: e.rel.srv.URL + "/download/",
+		Fetcher:     &verify.Fetcher{Scheme: "http", Allow: func(h string) bool { return h == "127.0.0.1" }},
+		ReleasesURL: e.rel.srv.URL + "/list", DownloadBase: e.rel.srv.URL + "/download/",
 		Now: func() time.Time { return e.now },
 	}
 	return e

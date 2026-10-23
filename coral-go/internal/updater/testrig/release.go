@@ -61,6 +61,7 @@ func Asset(version string) string { return "coral-linux-amd64-" + version + ".ta
 // Release is a fake release: the package, the sums file, the promote manifest and the two signatures.
 type Release struct {
 	Version, Tag   string
+	Sequence       int64 // the promotion's sequence: the number in the promotion release's name, and in the manifest
 	Package        []byte
 	Sums           []byte
 	Manifest       []byte
@@ -159,6 +160,7 @@ func (s *Signer) NewRelease(sp Spec) (*Release, error) {
 	if seq == 0 {
 		seq = 1
 	}
+	r.Sequence = seq
 	repo := sp.ManifestRepo
 	if repo == "" {
 		repo = FakeRepo

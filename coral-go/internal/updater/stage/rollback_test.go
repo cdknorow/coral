@@ -29,6 +29,13 @@ type twoReleases struct {
 	tags   map[string]map[string][]byte // tag -> file -> body
 	hits   map[string]int               // "tag/file" -> count
 	latest string
+	order  []string         // the release tags in the order they were made (the list answers them newest first)
+	seq    map[string]int64 // version -> the sequence of its promotion
+}
+
+// promo is the tag of the promotion release of version (#6393): promote-v<version>-<sequence>, which carries the manifest and its bundle.
+func (tr *twoReleases) promo(version string) string {
+	return fmt.Sprintf("promote-v%s-%d", version, tr.seq[version])
 }
 
 func (tr *twoReleases) release(version string, seq int64, pkg []byte, revoked []string) {
@@ -36,16 +43,31 @@ func (tr *twoReleases) release(version string, seq int64, pkg []byte, revoked []
 	m := verify.Manifest{Schema: 1, Repo: verify.Repo, Tag: "v" + version, Version: version, SourceSHA: testCommit, SHA256SumsSHA: sum(sums), Sequence: seq,
 		PromotedAt: "2026-10-01T10:00:00Z", ExpiresAt: "2026-10-30T10:00:00Z", Revoked: revoked}
 	manifest, _ := json.Marshal(m)
+	tr.seq[version] = seq
+	tr.tags[tr.promo(version)] = map[string][]byte{ManifestFile: manifest, ManifestBundleFile: bundleOf(manifest, "")}
 	tr.tags["v"+version] = map[string][]byte{
-		ManifestFile: manifest, ManifestBundleFile: bundleOf(manifest, ""),
 		SumsFile: sums, SumsBundleFile: bundleOf(sums, testCommit), msiName(version): pkg,
 	}
+	tr.order = append(tr.order, "v"+version, tr.promo(version))
 }
 
 func (tr *twoReleases) serve(w http.ResponseWriter, req *http.Request) {
 	tr.mu.Lock()
 	defer tr.mu.Unlock()
 	parts := strings.Split(strings.TrimPrefix(req.URL.Path, "/"), "/")
+	if req.URL.Path == "/list" {
+		var items []string
+		for i := len(tr.order) - 1; i >= 0; i-- {
+			tag := tr.order[i]
+			if strings.HasPrefix(tag, "promote-") {
+				items = append(items, `{"tag_name":"`+tag+`","draft":false,"prerelease":true,"assets":[{"name":"promote.json"},{"name":"promote.json.sigstore.json"}]}`)
+			} else {
+				items = append(items, `{"tag_name":"`+tag+`","draft":false,"prerelease":false,"assets":[{"name":"SHA256SUMS.txt"}]}`)
+			}
+		}
+		w.Write([]byte("[" + strings.Join(items, ",") + "]"))
+		return
+	}
 	if len(parts) == 3 && parts[0] == "latest" && parts[1] == "download" {
 		http.Redirect(w, req, "/download/"+tr.latest+"/"+parts[2], http.StatusFound)
 		return
@@ -73,15 +95,15 @@ func (tr *twoReleases) hit(tagFile string) int {
 // newTwo: the installed 1.4.125 (whose manifest has expired by now: a re-install doesn't need it fresh) and the latest 1.4.130.
 func newTwo(t *testing.T) (*twoReleases, Config) {
 	t.Helper()
-	tr := &twoReleases{tags: map[string]map[string][]byte{}, hits: map[string]int{}, latest: "v1.4.130"}
+	tr := &twoReleases{tags: map[string]map[string][]byte{}, hits: map[string]int{}, latest: "v1.4.130", seq: map[string]int64{}}
 	tr.release("1.4.125", 6, []byte("the msi of 1.4.125"), []string{})
 	tr.release("1.4.130", 7, []byte("the msi of 1.4.130"), []string{})
-	tr.tags["v1.4.130"][ManifestFile] = mustManifest(t, "1.4.130", tr.tags["v1.4.130"][SumsFile], 7, "2026-11-20T10:00:00Z", nil)
-	tr.tags["v1.4.130"][ManifestBundleFile] = bundleOf(tr.tags["v1.4.130"][ManifestFile], "")
+	tr.tags[tr.promo("1.4.130")][ManifestFile] = mustManifest(t, "1.4.130", tr.tags["v1.4.130"][SumsFile], 7, "2026-11-20T10:00:00Z", nil)
+	tr.tags[tr.promo("1.4.130")][ManifestBundleFile] = bundleOf(tr.tags[tr.promo("1.4.130")][ManifestFile], "")
 	tr.srv = httptest.NewServer(http.HandlerFunc(tr.serve))
 	t.Cleanup(tr.srv.Close)
 	cfg := Config{DataDir: t.TempDir(), Installed: "1.4.125", Pins: verify.DefaultPins(), Verifier: &fakeSigner{},
-		Fetcher: &verify.Fetcher{Scheme: "http", Allow: func(string) bool { return true }}, LatestBase: tr.srv.URL + "/latest/download/",
+		Fetcher: &verify.Fetcher{Scheme: "http", Allow: func(string) bool { return true }}, ReleasesURL: tr.srv.URL + "/list",
 		DownloadBase: tr.srv.URL + "/download/", Asset: msiName, Now: func() time.Time { return testNow }, Rollback: true}
 	return tr, cfg
 }
@@ -139,8 +161,8 @@ func TestARollbackPackageThatDoesntVerifyIsNotKeptAndTheUpdateIsStillStaged(t *t
 
 	tr, cfg = newTwo(t)
 	sums := tr.tags["v1.4.125"][SumsFile]
-	tr.tags["v1.4.125"][ManifestFile] = mustManifest(t, "1.4.125", sums, 6, "2026-10-30T10:00:00Z", []string{"1.4.125"})
-	tr.tags["v1.4.125"][ManifestBundleFile] = bundleOf(tr.tags["v1.4.125"][ManifestFile], "")
+	tr.tags[tr.promo("1.4.125")][ManifestFile] = mustManifest(t, "1.4.125", sums, 6, "2026-10-30T10:00:00Z", []string{"1.4.125"})
+	tr.tags[tr.promo("1.4.125")][ManifestBundleFile] = bundleOf(tr.tags[tr.promo("1.4.125")][ManifestFile], "")
 	require.Equal(t, ResultStaged, Check(context.Background(), cfg).Result)
 	_, err = LoadRollback(cfg.DataDir, "1.4.125")
 	assert.Error(t, err, "a revoked version is never kept to put back")
@@ -186,8 +208,8 @@ func TestANewReleaseThatRevokesTheInstalledVersionBlocksItsRollback(t *testing.T
 	// 1.4.131 is promoted and revokes 1.4.125.
 	tr.mu.Lock()
 	tr.release("1.4.131", 8, []byte("the msi of 1.4.131"), []string{"1.4.125"})
-	tr.tags["v1.4.131"][ManifestFile] = mustManifest(t, "1.4.131", tr.tags["v1.4.131"][SumsFile], 8, "2026-11-20T10:00:00Z", []string{"1.4.125"})
-	tr.tags["v1.4.131"][ManifestBundleFile] = bundleOf(tr.tags["v1.4.131"][ManifestFile], "")
+	tr.tags[tr.promo("1.4.131")][ManifestFile] = mustManifest(t, "1.4.131", tr.tags["v1.4.131"][SumsFile], 8, "2026-11-20T10:00:00Z", []string{"1.4.125"})
+	tr.tags[tr.promo("1.4.131")][ManifestBundleFile] = bundleOf(tr.tags[tr.promo("1.4.131")][ManifestFile], "")
 	tr.latest = "v1.4.131"
 	tr.mu.Unlock()
 	require.Equal(t, ResultStaged, Check(context.Background(), cfg).Result)

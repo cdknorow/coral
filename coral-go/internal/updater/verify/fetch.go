@@ -11,11 +11,15 @@ import (
 	"time"
 )
 
-// AllowedHosts are where a release's files may come from: GitHub, and the hosts it redirects a release download to. Anything else is refused, at
-// the first request and at every redirect.
-var AllowedHosts = []string{"github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com"}
+// AllowedHosts are where a release's files may come from: GitHub, the hosts it redirects a release download to, and its API for the list of releases a promotion is found in (#6393).
+// Anything else is refused, at the first request and at every redirect.
+var AllowedHosts = []string{"github.com", "api.github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com"}
 
 const maxRedirects = 3
+
+// ErrTooLarge is a body longer than the limit the caller set: the answer is refused, never truncated. The client tells it from a failure to reach GitHub, so a release with an oversize
+// file is a bad candidate and not an outage (#6393).
+var ErrTooLarge = errors.New("the body is larger than the limit")
 
 // StatusError is an answer other than 200: the caller tells a 404 (the file is not there) from a failure to reach GitHub.
 type StatusError struct {
@@ -107,14 +111,14 @@ func (f *Fetcher) Copy(ctx context.Context, rawURL string, w io.Writer, max int6
 		return &StatusError{URL: u.Redacted(), Status: resp.StatusCode, Text: resp.Status}
 	}
 	if resp.ContentLength > max {
-		return fmt.Errorf("the body is %d bytes, more than %d", resp.ContentLength, max)
+		return fmt.Errorf("%w: %d bytes, more than %d", ErrTooLarge, resp.ContentLength, max)
 	}
 	n, err := io.Copy(w, io.LimitReader(resp.Body, max+1))
 	if err != nil {
 		return err
 	}
 	if n > max {
-		return fmt.Errorf("the body is longer than %d bytes", max)
+		return fmt.Errorf("%w: longer than %d bytes", ErrTooLarge, max)
 	}
 	return nil
 }
@@ -126,7 +130,7 @@ type limitBuffer struct {
 
 func (l *limitBuffer) Write(p []byte) (int, error) {
 	if int64(len(l.b)+len(p)) > l.max+1 {
-		return 0, errors.New("too large")
+		return 0, ErrTooLarge
 	}
 	l.b = append(l.b, p...)
 	return len(p), nil

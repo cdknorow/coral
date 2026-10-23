@@ -136,8 +136,11 @@ func TestReplayedRevokedAndDowngradedPromotionsAreRefused(t *testing.T) {
 	r.cfg.Installed = "1.4.131"
 	r.publish(Spec{Version: "1.4.132", Sequence: 3}) // an old promotion served again for a newer version
 	res := r.check()
+	assert.Equal(t, stage.ResultUpToDate, res.Result, "%+v: the highest sequence listed (5, for 1.4.131) outranks the replay (3), and that is the installed one", res)
+	r.gh.ListBody = []byte(`[{"tag_name":"` + PromotionTag("v1.4.132", 3) + `","draft":false,"prerelease":true,"assets":[{"name":"promote.json"},{"name":"promote.json.sigstore.json"}]}]`)
+	res = r.check()
 	assert.Equal(t, stage.ResultFailed, res.Result, "%+v", res)
-	assert.Equal(t, verify.StageManifestRules, res.FailedStage, "a lower sequence than the last accepted is a replay")
+	assert.Equal(t, verify.StageManifestRules, res.FailedStage, "a lower sequence than the last accepted, alone, is a replay and is refused")
 
 	r2 := newRig(t)
 	r2.publish(Spec{Version: "1.4.131", Sequence: 5, Revoked: []string{"1.4.133"}})
@@ -165,12 +168,15 @@ func TestTheNetworksWaysToBeWrongAreRefusedAndStageNothing(t *testing.T) {
 		fail string
 	}{
 		{"the manifest redirects to a host that is not allowed", func(r *rig, rel *Release) {
-			r.gh.RedirectTo["latest/"+stage.ManifestFile] = "http://localhost:" + portOf(r.gh.URL()) + "/" + FakeRepo + "/releases/download/v1.4.131/" + stage.ManifestFile
+			r.gh.RedirectTo[PromotionTag("v1.4.131", 1)+"/"+stage.ManifestFile] = "http://localhost:" + portOf(r.gh.URL()) + "/" + FakeRepo + "/releases/download/v1.4.131/" + stage.ManifestFile
 		}, stage.ResultFailed, "manifest"},
 		{"the manifest redirects to another scheme", func(r *rig, rel *Release) {
-			r.gh.RedirectTo["latest/"+stage.ManifestFile] = "https://127.0.0.1:1/x"
+			r.gh.RedirectTo[PromotionTag("v1.4.131", 1)+"/"+stage.ManifestFile] = "https://127.0.0.1:1/x"
 		}, stage.ResultFailed, "manifest"},
-		{"the manifest answers with a server error", func(r *rig, rel *Release) { r.gh.Status["latest/"+stage.ManifestFile] = 503 }, stage.ResultFailed, "manifest"},
+		{"the manifest answers with a server error", func(r *rig, rel *Release) { r.gh.Status[PromotionTag("v1.4.131", 1)+"/"+stage.ManifestFile] = 503 }, stage.ResultFailed, "manifest"},
+		{"the list of releases answers with a server error", func(r *rig, rel *Release) { r.gh.Status["list"] = 503 }, stage.ResultFailed, "manifest"},
+		{"the list of releases is larger than the limit", func(r *rig, rel *Release) { r.gh.ListBody = bytes.Repeat([]byte(" "), 1<<20+10) }, stage.ResultFailed, "manifest"},
+		{"the list of releases is not a list", func(r *rig, rel *Release) { r.gh.ListBody = []byte(`{"message":"API rate limit exceeded"}`) }, stage.ResultFailed, "manifest"},
 		{"a bundle answers with a server error", func(r *rig, rel *Release) { r.gh.Status["v1.4.131/"+stage.SumsBundleFile] = 500 }, stage.ResultFailed, stage.SumsBundleFile},
 		{"the sums bundle is larger than the limit", func(r *rig, rel *Release) {
 			r.gh.Mutate = func(p string, b []byte) []byte {

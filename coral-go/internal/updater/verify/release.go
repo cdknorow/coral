@@ -132,6 +132,23 @@ func ReleaseOf(v BundleVerifier, pins Pins, c Candidate, asset func(version stri
 	return verifyRelease(v, pins, c, asset, now, func(m *Manifest) error { return CheckManifestOf(m, pins, st, version, now) })
 }
 
+// PromotionManifest verifies a promote manifest's signature against the promote workflow's identity (the same check the chain makes first) and parses it strictly. It applies none of the
+// manifest's rules (version, sequence, expiry, revocation): they are Release's, made when the chosen manifest goes through the whole chain. It is how the client tells a promotion
+// release's manifest from junk (#6393): only a document the promote workflow signed is ever a candidate.
+func PromotionManifest(v BundleVerifier, pins Pins, manifest, bundle []byte) (*Manifest, error) {
+	if len(manifest) == 0 || len(manifest) > MaxManifestBytes {
+		return nil, fail(StageManifestDocument, "manifest size %d is outside 1..%d", len(manifest), MaxManifestBytes)
+	}
+	if _, err := v.VerifyBundle(bundle, manifest, promoteIdentity(pins)); err != nil {
+		return nil, fail(StageManifestSignature, "%v", err)
+	}
+	m, err := ParseManifest(manifest)
+	if err != nil {
+		return nil, fail(StageManifestDocument, "%v", err)
+	}
+	return m, nil
+}
+
 // verifyRelease is Release's chain, with the manifest's rules given.
 func verifyRelease(v BundleVerifier, pins Pins, c Candidate, asset func(version string) string, now time.Time, rules func(*Manifest) error) (*Record, error) {
 	// 2. The manifest's signature, against the promote workflow's identity.

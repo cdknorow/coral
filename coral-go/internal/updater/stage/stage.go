@@ -33,7 +33,6 @@ const (
 
 	// GitHub's fixed endpoints. "latest/download" redirects to the newest release that is not a prerelease (the same answer the update check
 	// uses), so no API host is needed; the manifest it serves names the tag every other URL is built from.
-	LatestBase   = "https://github.com/" + verify.Repo + "/releases/latest/download/"
 	DownloadBase = "https://github.com/" + verify.Repo + "/releases/download/"
 
 	// DefaultMaxPackage is the hard limit on a package: the sums file carries no size, so a limit per platform stands in for it.
@@ -68,8 +67,8 @@ type Config struct {
 	Pins      verify.Pins
 	Verifier  verify.BundleVerifier
 	Fetcher   *verify.Fetcher
-	// LatestBase and DownloadBase default to GitHub's.
-	LatestBase, DownloadBase string
+	// ReleasesURL (the list a promotion is found in, #6393) and DownloadBase default to GitHub's.
+	ReleasesURL, DownloadBase string
 	// Asset names the package for this platform in the sums file.
 	Asset func(version string) string
 	Now   func() time.Time
@@ -89,8 +88,8 @@ func (c *Config) now() time.Time {
 }
 
 func (c *Config) defaults() {
-	if c.LatestBase == "" {
-		c.LatestBase = LatestBase
+	if c.ReleasesURL == "" {
+		c.ReleasesURL = ReleasesList
 	}
 	if c.DownloadBase == "" {
 		c.DownloadBase = DownloadBase
@@ -209,20 +208,22 @@ func (c *checker) get(ctx context.Context, url string, max int64) ([]byte, error
 
 func (c *checker) run(ctx context.Context) Result {
 	cfg := c.cfg
-	// The manifest of the newest release; its tag is where the rest comes from.
-	manifest, err := c.get(ctx, cfg.LatestBase+ManifestFile, verify.MaxManifestBytes)
-	if notFound(err) {
+	// The manifest of the newest promotion: the highest-sequence promote-<tag>-<n> release whose manifest the promote workflow signed (#6393); its tag is where the rest comes from. When there are
+	// candidates and none verifies, that is a refusal like any other (recorded, and backed off an hour, doubling to a day).
+	p, _, err := c.findPromotion(ctx, "")
+	var nv *noneVerified
+	switch {
+	case errors.Is(err, errNoPromotion):
 		c.save()
 		c.res.Result = ResultNotPromoted
 		return c.res
-	}
-	if err != nil {
+	case errors.As(err, &nv):
+		log.Printf("[update] %v", nv)
+		return c.refused(nv.version, nv.failure)
+	case err != nil:
 		return c.fail("", KindNetwork, "manifest")
 	}
-	m, err := verify.ParseManifest(manifest)
-	if err != nil {
-		return c.fail("", KindVerify, verify.StageManifestDocument)
-	}
+	manifest, m := p.manifest, p.m
 	c.res.Version = m.Version
 	if cmp, cerr := verify.CompareVersions(m.Version, cfg.Installed); cerr != nil || cmp <= 0 {
 		c.save()
@@ -230,11 +231,11 @@ func (c *checker) run(ctx context.Context) Result {
 		return c.res
 	}
 	base := cfg.DownloadBase + m.Tag + "/"
-	files := map[string][]byte{ManifestFile: manifest}
+	files := map[string][]byte{ManifestFile: manifest, ManifestBundleFile: p.bundle}
 	for _, f := range []struct {
 		name string
 		max  int64
-	}{{ManifestBundleFile, verify.MaxBundleBytes}, {SumsFile, verify.MaxSumsBytes}, {SumsBundleFile, verify.MaxBundleBytes}} {
+	}{{SumsFile, verify.MaxSumsBytes}, {SumsBundleFile, verify.MaxBundleBytes}} {
 		b, err := c.get(ctx, base+f.name, f.max)
 		if notFound(err) {
 			c.save()

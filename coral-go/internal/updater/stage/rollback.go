@@ -47,11 +47,16 @@ func (c *checker) keepRollback(ctx context.Context) error {
 		_ = os.RemoveAll(s.Dir)
 	}
 	base := c.cfg.DownloadBase + "v" + version + "/"
-	files := map[string][]byte{}
+	// The installed version's own promotion (its manifest is a release of its own since #6393), found for exactly its tag.
+	p, _, perr := c.findPromotion(ctx, "v"+version)
+	if perr != nil {
+		return fmt.Errorf("promotion of v%s: %w", version, perr)
+	}
+	files := map[string][]byte{ManifestFile: p.manifest, ManifestBundleFile: p.bundle}
 	for _, f := range []struct {
 		name string
 		max  int64
-	}{{ManifestFile, verify.MaxManifestBytes}, {ManifestBundleFile, verify.MaxBundleBytes}, {SumsFile, verify.MaxSumsBytes}, {SumsBundleFile, verify.MaxBundleBytes}} {
+	}{{SumsFile, verify.MaxSumsBytes}, {SumsBundleFile, verify.MaxBundleBytes}} {
 		b, err := c.get(ctx, base+f.name, f.max)
 		if err != nil {
 			return fmt.Errorf("%s: %w", f.name, err)
