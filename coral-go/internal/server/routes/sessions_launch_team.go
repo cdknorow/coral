@@ -135,8 +135,13 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 
 	memberTypes, skippedMembers := teamMemberTypes(body)
 	attempt := tracking.StartLaunch(tracking.KindTeam, tracking.TeamProvider(memberTypes), h.launchBackendLabel(body.Backend), len(body.Agents), false)
+	// A launch refused before anything started takes back the board this request made, so fixing the field and launching again with the same name goes through (#6701, UI/UX's #6723).
+	takeBoardBack := func() {
+		h.rollBackTeamLaunch(context.WithoutCancel(r.Context()), body, 0, "", false, boardCreated)
+	}
 	refuse := func(category, msg string) {
 		attempt.Finish(tracking.OutcomeFailure, category, 0, len(body.Agents))
+		takeBoardBack()
 		errBadRequest(w, msg)
 	}
 	if msg := checkTeamRequest(body); msg != "" {
@@ -152,6 +157,7 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 		var missing *gitutil.BranchMissingError
 		if errors.As(wtErr, &missing) { // the one a dashboard shows under the Base Branch field, with the branches to pick from (#6701)
 			attempt.Finish(tracking.OutcomeFailure, tracking.FailWorktreeFailed, 0, len(body.Agents))
+			takeBoardBack()
 			writeBranchMissing(w, missing)
 			return
 		}
@@ -166,6 +172,7 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 	userSettings, err := h.launchSettings(ctx)
 	if err != nil {
 		attempt.Finish(tracking.OutcomeFailure, tracking.FailSpawnFailed, 0, len(body.Agents))
+		h.rollBackTeamLaunch(ctx, body, teamID, worktreePath, branchCreated, boardCreated)
 		writeError(w, http.StatusServiceUnavailable, "", err.Error())
 		return
 	}
