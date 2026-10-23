@@ -72,3 +72,46 @@ func TestTurnActivityNeverClosesAnOpenRequestButKeepsATurnOpen(t *testing.T) {
 	assert.True(t, st.Working, "with no request it is the turn going on, as a prompt is")
 	assert.False(t, st.AwaitingUser)
 }
+
+// #6687: agents run tool calls in parallel and a PermissionRequest hook carries no call id, so the server writes into the request the ids of the calls it may be about (call_ids). A PostToolUse
+// answers the request only through one of them, and the request closes when every one has finished: a parallel call of the same tool that finishes first does not close it.
+func TestARequestWithItsCallsIsAnsweredOnlyWhenAllOfThemFinished(t *testing.T) {
+	now := time.Now()
+	ev := func(typ, summary string, detail *string, tool, callID string) Event {
+		e := NewEvent(typ, summary, detail)
+		e.ToolName, e.At = tool, now
+		if typ == "tool_use" {
+			e.ToolUseID = callID
+		}
+		now = now.Add(time.Second)
+		return e
+	}
+	one := ev("permission_request", "Waiting for the user: permission (Bash)", detailJSON(`{"kind":"permission","tool_name":"Bash","call_ids":["call-a"]}`), "Bash", "")
+	assert.Equal(t, []string{"call-a"}, one.CallIDs, "read from the request's detail")
+	start := ev("prompt_submit", "go", nil, "", "")
+
+	st := Derive(Input{Events: []Event{start, one, ev("tool_use", "Ran: ls", nil, "Bash", "call-b")}})
+	assert.True(t, st.NeedsInput, "another Bash call finishing does not answer it")
+	st = Derive(Input{Events: []Event{start, one, ev("tool_use", "Ran: ls", nil, "Bash", "call-b"), ev("tool_use", "Ran: rm", nil, "Bash", "call-a")}})
+	assert.False(t, st.NeedsInput, "its own call's PostToolUse does")
+
+	// Two parallel calls of the same tool, only one of which waits: the server cannot tell which, so the request waits for both. Either finishing first leaves it open; the second closes it.
+	two := ev("permission_request", "Waiting for the user: permission (Bash)", detailJSON(`{"kind":"permission","tool_name":"Bash","call_ids":["call-1","call-2"]}`), "Bash", "")
+	for _, first := range [][2]string{{"call-1", "call-2"}, {"call-2", "call-1"}} {
+		st = Derive(Input{Events: []Event{start, two, ev("tool_use", "Ran", nil, "Bash", first[0])}})
+		assert.True(t, st.NeedsInput, "the first call to finish (%s) leaves it open", first[0])
+		st = Derive(Input{Events: []Event{start, two, ev("tool_use", "Ran", nil, "Bash", first[0]), ev("tool_use", "Ran", nil, "Bash", first[1])}})
+		assert.False(t, st.NeedsInput, "the second closes it")
+	}
+	st = Derive(Input{Events: []Event{start, two, ev("tool_use", "Ran", nil, "Bash", "call-3")}})
+	assert.True(t, st.NeedsInput, "a call it does not wait for changes nothing")
+
+	// A request whose calls are not known is answered by the tool's name, as before.
+	anon := ev("permission_request", "Waiting for the user: permission (Bash)", detailJSON(`{"kind":"permission","tool_name":"Bash"}`), "Bash", "")
+	st = Derive(Input{Events: []Event{start, anon, ev("tool_use", "Ran: ls", nil, "Bash", "call-b")}})
+	assert.False(t, st.NeedsInput)
+
+	// One tied request and one not: the id logic does not apply (not every open request has its calls), so the name answers one.
+	st = Derive(Input{Events: []Event{start, one, anon, ev("tool_use", "Ran: ls", nil, "Bash", "call-b")}})
+	assert.True(t, st.NeedsInput, "one request is left open")
+}

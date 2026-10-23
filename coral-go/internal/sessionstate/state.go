@@ -21,6 +21,10 @@ type Event struct {
 	Kind string
 	// ToolName is the tool of a tool_use or permission_request, when known.
 	ToolName string
+	// ToolUseID is a tool_use event's own call id. CallIDs, for a permission_request, are the calls it may be about, which the server writes from the calls' PreToolUse (the PermissionRequest hooks
+	// carry no call id, #6687): one call, or all the parallel calls of the tool that were in flight. Empty when not known.
+	ToolUseID string
+	CallIDs   []string
 	// Wants is what a permission_request wants to do ("Wants to run: <command>"), as the server stored it: already cleaned, redacted and cut (#6622). It is display text only: no
 	// classifier reads it, so an agent's command cannot say "needs your permission" to them.
 	Wants string
@@ -35,13 +39,21 @@ func NewEvent(eventType, summary string, detailJSON *string) Event {
 		return e
 	}
 	var d struct {
-		Kind             string `json:"kind"`
-		NotificationType string `json:"notification_type"`
-		Wants            string `json:"wants"`
+		Kind             string   `json:"kind"`
+		NotificationType string   `json:"notification_type"`
+		Wants            string   `json:"wants"`
+		CallIDs          []string `json:"call_ids"`
 	}
 	if json.Unmarshal([]byte(*detailJSON), &d) == nil {
 		if eventType == "permission_request" && len(d.Wants) <= maxWantsBytes {
 			e.Wants = d.Wants
+		}
+		if eventType == "permission_request" && len(d.CallIDs) <= 8 {
+			for _, id := range d.CallIDs {
+				if id != "" && len(id) <= 128 {
+					e.CallIDs = append(e.CallIDs, id)
+				}
+			}
 		}
 		e.Kind = d.Kind
 		if !RequestKinds[e.Kind] {
@@ -178,6 +190,15 @@ type deriver struct {
 	// that is still open (#3481, Backend's MUST 3).
 	pending map[string]int
 	open    int
+	// waits are the open requests whose calls are known: the calls each still waits for. A PostToolUse answers a request only by a call's id, and the request closes when every one of its calls has
+	// finished, so a parallel call of the same tool that finishes first (an auto-allowed Bash beside one waiting for approval) does not close it (#6687).
+	waits []*requestWait
+}
+
+// requestWait is one open request and the calls it waits for.
+type requestWait struct {
+	tool  string
+	calls map[string]bool
 }
 
 func (d *deriver) clearRequest() {
@@ -186,7 +207,7 @@ func (d *deriver) clearRequest() {
 	d.state.WaitingSummary = ""
 	d.state.WaitingKind = ""
 	d.state.WaitingWants = ""
-	d.pending, d.open = map[string]int{}, 0
+	d.pending, d.open, d.waits = map[string]int{}, 0, nil
 }
 
 func (d *deriver) raise(event Event, kind string) {
@@ -258,6 +279,13 @@ func (d *deriver) apply(event Event) bool {
 		if event.Kind != "elicitation" {
 			d.pending[event.ToolName]++
 			d.open++
+			if len(event.CallIDs) > 0 {
+				w := &requestWait{tool: event.ToolName, calls: map[string]bool{}}
+				for _, id := range event.CallIDs {
+					w.calls[id] = true
+				}
+				d.waits = append(d.waits, w)
+			}
 		}
 	case "request_resolved":
 		// An elicitation was answered (accept, decline or cancel): the agent goes on.
@@ -281,7 +309,25 @@ func (d *deriver) apply(event Event) bool {
 // request for another tool stays open.
 func (d *deriver) toolUsed(event Event) {
 	if d.open > 0 {
-		if d.pending[event.ToolName] > 0 {
+		if event.ToolUseID != "" && len(d.waits) == d.open {
+			// Every open request has its calls: a PostToolUse answers one only through a call it waits for, and the request closes when the last of them finishes. Another call's, of the same
+			// tool or not, changes nothing.
+			kept := d.waits[:0]
+			for _, w := range d.waits {
+				if w.calls[event.ToolUseID] {
+					delete(w.calls, event.ToolUseID)
+					if len(w.calls) == 0 {
+						if d.pending[w.tool] > 0 {
+							d.pending[w.tool]--
+						}
+						d.open--
+						continue
+					}
+				}
+				kept = append(kept, w)
+			}
+			d.waits = kept
+		} else if d.pending[event.ToolName] > 0 { // some request's calls are not known: by the tool's name, as before
 			d.pending[event.ToolName]--
 			d.open--
 		}
