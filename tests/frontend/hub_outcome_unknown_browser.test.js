@@ -29,6 +29,7 @@ const LINE = 'That may have reached the computer. Check before trying again.';
                 if (method !== 'GET' && /\\/api\\//.test(url)) {
                     window.__posts.push(method + ' ' + url.replace(/^https?:\\/\\/[^/]+/, ''));
                     if (window.__mode === 'unknown') return new Response(JSON.stringify({ error: 'bad gateway', code: 'outcome_unknown' }), { status: 502, headers: { 'Content-Type': 'application/json' } });
+                    if (window.__mode === 'errorOnly') return new Response(JSON.stringify({ error: 'outcome_unknown' }), { status: 502, headers: { 'Content-Type': 'application/json' } });
                     if (window.__mode === 'five') return new Response(JSON.stringify({ error: 'server error', code: 'outcome_unknown' }), { status: 500, headers: { 'Content-Type': 'application/json' } });
                     if (window.__mode === 'plain') return new Response(JSON.stringify({ error: 'bad gateway' }), { status: 502, headers: { 'Content-Type': 'application/json' } });
                 }
@@ -59,6 +60,16 @@ const LINE = 'That may have reached the computer. Check before trying again.';
             return { is502: m.isOutcomeUnknown(502, { code: 'outcome_unknown' }, '/api/board/x/tasks'), is500: m.isOutcomeUnknown(500, { code: 'outcome_unknown' }, '/api/board/x/tasks'), is200: m.isOutcomeUnknown(200, { code: 'outcome_unknown' }, '/api/board/x/tasks'), status500: res.status, body500: await res.json(), r: r.status };
         })()`);
         check('the code only counts on a 502: the same body with another status (an ordinary 500, a 200) is not the line, and the wrapper leaves a 500 alone', other.is502 === true && other.is500 === false && other.is200 === false && other.status500 === 500 && other.body500.error === 'server error' && other.body500.code === 'outcome_unknown', JSON.stringify(other));
+        const errOnly = await ev(`(async () => {
+            const call = async (method, url) => { const r = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: '{}' }); return { status: r.status, body: await r.json() }; };
+            window.__mode = 'errorOnly';
+            const task = await call('POST', '/api/board/x/tasks'), launch = await call('POST', '/api/sessions/launch'), team = await call('POST', '/api/sessions/launch-team');
+            const m = await import(${S} + 'server_status.js'); const resp = await fetch('/api/board/x/messages', { method: 'POST', body: '{}' }); const text = await m.responseErrorText(resp.clone(), 'local', 'fallback');
+            window.__mode = 'unknown';
+            return { task, launch, team, text };
+        })()`);
+        check('the hub\'s launch-style answer (an error of outcome_unknown and no code) on a non-launch write says the one line, with the code added', errOnly.task.status === 502 && errOnly.task.body.error === LINE && errOnly.task.body.code === 'outcome_unknown' && errOnly.text === LINE, JSON.stringify([errOnly.task, errOnly.text]));
+        check('and a launch with that body keeps its own words (not replaced)', errOnly.launch.body.error === 'outcome_unknown' && errOnly.team.body.error === 'outcome_unknown' && !('code' in errOnly.launch.body), JSON.stringify([errOnly.launch, errOnly.team]));
         const up = await ev(`(async () => { const m = await import(${S} + 'image_attach.js'); return m.uploadCodeFailure('outcome_unknown'); })()`);
         check('an upload answered outcome_unknown says the line and offers no Retry', up && up.text === LINE && up.retry === false, JSON.stringify(up));
 

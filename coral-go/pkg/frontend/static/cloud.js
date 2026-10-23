@@ -122,7 +122,7 @@ async function sayOutcomeUnknown(resp, url) {
     let body = null;
     try { body = await resp.clone().json(); } catch { return null; }
     if (!isOutcomeUnknown(resp.status, body, url || resp.url)) return null;
-    return new Response(JSON.stringify({ ...body, error: OUTCOME_UNKNOWN_LINE }), { status: resp.status, statusText: resp.statusText, headers: resp.headers });
+    return new Response(JSON.stringify({ ...body, code: 'outcome_unknown', error: OUTCOME_UNKNOWN_LINE }), { status: resp.status, statusText: resp.statusText, headers: resp.headers });
 }
 
 /** Wrap window.fetch: add X-CSRF-Token on same-origin state-changing calls and

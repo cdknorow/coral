@@ -5,9 +5,9 @@ export const OUTCOME_UNKNOWN_LINE = 'That may have reached the computer. Check b
 /** Whether a url is a launch (POST /api/sessions/launch or /launch-team, direct or through a hub's remote path). */
 export const isLaunchUrl = (url) => /\/launch(-team)?$/.test(String(url == null ? '' : url).split('?')[0].replace(/\/+$/, ''));
 
-/** A 502 whose body says code outcome_unknown, for anything but a launch. */
+/** A 502 whose body says outcome_unknown, for anything but a launch: in `code`, or (the hub's launch-style answer, until its batch 63 adds `code` everywhere) as the whole `error`. */
 export function isOutcomeUnknown(status, body, url = '') {
-    return status === 502 && !!body && typeof body === 'object' && body.code === 'outcome_unknown' && !isLaunchUrl(url);
+    return status === 502 && !!body && typeof body === 'object' && (body.code === 'outcome_unknown' || body.error === 'outcome_unknown') && !isLaunchUrl(url);
 }
 
 /** The sentence for a failed response when it is one, else ''. Reads a clone of the body. */
