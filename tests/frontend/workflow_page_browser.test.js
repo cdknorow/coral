@@ -39,8 +39,19 @@ const BASE = require('./test_base').BASE;
             assert.deepEqual(page.head, ['When', 'Result', 'Took', 'Started by'], at);
             assert.match(page.rows[0], /Failed: step 2 \(Test\).*exit code 3.*1m 40s/, at + page.rows[0]);
             assert.match(page.rows[1], /Passed.*10s?.*manual/, at + page.rows[1]);
-            assert.match(page.last, /The last run failed.*step 2 \(Test\).*exit code 3\. Open the run/, at + page.last);
+            assert.match(page.last, /The last run failed.*step 2 \(Test\).*exit code 3\. Open the failed run/, at + page.last);
+            assert.ok(page.last.includes(page.rows[0].split(' ').slice(0, 2).join(' ')), at + 'the line and the first row give the same time: ' + page.last + ' | ' + page.rows[0]);
             assert.equal(page.wide, false, at + 'no sideways scroll');
+            for (const theme of ['dark', 'light']) {
+                const ratio = await ev(`(() => { document.documentElement.setAttribute('data-theme', '${theme}');
+                    const rgb = (c) => (c.match(/[\\d.]+/g) || []).map(Number); const lin = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+                    const L = (c) => 0.2126 * lin(c[0]) + 0.7152 * lin(c[1]) + 0.0722 * lin(c[2]);
+                    const el = document.querySelector('.wf-last-failed'); const fg = rgb(getComputedStyle(el).color); let bg = null;
+                    for (let n = el; n && !bg; n = n.parentElement) { const c = rgb(getComputedStyle(n).backgroundColor); if (c.length >= 3 && (c.length === 3 || c[3] > 0.99)) bg = c; }
+                    const a = L(fg), b = L(bg || [255, 255, 255]); return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05); })()`);
+                assert.ok(ratio >= 4.5, at + `the failure line's contrast in the ${theme} theme is ${ratio.toFixed(2)}, under 4.5`);
+            }
+            await ev(`document.documentElement.removeAttribute('data-theme'); true`);
             if (process.env.SHOTS) { const s = await Page.captureScreenshot({ format: 'png' }); require('fs').writeFileSync(`${process.env.SHOTS}/workflow-page-${w}.png`, Buffer.from(s.data, 'base64')); }
         }
         console.log('PASS workflow page: name once, steps from 1 with commands, runs in words');

@@ -312,8 +312,8 @@ function renderWorkflowDetail(wf, runs) {
 
     const last = runs[0];
     const lastHtml = last && (last.status === 'failed' || last.status === 'killed') ? `<p class="wf-last-failed" role="status">
-            The last run ${last.status === 'killed' ? 'was stopped' : 'failed'}${last.finished_at ? ' ' + esc(whenWords(last.finished_at)) : ''}${last.failed_step ? `: step ${Number(last.failed_step.number)} (${esc(last.failed_step.name)})${last.failure_reason ? ' ' + esc(last.failure_reason) : ''}` : ''}.
-            <button class="btn-link" data-on-click="wf-run" data-run-id="${Number(last.id)}">Open the run</button></p>` : '';
+            The last run ${last.status === 'killed' ? 'was stopped' : 'failed'}${last.started_at ? ' ' + esc(whenWords(last.started_at)) : ''}${last.failed_step ? `: step ${Number(last.failed_step.number)} (${esc(last.failed_step.name)})${last.failure_reason ? ' ' + esc(last.failure_reason) : ''}` : ''}.
+            <button class="btn-link" data-on-click="wf-run" data-run-id="${Number(last.id)}">Open the failed run</button></p>` : '';
 
     let runsHtml = '';
     if (runs.length) {
