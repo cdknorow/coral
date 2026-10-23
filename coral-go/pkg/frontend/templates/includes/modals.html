@@ -1032,6 +1032,18 @@
                     <button class="btn btn-small" type="button" id="settings-terminal-logs-delete" hidden>Delete terminal logs of ended agents</button>
                 </dd>
                 </div>
+                <div class="settings-row" id="settings-worktrees-row">
+                <dt class="toggle-dt">
+                    <span id="wt-title">Kept worktrees</span>
+                    <span class="toggle-desc" id="wt-desc">Git worktrees Coral made for teams and jobs and kept when they stopped, because they still hold your work. Remove one when you no longer need it: Coral never forces a removal, so unsaved changes or unmerged commits keep it.</span>
+                </dt>
+                <dd>
+                    <div id="wt-status" class="settings-hint" role="status"></div>
+                    <p id="wt-empty" class="settings-hint" hidden></p>
+                    <ul id="wt-list" class="wt-list" aria-labelledby="wt-title" aria-describedby="wt-desc"></ul>
+                    <p id="wt-hub-note" class="settings-hint" hidden>Remove is on this computer's own dashboard: through Coral Hub the list is for reading.</p>
+                </dd>
+                </div>
                         </dl>
                     </section>
                     <section class="settings-pane" id="settings-pane-network" data-group="network" data-icon="hub" data-title="Network and Hub" role="tabpanel" aria-labelledby="settings-tab-network" tabindex="-1" hidden>

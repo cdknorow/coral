@@ -2143,6 +2143,17 @@ button.subscriber-history-link {
     margin-top: 2px;
 }
 .settings-hint[data-state="restart-required"] { color: var(--warning); }
+/* Kept worktrees (#6743) */
+.wt-list { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.wt-item { display: grid; gap: 2px 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg-secondary); min-width: 0; }
+.wt-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; }
+.wt-kind { font-size: var(--fs-sm); color: var(--text-secondary); }
+.wt-meta, .wt-path { font-size: var(--fs-sm); color: var(--text-secondary); overflow-wrap: anywhere; }
+.wt-path { font-family: var(--font-mono); }
+.wt-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+.wt-badge { font-size: var(--fs-sm); color: var(--text-primary); border: 1px solid var(--warning); border-radius: 999px; padding: 0 8px; line-height: 1.6; }
+.wt-remove { justify-self: start; margin: 6px 0 0; }
+@media (pointer: coarse) { .wt-remove { min-height: 44px; min-width: 44px; } }
 #settings-debug-input-log-status:empty { position: absolute; width: 1px; height: 1px; margin: 0; padding: 0; border: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; } /* in the page with nothing to say: out of the layout (no room, no flex gap), still a live region (#6679) */ /* in the page with nothing to say: no room, still a live region */
 /* A field that is off (the storage limits while they load, or when the load failed) reads as off, not as an empty box to fill in (#4469, UX). */
 #settings-modal input:disabled, #settings-modal select:disabled { opacity: .6; cursor: not-allowed; }
