@@ -2376,6 +2376,8 @@ body.panel-dragging .agentic-state {
 .team-artifact-col-actions { width: calc(212px + 2 * var(--space-lg)); } /* six 32 px icon buttons and their gaps: Details, Preview, Download, Copy link, Keep, Delete (#4469, #5283) */
 /* The file icon beside the name, one line, an ellipsis only when the name is truly long; the full name is the tooltip (#6751). */
 .team-artifact-name > :not(.team-artifact-name-text) { flex: none; }
+.team-artifact-name { min-height: 32px; } /* the height of the action icons beside it: the name, the time and the icons share one centre line (#6751) */
+.team-artifacts-list :is(td.team-artifact-col-type, td.team-artifact-col-created) { line-height: 32px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .team-artifact-name-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .team-artifact-name { display: flex; align-items: center; gap: 6px; max-width: 100%; min-width: 0; overflow: hidden; padding: 0; background: none; border: 0; color: var(--text-primary); font: 500 var(--fs-md)/1.4 var(--font-sans); text-align: left; overflow-wrap: anywhere; }
 button.team-artifact-name { cursor: pointer; }
