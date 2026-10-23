@@ -1411,7 +1411,7 @@
 .terminal-key-bar { display: none; }
 @media (max-width: 767px), (pointer: coarse) and (max-height: 500px) {
     /* Two rows, every key on the screen (no hidden keys to find): Esc, Tab, Ctrl-C and the arrows, then | ~ / - . */
-    .terminal-key-bar:not([hidden]) { display: grid; grid-template-columns: 1fr 1fr 1.4fr 1fr 1fr 1fr 1fr; gap: 3px; flex: 0 0 auto; padding: 4px 4px; background: var(--bg-secondary); border-top: 1px solid var(--border); }
+    .terminal-key-bar:not([hidden]) { display: grid; grid-template-columns: repeat(auto-fit, minmax(max(44px, 3.4em), 1fr)); gap: 3px; flex: 0 0 auto; padding: 4px 4px; background: var(--bg-secondary); border-top: 1px solid var(--border); }
     .terminal-key-bar .tkb-key { min-width: 0; min-height: var(--control-touch-height, 44px); padding: 0 2px; margin: 0; font: inherit; font-size: .8125rem; font-weight: 600; color: var(--text-primary); background: var(--bg-tertiary); border: 1px solid var(--control-border); border-radius: var(--radius-md); cursor: pointer; }
     .terminal-key-bar .tkb-key:active { background: var(--bg-hover); }
     .terminal-key-bar .tkb-key:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -1420,8 +1420,17 @@
 /* The terminal view's controls are 44 px on a phone-width window whatever the pointer says (#6689): touch.css and the composer's rules gave 44 px only to a coarse pointer, so a phone-width window with a mouse (or a phone browser
    that does not report a coarse pointer) had the header's Fit width, Open Agent Tab and side-panel buttons at 22 to 30 px and the composer's Add image and Send at 32 and 36 px. */
 @media (max-width: 767px) {
-    .live-view-toggle-btn, .terminal-header-actions .terminal-header-btn, .terminal-header-actions .terminal-header-btn.terminal-fit-width-btn, #terminal-open-window-link, #popout-panel-toggle-btn { min-width: var(--control-touch-height, 44px); min-height: var(--control-touch-height, 44px); justify-content: center; }
+    .live-view-toggle-btn, .terminal-header-actions .terminal-header-btn, .terminal-header-actions .terminal-header-btn.terminal-fit-width-btn, .terminal-header-actions .terminal-header-btn.terminal-copy-screen-btn, #terminal-open-window-link, #popout-panel-toggle-btn { min-width: var(--control-touch-height, 44px); min-height: var(--control-touch-height, 44px); justify-content: center; }
     .attach-image-btn { width: var(--control-touch-height, 44px); height: var(--control-touch-height, 44px); right: 2px; top: 0; }
     .command-editor:has(> .attach-image-btn) textarea { padding-right: 50px !important; }
     .mobile-send-btn { width: var(--control-touch-height, 44px); height: var(--control-touch-height, 44px); min-width: var(--control-touch-height, 44px); }
+}
+
+/* The on-screen keyboard is open in the Terminal view (#6694): the terminal needs the rows more than the banner, the chips and the status bar; the key bar and a one-line message box stay. keyboard_open.js sets kb-open. */
+@media (max-width: 767px) {
+    html.kb-open #local-auth-banner,
+    html.kb-open #terminal-statusbar,
+    html.kb-open #command-pane:not(.chat-mode) .command-pane-toolbar,
+    html.kb-open #command-pane:not(.chat-mode) #model-chip-note { display: none !important; }
+    html.kb-open #command-pane:not(.chat-mode) #command-input { height: var(--control-touch-height, 44px) !important; min-height: var(--control-touch-height, 44px) !important; max-height: var(--control-touch-height, 44px) !important; }
 }
