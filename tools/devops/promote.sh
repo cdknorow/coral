@@ -106,7 +106,15 @@ read_promotion() {
       if [ "$(jq -r .sequence work/candidate/promote.json 2>/dev/null)" = "$n" ]; then echo real; else echo "junk: another sequence"; fi
       return
     fi
-    if verify_sums_canary; then echo "junk: a signature cosign refuses"; return; fi
+    # A refusal counts only when it repeats: refused, the canary verifies, refused again, the canary verifies again. A passing blip of
+    # Sigstore's that hit only the first check must not turn the real newest promotion into junk (Security on #143).
+    if verify_sums_canary; then
+      if verify_promote work/candidate/promote.json work/candidate/promote.json.sigstore.json 2>/dev/null; then
+        if [ "$(jq -r .sequence work/candidate/promote.json 2>/dev/null)" = "$n" ]; then echo real; else echo "junk: another sequence"; fi
+        return
+      fi
+      if verify_sums_canary; then echo "junk: a signature cosign refuses (twice)"; return; fi
+    fi
     echo "::warning::promote-$n: cosign could not check anything, not even the verified sums (try $try of $TRIES)" >&2; sleep "$RETRY_SLEEP"
   done
   die "promote-$n could not be read or checked after $TRIES tries: the run stops rather than skip it"

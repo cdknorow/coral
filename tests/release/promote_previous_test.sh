@@ -38,6 +38,8 @@ cat > "$T/bin/cosign" <<'EOF'
 #!/usr/bin/env bash
 [ -f "$FIX/cosign_down" ] && exit 1
 b=""; while [ $# -gt 0 ]; do [ "$1" = --bundle ] && b="$2"; shift; done
+# a bundle reading "flaky" is refused while $FIX/cosign_flaky counts down, then verifies (a passing Sigstore blip)
+if [ "$(cat "$b")" = flaky ]; then k="$(cat "$FIX/cosign_flaky" 2>/dev/null || echo 0)"; if [ "$k" -gt 0 ]; then echo $(( k - 1 )) > "$FIX/cosign_flaky"; exit 1; fi; exit 0; fi
 [ "$(cat "$b")" = valid ]
 EOF
 cat > "$T/bin/sleep" <<'EOF'
@@ -83,6 +85,9 @@ if out="$(prev)" && [ "$(seqof)" = 2 ]; then ok "two failed tries then an answer
 
 world; real 1; real 2; touch "$FIX/cosign_down"
 if out="$(prev)"; then bad "cosign unable to check was taken as junk: $out"; elif grep -q "cosign could not check anything" <<<"$out"; then ok "cosign unable to check stops the run, not a skip"; else bad "cosign down: $out"; fi
+
+world; real 1; real 2; echo flaky > "$FIX/2/promote.json.sigstore.json"; echo 1 > "$FIX/cosign_flaky"
+if out="$(prev)" && [ "$(seqof)" = 2 ]; then ok "one refusal that doesn't repeat is a blip: the real promote-2 is found"; else bad "blip: $out"; fi
 
 world; junk 1 unsigned; junk 2 norelease; junk 3 noasset
 if out="$(prev)" && [ "$(seqof)" = 0 ] && [ ! -f "$T/run/work/previous/promote.json" ] && grep -q "no promotion yet" <<<"$out"; then ok "every name junk (fewer than 128): no promotion yet"; else bad "all junk: $out"; fi
