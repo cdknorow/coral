@@ -104,17 +104,13 @@ setup() { # NAME
   KEY=$(tr -d '[:space:]' < "$dd/api_key" 2>/dev/null)
   "${CENV[@]}" "$inst/coral-board" join rhsproj --as Tester > "$s/board.out" 2>&1
   "${CENV[@]}" "$inst/coral-board" post "a message before the update" >> "$s/board.out" 2>&1
-  # The run record: how the server was started, which Linux apply reads to start Coral again after the swap. The server is documented to write it at
-  # startup (internal/updater/runrecord) and NOTHING does yet (#5401 finding), so this script writes it, in the documented form: argv, cwd, 0600 in a 0700 folder.
-  # RHS_NO_RUN_RECORD=1 leaves it out: the diagnostic that shows what an apply does today without it (it rolls back)
-  [ -n "${RHS_NO_RUN_RECORD:-}" ] && return 0
-  mkdir -p "$dd/updates" && chmod 700 "$dd/updates" &&
-  ( umask 077; python3 - "$inst" "$dd" "$PORT" "$s" > "$dd/updates/run.json" <<'PY'
-import json, sys
-inst, dd, port, cwd = sys.argv[1:5]
-print(json.dumps({"argv": [inst + "/coral", "--home", dd, "--host", "127.0.0.1", "--port", port, "--backend", "pty", "--no-browser", "--cloud-url", "off"], "cwd": cwd}))
-PY
-  ) && chmod 600 "$dd/updates/run.json"
+  # The run record: how the server was started, which the Linux apply reads to start Coral again after the swap. The server writes it itself at startup (cmd/coral/run_record.go,
+  # #5339) with its own environment; an earlier version of this script wrote one by hand, without an environment, which the apply now refuses (runrecord.Validate, #5419).
+  # RHS_NO_RUN_RECORD=1 removes it: the diagnostic that shows what an apply does without it (it refuses)
+  for _ in $(seq 1 50); do [ -s "$dd/updates/run.json" ] && break; sleep 0.2; done
+  [ -s "$dd/updates/run.json" ] || { echo "update_rehearsal: the server did not write its run record" >&2; return 1; }
+  [ -n "${RHS_NO_RUN_RECORD:-}" ] && rm -f "$dd/updates/run.json"
+  return 0
 }
 health_version() { curl -s -m 3 "http://127.0.0.1:$PORT/api/health" | jget version; }
 waitfor_health() { for _ in $(seq 1 150); do [ -n "$(health_version)" ] && return 0; sleep 0.2; done; return 1; }
