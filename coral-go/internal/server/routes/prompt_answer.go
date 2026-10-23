@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	at "github.com/subgentic/coral/internal/agenttypes"
+	"github.com/subgentic/coral/internal/clitext"
 	"github.com/subgentic/coral/internal/ptymanager"
 	"github.com/subgentic/coral/internal/terminalinput"
 )
@@ -59,6 +60,9 @@ type promptReviewItem struct {
 }
 
 type promptScreen struct {
+	// Title: the dialog's heading, when its top line is one ("Hooks need review" over "2 hooks are new or changed ...", #306).
+	// Question still begins with it; the card shows the title as a heading and the rest of Question under it.
+	Title    string             `json:"title,omitempty"`
 	Question string             `json:"question"`
 	Options  []promptOption     `json:"options"`
 	Review   []promptReviewItem `json:"review,omitempty"`
@@ -124,7 +128,46 @@ func indentOf(s string) int {
 // separators, and stops at the prompt's own question line. A numbered list
 // elsewhere on screen (a plan's steps, a reply) is never reached, and a block
 // without a selection marker is not a prompt.
+//
+// Its text (title, question, option labels, review lines, the Submit label) comes out clean (cleanPromptScreen): what an agent's
+// screen can carry is shown on the card, matched by auto-accept and kept in the session state.
 func parsePromptScreen(capture string) (promptScreen, bool) {
+	s, ok := parsePromptScreenRaw(capture)
+	if !ok {
+		return s, false
+	}
+	return cleanPromptScreen(s), true
+}
+
+// cleanPromptScreen drops from a parsed prompt's text what can hide or reorder it (Security on #132): controls and escape
+// sequences, the bidirectional and other format characters (U+202A-202E, U+2066-2069, U+200B-200F, U+061C, U+FEFF, the soft
+// hyphen, ...) and the tag characters, with whitespace folded, through clitext.CleanName, the cleaner names and titles use.
+// A screen without them (every one in testdata) is unchanged.
+func cleanPromptScreen(s promptScreen) promptScreen {
+	s.Title = clitext.CleanName(s.Title)
+	s.Question = clitext.CleanName(s.Question)
+	opts := make([]promptOption, len(s.Options))
+	for i, o := range s.Options {
+		o.Label = clitext.CleanName(o.Label)
+		opts[i] = o
+	}
+	s.Options = opts
+	if len(s.Review) > 0 {
+		review := make([]promptReviewItem, len(s.Review))
+		for i, r := range s.Review {
+			review[i] = promptReviewItem{Question: clitext.CleanName(r.Question), Answer: clitext.CleanName(r.Answer)}
+		}
+		s.Review = review
+	}
+	if s.Submit != nil {
+		sub := *s.Submit
+		sub.Label = clitext.CleanName(sub.Label)
+		s.Submit = &sub
+	}
+	return s
+}
+
+func parsePromptScreenRaw(capture string) (promptScreen, bool) {
 	lines := strings.Split(strings.ReplaceAll(capture, "\r", ""), "\n")
 	for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
 		lines = lines[:len(lines)-1]
@@ -142,7 +185,7 @@ func parsePromptScreen(capture string) (promptScreen, bool) {
 		return parseUnnumberedMenu(lines)
 	}
 	var opts []promptOption
-	question := ""
+	question, title := "", ""
 	questionAt := -1
 	sawContinuation := false
 	boxes := 0
@@ -222,6 +265,15 @@ func parsePromptScreen(capture string) (promptScreen, bool) {
 			question = t + " " + question
 			questionAt = j
 		}
+		// The dialog's heading ("Hooks need review" over "2 hooks are new or changed. ...", #306), for the card to show on a line
+		// of its own: the top line, when it is no wrapped part of the line below it (that line's first word would have fitted on
+		// it) and ends no sentence. Question stays the whole text, as auto-accept, samePrompt and the session state read it.
+		if questionAt < i {
+			top, below := strings.TrimSpace(lines[questionAt]), strings.TrimSpace(lines[questionAt+1])
+			if !wrapsInto(top, below) && !strings.ContainsAny(top[len(top)-1:], ".?!:;,") {
+				title = top
+			}
+		}
 		break
 	}
 	if len(opts) < 2 {
@@ -252,7 +304,7 @@ func parsePromptScreen(capture string) (promptScreen, bool) {
 			}
 		}
 	}
-	return promptScreen{Question: question, Options: opts, Review: parseReview(lines, questionAt), Multi: multi, Submit: submit, boxes: boxes, context: promptContext(lines, questionAt)}, true
+	return promptScreen{Title: title, Question: question, Options: opts, Review: parseReview(lines, questionAt), Multi: multi, Submit: submit, boxes: boxes, context: promptContext(lines, questionAt)}, true
 }
 
 var (
@@ -839,4 +891,12 @@ func (h *SessionsHandler) waitPromptScreen(ctx context.Context, name, agentType,
 		case <-time.After(promptPollEvery):
 		}
 	}
+}
+
+// wrapsInto reports whether above can be the line a wrapped text broke before below: a terminal (or the CLI) wraps a word onto
+// the next line only when it does not fit, so the line above is never short enough to have taken below's first word (#306).
+// below is the full width the text had, so a line whose length plus that word fits within it was not wrapped.
+func wrapsInto(above, below string) bool {
+	first, _, _ := strings.Cut(below, " ")
+	return utf8.RuneCountInString(above)+1+utf8.RuneCountInString(first) > utf8.RuneCountInString(below)
 }
