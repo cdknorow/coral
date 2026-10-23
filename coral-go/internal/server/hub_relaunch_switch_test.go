@@ -24,6 +24,10 @@ func TestTunneledWritesOfTheCapAndTheRelaunchSwitchAreRefusedAndChangeNothing(t 
 	}
 	assert.Equal(t, tunnel.TierNever, tunnel.Classify("POST", "/api/system/update", ""))
 	assert.Equal(t, tunnel.TierNever, tunnel.Classify("GET", "/api/system/update/relaunch", ""))
+	// #6290: the routes that are a person's alone never go through the Hub, now that the routes are live in a shipping build.
+	for _, rt := range [][2]string{{"POST", "/api/system/update/relaunch-local"}, {"POST", "/api/system/update/check"}, {"PUT", "/api/system/update/settings"}, {"POST", "/api/system/update/install"}, {"GET", "/api/system/update/relaunch-local"}} {
+		assert.Equal(t, tunnel.TierNever, tunnel.Classify(rt[0], rt[1], ""), rt[0]+" "+rt[1])
+	}
 
 	r := newE2ERemote(t, "relaunch-switch", nil)
 	h := r.srv.Router()
