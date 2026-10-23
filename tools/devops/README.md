@@ -183,6 +183,8 @@ GitHub hides the disk image behind "Show more assets", so every release's body s
 
 Only the release owner dispatches `promote.yml` (Actions > Promote release), after the release is approved. Each promotion is its own release, `promote-<tag>-<sequence>`: a pre-release that is never Latest and holds only `promote.json` and its Sigstore bundle. Nothing is replaced: promoting a tag again (to revoke) makes a new release with a higher sequence.
 
+**Approve the `release-promote` run within about a minute of entering the code:** the code is checked only after the reviewer approves, and it lasts about a minute, so a slow approval fails on an expired code (run it again with a fresh code). The window is not widened.
+
 If the run fails after it created the release (the step "Publish the promotion as its own release" says where), a **draft** named `promote-<tag>-<sequence>` is left under Releases. A draft is not published and the client never reads it: delete the draft (Releases, the draft, Delete), then dispatch the promotion again. A published promotion is never deleted or edited.
 
 A rehearsal is a promotion of a release that is still a pre-release: the manifest says `prerelease: true`, the whole publish path runs, and every client refuses it. **Rehearse a tag only BEFORE its real promotion, never after:** the client takes the highest sequence among a tag's promotions, so a rehearsal made after a real promotion would carry the higher sequence and be refused, which withholds the update until a higher real promotion is made.
