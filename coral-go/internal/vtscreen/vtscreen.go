@@ -16,6 +16,7 @@ package vtscreen
 import (
 	"log/slog"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"unicode/utf8"
 )
@@ -95,6 +96,16 @@ type term struct {
 	budget      int
 	keep        int      // how many scrolled-off rows to keep (RenderScrollback), 0 for none
 	history     [][]rune // the rows scrolled off the top, oldest first (String shows the last keep)
+	ps          parser   // where the escape-sequence parser is between writes (a Screen is fed chunk by chunk)
+}
+
+// parser is the escape-sequence parser's state, kept on the term so a sequence cut by the end of one chunk is finished by the next.
+type parser struct {
+	state                       int
+	params                      []int
+	cur                         int
+	have, private, intermediate bool
+	privChar                    byte
 }
 
 func newTerm(cols, rows int) *term {
@@ -134,10 +145,14 @@ const (
 )
 
 func (t *term) write(data []byte) {
-	state := stText
-	params := make([]int, 0, maxParams)
-	cur, have, private, intermediate := 0, false, false, false
-	var privChar byte
+	if t.ps.params == nil {
+		t.ps.params = make([]int, 0, maxParams)
+	}
+	state, params := t.ps.state, t.ps.params
+	cur, have, private, intermediate, privChar := t.ps.cur, t.ps.have, t.ps.private, t.ps.intermediate, t.ps.privChar
+	defer func() {
+		t.ps = parser{state: state, params: params, cur: cur, have: have, private: private, intermediate: intermediate, privChar: privChar}
+	}()
 	for i := 0; i < len(data) && t.budget > 0; {
 		b := data[i]
 		switch state {
@@ -525,4 +540,104 @@ func (t *term) privateMode(params []int, set bool) {
 			t.alt, t.wrapPending = nil, false
 		}
 	}
+}
+
+// Screen is a terminal screen kept as output arrives, for a reader that must not lose what an application drew once and never drew again (#6481): a TUI that repaints only the cells that change
+// (Codex's composer is drawn at the start and again only when it changes) leaves nothing of it in the tail of a replay ring after a few minutes of work, and a screen played from that tail has no
+// input box. The same deliberately small interpreter as Render, fed chunk by chunk: each chunk has the whole Budget, and a sequence or a character cut by a chunk's end is finished by the next.
+type Screen struct {
+	mu    sync.Mutex
+	t     *term
+	carry []byte // the start of a UTF-8 character cut by the end of a chunk
+	fed   bool
+}
+
+// NewScreen is a blank cols x rows screen (the sizes Render takes).
+func NewScreen(cols, rows int) *Screen {
+	if cols <= 0 || rows <= 0 {
+		cols, rows = DefaultCols, DefaultRows
+	}
+	return &Screen{t: newTerm(min(cols, MaxCols), min(rows, MaxRows))}
+}
+
+// Fed reports whether any output has been written to the screen.
+func (s *Screen) Fed() bool {
+	if s == nil {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.fed
+}
+
+// Write plays a chunk of output. A panic (a bug) is recovered and the screen kept as it was.
+func (s *Screen) Write(data []byte) {
+	if s == nil || len(data) == 0 {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	defer func() {
+		if r := recover(); r != nil {
+			recovered.Add(1)
+			slog.Warn("vtscreen: recovered a panic while writing a live screen", "panic", r)
+		}
+	}()
+	if len(s.carry) > 0 {
+		data = append(append([]byte(nil), s.carry...), data...)
+		s.carry = nil
+	}
+	// A character cut at the end waits for its rest (only inside text: an escape sequence's bytes are ASCII).
+	for back := 1; back <= utf8.UTFMax-1 && back <= len(data); back++ {
+		b := data[len(data)-back]
+		if b < 0x80 {
+			break
+		}
+		if utf8.RuneStart(b) {
+			if !utf8.FullRune(data[len(data)-back:]) {
+				s.carry = append([]byte(nil), data[len(data)-back:]...)
+				data = data[:len(data)-back]
+			}
+			break
+		}
+	}
+	s.fed = true
+	s.t.budget = Budget
+	s.t.write(data)
+}
+
+// Resize changes the screen's size, keeping what fits (an application repaints on its resize signal). The cursor is kept on the screen.
+func (s *Screen) Resize(cols, rows int) {
+	if s == nil || cols <= 0 || rows <= 0 {
+		return
+	}
+	cols, rows = min(cols, MaxCols), min(rows, MaxRows)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if cols == s.t.cols && rows == s.t.rows {
+		return
+	}
+	n := newTerm(cols, rows)
+	n.ps = s.t.ps
+	n.faint = s.t.faint
+	for y := 0; y < min(rows, s.t.rows); y++ {
+		copy(n.grid[y], s.t.grid[y][:min(cols, s.t.cols)])
+		copy(n.faintGrid[y], s.t.faintGrid[y][:min(cols, s.t.cols)])
+	}
+	n.x, n.y = min(s.t.x, cols-1), min(s.t.y, rows-1)
+	s.t = n
+}
+
+// Render is the screen's rows as text, each with trailing blanks trimmed.
+func (s *Screen) Render() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.t.String()
+}
+
+// RenderStyled is Render with each faint cell marked, as the package's RenderStyled.
+func (s *Screen) RenderStyled() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.t.styledString()
 }

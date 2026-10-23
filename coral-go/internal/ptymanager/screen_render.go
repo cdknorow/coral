@@ -30,6 +30,9 @@ func (p *PTYSessionTerminal) RenderedScreen(_ context.Context, name, _, sessionI
 	if err != nil {
 		return "", err // gone (ErrTerminalGone): never an empty screen, which reads as an agent still starting, and never another session's screen
 	}
+	if sc := p.backend.liveScreen(key); sc != nil {
+		return sc.Render(), nil // the terminal's own state: not the tail of a ring that forgot what was drawn once (#6481)
+	}
 	data, err := p.backend.Replay(key)
 	if err != nil {
 		return "", err

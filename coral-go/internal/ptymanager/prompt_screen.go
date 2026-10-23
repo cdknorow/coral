@@ -411,6 +411,9 @@ func (p *PTYSessionTerminal) AgentScreen(ctx context.Context, name, agentType, s
 // (what PTYSessionTerminal.AgentScreen reads), for ScreenReaders built on a PTYBackend
 // outside this package.
 func (m *PTYBackend) RenderedScreenText(name string) (string, error) {
+	if sc := m.liveScreen(name); sc != nil {
+		return sc.Render(), nil // the terminal's own state, kept as its output arrived (#6481)
+	}
 	data, err := m.Replay(name)
 	if err != nil {
 		return "", err
@@ -423,6 +426,9 @@ func (m *PTYBackend) RenderedScreenText(name string) (string, error) {
 }
 
 func (m *PTYBackend) renderedScreenStyled(name string) (string, error) {
+	if sc := m.liveScreen(name); sc != nil {
+		return sc.RenderStyled(), nil
+	}
 	data, err := m.Replay(name)
 	if err != nil {
 		return "", err
@@ -463,4 +469,15 @@ func (t *TmuxSessionTerminal) SendArrow(ctx context.Context, name, agentType, se
 		key = "Up"
 	}
 	return t.client.SendRawKeys(ctx, terminalinput.Internal, name, []string{key}, agentType, sessionID)
+}
+
+// liveScreen is the session's screen kept as its output arrived, once it has had any; nil for a session that is gone or has written nothing (its replay is then all there is).
+func (m *PTYBackend) liveScreen(name string) *vtscreen.Screen {
+	m.mu.RLock()
+	s, ok := m.sessions[name]
+	m.mu.RUnlock()
+	if !ok || !s.screen.Fed() {
+		return nil
+	}
+	return s.screen
 }

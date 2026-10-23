@@ -20,6 +20,7 @@ import (
 	"github.com/subgentic/coral/internal/naming"
 	"github.com/subgentic/coral/internal/safego"
 	"github.com/subgentic/coral/internal/terminalinput"
+	"github.com/subgentic/coral/internal/vtscreen"
 	"github.com/subgentic/coral/internal/winshell"
 )
 
@@ -48,6 +49,8 @@ type session struct {
 	clearResetUntil time.Time // while the time is ahead, the next ESC[3J restarts the replay ring, once (armReplayClear); the zero time is not armed
 	ring            []byte
 	ringMax         int
+	// screen is the terminal's own state, kept as the output arrives (#6481): a TUI that repaints only what changes leaves nothing of what it drew once in the tail the ring keeps.
+	screen *vtscreen.Screen
 
 	// bracketedPaste is the application's last DECSET/DECRST 2004 state seen in
 	// its output; bpCarry holds a possible sequence split across reads (only
@@ -110,6 +113,7 @@ func newSession(name, agentType, workDir, sessionID, command string, cols, rows 
 		rows:        rows,
 		ring:        make([]byte, 0, 256*1024),
 		ringMax:     256 * 1024, // 256KB ring buffer
+		screen:      vtscreen.NewScreen(int(cols), int(rows)),
 	}
 
 	// Start output reader goroutine
@@ -149,6 +153,7 @@ func (s *session) readLoop() {
 
 			s.trackBracketedPaste(data)
 			s.trackCursorKeys(data)
+			s.screen.Write(data)
 
 			// Store in ring buffer for snapshot
 			s.ringMu.Lock()
@@ -219,6 +224,7 @@ func (s *session) resize(cols, rows uint16) error {
 	s.mu.Lock()
 	s.cols, s.rows = cols, rows
 	s.mu.Unlock()
+	s.screen.Resize(int(cols), int(rows))
 	return nil
 }
 
