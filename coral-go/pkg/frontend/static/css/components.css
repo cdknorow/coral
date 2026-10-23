@@ -4075,6 +4075,13 @@ body[data-agent-cli]:not([data-agent-cli=""], [data-agent-cli="claude"]) .signin
 .signin-line-btn { display: inline-flex; align-items: center; gap: var(--space-sm); padding: 2px 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: help; }
 .signin-line-btn .material-icons { font-size: 1rem; }
 .signin-line-hint[hidden] { display: none; }
+/* About Claude's background work: scheduled jobs and workflows. On those pages and the agents page; not on Chats, the Board, Docs, Analytics, the Inbox or Servers, where it says nothing a person can use (#6200). */
+body[data-nav-tab]:not([data-nav-tab="agents"], [data-nav-tab="jobs"], [data-nav-tab="workflows"]) .signin-line { display: none; }
+.signin-line-dismiss { margin-left: auto; display: inline-flex; align-items: center; justify-content: center; min-width: 28px; min-height: 28px; padding: 0; border: 0; border-radius: var(--radius-md); background: none; color: var(--text-secondary); cursor: pointer; }
+.signin-line-dismiss .material-icons { font-size: 1rem; }
+.signin-line-dismiss:hover { color: var(--text-primary); background: var(--bg-hover); }
+.signin-line-dismiss:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (max-width: 767px), (pointer: coarse) { .signin-line-dismiss { min-width: 44px; min-height: 44px; } }
 .hooks-banner { flex-direction: column; align-items: stretch; gap: var(--space-sm); }
 .hooks-bar { display: flex; align-items: center; gap: var(--space-lg); flex-wrap: wrap; }
 .hooks-bar .leftover-tmux-text { flex: 1 1 12rem; }

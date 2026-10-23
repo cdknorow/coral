@@ -7,8 +7,12 @@ import { registerActions } from './actions.js';
 import { isCloud, normServer, sessionServer, LOCAL_SERVER } from './server_base.js';
 import { setPill } from './dom_write.js';
 import { state } from './state.js';
+import { browserLocal } from './safe_storage.js';
 
 const RECHECK_MS = 60_000;
+const DISMISS_KEY = 'coral-signin-line-dismissed'; // when the note was dismissed (ms); it stays away for a day, and a sign-in clears it
+const DISMISS_MS = 24 * 60 * 60 * 1000;
+const dismissed = () => { const at = Number(browserLocal.get(DISMISS_KEY)); return Number.isFinite(at) && at > 0 && Date.now() - at < DISMISS_MS; };
 
 let _known; // the last status's claude_signed_in: true, false, or undefined (not known: no background check or first launch yet)
 let _askedAt = 0;
@@ -50,8 +54,9 @@ export function applySigninStatus(data) {
     const line = document.getElementById('claude-signin-line');
     if (!line) return;
     const off = !!data && data.claude_signed_in === false;
-    line.hidden = !off;
-    if (!off) { // a tap's hint does not stay open for the next time
+    if (data && data.claude_signed_in === true) browserLocal.remove(DISMISS_KEY); // signed in: a later sign-out says so again
+    line.hidden = !off || dismissed();
+    if (line.hidden) { // a tap's hint does not stay open for the next time
         const hint = document.getElementById('signin-line-hint'), btn = document.getElementById('signin-line-btn');
         if (hint) hint.hidden = true;
         if (btn) btn.setAttribute('aria-expanded', 'false');
@@ -72,6 +77,13 @@ export function startSigninLine(first) {
 }
 
 registerActions({
+    'm-signin-dismiss': () => {
+        browserLocal.set(DISMISS_KEY, String(Date.now()));
+        const line = document.getElementById('claude-signin-line');
+        if (line) line.hidden = true;
+        // focus goes on to the page: the line it was on is gone
+        [document.querySelector('.top-nav-tab.active'), document.getElementById('nav-select')].find(e => e && e.getClientRects().length)?.focus();
+    },
     'm-signin-hint': () => {
         const hint = document.getElementById('signin-line-hint'), btn = document.getElementById('signin-line-btn');
         if (!hint || !btn) return;

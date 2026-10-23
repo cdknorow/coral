@@ -46,7 +46,7 @@ const PRELOAD = `(() => {
             await load(view, false);
             await waitFor(`!document.getElementById('claude-signin-line').hidden`, 'the line from the first status answer');
             let s = await state();
-            check(`${view.name}: "${s.text}"`, s.shown && s.text === 'info Claude is not signed in: background jobs are waiting');
+            check(`${view.name}: "${s.text}"`, s.shown && s.text === "info Claude isn't signed in: scheduled jobs and workflows that use it are waiting");
             check('hover says what to do (title)', s.title === 'Sign in with claude in a terminal');
             check('a calm line: status role, no alert, no toast, not the error colour', s.role === 'status' && s.alerts === 0 && s.color !== s.errorColor);
             check('the hint is shut until it is tapped', s.hintShown === false && s.expanded === 'false');
@@ -56,6 +56,16 @@ const PRELOAD = `(() => {
             check('it fits the screen (no horizontal overflow)', s.fits && s.overflow === 0, `overflow ${s.overflow}`);
             const audit = await auditRegion(ev, ['#claude-signin-line'], { focus: ['#signin-line-btn'] });
             check(`both themes: readable (4.5:1) and a visible focus ring (${audit.checked} checked)`, audit.fails.length === 0 && audit.checked >= 2, JSON.stringify(audit.fails));
+            // it names what waits, it is only where that matters, and it can be dismissed for the day (#6200)
+            const where = async tab => { await ev(`window.switchNavTab(${JSON.stringify(tab)}); true`); await new Promise(r => setTimeout(r, 200)); return ev(`getComputedStyle(document.getElementById('claude-signin-line')).display !== 'none' && !document.getElementById('claude-signin-line').hidden`); }; // sleep-ok: the tab's page settles
+            const seen = {}; for (const tab of ['agents', 'jobs', 'workflows', 'history', 'board', 'docs', 'tokens', 'hub-inbox']) seen[tab] = await where(tab);
+            check('shown on Agents, Jobs and Workflows only: not on Chats, Board, Docs, Analytics or Inbox', seen.agents && seen.jobs && seen.workflows && !seen.history && !seen.board && !seen.docs && !seen.tokens && !seen['hub-inbox'], JSON.stringify(seen));
+            await where('agents');
+            check('it has a Dismiss button, named, and a touch target on a phone', await ev(`(() => { const b = document.getElementById('signin-line-dismiss'); const r = b.getBoundingClientRect(); return b.getAttribute('aria-label') === 'Dismiss the Claude sign-in note' && r.width >= (${view.mobile ? 44 : 20}) && r.height >= (${view.mobile ? 44 : 20}); })()`));
+            await ev(`document.getElementById('signin-line-dismiss').click(); true`);
+            check('Dismiss hides it, and it stays away after the next look (a day)', (await state()).shown === false && (await ev(`window.__ticks.forEach(f => f()); new Promise(r => setTimeout(r, 400)).then(() => document.getElementById('claude-signin-line').hidden)`)) === true); // sleep-ok: the status read lands
+            await ev(`localStorage.removeItem('coral-signin-line-dismissed'); window.__ticks.forEach(f => f()); true`);
+            await waitFor(`!document.getElementById('claude-signin-line').hidden`, 'the line to come back after the dismissal ends');
             // the field turns true: the next look hides it (and a tap's hint with it)
             await ev(`window.__signed = true; window.__ticks.forEach(f => f()); true`);
             await waitFor(`document.getElementById('claude-signin-line').hidden`, 'the line to go');

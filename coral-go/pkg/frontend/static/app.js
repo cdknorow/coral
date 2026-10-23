@@ -263,6 +263,7 @@ registerActions({
     'tag-create': () => createTag(),
     'summary-generate': () => generateSummary(),
     'resume-show': () => showResumeModal(),
+    'history-details': el => { const id = document.getElementById('history-session-id'); if (!id) return; id.hidden = !id.hidden; el.setAttribute('aria-expanded', String(!id.hidden)); el.textContent = id.hidden ? 'Details' : 'Hide details'; },
     'history-list': () => {
         state.currentSession = null;
         switchNavTab('history');
@@ -463,6 +464,7 @@ function switchNavTab(tab, opts = {}) {
 
     // Update the nav buttons: page navigation, so the current one is aria-current="page".
     document.querySelectorAll('.top-nav-tab').forEach(btn => { btn.classList.remove('active'); btn.removeAttribute('aria-current'); });
+    if (document.body.getAttribute('data-nav-tab') !== tab) document.body.setAttribute('data-nav-tab', tab); // what a page-scoped note (the Claude sign-in line) follows
     const activeTab = document.getElementById(`nav-tab-${tab}`);
     if (activeTab) { activeTab.classList.add('active'); activeTab.setAttribute('aria-current', 'page'); }
 

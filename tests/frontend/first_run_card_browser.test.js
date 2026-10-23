@@ -106,7 +106,9 @@ const SESSIONS = [{ name: 'first-agent', display_name: 'Agent', agent_type: 'cla
         assert.ok(!(await lineShown()), 'a Claude on another computer: not shown (this computer\'s Claude says nothing about it)');
         await ev(`import((window.__coralStatic || '/static/') + 'view_switch.js').then(m => { m.showView('welcome-screen'); return true; })`);
         assert.equal(await ev(`document.body.dataset.agentCli`), '', 'off an agent page: no CLI');
-        assert.ok(await lineShown(), 'off the agent pages the line still says background jobs wait');
+        assert.ok(await lineShown(), 'off an agent page, on the Agents page: the line still says what waits');
+        await ev(`window.switchNavTab('history'); true`); await new Promise(r => setTimeout(r, 300)); // sleep-ok: the tab's page settles
+        assert.ok(!(await lineShown()), 'on Chats the line is not shown: it says nothing a person can use there (#6200)');
 
         console.log('PASS the first-run card is readable and says what to do');
     } finally { await client.close(); }
