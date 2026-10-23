@@ -895,9 +895,11 @@ func replyToComment(serverURL, ref, commentID, text string, stdout io.Writer) er
 	if err != nil {
 		return err
 	}
-	if n, err := strconv.ParseInt(commentID, 10, 64); err != nil || n <= 0 {
+	n, err := strconv.ParseInt(commentID, 10, 64)
+	if err != nil || n <= 0 {
 		return fmt.Errorf("the comment id is the number in the message you were sent, not %q", commentID)
 	}
+	commentID = strconv.FormatInt(n, 10) // the path is exactly the digits: "+5" and "0005" are 5
 	if strings.TrimSpace(text) == "" {
 		return fmt.Errorf("a reply needs some text")
 	}
