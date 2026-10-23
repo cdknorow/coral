@@ -489,7 +489,7 @@ async function startShard(n, gen = 0, strict = false, backend = MAIN_BACKEND) {
   // CDP_EVIDENCE_DIR (a Windows CI run sets it): at a suite's timeout the runner captures what was stuck before it kills it (captureTimeoutEvidence), including the test
   // Coral's goroutines, which needs its profiler (CORAL_PPROF_ADDR, loopback only, this shard's server alone).
   let pprofPort = 0;
-  if (process.env.CDP_EVIDENCE_DIR) { pprofPort = await freePort(); serverEnv.CORAL_PPROF_ADDR = `127.0.0.1:${pprofPort}`; }
+  if (process.env.CDP_EVIDENCE_DIR && !process.env.CDP_EVIDENCE_NO_PPROF) { pprofPort = await freePort(); serverEnv.CORAL_PPROF_ADDR = `127.0.0.1:${pprofPort}`; }
   // #4354: seed cli_path_<type> at the mock-agent BEFORE the server starts, so the server resolves the
   // mock from its very first request -- no window (not even for an async model-list/version probe that
   // resolves in the instant before the post-health PUT would land) in which a CLI resolution falls to the

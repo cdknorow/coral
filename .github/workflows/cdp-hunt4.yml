@@ -1,7 +1,7 @@
-name: cdp-hunt
+name: cdp-hunt4
 on:
   push:
-    branches: [trial/cdp-hang2-6195]
+    branches: [trial/cdp-hang4-6195]
 permissions:
   contents: read
 jobs:
@@ -62,6 +62,7 @@ jobs:
           CORAL_TELEMETRY_DISABLED: "1"
           # A suite that hits its timeout leaves a screenshot of its pages, the processes and their CPU, coral.log's tail and the test Coral's goroutines here (run_cdp_suites.mjs, #6195).
           CDP_EVIDENCE_DIR: ${{ runner.temp }}/timeout-evidence
+          CDP_EVIDENCE_NO_PPROF: "1"
         run: |
           set -o pipefail
           # --allow-flaky, for 159 only (#6195 finds the hang that makes one suite in a few hundred time out once and pass on its retry, then removes it): a suite that passes on its one retry
