@@ -88,6 +88,11 @@ func resolveTranscriptPathMode(sessionID, workingDirectory, agentType string, st
 	}
 }
 
+// ResolveClaudeTranscript is the transcript file of a Claude session, "" when there is none.
+func ResolveClaudeTranscript(sessionID, workingDirectory string) string {
+	return resolveClaudeTranscript(sessionID, workingDirectory)
+}
+
 func resolveClaudeTranscript(sessionID, workingDirectory string) string {
 	if !transcriptlink.IsSessionID(sessionID) {
 		return ""
@@ -98,13 +103,25 @@ func resolveClaudeTranscript(sessionID, workingDirectory string) string {
 		basePath = filepath.Join(home, ".claude", "projects")
 	}
 
-	// Try working directory hint first
+	// The folder Claude Code files a session under is the project's real path, with every link in it resolved: a project reached through a symlink (macOS's /tmp is one of /private/tmp) is under the
+	// resolved name, and a session that was started under the other name and resumed has a file in each. Both are looked at, and the one written last is the live one (#6219: after a wake Claude wrote
+	// to the resolved folder while Coral kept reading the older file, so its confirmations were never seen).
+	var hints []string
 	if workingDirectory != "" {
-		encoded := transcriptlink.ClaudeProjectDirName(workingDirectory)
-		candidate := filepath.Join(basePath, encoded, sessionID+".jsonl")
-		if _, err := os.Stat(candidate); err == nil {
-			return candidate
+		hints = append(hints, workingDirectory)
+		if real, err := filepath.EvalSymlinks(workingDirectory); err == nil && real != workingDirectory {
+			hints = append(hints, real)
 		}
+	}
+	var found []string
+	for _, dir := range hints {
+		candidate := filepath.Join(basePath, transcriptlink.ClaudeProjectDirName(dir), sessionID+".jsonl")
+		if _, err := os.Stat(candidate); err == nil {
+			found = append(found, candidate)
+		}
+	}
+	if len(found) > 0 {
+		return newestFile(found)
 	}
 
 	// Search all project dirs
@@ -118,10 +135,21 @@ func resolveClaudeTranscript(sessionID, workingDirectory string) string {
 		}
 		candidate := filepath.Join(basePath, entry.Name(), sessionID+".jsonl")
 		if _, err := os.Stat(candidate); err == nil {
-			return candidate
+			found = append(found, candidate)
 		}
 	}
-	return ""
+	return newestFile(found)
+}
+
+// newestFile is the most recently modified of paths ("" with none); with equal times the first.
+func newestFile(paths []string) string {
+	best, bestAt := "", time.Time{}
+	for _, p := range paths {
+		if info, err := os.Stat(p); err == nil && (best == "" || info.ModTime().After(bestAt)) {
+			best, bestAt = p, info.ModTime()
+		}
+	}
+	return best
 }
 
 func resolveAgyTranscript(sessionID string, workingDirectory ...string) string {
