@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/subgentic/coral/internal/clierr"
 )
 
 // #5496: Codex's default sandbox blocks connections to localhost, so `coral-agent artifact download` cannot reach Coral there. It then reads the artifact's stored file in this user's Coral
@@ -155,6 +157,23 @@ func TestDownloadOfAMissingArtifactSaysItMayLiveOnAnotherCoral(t *testing.T) {
 	for _, want := range []string{"Coral says: this artifact is not on this computer", "(HTTP 404)", "not on this computer", "another Coral", "coral-board send --attach"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("missing %q in %v", want, err)
+		}
+	}
+}
+
+// #329 N1: the exit code follows the status Coral answered with: a missing artifact is 6 (not found), a refused one 5, anything else 1.
+func TestDownloadNotesTheStatusForTheExitCode(t *testing.T) {
+	isolated(t)
+	for code, want := range map[int]clierr.Kind{http.StatusNotFound: clierr.NotFound, http.StatusForbidden: clierr.Refused, http.StatusInternalServerError: clierr.Other} {
+		clierr.Note(clierr.Other)
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(code) }))
+		_, err := downloadArtifact(server.URL, "coral://artifacts/"+strings.Repeat("0", 64), "")
+		server.Close()
+		if err == nil {
+			t.Fatalf("%d: expected an error", code)
+		}
+		if got := clierr.Noted(); got != want {
+			t.Errorf("%d: exit kind %v, want %v", code, got, want)
 		}
 	}
 }

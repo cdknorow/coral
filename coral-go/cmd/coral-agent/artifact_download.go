@@ -76,6 +76,9 @@ func downloadArtifactOpts(base, ref, output string, force bool) (string, error) 
 		src, mediaType, localObject = f, mt, f.Name()
 	} else {
 		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			clierr.NoteStatus(resp.StatusCode) // the exit code says what happened: a missing artifact is 6, a refused one 5 (help exit-codes)
+		}
 		if resp.StatusCode == http.StatusNotFound {
 			return "", fmt.Errorf("Coral says: this artifact is not on this computer. It may live on another Coral (a link from a message sent by another team or computer is only a name here): ask the sender to attach the file with coral-board send --attach coral://artifacts/<id> (HTTP 404)")
 		}

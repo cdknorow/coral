@@ -262,7 +262,7 @@ func TestPostRefusesAnUnknownOptionBeforeTheText(t *testing.T) {
 func TestHelpTopicsBoard(t *testing.T) {
 	srv := newRecordingServer(t)
 	dir := subscribedDataDir(t, srv.URL)
-	for topic, want := range map[string]string{"windows": "$OutputEncoding", "exit-codes": "ERRORLEVEL", "json": "task list --json", "timeouts": "CORAL_TIMEOUT"} {
+	for topic, want := range map[string]string{"windows": "$OutputEncoding", "exit-codes": "ERRORLEVEL", "json": "task show <id> --json", "timeouts": "CORAL_TIMEOUT"} {
 		res := runBoard(t, srv.URL, dir, "help", topic)
 		assert.Equal(t, 0, res.code, topic)
 		assert.Contains(t, res.stdout, want, topic)
