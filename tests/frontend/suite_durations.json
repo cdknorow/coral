@@ -1,7 +1,9 @@
 {
  "terminal_switch_browser.test.js": 113.3,
+ "phone_targets_census_browser.test.js": 78.3,
  "agent_ui_local_navigation_browser.test.js": 63.4,
  "update_ui_browser.test.js": 58,
+ "phone_targets_census_b_browser.test.js": 52.6,
  "terminal_pane_size_browser.test.js": 43.1,
  "list_bars_themes_browser.test.js": 42.7,
  "agent_artifacts_tab_browser.test.js": 40.7,
