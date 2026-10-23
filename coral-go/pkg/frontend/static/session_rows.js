@@ -356,8 +356,7 @@ export function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefau
             <div class="session-mobile-meta">${mobileStatusChip}${unreadBoardBadge}</div>
             ${(goalLine || unreadChip) ? `<div class="session-line2">${goalLine}${unreadChip}</div>` : ''}
             ${agentLineHtml(s)}
-            ${branchTag}
-            ${heldLine}
+            ${branchTag}${heldLine}
         </div>
         <div class="session-tooltip"></div>
     </li>`;
