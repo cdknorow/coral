@@ -1,0 +1,1497 @@
+{
+ "_what": "Capability sets and what a Codex agent launches with (#6419). internal/agent TestCodexSandboxRuleFixture holds TranslateToCodexPermissions and the launch flags to it; tests/frontend preset_enforcement.test.mjs holds preset_enforcement.js codexEnforced to it, so the form cannot say one thing while a launch does another. Written by hand from the rule, not by the code under test: change the rule, change this file, and both tests say where they disagree.",
+ "_rule": "empty -> no flags (the CLI default). Bypass (no sandbox, never asks) = shell + file_read + file_write + git_write and no deny. shell and no deny -> workspace-write, never. shell with a deny -> workspace-write, on-request. file_read + file_write -> workspace-write, on-request. file_read -> read-only, on-request. web_access alone -> read-only, on-request. anything else -> workspace-write, on-request. web_access adds search. A shell:<pattern> is not shell. Other capabilities change nothing.",
+ "cases": [
+  {
+   "name": "no capabilities at all",
+   "allow": [],
+   "deny": [],
+   "expect": null,
+   "flags": null
+  },
+  {
+   "name": "allow file_read",
+   "allow": [
+    "file_read"
+   ],
+   "deny": [],
+   "expect": {
+    "sandbox": "read-only",
+    "approval": "on-request",
+    "search": false
+   },
+   "flags": [
+    "--sandbox",
+    "read-only",
+    "-a",
+    "on-request"
+   ]
+  },
+  {
+   "name": "allow file_read, deny shell",
+   "allow": [
+    "file_read"
+   ],
+   "deny": [
+    "shell"
+   ],
+   "expect": {
+    "sandbox": "read-only",
+    "approval": "on-request",
+    "search": false
+   },
+   "flags": [
+    "--sandbox",
+    "read-only",
+    "-a",
+    "on-request"
+   ]
+  },
+  {
+   "name": "allow file_write",
+   "allow": [
+    "file_write"
+   ],
+   "deny": [],
+   "expect": {
+    "sandbox": "workspace-write",
+    "approval": "on-request",
+    "search": false
+   },
+   "flags": [
+    "--sandbox",
+    "workspace-write",
+    "-a",
+    "on-request"
+   ]
+  },
+  {
+   "name": "allow file_write, deny shell",
+   "allow": [
+    "file_write"
+   ],
+   "deny": [
+    "shell"
+   ],
+   "expect": {
+    "sandbox": "workspace-write",
+    "approval": "on-request",
+    "search": false
+   },
+   "flags": [
+    "--sandbox",
+    "workspace-write",
+    "-a",
+    "on-request"
+   ]
+  },
+  {
+   "name": "allow shell",
+   "allow": [
+    "shell"
+   ],
+   "deny": [],
+   "expect": {
+    "sandbox": "workspace-write",
+    "approval": "never",
+    "search": false
+   },
+   "flags": [
+    "--sandbox",
+    "workspace-write",
+    "-a",
+    "never"
+   ]
+  },
+  {
+   "name": "allow shell, deny shell",
+   "allow": [
+    "shell"
+   ],
+   "deny": [
+    "shell"
+   ],
+   "expect": {
+    "sandbox": "workspace-write",
+    "approval": "on-request",
+    "search": false
+   },
+   "flags": [
+    "--sandbox",
+    "workspace-write",
+    "-a",
+    "on-request"
+   ]
+  },
+  {
+   "name": "allow web_access",
+   "allow": [
+    "web_access"
+   ],
+   "deny": [],
+   "expect": {
+    "sandbox": "read-only",
+    "approval": "on-request",
+    "search": true
+   },
+   "flags": [
+    "--sandbox",
+    "read-only",
+    "-a",
+    "on-request",
+    "--search"
+   ]
+  },
+  {
+   "name": "allow web_access, deny shell",
+   "allow": [
+    "web_access"
+   ],
+   "deny": [
+    "shell"
+   ],
+   "expect": {
+    "sandbox": "read-only",
+    "approval": "on-request",
+    "search": true
+   },
+   "flags": [
+    "--sandbox",
+    "read-only",
+    "-a",
+    "on-request",
+    "--search"
+   ]
+  },
+  {
+   "name": "allow git_write",
+   "allow": [
+    "git_write"
+   ],
+   "deny": [],
+   "expect": {
+    "sandbox": "workspace-write",
+    "approval": "on-request",
+    "search": false
+   },
+   "flags": [
+    "--sandbox",
+    "workspace-write",
+    "-a",
+    "on-request"
+   ]
+  },
+  {
+   "name": "allow git_write, deny shell",
+   "allow": [
+    "git_write"
+   ],
+   "deny": [
+    "shell"
+   ],
+   "expect": {
+    "sandbox": "workspace-write",
+    "approval": "on-request",
+    "search": false
+   },
+   "flags": [
+    "--sandbox",
+    "workspace-write",
+    "-a",
+    "on-request"
+   ]
+  },
+  {
+   "name": "allow file_read+file_write",
+   "allow": [
+    "file_read",
+    "file_write"
+   ],
+   "deny": [],
+   "expect": {
+    "sandbox": "workspace-write",
+    "approval": "on-request",
+    "search": false
+   },
+   "flags": [
+    "--sandbox",
+    "workspace-write",
+    "-a",
+    "on-request"
+   ]
+  },
+  {
+   "name": "allow file_read+file_write, deny shell",
+   "allow": [
+    "file_read",
+    "file_write"
+   ],
+   "deny": [
+    "shell"
+   ],
+   "expect": {
+    "sandbox": "workspace-write",
+    "approval": "on-request",
+    "search": false
+   },
+   "flags": [
+    "--sandbox",
+    "workspace-write",
+    "-a",
+    "on-request"
+   ]
+  },
+  {
+   "name": "allow file_read+shell",
+   "allow": [
+    "file_read",
+    "shell"
+   ],
+   "deny": [],
+   "expect": {
+    "sandbox": "workspace-write",
+    "approval": "never",
+    "search": false
+   },
+   "flags": [
+    "--sandbox",
+    "workspace-write",
+    "-a",
+    "never"
+   ]
+  },
+  {
+   "name": "allow file_read+shell, deny shell",
+   "allow": [
+    "file_read",
+    "shell"
+   ],
+   "deny": [
+    "shell"
+   ],
+   "expect": {
+    "sandbox": "workspace-write",
+    "approval": "on-request",
+    "search": false
+   },
+   "flags": [
+    "--sandbox",
+    "workspace-write",
+    "-a",
+    "on-request"
+   ]
+  },
+  {
+   "name": "allow file_read+web_access",
+   "allow": [
+    "file_read",
+    "web_access"
+   ],
+   "deny": [],
+   "expect": {
+    "sandbox": "read-only",
+    "approval": "on-request",
+    "search": true
+   },
+   "flags": [
+    "--sandbox",
+    "read-only",
+    "-a",
+    "on-request",
+    "--search"
+   ]
+  },
+  {
+   "name": "allow file_read+web_access, deny shell",
+   "allow": [
+    "file_read",
+    "web_access"
+   ],
+   "deny": [
+    "shell"
+   ],
+   "expect": {
+    "sandbox": "read-only",
+    "approval": "on-request",
+    "search": true
+   },
+   "flags": [
+    "--sandbox",
+    "read-only",
+    "-a",
+    "on-request",
+    "--search"
+   ]
+  },
+  {
+   "name": "allow file_read+git_write",
+   "allow": [
+    "file_read",
+    "git_write"
+   ],
+   "deny": [],
+   "expect": {
+    "sandbox": "read-only",
+    "approval": "on-request",
+    "search": false
+   },
+   "flags": [
+    "--sandbox",
+    "read-only",
+    "-a",
+    "on-request"
+   ]
+  },
+  {
+   "name": "allow file_read+git_write, deny shell",
+   "allow": [
+    "file_read",
+    "git_write"
+   ],
+   "deny": [
+    "shell"
+   ],
+   "expect": {
+    "sandbox": "read-only",
+    "approval": "on-request",
+    "search": false
+   },
+   "flags": [
+    "--sandbox",
+    "read-only",
+    "-a",
+    "on-request"
+   ]
+  },
+  {
+   "name": "allow file_write+shell",
+   "allow": [
+    "file_write",
+    "shell"
+   ],
+   "deny": [],
+   "expect": {
+    "sandbox": "workspace-write",
+    "approval": "never",
+    "search": false
+   },
+   "flags": [
+    "--sandbox",
+    "workspace-write",
+    "-a",
+    "never"
+   ]
+  },
+  {
+   "name": "allow file_write+shell, deny shell",
+   "allow": [
+    "file_write",
+    "shell"
+   ],
+   "deny": [
+    "shell"
+   ],
+   "expect": {
+    "sandbox": "workspace-write",
+    "approval": "on-request",
+    "search": false
+   },
+   "flags": [
+    "--sandbox",
+    "workspace-write",
+    "-a",
+    "on-request"
+   ]
+  },
+  {
+   "name": "allow file_write+web_access",
+   "allow": [
+    "file_write",
+    "web_access"
+   ],
+   "deny": [],
+   "expect": {
+    "sandbox": "read-only",
+    "approval": "on-request",
+    "search": true
+   },
+   "flags": [
+    "--sandbox",
+    "read-only",
+    "-a",
+    "on-request",
+    "--search"
+   ]
+  },
+  {
+   "name": "allow file_write+web_access, deny shell",
+   "allow": [
+    "file_write",
+    "web_access"
+   ],
+   "deny": [
+    "shell"
+   ],
+   "expect": {
+    "sandbox": "read-only",
+    "approval": "on-request",
+    "search": true
+   },
+   "flags": [
+    "--sandbox",
+    "read-only",
+    "-a",
+    "on-request",
+    "--search"
+   ]
+  },
+  {
+   "name": "allow file_write+git_write",
+   "allow": [
+    "file_write",
+    "git_write"
+   ],
+   "deny": [],
+   "expect": {
+    "sandbox": "workspace-write",
+    "approval": "on-request",
+    "search": false
+   },
+   "flags": [
+    "--sandbox",
+    "workspace-write",
+    "-a",
+    "on-request"
+   ]
+  },
+  {
+   "name": "allow file_write+git_write, deny shell",
+   "allow": [
+    "file_write",
+    "git_write"
+   ],
+   "deny": [
+    "shell"
+   ],
+   "expect": {
+    "sandbox": "workspace-write",
+    "approval": "on-request",
+    "search": false
+   },
+   "flags": [
+    "--sandbox",
+    "workspace-write",
+    "-a",
+    "on-request"
+   ]
+  },
+  {
+   "name": "allow shell+web_access",
+   "allow": [
+    "shell",
+    "web_access"
+   ],
+   "deny": [],
+   "expect": {
+    "sandbox": "workspace-write",
+    "approval": "never",
+    "search": true
+   },
+   "flags": [
+    "--sandbox",
+    "workspace-write",
+    "-a",
+    "never",
+    "--search"
+   ]
+  },
+  {
+   "name": "allow shell+web_access, deny shell",
+   "allow": [
+    "shell",
+    "web_access"
+   ],
+   "deny": [
+    "shell"
+   ],
+   "expect": {
+    "sandbox": "workspace-write",
+    "approval": "on-request",
+    "search": true
+   },
+   "flags": [
+    "--sandbox",
+    "workspace-write",
+    "-a",
+    "on-request",
+    "--search"
+   ]
+  },
+  {
+   "name": "allow shell+git_write",
+   "allow": [
+    "shell",
+    "git_write"
+   ],
+   "deny": [],
+   "expect": {
+    "sandbox": "workspace-write",
+    "approval": "never",
+    "search": false
+   },
+   "flags": [
+    "--sandbox",
+    "workspace-write",
+    "-a",
+    "never"
+   ]
+  },
+  {
+   "name": "allow shell+git_write, deny shell",
+   "allow": [
+    "shell",
+    "git_write"
+   ],
+   "deny": [
+    "shell"
+   ],
+   "expect": {
+    "sandbox": "workspace-write",
+    "approval": "on-request",
+    "search": false
+   },
+   "flags": [
+    "--sandbox",
+    "workspace-write",
+    "-a",
+    "on-request"
+   ]
+  },
+  {
+   "name": "allow web_access+git_write",
+   "allow": [
+    "web_access",
+    "git_write"
+   ],
+   "deny": [],
+   "expect": {
+    "sandbox": "read-only",
+    "approval": "on-request",
+    "search": true
+   },
+   "flags": [
+    "--sandbox",
+    "read-only",
+    "-a",
+    "on-request",
+    "--search"
+   ]
+  },
+  {
+   "name": "allow web_access+git_write, deny shell",
+   "allow": [
+    "web_access",
+    "git_write"
+   ],
+   "deny": [
+    "shell"
+   ],
+   "expect": {
+    "sandbox": "read-only",
+    "approval": "on-request",
+    "search": true
+   },
+   "flags": [
+    "--sandbox",
+    "read-only",
+    "-a",
+    "on-request",
+    "--search"
+   ]
+  },
+  {
+   "name": "allow file_read+file_write+shell",
+   "allow": [
+    "file_read",
+    "file_write",
+    "shell"
+   ],
+   "deny": [],
+   "expect": {
+    "sandbox": "workspace-write",
+    "approval": "never",
+    "search": false
+   },
+   "flags": [
+    "--sandbox",
+    "workspace-write",
+    "-a",
+    "never"
+   ]
+  },
+  {
+   "name": "allow file_read+file_write+shell, deny shell",
+   "allow": [
+    "file_read",
+    "file_write",
+    "shell"
+   ],
+   "deny": [
+    "shell"
+   ],
+   "expect": {
+    "sandbox": "workspace-write",
+    "approval": "on-request",
+    "search": false
+   },
+   "flags": [
+    "--sandbox",
+    "workspace-write",
+    "-a",
+    "on-request"
+   ]
+  },
+  {
+   "name": "allow file_read+file_write+web_access",
+   "allow": [
+    "file_read",
+    "file_write",
+    "web_access"
+   ],
+   "deny": [],
+   "expect": {
+    "sandbox": "workspace-write",
+    "approval": "on-request",
+    "search": true
+   },
+   "flags": [
+    "--sandbox",
+    "workspace-write",
+    "-a",
+    "on-request",
+    "--search"
+   ]
+  },
+  {
+   "name": "allow file_read+file_write+web_access, deny shell",
+   "allow": [
+    "file_read",
+    "file_write",
+    "web_access"
+   ],
+   "deny": [
+    "shell"
+   ],
+   "expect": {
+    "sandbox": "workspace-write",
+    "approval": "on-request",
+    "search": true
+   },
+   "flags": [
+    "--sandbox",
+    "workspace-write",
+    "-a",
+    "on-request",
+    "--search"
+   ]
+  },
+  {
+   "name": "allow file_read+file_write+git_write",
+   "allow": [
+    "file_read",
+    "file_write",
+    "git_write"
+   ],
+   "deny": [],
+   "expect": {
+    "sandbox": "workspace-write",
+    "approval": "on-request",
+    "search": false
+   },
+   "flags": [
+    "--sandbox",
+    "workspace-write",
+    "-a",
+    "on-request"
+   ]
+  },
+  {
+   "name": "allow file_read+file_write+git_write, deny shell",
+   "allow": [
+    "file_read",
+    "file_write",
+    "git_write"
+   ],
+   "deny": [
+    "shell"
+   ],
+   "expect": {
+    "sandbox": "workspace-write",
+    "approval": "on-request",
+    "search": false
+   },
+   "flags": [
+    "--sandbox",
+    "workspace-write",
+    "-a",
+    "on-request"
+   ]
+  },
+  {
+   "name": "allow file_read+shell+web_access",
+   "allow": [
+    "file_read",
+    "shell",
+    "web_access"
+   ],
+   "deny": [],
+   "expect": {
+    "sandbox": "workspace-write",
+    "approval": "never",
+    "search": true
+   },
+   "flags": [
+    "--sandbox",
+    "workspace-write",
+    "-a",
+    "never",
+    "--search"
+   ]
+  },
+  {
+   "name": "allow file_read+shell+web_access, deny shell",
+   "allow": [
+    "file_read",
+    "shell",
+    "web_access"
+   ],
+   "deny": [
+    "shell"
+   ],
+   "expect": {
+    "sandbox": "workspace-write",
+    "approval": "on-request",
+    "search": true
+   },
+   "flags": [
+    "--sandbox",
+    "workspace-write",
+    "-a",
+    "on-request",
+    "--search"
+   ]
+  },
+  {
+   "name": "allow file_read+shell+git_write",
+   "allow": [
+    "file_read",
+    "shell",
+    "git_write"
+   ],
+   "deny": [],
+   "expect": {
+    "sandbox": "workspace-write",
+    "approval": "never",
+    "search": false
+   },
+   "flags": [
+    "--sandbox",
+    "workspace-write",
+    "-a",
+    "never"
+   ]
+  },
+  {
+   "name": "allow file_read+shell+git_write, deny shell",
+   "allow": [
+    "file_read",
+    "shell",
+    "git_write"
+   ],
+   "deny": [
+    "shell"
+   ],
+   "expect": {
+    "sandbox": "workspace-write",
+    "approval": "on-request",
+    "search": false
+   },
+   "flags": [
+    "--sandbox",
+    "workspace-write",
+    "-a",
+    "on-request"
+   ]
+  },
+  {
+   "name": "allow file_read+web_access+git_write",
+   "allow": [
+    "file_read",
+    "web_access",
+    "git_write"
+   ],
+   "deny": [],
+   "expect": {
+    "sandbox": "read-only",
+    "approval": "on-request",
+    "search": true
+   },
+   "flags": [
+    "--sandbox",
+    "read-only",
+    "-a",
+    "on-request",
+    "--search"
+   ]
+  },
+  {
+   "name": "allow file_read+web_access+git_write, deny shell",
+   "allow": [
+    "file_read",
+    "web_access",
+    "git_write"
+   ],
+   "deny": [
+    "shell"
+   ],
+   "expect": {
+    "sandbox": "read-only",
+    "approval": "on-request",
+    "search": true
+   },
+   "flags": [
+    "--sandbox",
+    "read-only",
+    "-a",
+    "on-request",
+    "--search"
+   ]
+  },
+  {
+   "name": "allow file_write+shell+web_access",
+   "allow": [
+    "file_write",
+    "shell",
+    "web_access"
+   ],
+   "deny": [],
+   "expect": {
+    "sandbox": "workspace-write",
+    "approval": "never",
+    "search": true
+   },
+   "flags": [
+    "--sandbox",
+    "workspace-write",
+    "-a",
+    "never",
+    "--search"
+   ]
+  },
+  {
+   "name": "allow file_write+shell+web_access, deny shell",
+   "allow": [
+    "file_write",
+    "shell",
+    "web_access"
+   ],
+   "deny": [
+    "shell"
+   ],
+   "expect": {
+    "sandbox": "workspace-write",
+    "approval": "on-request",
+    "search": true
+   },
+   "flags": [
+    "--sandbox",
+    "workspace-write",
+    "-a",
+    "on-request",
+    "--search"
+   ]
+  },
+  {
+   "name": "allow file_write+shell+git_write",
+   "allow": [
+    "file_write",
+    "shell",
+    "git_write"
+   ],
+   "deny": [],
+   "expect": {
+    "sandbox": "workspace-write",
+    "approval": "never",
+    "search": false
+   },
+   "flags": [
+    "--sandbox",
+    "workspace-write",
+    "-a",
+    "never"
+   ]
+  },
+  {
+   "name": "allow file_write+shell+git_write, deny shell",
+   "allow": [
+    "file_write",
+    "shell",
+    "git_write"
+   ],
+   "deny": [
+    "shell"
+   ],
+   "expect": {
+    "sandbox": "workspace-write",
+    "approval": "on-request",
+    "search": false
+   },
+   "flags": [
+    "--sandbox",
+    "workspace-write",
+    "-a",
+    "on-request"
+   ]
+  },
+  {
+   "name": "allow file_write+web_access+git_write",
+   "allow": [
+    "file_write",
+    "web_access",
+    "git_write"
+   ],
+   "deny": [],
+   "expect": {
+    "sandbox": "read-only",
+    "approval": "on-request",
+    "search": true
+   },
+   "flags": [
+    "--sandbox",
+    "read-only",
+    "-a",
+    "on-request",
+    "--search"
+   ]
+  },
+  {
+   "name": "allow file_write+web_access+git_write, deny shell",
+   "allow": [
+    "file_write",
+    "web_access",
+    "git_write"
+   ],
+   "deny": [
+    "shell"
+   ],
+   "expect": {
+    "sandbox": "read-only",
+    "approval": "on-request",
+    "search": true
+   },
+   "flags": [
+    "--sandbox",
+    "read-only",
+    "-a",
+    "on-request",
+    "--search"
+   ]
+  },
+  {
+   "name": "allow shell+web_access+git_write",
+   "allow": [
+    "shell",
+    "web_access",
+    "git_write"
+   ],
+   "deny": [],
+   "expect": {
+    "sandbox": "workspace-write",
+    "approval": "never",
+    "search": true
+   },
+   "flags": [
+    "--sandbox",
+    "workspace-write",
+    "-a",
+    "never",
+    "--search"
+   ]
+  },
+  {
+   "name": "allow shell+web_access+git_write, deny shell",
+   "allow": [
+    "shell",
+    "web_access",
+    "git_write"
+   ],
+   "deny": [
+    "shell"
+   ],
+   "expect": {
+    "sandbox": "workspace-write",
+    "approval": "on-request",
+    "search": true
+   },
+   "flags": [
+    "--sandbox",
+    "workspace-write",
+    "-a",
+    "on-request",
+    "--search"
+   ]
+  },
+  {
+   "name": "allow file_read+file_write+shell+web_access",
+   "allow": [
+    "file_read",
+    "file_write",
+    "shell",
+    "web_access"
+   ],
+   "deny": [],
+   "expect": {
+    "sandbox": "workspace-write",
+    "approval": "never",
+    "search": true
+   },
+   "flags": [
+    "--sandbox",
+    "workspace-write",
+    "-a",
+    "never",
+    "--search"
+   ]
+  },
+  {
+   "name": "allow file_read+file_write+shell+web_access, deny shell",
+   "allow": [
+    "file_read",
+    "file_write",
+    "shell",
+    "web_access"
+   ],
+   "deny": [
+    "shell"
+   ],
+   "expect": {
+    "sandbox": "workspace-write",
+    "approval": "on-request",
+    "search": true
+   },
+   "flags": [
+    "--sandbox",
+    "workspace-write",
+    "-a",
+    "on-request",
+    "--search"
+   ]
+  },
+  {
+   "name": "allow file_read+file_write+shell+git_write",
+   "allow": [
+    "file_read",
+    "file_write",
+    "shell",
+    "git_write"
+   ],
+   "deny": [],
+   "expect": {
+    "sandbox": "none",
+    "approval": "never",
+    "search": false
+   },
+   "flags": [
+    "--dangerously-bypass-approvals-and-sandbox"
+   ]
+  },
+  {
+   "name": "allow file_read+file_write+shell+git_write, deny shell",
+   "allow": [
+    "file_read",
+    "file_write",
+    "shell",
+    "git_write"
+   ],
+   "deny": [
+    "shell"
+   ],
+   "expect": {
+    "sandbox": "workspace-write",
+    "approval": "on-request",
+    "search": false
+   },
+   "flags": [
+    "--sandbox",
+    "workspace-write",
+    "-a",
+    "on-request"
+   ]
+  },
+  {
+   "name": "allow file_read+file_write+web_access+git_write",
+   "allow": [
+    "file_read",
+    "file_write",
+    "web_access",
+    "git_write"
+   ],
+   "deny": [],
+   "expect": {
+    "sandbox": "workspace-write",
+    "approval": "on-request",
+    "search": true
+   },
+   "flags": [
+    "--sandbox",
+    "workspace-write",
+    "-a",
+    "on-request",
+    "--search"
+   ]
+  },
+  {
+   "name": "allow file_read+file_write+web_access+git_write, deny shell",
+   "allow": [
+    "file_read",
+    "file_write",
+    "web_access",
+    "git_write"
+   ],
+   "deny": [
+    "shell"
+   ],
+   "expect": {
+    "sandbox": "workspace-write",
+    "approval": "on-request",
+    "search": true
+   },
+   "flags": [
+    "--sandbox",
+    "workspace-write",
+    "-a",
+    "on-request",
+    "--search"
+   ]
+  },
+  {
+   "name": "allow file_read+shell+web_access+git_write",
+   "allow": [
+    "file_read",
+    "shell",
+    "web_access",
+    "git_write"
+   ],
+   "deny": [],
+   "expect": {
+    "sandbox": "workspace-write",
+    "approval": "never",
+    "search": true
+   },
+   "flags": [
+    "--sandbox",
+    "workspace-write",
+    "-a",
+    "never",
+    "--search"
+   ]
+  },
+  {
+   "name": "allow file_read+shell+web_access+git_write, deny shell",
+   "allow": [
+    "file_read",
+    "shell",
+    "web_access",
+    "git_write"
+   ],
+   "deny": [
+    "shell"
+   ],
+   "expect": {
+    "sandbox": "workspace-write",
+    "approval": "on-request",
+    "search": true
+   },
+   "flags": [
+    "--sandbox",
+    "workspace-write",
+    "-a",
+    "on-request",
+    "--search"
+   ]
+  },
+  {
+   "name": "allow file_write+shell+web_access+git_write",
+   "allow": [
+    "file_write",
+    "shell",
+    "web_access",
+    "git_write"
+   ],
+   "deny": [],
+   "expect": {
+    "sandbox": "workspace-write",
+    "approval": "never",
+    "search": true
+   },
+   "flags": [
+    "--sandbox",
+    "workspace-write",
+    "-a",
+    "never",
+    "--search"
+   ]
+  },
+  {
+   "name": "allow file_write+shell+web_access+git_write, deny shell",
+   "allow": [
+    "file_write",
+    "shell",
+    "web_access",
+    "git_write"
+   ],
+   "deny": [
+    "shell"
+   ],
+   "expect": {
+    "sandbox": "workspace-write",
+    "approval": "on-request",
+    "search": true
+   },
+   "flags": [
+    "--sandbox",
+    "workspace-write",
+    "-a",
+    "on-request",
+    "--search"
+   ]
+  },
+  {
+   "name": "allow file_read+file_write+shell+web_access+git_write",
+   "allow": [
+    "file_read",
+    "file_write",
+    "shell",
+    "web_access",
+    "git_write"
+   ],
+   "deny": [],
+   "expect": {
+    "sandbox": "none",
+    "approval": "never",
+    "search": true
+   },
+   "flags": [
+    "--dangerously-bypass-approvals-and-sandbox",
+    "--search"
+   ]
+  },
+  {
+   "name": "allow file_read+file_write+shell+web_access+git_write, deny shell",
+   "allow": [
+    "file_read",
+    "file_write",
+    "shell",
+    "web_access",
+    "git_write"
+   ],
+   "deny": [
+    "shell"
+   ],
+   "expect": {
+    "sandbox": "workspace-write",
+    "approval": "on-request",
+    "search": true
+   },
+   "flags": [
+    "--sandbox",
+    "workspace-write",
+    "-a",
+    "on-request",
+    "--search"
+   ]
+  },
+  {
+   "name": "deny only (git_write)",
+   "allow": [],
+   "deny": [
+    "git_write"
+   ],
+   "expect": {
+    "sandbox": "workspace-write",
+    "approval": "on-request",
+    "search": false
+   },
+   "flags": [
+    "--sandbox",
+    "workspace-write",
+    "-a",
+    "on-request"
+   ]
+  },
+  {
+   "name": "agent_spawn and notebook alone",
+   "allow": [
+    "agent_spawn",
+    "notebook"
+   ],
+   "deny": [],
+   "expect": {
+    "sandbox": "workspace-write",
+    "approval": "on-request",
+    "search": false
+   },
+   "flags": [
+    "--sandbox",
+    "workspace-write",
+    "-a",
+    "on-request"
+   ]
+  },
+  {
+   "name": "the full set plus agent_spawn and notebook",
+   "allow": [
+    "file_read",
+    "file_write",
+    "shell",
+    "web_access",
+    "git_write",
+    "agent_spawn",
+    "notebook"
+   ],
+   "deny": [],
+   "expect": {
+    "sandbox": "none",
+    "approval": "never",
+    "search": true
+   },
+   "flags": [
+    "--dangerously-bypass-approvals-and-sandbox",
+    "--search"
+   ]
+  },
+  {
+   "name": "the full set plus agent_spawn, with a deny of notebook",
+   "allow": [
+    "file_read",
+    "file_write",
+    "shell",
+    "web_access",
+    "git_write",
+    "agent_spawn"
+   ],
+   "deny": [
+    "notebook"
+   ],
+   "expect": {
+    "sandbox": "workspace-write",
+    "approval": "on-request",
+    "search": true
+   },
+   "flags": [
+    "--sandbox",
+    "workspace-write",
+    "-a",
+    "on-request",
+    "--search"
+   ]
+  },
+  {
+   "name": "only a shell pattern",
+   "allow": [
+    "shell:coral-board *"
+   ],
+   "deny": [],
+   "expect": {
+    "sandbox": "workspace-write",
+    "approval": "on-request",
+    "search": false
+   },
+   "flags": [
+    "--sandbox",
+    "workspace-write",
+    "-a",
+    "on-request"
+   ]
+  },
+  {
+   "name": "read, write and shell patterns (Frontend Dev style)",
+   "allow": [
+    "file_read",
+    "file_write",
+    "shell:npm *",
+    "shell:npx *",
+    "web_access"
+   ],
+   "deny": [],
+   "expect": {
+    "sandbox": "workspace-write",
+    "approval": "on-request",
+    "search": true
+   },
+   "flags": [
+    "--sandbox",
+    "workspace-write",
+    "-a",
+    "on-request",
+    "--search"
+   ]
+  },
+  {
+   "name": "read and a shell pattern",
+   "allow": [
+    "file_read",
+    "shell:coral-board *"
+   ],
+   "deny": [],
+   "expect": {
+    "sandbox": "read-only",
+    "approval": "on-request",
+    "search": false
+   },
+   "flags": [
+    "--sandbox",
+    "read-only",
+    "-a",
+    "on-request"
+   ]
+  },
+  {
+   "name": "an unknown capability alone",
+   "allow": [
+    "teleport"
+   ],
+   "deny": [],
+   "expect": {
+    "sandbox": "workspace-write",
+    "approval": "on-request",
+    "search": false
+   },
+   "flags": [
+    "--sandbox",
+    "workspace-write",
+    "-a",
+    "on-request"
+   ]
+  },
+  {
+   "name": "shell and an unknown capability",
+   "allow": [
+    "shell",
+    "teleport"
+   ],
+   "deny": [],
+   "expect": {
+    "sandbox": "workspace-write",
+    "approval": "never",
+    "search": false
+   },
+   "flags": [
+    "--sandbox",
+    "workspace-write",
+    "-a",
+    "never"
+   ]
+  }
+ ]
+}

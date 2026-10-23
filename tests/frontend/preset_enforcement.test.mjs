@@ -28,6 +28,14 @@ for (const p of AGENT_PRESETS) {
     checked++;
 }
 assert.equal(checked * 3, rows.size, 'every golden row is a built-in preset');
+// Every capability set of internal/agent/testdata/codex_sandbox_rule.json (#6419): the file Go's TestCodexSandboxRuleFixture holds the Codex translation and the launch flags to. The form says what
+// a launch will do, so codexEnforced gives the same sandbox, approval and search for every one of them; the file is written from the rule, not by either side.
+const rule = JSON.parse(readFileSync(fileURLToPath(new URL('../../coral-go/internal/agent/testdata/codex_sandbox_rule.json', import.meta.url)), 'utf8'));
+assert.ok(rule.cases.length >= 60, 'the fixture is the whole table, not a few rows');
+for (const c of rule.cases) {
+    const got = pe.codexEnforced({ allow: c.allow, deny: c.deny });
+    assert.deepEqual(got, c.expect, `codexEnforced for "${c.name}" is what the Go launch does (${JSON.stringify(c.flags)})`);
+}
 // The combinations no preset uses, against the Go translation's branches
 assert.deepEqual(pe.codexEnforced({ allow: ['shell'], deny: ['git_write'] }), { sandbox: 'workspace-write', approval: 'on-request', search: false });
 assert.deepEqual(pe.codexEnforced({ allow: ['web_access'] }), { sandbox: 'read-only', approval: 'on-request', search: true });
