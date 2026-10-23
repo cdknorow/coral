@@ -220,7 +220,7 @@ svg[width="48"][height="48"] { width: 3rem; height: 3rem; }
 /* A tablet or a touch laptop is wider than the phone rules above reach (768 px and up) but still touched: the command pane's key and send buttons and
    the history search box are 44 px targets on any touch screen (#4352). */
 @media (pointer: coarse) {
-    .command-pane-toolbar .btn-nav, #command-pane .btn-nav, #board-chat-input-pane .btn-nav { min-height: var(--control-touch-height, 44px); min-width: var(--control-touch-height, 44px); }
+    .command-pane-toolbar .btn-nav, #command-pane .btn-nav, #board-chat-input-pane .btn-nav, #board-chat-input-pane .command-pane-toolbar.board-chat-toolbar .btn-nav.board-mention-chip:not(.btn-send) { min-height: var(--control-touch-height, 44px); min-width: var(--control-touch-height, 44px); }
     #history-search { min-height: var(--control-touch-height, 44px); }
     .board-task-sort, .board-task-status-wrap, .board-task-open { min-height: var(--control-touch-height, 44px); display: inline-flex; align-items: center; box-sizing: border-box; }
     .board-task-id { min-width: var(--control-touch-height, 44px); justify-content: center; }

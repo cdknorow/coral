@@ -472,7 +472,7 @@ body.popout-mode.popout-terminal-blocked .attach-image-btn { pointer-events: non
     #board-chat-input-pane .btn-send:hover { transform: none; }
 }
 /* @all is an outlined chip in the bottom row, as the chat's macros are */
-#board-chat-input-pane .command-pane-toolbar .btn-nav.board-mention-chip:not(.btn-send) { border-color: var(--control-border); padding: 0 12px; } /* beats the quiet-icon rule above, as the chat's macro chips do */
+#board-chat-input-pane .command-pane-toolbar .btn-nav.board-mention-chip:not(.btn-send) { height: auto; min-height: var(--control-compact-height); border-color: var(--control-border); padding: 0 12px; } /* min-height, not height: at 200% text the chip grows with its label */ /* beats the quiet-icon rule above, as the chat's macro chips do */
 /* The card's accent border is the focus indicator, as in the chat; the text keeps no ring of its own inside it */
 #board-chat-input-pane textarea:focus, #board-chat-input-pane textarea:focus-visible { outline: none; box-shadow: none; }
 
