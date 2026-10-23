@@ -3,6 +3,8 @@
  * The file input is the only way in (never an in-page camera: Coral Hub blocks getUserMedia). A photo over 2 MB is made smaller in the browser, on an off-page canvas, so a phone's
  * 8 to 12 MB photo goes up in about 1 MB on a slow connection; a PNG (a screenshot) and a GIF are kept as they are. The server still decides what it accepts. */
 
+import { OUTCOME_UNKNOWN_LINE } from './outcome_unknown.js';
+
 const MiB = 1024 * 1024;
 export const SERVER_CAP = 20 * MiB; // the server's limit for one image (uploads.go maxFileSize)
 export const DOWNSCALE_OVER = 2 * MiB;
@@ -75,6 +77,7 @@ export function parseUploadReply(text) {
 
 /** The sentence for a fixed "code" the hub's proxy answers when it ends an upload (408): the stall limit (no bytes for 30 s) or the total cap. null for any other code. */
 export function uploadCodeFailure(code) {
+    if (code === 'outcome_unknown') return { text: OUTCOME_UNKNOWN_LINE, retry: false }; // the hub lost the answer: it may have gone up; no Retry button, the person checks first (#6342)
     if (code === 'upload_stalled') return { text: 'The upload stalled. Try again.', retry: true };
     if (code === 'upload_too_slow') return { text: 'Upload timed out. Try a smaller image.', retry: true };
     if (code === 'request_too_large') return { text: 'That image is too large to send through Coral Hub.', retry: false }; // the hub's own body limit (413), above the 20 MB the dashboard checks first

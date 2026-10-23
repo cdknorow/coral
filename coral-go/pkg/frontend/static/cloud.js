@@ -10,6 +10,7 @@ import { state } from './state.js';
 import { isCloud } from './server_base.js';
 import { filterSettingsPayload, settingsErrorMessage } from './cloud_settings.js';
 import { signOutThisBrowser } from './local_store.js';
+import { OUTCOME_UNKNOWN_LINE, isOutcomeUnknown } from './outcome_unknown.js';
 
 /** GET paths that only a machine's own dashboard serves: privacy state and agent panels. (Themes,
  *  settings, tags, folder tags and views are the hub's own per-user data.) */
@@ -114,6 +115,16 @@ function explainTooLarge(resp) {
     }).catch(() => {});
 }
 
+/** A write the hub could not finish telling (502 outcome_unknown, #6342): the same response with its words replaced by the one line, so a path that shows the server's words shows that line and not a hint to send it again.
+ *  Returns null for any other 502 and for a launch. */
+async function sayOutcomeUnknown(resp, url) {
+    if (!/json/i.test(resp.headers.get('Content-Type') || '')) return null;
+    let body = null;
+    try { body = await resp.clone().json(); } catch { return null; }
+    if (!isOutcomeUnknown(resp.status, body, url || resp.url)) return null;
+    return new Response(JSON.stringify({ ...body, error: OUTCOME_UNKNOWN_LINE }), { status: resp.status, statusText: resp.statusText, headers: resp.headers });
+}
+
 /** Wrap window.fetch: add X-CSRF-Token on same-origin state-changing calls and
  *  send the user to sign-in when the session has ended. */
 export function installCloudFetch() {
@@ -154,6 +165,7 @@ export function installCloudFetch() {
         const resp = await orig(input, init);
         if (resp.status === 403 && !SAFE.has(method)) _session = null; // token may have rotated; refetch next time
         if (resp.status === 502 && sameOrigin(input)) explainTooLarge(resp);
+        if (resp.status === 502 && !SAFE.has(method) && sameOrigin(input)) { const said = await sayOutcomeUnknown(resp, typeof input === 'string' || input instanceof URL ? String(input) : (input && input.url) || ''); if (said) return said; }
         // `quiet: true` marks a background request the user did not ask for (e.g. fitting the pane width on open):
         // a refusal there is not worth a toast, only an action the user took is.
         if (resp.status === 403 && sameOrigin(input) && !(init && init.quiet)) explainRefusal(resp);

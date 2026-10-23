@@ -15,6 +15,7 @@ import { messageTimeHtml } from './message_time.js';
 import { paintPauseButton } from './board_pause_button.js';
 import { pathId, keyLabel, noteBoardLabel, hasBoardLabel, onBoardLabelsChanged, splitKey, boardFetch, teamFetch, isCloud, inTeam } from './server_base.js';
 import { importOnce } from './import_once.js';
+import { OUTCOME_UNKNOWN_LINE, isOutcomeUnknown } from './outcome_unknown.js';
 import { launchBlockedReason, blockedReason } from './hub_access.js';
 import { pollEvery, afterPause, isBusyStatus, busyRetryingText, machineOf } from './overload.js';
 import { note } from './nav.js';
@@ -729,9 +730,10 @@ export async function postBoardMessage() {
             // limit's "too many messages…; retry in 20s", #3435).
             const text = await resp.text().catch(() => '');
             let reason = '';
-            try { const b = JSON.parse(text); if (b && typeof b.error === 'string') reason = b.error; } catch { /* not JSON */ }
+            let unknown = false;
+            try { const b = JSON.parse(text); if (b && typeof b.error === 'string') reason = b.error; unknown = isOutcomeUnknown(resp.status, b, resp.url); } catch { /* not JSON */ }
             console.error('Post failed:', resp.status, text);
-            showToast(reason ? `Not posted: ${reason}` : `Not posted (HTTP ${resp.status}).`, true);
+            showToast(unknown ? OUTCOME_UNKNOWN_LINE : reason ? `Not posted: ${reason}` : `Not posted (HTTP ${resp.status}).`, true);
             return;
         }
         input.value = '';

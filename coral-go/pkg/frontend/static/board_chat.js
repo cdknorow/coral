@@ -9,6 +9,7 @@ import { pollEvery } from './overload.js';
 import { resolveBoardArtifacts } from './board_artifacts.js';
 import { initGrowingTextarea } from './growing_textarea.js';
 import { announceNotice } from './notifications.js';
+import { outcomeUnknownLine } from './outcome_unknown.js';
 import { paintPauseButton as _paintPauseButton } from './board_pause_button.js';
 
 // ── Board Chat (right-panel tab) ──────────────────────────────────────
@@ -429,7 +430,7 @@ async function _sendBoardChat(boardName) {
     const content = inputEl.value.trim();
     if (!content) return;
     inputEl.value = '';
-    let sent = false;
+    let sent = false, unknown = '';
     try {
         const resp = await boardFetch(boardName, `/messages`, {
             method: 'POST',
@@ -437,12 +438,13 @@ async function _sendBoardChat(boardName) {
             body: JSON.stringify({ subscriber_id: OPERATOR_ID, as: 'Operator', content }),
         });
         sent = resp.ok;
+        if (!sent) unknown = await outcomeUnknownLine(resp); // the hub lost the answer: it may have reached the computer
     } catch { /* not sent: said below */ }
     if (!sent) {
         // The words go back in the box (ahead of anything typed since) and the failure is said: a message that vanished with no word is the worst way to fail (#6275).
         inputEl.value = inputEl.value ? `${content}\n${inputEl.value}` : content;
         inputEl.dispatchEvent(new Event('input', { bubbles: true }));
-        showToast('Could not send to the team. Your message is back in the box.', true);
+        showToast(unknown || 'Could not send to the team. Your message is back in the box.', true); // the words are back in the box either way; nothing is sent again by itself
         return;
     }
     announceNotice('Message sent'); // heard once, not drawn: the message itself appears in the list

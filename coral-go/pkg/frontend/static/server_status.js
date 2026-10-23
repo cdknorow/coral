@@ -8,6 +8,7 @@
 import { state } from './state.js';
 import { LOCAL_SERVER, normServer, isHub } from './server_base.js';
 import { launchBlockReason } from './launch_server.js';
+import { OUTCOME_UNKNOWN_LINE, isOutcomeUnknown } from './outcome_unknown.js';
 
  const STATUS_META = {
     online:           { label: 'Online',           cls: 'online',       hint: 'Connected' },
@@ -356,6 +357,7 @@ export async function responseErrorText(resp, serverId, fallback) {
     let body = null;
     try { body = await resp.clone().json(); } catch { /* not JSON */ }
     if (body && body.code === 'terminal_gone') return TERMINAL_GONE_MESSAGE;
+    if (isOutcomeUnknown(resp.status, body, resp.url)) return OUTCOME_UNKNOWN_LINE; // a write the hub could not finish telling: the one line, never "try again in a moment" (#6342)
     const mapped = proxyErrorMessage(resp.status, body, serverId);
     if (mapped) return mapped;
     if (body && typeof body.error === 'string' && body.error.trim()) return body.error.trim();
