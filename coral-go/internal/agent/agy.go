@@ -119,6 +119,7 @@ func parseAgyTranscriptSession(convID, fpath string, mtime float64) (*IndexedSes
 	var firstTS, lastTS *string
 	var msgCount int
 	var summary string
+	var firstMsg string
 	var fts FTSBodyBuilder
 	var coralSessionID string
 
@@ -151,6 +152,11 @@ func parseAgyTranscriptSession(convID, fpath string, mtime float64) (*IndexedSes
 		if etype == "USER_INPUT" || etype == "PLANNER_RESPONSE" {
 			msgCount++
 		}
+		if etype == "USER_INPUT" && firstMsg == "" {
+			if content, _ := entry["content"].(string); !injectedUserText(content) {
+				firstMsg = clipFirstMessage(content)
+			}
+		}
 		if content, _ := entry["content"].(string); content != "" {
 			fts.Add(content)
 			if summary == "" {
@@ -177,16 +183,17 @@ func parseAgyTranscriptSession(convID, fpath string, mtime float64) (*IndexedSes
 	}
 
 	return &IndexedSession{
-		SessionID:      sessionID,
-		SourceType:     at.Agy,
-		SourceFile:     fpath,
-		FileMtime:      mtime,
-		FirstTimestamp: firstTS,
-		LastTimestamp:  lastTS,
-		MessageCount:   msgCount,
-		DisplaySummary: summary,
-		IndexVersion:   HistoryIndexVersion,
-		FTSBody:        buildFTSBody(summary, &fts),
+		SessionID:        sessionID,
+		SourceType:       at.Agy,
+		SourceFile:       fpath,
+		FileMtime:        mtime,
+		FirstTimestamp:   firstTS,
+		LastTimestamp:    lastTS,
+		MessageCount:     msgCount,
+		DisplaySummary:   summary,
+		FirstUserMessage: firstMsg,
+		IndexVersion:     HistoryIndexVersion,
+		FTSBody:          buildFTSBody(summary, &fts),
 	}, nil
 }
 
@@ -208,7 +215,7 @@ func parseGeminiSession(fpath string, mtime float64) (*IndexedSession, error) {
 	sessionID := strings.TrimSuffix(strings.TrimPrefix(base, "session-"), ".json")
 
 	var firstTS, lastTS *string
-	var summary string
+	var summary, firstMsg string
 	var fts FTSBodyBuilder
 	for _, msg := range messages {
 		ts, _ := msg["timestamp"].(string)
@@ -228,6 +235,19 @@ func parseGeminiSession(fpath string, mtime float64) (*IndexedSession, error) {
 					}
 				}
 			}
+			if firstMsg == "" && role == "user" {
+				var typed []string
+				for _, part := range parts {
+					if pm, ok := part.(map[string]any); ok {
+						if text, _ := pm["text"].(string); text != "" {
+							typed = append(typed, text)
+						}
+					}
+				}
+				if joined := strings.Join(typed, " "); !injectedUserText(joined) {
+					firstMsg = clipFirstMessage(joined)
+				}
+			}
 			if summary == "" && role == "model" {
 				if p, ok := parts[0].(map[string]any); ok {
 					if text, _ := p["text"].(string); text != "" {
@@ -239,16 +259,17 @@ func parseGeminiSession(fpath string, mtime float64) (*IndexedSession, error) {
 	}
 
 	return &IndexedSession{
-		SessionID:      sessionID,
-		SourceType:     "gemini",
-		SourceFile:     fpath,
-		FileMtime:      mtime,
-		FirstTimestamp: firstTS,
-		LastTimestamp:  lastTS,
-		MessageCount:   len(messages),
-		DisplaySummary: summary,
-		IndexVersion:   HistoryIndexVersion,
-		FTSBody:        buildFTSBody(summary, &fts),
+		SessionID:        sessionID,
+		SourceType:       "gemini",
+		SourceFile:       fpath,
+		FileMtime:        mtime,
+		FirstTimestamp:   firstTS,
+		LastTimestamp:    lastTS,
+		MessageCount:     len(messages),
+		DisplaySummary:   summary,
+		FirstUserMessage: firstMsg,
+		IndexVersion:     HistoryIndexVersion,
+		FTSBody:          buildFTSBody(summary, &fts),
 	}, nil
 }
 

@@ -139,26 +139,37 @@ func TestPruneHistoryExclusionsForgetsOnlyFilesKnownToBeGone(t *testing.T) {
 	assert.Zero(t, n, "nothing left to prune")
 }
 
-// A row written by an older parser, of any source, is read once more (so a changed summary reaches sessions never written to again); a row stamped with the current version is skipped on an unchanged file.
+// #6207: a row written by an older parser, of any source, is read once more, so the first user message (new in version 2) is filled for sessions that are never written to again; a row stamped with the
+// current version is skipped on an unchanged file; the message is stored and listed.
 func TestHistoryMtimesRereadsRowsOfAnOlderParserOfEverySource(t *testing.T) {
 	db := openTestDB(t)
 	s := NewSessionStore(db)
 	ctx := context.Background()
-	const current = 2
-	srcs := []string{"claude", "codex", "agy", "gemini", "pi"}
-	for i, src := range srcs {
-		for _, idx := range []*SessionIndex{
-			{SessionID: src + "-old", SourceType: src, SourceFile: "/h/" + src + "-old.jsonl", FileMtime: float64(10 + i), IndexVersion: current - 1, MessageCount: 2},
-			{SessionID: src + "-new", SourceType: src, SourceFile: "/h/" + src + "-new.jsonl", FileMtime: float64(20 + i), IndexVersion: current, MessageCount: 2},
-		} {
+	const current = 3
+	for i, src := range []string{"claude", "codex", "agy", "gemini", "pi"} {
+		old := &SessionIndex{SessionID: src + "-old", SourceType: src, SourceFile: "/h/" + src + "-old.jsonl", FileMtime: float64(10 + i), IndexVersion: current - 1, MessageCount: 2}
+		fresh := &SessionIndex{SessionID: src + "-new", SourceType: src, SourceFile: "/h/" + src + "-new.jsonl", FileMtime: float64(20 + i), IndexVersion: current, MessageCount: 2, FirstUserMessage: "what is in " + src}
+		for _, idx := range []*SessionIndex{old, fresh} {
 			require.NoError(t, s.UpsertSessionIndex(ctx, idx))
 			require.NoError(t, s.UpsertFTS(ctx, idx.SessionID, "text"))
 		}
 	}
 	known, err := s.GetHistoryMtimes(ctx, current)
 	require.NoError(t, err)
-	for _, src := range srcs {
+	for _, src := range []string{"claude", "codex", "agy", "gemini", "pi"} {
 		assert.NotContains(t, known, "/h/"+src+"-old.jsonl", "%s: a row of an older parser is read again", src)
 		assert.Contains(t, known, "/h/"+src+"-new.jsonl", "%s: a row of the current parser is skipped while its file is unchanged", src)
 	}
+
+	res, err := s.ListSessionsPaged(ctx, SessionListParams{Page: 1, PageSize: 50})
+	require.NoError(t, err)
+	byID := map[string]SessionListItem{}
+	for _, it := range res.Sessions {
+		byID[it.SessionID] = it
+	}
+	assert.Equal(t, "what is in claude", byID["claude-new"].FirstUserMessage)
+	assert.Equal(t, "", byID["claude-old"].FirstUserMessage, "a row indexed before the message was kept has none")
+	got, err := s.GetIndexedSession(ctx, "pi-new")
+	require.NoError(t, err)
+	assert.Equal(t, "what is in pi", got.FirstUserMessage)
 }

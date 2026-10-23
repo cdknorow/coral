@@ -35,11 +35,13 @@ type SessionIndex struct {
 	LastTimestamp  *string `db:"last_timestamp" json:"last_timestamp"`
 	MessageCount   int     `db:"message_count" json:"message_count"`
 	DisplaySummary string  `db:"display_summary" json:"summary"`
-	AgentName      string  `db:"agent_name" json:"agent_name,omitempty"`
-	DisplayName    string  `db:"display_name" json:"display_name,omitempty"`
-	IndexedAt      string  `db:"indexed_at" json:"-"`
-	FileMtime      float64 `db:"file_mtime" json:"-"`
-	IndexVersion   int     `db:"index_version" json:"-"`
+	// FirstUserMessage is the first thing the person typed in the session ("" for a row indexed before it was kept), the lead of its History title (#6207).
+	FirstUserMessage string  `db:"first_user_message" json:"first_user_message,omitempty"`
+	AgentName        string  `db:"agent_name" json:"agent_name,omitempty"`
+	DisplayName      string  `db:"display_name" json:"display_name,omitempty"`
+	IndexedAt        string  `db:"indexed_at" json:"-"`
+	FileMtime        float64 `db:"file_mtime" json:"-"`
+	IndexVersion     int     `db:"index_version" json:"-"`
 }
 
 // LiveSession represents a persistent live session record.

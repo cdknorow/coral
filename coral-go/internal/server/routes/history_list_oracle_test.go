@@ -327,20 +327,21 @@ func (h *HistoryHandler) listSessionsBefore4713(w http.ResponseWriter, r *http.R
 		agentTotal = result.Total
 		for _, s := range result.Sessions {
 			m := map[string]any{
-				"session_id":      s.SessionID,
-				"source_type":     s.SourceType,
-				"first_timestamp": ptr.Value(s.FirstTimestamp),
-				"last_timestamp":  ptr.Value(s.LastTimestamp),
-				"message_count":   s.MessageCount,
-				"summary":         s.Summary,
-				"summary_title":   s.SummaryTitle,
-				"has_notes":       s.HasNotes,
-				"tags":            s.Tags,
-				"branch":          s.Branch,
-				"duration_sec":    s.DurationSec,
-				"agent_name":      s.AgentName,
-				"display_name":    s.DisplayName,
-				"type":            "agent",
+				"session_id":         s.SessionID,
+				"source_type":        s.SourceType,
+				"first_timestamp":    ptr.Value(s.FirstTimestamp),
+				"last_timestamp":     ptr.Value(s.LastTimestamp),
+				"message_count":      s.MessageCount,
+				"summary":            s.Summary,
+				"first_user_message": s.FirstUserMessage, // the one field added since (#6207): the refactor is otherwise the same rows
+				"summary_title":      s.SummaryTitle,
+				"has_notes":          s.HasNotes,
+				"tags":               s.Tags,
+				"branch":             s.Branch,
+				"duration_sec":       s.DurationSec,
+				"agent_name":         s.AgentName,
+				"display_name":       s.DisplayName,
+				"type":               "agent",
 			}
 			agentSessions = append(agentSessions, m)
 		}
