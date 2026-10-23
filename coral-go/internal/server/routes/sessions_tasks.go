@@ -541,6 +541,9 @@ func (h *SessionsHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 	if hasToken && sessionstate.Classify(body.Summary) == sessionstate.NotificationNeedsInput {
 		h.autoAccept.Kick() // an auto-accept session's permission prompt is answered now, not on the next sweep
 	}
+	if hasToken && body.EventType == "stop" && h.indexKick != nil {
+		h.indexKick() // the turn is done and its reply is in the transcript: History lists the conversation within seconds, not at the next index pass (#6198)
+	}
 	writeJSON(w, http.StatusOK, created)
 }
 

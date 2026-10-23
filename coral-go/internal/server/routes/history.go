@@ -22,6 +22,8 @@ import (
 
 // HistoryHandler handles session history / search endpoints.
 type HistoryHandler struct {
+	// indexKick asks the history indexer for a pass soon (set by SetIndexKick): the list is empty, and a new conversation may not be indexed yet (#6198).
+	indexKick   func()
 	ss          *store.SessionStore
 	ts          *store.TaskStore
 	gs          *store.GitStore
@@ -68,6 +70,9 @@ func (h *HistoryHandler) ListSessions(w http.ResponseWriter, r *http.Request) {
 		// Cold-start fast path: when DB is empty and no filters active,
 		// match Python's file-scan fallback response shape (page_size=0).
 		if result.Total == 0 && !historyFiltered(params) && chatType != "group" {
+			if h.indexKick != nil {
+				h.indexKick() // an empty History on a machine with agents: the first conversation may only not be indexed yet (#6198)
+			}
 			writeJSON(w, http.StatusOK, map[string]any{
 				"sessions":  agentSessions,
 				"total":     0,
