@@ -2,6 +2,7 @@ package routes
 
 import (
 	"context"
+	"encoding/json"
 	"github.com/go-chi/chi/v5"
 	"github.com/subgentic/coral/internal/store"
 	"io"
@@ -12,7 +13,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -118,19 +118,68 @@ func apiPost(t *testing.T, url string) (int, string) {
 	return resp.StatusCode, string(b)
 }
 
-// #6701 (QA #6692): stopping a team takes its worktree away: the folder and the repository's registration of it. The removal ran in the folder that holds the worktrees, which is no repository, so
-// it only logged an error and left both.
-func TestStopTeamRemovesItsWorktree(t *testing.T) {
+// stopTeam stops the team over the API and returns what the answer says of its worktree.
+func stopTeam(t *testing.T, url, id string) map[string]any {
+	t.Helper()
+	status, body := apiPost(t, url+"/api/sessions/live/team/"+id+"/kill")
+	require.Equal(t, http.StatusOK, status, body)
+	var out struct {
+		Worktree map[string]any `json:"worktree"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(body), &out))
+	require.NotNil(t, out.Worktree, "the stop answers about the worktree: %s", body)
+	return out.Worktree
+}
+
+// #6701 (QA #6692): stopping a team takes its worktree away when nothing in it is unsaved: the folder, the repository's registration and the branch it held nothing on. The removal ran in the folder
+// that holds the worktrees, which is no repository, so it only logged an error and left all three.
+func TestStopTeamRemovesACleanWorktree(t *testing.T) {
 	url, cfg := teamServer(t)
 	git, id, wt := launchWorktreeTeam(t, url, cfg, "stopwt")
 	require.DirExists(t, wt)
 	require.Contains(t, git("worktree", "list"), id)
 
-	status, body := apiPost(t, url+"/api/sessions/live/team/"+id+"/kill")
-	require.Equal(t, http.StatusOK, status, body)
-	require.Eventually(t, func() bool {
-		_, err := os.Stat(wt)
-		return os.IsNotExist(err) && !strings.Contains(git("worktree", "list"), id)
-	}, 20*time.Second, 50*time.Millisecond, "the folder and the registration are gone")
-	assert.Contains(t, git("branch", "--list", "coral-team/"+id), "coral-team/"+id, "the branch, with its commits, stays")
+	got := stopTeam(t, url, id)
+	assert.Equal(t, true, got["removed"], "%v", got)
+	assert.NoDirExists(t, wt)
+	assert.NotContains(t, git("worktree", "list"), id)
+	assert.NotContains(t, git("branch", "--list", "coral-team/"+id), id, "a branch with nothing of its own goes with it")
+}
+
+// Coral never deletes a person's work without asking: a worktree with uncommitted or untracked changes stays, with its branch, and the answer says why.
+func TestStopTeamKeepsAWorktreeWithUnsavedWork(t *testing.T) {
+	for _, tc := range []struct{ name, file string }{{"untracked", "new.txt"}, {"modified", "README"}} {
+		url, cfg := teamServer(t)
+		git, id, wt := launchWorktreeTeam(t, url, cfg, "keep-"+tc.name)
+		if tc.name == "modified" {
+			require.NoError(t, os.WriteFile(filepath.Join(wt, tc.file), []byte("v1"), 0o644))
+			git("-C", wt, "add", tc.file)
+			git("-C", wt, "commit", "-q", "-m", "readme")
+		}
+		require.NoError(t, os.WriteFile(filepath.Join(wt, tc.file), []byte("unsaved work"), 0o644))
+
+		got := stopTeam(t, url, id)
+		assert.Equal(t, false, got["removed"], "%s: %v", tc.name, got)
+		assert.Contains(t, got["kept"], "uncommitted or untracked", tc.name)
+		b, err := os.ReadFile(filepath.Join(wt, tc.file))
+		require.NoError(t, err, tc.name)
+		assert.Equal(t, "unsaved work", string(b), tc.name)
+		assert.Contains(t, git("worktree", "list"), id, tc.name)
+		assert.Contains(t, git("branch", "--list", "coral-team/"+id), id, tc.name)
+	}
+}
+
+// A clean worktree whose branch has commits that are merged nowhere goes, and the branch stays.
+func TestStopTeamKeepsABranchWithUnmergedCommits(t *testing.T) {
+	url, cfg := teamServer(t)
+	git, id, wt := launchWorktreeTeam(t, url, cfg, "keepbranch")
+	require.NoError(t, os.WriteFile(filepath.Join(wt, "work.txt"), []byte("work"), 0o644))
+	git("-C", wt, "add", "work.txt")
+	git("-C", wt, "commit", "-q", "-m", "work")
+
+	got := stopTeam(t, url, id)
+	assert.Equal(t, true, got["removed"], "%v", got)
+	assert.Contains(t, got["kept"], "merged nowhere")
+	assert.NoDirExists(t, wt)
+	assert.Contains(t, git("branch", "--list", "coral-team/"+id), id, "the commits stay reachable")
 }
