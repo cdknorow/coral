@@ -19,9 +19,7 @@ const FRONTEND = path.resolve(__dirname, '../../coral-go/pkg/frontend');
 const STATIC = path.join(FRONTEND, 'static');
 const TEMPLATES = path.join(FRONTEND, 'templates');
 
-// Reviewed, still in the page (file:region id). Empty since #6637 and #6656 fixed every offender: a new one fails the lint, and a listed one that stops matching fails it too.
-const KNOWN = {
-};
+const { KNOWN } = require('./helpers/live_region_known'); // the list lives in one place: the runtime rule in helpers/announce_census.js reads it too
 
 function walk(dir, ext, out = []) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
