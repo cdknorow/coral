@@ -13,7 +13,8 @@ const HISTORY = `(() => {
         if (m === 'GET') {
             if (path === '/api/sessions/history') return json({ sessions: [
                 { session_id: '${SID}', summary_title: '', summary: "I'm working in \`/private/tmp/ct6194-audit/browser-home/my-first-project\`.", source_type: 'codex', agent_name: 'my-first-project' },
-                { session_id: 'titled-chat', summary_title: 'Release notes chat', summary: 'x', source_type: 'claude' }] });
+                { session_id: 'titled-chat', summary_title: 'Release notes chat', first_user_message: 'typed after the title', summary: 'x', source_type: 'claude' },
+                { session_id: 'typed-chat', summary_title: '', first_user_message: 'Fix the login redirect in /work/acme/web-app/src', summary: 'I changed the router.', source_type: 'claude' }] });
             if (path === '/api/sessions/history/${SID}') return json({ agent_type: 'codex', messages: [{ type: 'user', content: 'Hello' }, { type: 'assistant', text: 'Hi there.' }], total: 2, start: 0 });
             if (new RegExp('^/api/sessions/history/${SID}/(notes|git|tags|events|tasks|agent-notes|files)$').test(path) || path === '/api/tags') return json(path.endsWith('/notes') ? { notes_md: '' } : []);
         }
@@ -47,10 +48,11 @@ const HISTORY = `(() => {
 
         // (c) History
         await ev(`window.switchNavTab('history'); true`);
-        await waitFor(`document.querySelectorAll('#history-sessions-list [data-on-click="history-open"]').length === 2`, 'the chats', 10000);
+        await waitFor(`document.querySelectorAll('#history-sessions-list [data-on-click="history-open"]').length === 3`, 'the chats', 10000);
         const labels = await ev(`[...document.querySelectorAll('#history-sessions-list .session-label')].map(e => e.textContent)`);
         check('a chat with no title leads with its first reply, the path cut to its last folder, no backticks', labels[0] === "I'm working in my-first-project." && !/\/private|`/.test(labels[0]), JSON.stringify(labels));
-        check('a chat with a title keeps it', labels[1] === 'Release notes chat', JSON.stringify(labels));
+        check('a chat with a title keeps it, whatever was typed first', labels[1] === 'Release notes chat', JSON.stringify(labels));
+        check('a chat with no title leads with what the person typed first (path cut to its last folder), not the reply (#6251)', labels[2] === 'Fix the login redirect in src' && labels[0] === "I'm working in my-first-project.", JSON.stringify(labels));
         await ev(`document.querySelector('#history-sessions-list [data-session-id="${SID}"]').click(); true`);
         await waitFor(`document.getElementById('history-messages').textContent.includes('Hi there')`, 'the chat', 10000);
         const h = await ev(`(() => { const t = document.getElementById('history-session-title').textContent, id = document.getElementById('history-session-id'), b = document.getElementById('history-session-details'); return { t, idShown: id.getClientRects().length > 0, expanded: b.getAttribute('aria-expanded'), label: b.textContent }; })()`);
