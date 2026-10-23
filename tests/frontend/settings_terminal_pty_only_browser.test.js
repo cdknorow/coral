@@ -5,7 +5,8 @@ const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
 
 // words a person can see in a group now, per the audit (artifact 141071b6); a group with no number has not been cut yet
-const TERMINAL_BUDGET = 60; // the same as settings_text_budget_browser's, now on a pty-only system // (Security: +3 for #6047's install ID row, "Install ID", "Copy" and its hint; "No prompts, transcripts, or secrets are sent." stays visible beside the Usage analytics switch: it is what a person reads where they decide) // (Storage: 47 on a fresh server; a server where an earlier suite turned automatic cleanup on shows its two status lines, up to 62)
+const TERMINAL_BUDGET = 60;
+const WITH_WARNING_BUDGET = 64; // 60, and the tools folder warning's label, line and button when that row shows // the same as settings_text_budget_browser's, now on a pty-only system // (Security: +3 for #6047's install ID row, "Install ID", "Copy" and its hint; "No prompts, transcripts, or secrets are sent." stays visible beside the Usage analytics switch: it is what a person reads where they decide) // (Storage: 47 on a fresh server; a server where an earlier suite turned automatic cleanup on shows its two status lines, up to 62)
 
 (async () => {
     const { client, Page, Emulation, ev, waitFor, PRELOAD, install } = await connect();
@@ -26,10 +27,21 @@ const TERMINAL_BUDGET = 60; // the same as settings_text_budget_browser's, now o
         const seen = await ev(`(() => { const pane = document.querySelector('#settings-modal .settings-pane:not([hidden])'); const out = [];
             const shown = e => { for (let p = e; p; p = p.parentElement) { const s = getComputedStyle(p); if (s.display === 'none' || s.visibility === 'hidden' || p.hidden) return false; } return true; };
             const w = document.createTreeWalker(pane, NodeFilter.SHOW_TEXT);
-            for (let t = w.nextNode(); t; t = w.nextNode()) { const e = t.parentElement; if (!e || e.closest('select, option, script, style, .material-icons, #settings-tools-folder-row') || !shown(e)) continue; const v = t.nodeValue.trim(); if (v) out.push(v); }
+            for (let t = w.nextNode(); t; t = w.nextNode()) { const e = t.parentElement; if (!e || e.closest('select, option, script, style, .material-icons') || !shown(e)) continue; const v = t.nodeValue.trim(); if (v) out.push(v); }
             return out; })()`);
         const words = seen.join(' ').split(/\s+/).filter(Boolean).length;
         assert.ok(words <= TERMINAL_BUDGET, `Terminal shows ${words} words on a pty-only system, budget ${TERMINAL_BUDGET}: ${JSON.stringify(seen)}`);
+        // With the agent tools folder warning showing too (a portable install in the profile: the row's label, its one line and the "How to fix it" button, 16 words), the group stays within 64 words: the 60 of the budget plus that row, which is no longer left out of the count (its line carries its own subject because a status is announced alone)
+        await ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'settings_core.js'); m.renderToolsFolderStatus({ tools_folder: { path: 'C:\\\\Users\\\\someone\\\\Coral\\\\tools', writable_by: ['Users', 'Everyone'] } }); return true; })()`);
+        const withRow = await ev(`(() => { const pane = document.querySelector('#settings-modal .settings-pane:not([hidden])'); const out = [];
+            const shown = e => { for (let p = e; p; p = p.parentElement) { const s = getComputedStyle(p); if (s.display === 'none' || s.visibility === 'hidden' || p.hidden) return false; } return true; };
+            const w = document.createTreeWalker(pane, NodeFilter.SHOW_TEXT);
+            for (let t = w.nextNode(); t; t = w.nextNode()) { const e = t.parentElement; if (!e || e.closest('select, option, script, style, .material-icons') || !shown(e)) continue; const v = t.nodeValue.trim(); if (v) out.push(v); }
+            return out; })()`);
+        const wordsWithRow = withRow.join(' ').split(/\s+/).filter(Boolean).length;
+        assert.ok(withRow.some(t => /agent tools folder can be changed without administrator rights/.test(t)), 'the tools folder line shows: ' + JSON.stringify(withRow));
+        assert.ok(wordsWithRow <= WITH_WARNING_BUDGET, `Terminal shows ${wordsWithRow} words with the tools folder warning too, budget ${WITH_WARNING_BUDGET}: ${JSON.stringify(withRow)}`);
+        await ev(`document.getElementById('settings-tools-folder-row').hidden = true; true`);
         const note = await ev(`(() => { const p = document.getElementById('tb-fixed'), b = document.getElementById('tb-learn-fixed'), d = document.getElementById('tb-d-fixed'); const vis = e => e.getClientRects().length > 0;
             return { noteShown: vis(p), note: p.textContent.trim(), learnShown: vis(b), expanded: b.getAttribute('aria-expanded'), controls: b.getAttribute('aria-controls'), detailHidden: d.hidden, detail: d.textContent.trim() }; })()`);
         assert.ok(note.noteShown && note.learnShown, JSON.stringify(note));
