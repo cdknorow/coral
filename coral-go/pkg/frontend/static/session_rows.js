@@ -10,6 +10,7 @@ import { isStaleSession, staleReason, serversShown } from './server_status.js';
 import { sessionServer, keyLabel, sessionTeamKey } from './server_base.js';
 import { redrawLiveList } from './list_hooks.js';
 import { state } from './state.js';
+import { heldNotice } from './held_inputs.js';
 import { modelName, providerName, sessionLevel, typeName } from './model_labels.js';
 import { terminalGoneChip } from './terminal_gone.js';
 import { hooksMissingChip } from './hooks_missing.js';
@@ -305,6 +306,8 @@ export function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefau
     // The unread count on agent rows was not useful to users, so no chip is rendered.
     void unreadCount;
     const unreadChip = '';
+    const held = heldNotice(s); // automated messages held for over a minute (#6473)
+    const heldLine = held ? `<div class="session-held-line" title="${escapeAttr(held.text)}">${escapeHtml(held.text)}</div>` : '';
     const kebabMenuContent = _rowMenuContent(s, sid);
     // The menu's items (about 50 elements a row) are drawn when it opens (#4611): the row holds an empty menu and this module the text for it.
     rememberRowMenu(s, kebabMenuContent);
@@ -353,7 +356,7 @@ export function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefau
             <div class="session-mobile-meta">${mobileStatusChip}${unreadBoardBadge}</div>
             ${(goalLine || unreadChip) ? `<div class="session-line2">${goalLine}${unreadChip}</div>` : ''}
             ${agentLineHtml(s)}
-            ${branchTag}
+            ${branchTag}${heldLine}
         </div>
         <div class="session-tooltip"></div>
     </li>`;

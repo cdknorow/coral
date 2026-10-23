@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -430,4 +431,34 @@ func (rig *cmtRig) mustCode(out map[string]any) int {
 		return 200
 	}
 	return 0
+}
+
+// #6523 (Codex Test's #6512): the message names the exact command for the answer, with this version's link and this comment's id filled in, and that command's ids are the ones the reply route takes.
+func TestTheSendMessageNamesTheExactReplyCommand(t *testing.T) {
+	rig := newCmtRig(t)
+	rig.agent(1, "Dev", false)
+	cid := rig.ownerComment("Try 5,000 rows per batch.")
+	code, out := rig.send(cid, "Dev")
+	require.Equal(t, 200, code, fmt.Sprint(out))
+	m := rig.operatorMessages()[0].Content
+	want := fmt.Sprintf(`coral-agent artifact reply coral://artifacts/%s %d "your reply"`, cmtDoc, cid)
+	assert.Contains(t, m, "To answer, run exactly this", "the preamble says what to do")
+	assert.Contains(t, m, want, "the command with the ids filled in")
+	assert.Less(t, strings.Index(m, want), strings.Index(m, "--- comment (untrusted) ---"), "it is in the fixed part, before anything quoted")
+	assert.LessOrEqual(t, len(m), 2048)
+	// the ids in the command are what the reply route takes: an agent that types it as it stands reaches its thread
+	re := regexp.MustCompile(`coral-agent artifact reply coral://artifacts/([0-9a-f]{64}) (\d+) "your reply"`)
+	sm := re.FindStringSubmatch(m)
+	require.NotNil(t, sm)
+	code, rep := rig.do("POST", fmt.Sprintf("/api/artifacts/%s/comments/%s/reply", sm[1], sm[2]), asAgentSession(1), map[string]any{"body": "done"})
+	assert.Equal(t, http.StatusCreated, code, fmt.Sprint(rep))
+	// a long comment still leaves room for it: the whole message stays within its cap with the command in
+	long, err := rig.ss.CreateArtifactComment(context.Background(), store.ArtifactComment{ArtifactID: cmtDoc, Board: "team-a", AnchorJSON: `{"quote":"q","prefix":"p","suffix":"s"}`, Body: strings.Repeat("long comment ", 600),
+		AuthorIssuer: "local", AuthorSubject: "install-owner-id", AuthorKind: "owner"})
+	require.NoError(t, err)
+	_, _ = rig.send(long.ID, "Dev")
+	msgs := rig.operatorMessages()
+	last := msgs[len(msgs)-1].Content
+	assert.LessOrEqual(t, len(last), 2048)
+	assert.Contains(t, last, fmt.Sprintf("coral://artifacts/%s %d", cmtDoc, long.ID))
 }

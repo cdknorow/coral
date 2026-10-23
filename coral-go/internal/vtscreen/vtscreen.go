@@ -350,10 +350,19 @@ func (t *term) lineFeed() {
 			t.history = append(t.history[:0:0], t.history[len(t.history)-t.keep:]...)
 		}
 	}
+	// The row leaving the top is blanked and put back at the bottom, not allocated anew, unless it was kept as history (a flood of line feeds then costs no allocation).
+	top, topFaint := t.grid[0], t.faintGrid[0]
 	copy(t.grid, t.grid[1:])
-	t.grid[t.rows-1] = blankRow(t.cols)
 	copy(t.faintGrid, t.faintGrid[1:])
-	t.faintGrid[t.rows-1] = make([]bool, t.cols)
+	if t.keep > 0 && t.alt == nil {
+		top, topFaint = blankRow(t.cols), make([]bool, t.cols)
+	} else {
+		for i := range top {
+			top[i] = ' '
+		}
+		clear(topFaint)
+	}
+	t.grid[t.rows-1], t.faintGrid[t.rows-1] = top, topFaint
 }
 
 func (t *term) clear(y, from, to int) {
@@ -544,20 +553,33 @@ func (t *term) privateMode(params []int, set bool) {
 
 // Screen is a terminal screen kept as output arrives, for a reader that must not lose what an application drew once and never drew again (#6481): a TUI that repaints only the cells that change
 // (Codex's composer is drawn at the start and again only when it changes) leaves nothing of it in the tail of a replay ring after a few minutes of work, and a screen played from that tail has no
-// input box. The same deliberately small interpreter as Render, fed chunk by chunk: each chunk has the whole Budget, and a sequence or a character cut by a chunk's end is finished by the next.
+// input box. The same deliberately small interpreter as Render, fed chunk by chunk: a sequence or a character cut by a chunk's end is finished by the next.
+//
+// The work is a rolling budget, not one per chunk (Security's #6481 finding: a hostile stream of short clear-screen sequences cost 1.4 to 1.9 s of CPU per MiB inside the PTY read loop): every byte
+// written earns WorkPerByte cell operations, a burst of at most WorkBurst is kept, and an operation the credit cannot pay for is skipped, so the cost of any MiB of output is bounded
+// (WorkPerByte x 1 MiB plus one burst, and one operation of overshoot per chunk) whatever it holds, while ordinary output (a cell per byte, a scrolled row per line feed) stays far inside it.
 type Screen struct {
-	mu    sync.Mutex
-	t     *term
-	carry []byte // the start of a UTF-8 character cut by the end of a chunk
-	fed   bool
+	mu     sync.Mutex
+	t      *term
+	carry  []byte // the start of a UTF-8 character cut by the end of a chunk
+	fed    bool
+	credit int   // cell operations the next bytes may spend (at most WorkBurst)
+	work   int64 // cell operations spent in all (a test pins the bound)
 }
+
+// WorkPerByte and WorkBurst are the rolling budget of a live Screen: 128 cell operations earned per byte written (a line feed on a 120-column screen costs 120, a clear of one row up to
+// 500), and a burst of 4M kept for one chunk of 32 KiB at that rate.
+const (
+	WorkPerByte = 128
+	WorkBurst   = 4 << 20
+)
 
 // NewScreen is a blank cols x rows screen (the sizes Render takes).
 func NewScreen(cols, rows int) *Screen {
 	if cols <= 0 || rows <= 0 {
 		cols, rows = DefaultCols, DefaultRows
 	}
-	return &Screen{t: newTerm(min(cols, MaxCols), min(rows, MaxRows))}
+	return &Screen{t: newTerm(min(cols, MaxCols), min(rows, MaxRows)), credit: WorkBurst}
 }
 
 // Fed reports whether any output has been written to the screen.
@@ -602,8 +624,23 @@ func (s *Screen) Write(data []byte) {
 		}
 	}
 	s.fed = true
-	s.t.budget = Budget
-	s.t.write(data)
+	s.credit = min(WorkBurst, s.credit+len(data)*WorkPerByte)
+	s.t.budget = min(Budget, s.credit)
+	start := s.t.budget
+	s.t.write(data) // plays nothing while the credit is not above zero
+	spent := start - s.t.budget
+	s.credit -= spent // an operation is paid for as it starts: the overshoot is a debt the next bytes pay off, never forgiven (so tiny writes cannot each overshoot for free)
+	s.work += int64(spent)
+}
+
+// Work is the cell operations the screen has spent in all.
+func (s *Screen) Work() int64 {
+	if s == nil {
+		return 0
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.work
 }
 
 // Resize changes the screen's size, keeping what fits (an application repaints on its resize signal). The cursor is kept on the screen.

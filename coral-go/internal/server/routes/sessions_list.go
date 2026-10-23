@@ -481,6 +481,7 @@ func (h *SessionsHandler) agentRow(trace *phaseTrace, agent AgentInfo, lv liveIn
 		"board_job_title":       boardJobTitle(d.boardSubs, lv.boardNames, tmuxName, sid),
 		"board_unread":          boardUnread,
 		"held_inputs":           ptymanager.HeldCount(tmuxName), // automated sends the gate holds (#3578)
+		"held_since":            heldSinceField(tmuxName),       // when the oldest of them was first held, UTC, null at none (#6503)
 		"board_is_orchestrator": boardSubscriberFlag(boardSub),
 		"log_path":              agent.LogPath,
 		"sleeping":              lv.sleeping[sid],
@@ -959,4 +960,12 @@ func (h *SessionsHandler) terminalOfAgent(launchPath string) string {
 		return "tmux"
 	}
 	return terminalKind(h.backend)
+}
+
+// heldSinceField is the live row's held_since: the UTC time (RFC 3339) the oldest held automated send was first held, or nil when none is held (#6503).
+func heldSinceField(name string) any {
+	if t := ptymanager.HeldSince(name); !t.IsZero() {
+		return t.UTC().Format(time.RFC3339)
+	}
+	return nil
 }

@@ -24,14 +24,19 @@ function rememberLoads(client) {
     let loads = 0;    // main-frame load events seen
     let loadAt = 0;   // when the last one came
     let mark = null;  // loads when the last navigate was made; null once its load was handed out or a newer load cycle started
-    client.on('Page.loadEventFired', () => { loads++; loadAt = Date.now(); });
+    let waiting = 0;  // loadEventFired() waits asked and not yet answered: a load that comes while one is waiting was heard (a wait made before its navigate: `const loaded = Page.loadEventFired(); await Page.navigate(...); await loaded;`)
+    client.on('Page.loadEventFired', () => { loads++; loadAt = Date.now(); if (waiting > 0) mark = null; }); // so it is not kept for the next wait: servers_table's about:blank load answered the wait for the page after it (#6195 follow-up)
     client.on('Page.frameStartedLoading', () => { if (mark !== null && loads > mark) mark = null; }); // the navigate's load came and nobody asked: this is another load, and that is the one to wait for
     const navigate = Page.navigate, load = Page.loadEventFired;
     Page.navigate = function (...args) { mark = loads; return navigate.apply(this, args); };
     Page.loadEventFired = function (...args) {
         if (args.length === 0 && mark !== null && loads > mark && Date.now() - loadAt <= LATE_MS) { mark = null; return Promise.resolve({ timestamp: Date.now() / 1000 }); }
         if (args.length === 0) mark = null;
-        return load.apply(this, args);
+        waiting++;
+        const p = load.apply(this, args);
+        const done = () => { waiting--; };
+        p.then(done, done);
+        return p;
     };
 }
 

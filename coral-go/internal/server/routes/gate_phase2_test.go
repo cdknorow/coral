@@ -108,3 +108,71 @@ func TestHeldInputsInTheLiveList(t *testing.T) {
 	}
 	assert.Equal(t, 1, wsHeld, "the feed")
 }
+
+// #6503: the live row says when the oldest held send was first held (held_since, UTC), so a page that opens late can time its minute; it is null at no held send and starts again after.
+func TestHeldSinceInTheLiveListAndTheFeed(t *testing.T) {
+	phase2InTurn(t)
+	server, handler, mock, ss := setupSessionsTestServer(t)
+	sid := "00000000-0000-4000-8000-000000006503"
+	name := naming.SessionName("claude", sid)
+	require.NoError(t, ss.RegisterLiveSession(context.Background(), &store.LiveSession{SessionID: sid, AgentType: "claude", AgentName: "repo", WorkingDir: "/tmp/test"}))
+	mock.addSession(name, "/tmp/test")
+	t.Cleanup(func() { ptymanager.DropHeld(name, "test done") })
+	row := func() map[string]any {
+		resp, err := http.Get(server.URL + "/api/sessions/live")
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		var list []map[string]any
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&list))
+		for _, s := range list {
+			if s["session_id"] == sid {
+				return s
+			}
+		}
+		t.Fatal("the agent is not in the live list")
+		return nil
+	}
+	hold := func(key string) {
+		d, err := ptymanager.DeliverAutomated(context.Background(), ptymanager.AutomatedInput{Term: mock, Name: name, AgentType: "claude", SessionID: sid,
+			Key: key, Text: "text " + key, What: "board nudge", Send: func(context.Context) error { return nil }})
+		require.NoError(t, err)
+		require.Equal(t, ptymanager.Held, d)
+	}
+
+	r := row()
+	assert.Equal(t, 0.0, r["held_inputs"])
+	assert.Nil(t, r["held_since"], "nothing held: null, and the key is there")
+	_, has := r["held_since"]
+	assert.True(t, has, "the field is always in the row")
+
+	before := time.Now().UTC().Add(-2 * time.Second)
+	hold("first")
+	r = row()
+	first, err := time.Parse(time.RFC3339, r["held_since"].(string))
+	require.NoError(t, err, "RFC 3339")
+	assert.True(t, first.After(before) && !first.After(time.Now().UTC().Add(2*time.Second)), "the time it was first held: %s", first)
+	assert.Equal(t, "UTC", first.Location().String())
+
+	time.Sleep(1100 * time.Millisecond)
+	hold("second")
+	r = row()
+	assert.Equal(t, 2.0, r["held_inputs"])
+	assert.Equal(t, first.Format(time.RFC3339), r["held_since"], "the oldest, not the newest")
+
+	wsList, err := handler.buildSessionListForWS(httptest.NewRequest(http.MethodGet, "/ws/coral", nil))
+	require.NoError(t, err)
+	for _, s := range wsList {
+		if s["session_id"] == sid {
+			assert.Equal(t, first.Format(time.RFC3339), s["held_since"], "the feed carries it too")
+		}
+	}
+
+	ptymanager.DropHeld(name, "test") // the count is back to zero
+	r = row()
+	assert.Equal(t, 0.0, r["held_inputs"])
+	assert.Nil(t, r["held_since"], "reset at 0")
+	hold("third")
+	later, err := time.Parse(time.RFC3339, row()["held_since"].(string))
+	require.NoError(t, err)
+	assert.False(t, later.Before(first.Add(time.Second)), "after a reset it starts from the new hold, not the old one")
+}

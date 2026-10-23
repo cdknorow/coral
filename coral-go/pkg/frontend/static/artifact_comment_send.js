@@ -16,6 +16,9 @@ const RESULT_WORDS = {
 };
 export const resultWords = (r) => RESULT_WORDS[r.state] || r.reason || 'Not asked';
 
+/** What an agent with an open ask into this thread is called in the picker: asked, and how many times it has replied. */
+export const askedWords = (k) => k.replies > 0 ? `Already asked, ${k.replies} repl${k.replies === 1 ? 'y' : 'ies'} so far` : 'Already asked';
+
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 
 /** Whether an agent of the board's status list can be asked now, and why not: asleep and not running cannot (the server refuses them as well). */
@@ -59,18 +62,26 @@ export function buildSendBlock(x) {
             const cb = document.createElement('input'); cb.type = 'checkbox'; cb.value = a.role;
             const asked = x.asked.get(a.role.toLowerCase());
             cb.checked = x.picked.has(a.role);
-            cb.disabled = !a.can || !!asked || !!x.results || x.busy || (full && !cb.checked);
-            cb.addEventListener('change', () => x.onToggle(a.role));
+            // Not pickable (asleep, not running, already asked, answered, busy, the cap): aria-disabled and still focusable, so a keyboard and a screen reader reach the box and read WHY (aria-describedby),
+            // and a click or Space does nothing (a disabled box is skipped by Tab and says nothing of its reason).
+            const off = !a.can || !!asked || !!x.results || x.busy || (full && !cb.checked);
+            if (off) cb.setAttribute('aria-disabled', 'true');
+            cb.addEventListener('click', (e) => { if (off) e.preventDefault(); });
+            cb.addEventListener('change', () => { if (!off) x.onToggle(a.role); });
             label.append(cb, el('span', 'ac-ask-name', a.role));
             if (a.name && a.name.toLowerCase() !== a.role.toLowerCase()) label.append(el('span', 'ac-ask-sub', a.name));
             li.append(label);
             const res = x.results && x.results.find(r => r.agent.toLowerCase() === a.role.toLowerCase());
             const why = res ? resultWords(res) : (asked || (!a.can ? a.why : ''));
-            if (why) { const s = el('span', 'ac-ask-state' + (res && res.state === 'sent' ? ' ac-ask-sent' : ''), why); li.append(s); li.dataset.state = res ? res.state : (asked ? 'asked' : 'unavailable'); }
+            if (why) {
+                const s = el('span', 'ac-ask-state' + (res && res.state === 'sent' ? ' ac-ask-sent' : ''), why); s.id = `ac-ask-why-${x.id}-${list.children.length}`;
+                li.append(s); li.dataset.state = res ? res.state : (asked ? 'asked' : 'unavailable');
+                cb.setAttribute('aria-describedby', s.id);
+            } else if (off && full && !x.results) cb.setAttribute('aria-describedby', `ac-ask-cap-${x.id}`);
             list.append(li);
         }
         box.append(list);
-        if (full && !x.results) box.append(el('p', 'ac-ask-note', `Up to ${MAX_AGENTS} agents at a time.`));
+        if (full && !x.results) { const cap = el('p', 'ac-ask-note', `Up to ${MAX_AGENTS} agents at a time.`); cap.id = `ac-ask-cap-${x.id}`; box.append(cap); }
     }
     const err = el('p', 'ac-error', x.error || ''); err.setAttribute('role', 'alert'); err.hidden = !x.error; box.append(err);
     const row = el('div', 'ac-composer-row');

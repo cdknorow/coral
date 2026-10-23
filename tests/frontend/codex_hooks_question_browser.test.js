@@ -49,6 +49,8 @@ const HOOKS = { question: 'Hooks need review: 3 hooks are new or changed', optio
 
             const hint = () => ev(`(() => { const h = document.getElementById('composer-hooks-hint'), i = document.getElementById('command-input'); const ids = (i.getAttribute('aria-describedby') || '').split(/\\s+/).filter(Boolean);
                 return { shown: !!h && !h.hidden && h.getClientRects().length > 0, text: h ? h.textContent : '', described: ids.map(id => (document.getElementById(id) || {}).textContent || '').join(' ') }; })()`);
+            const boxW = await ev(`document.getElementById('command-input').getBoundingClientRect().width / document.querySelector('.command-pane-body').getBoundingClientRect().width`);
+            check(`${tag}: the box keeps its width beside the line (on a phone it was squeezed into a column)`, boxW >= 0.5, String(boxW));
             const hk = await hint();
             check(`${tag}: the instruction is also a visible line, and the box is described by it (not the placeholder only)`, hk.shown && hk.text === "Answer Codex's question about Coral's hooks first" && hk.described.includes(hk.text), JSON.stringify(hk));
 

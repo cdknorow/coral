@@ -147,9 +147,10 @@ func main() {
 
 const artifactUsageText = `Usage: coral-agent artifact upload <file> [--name NAME] [--media-type TYPE] [--new-version-of <link>]
        coral-agent artifact download <coral://artifacts/digest> [--output FILE] [--force]
-Run coral-agent artifact upload --help or coral-agent artifact download --help for one of them.`
+       coral-agent artifact reply <coral://artifacts/digest> <comment-id> <text | ->
+Run coral-agent artifact upload --help, artifact download --help or artifact reply --help for one of them.`
 
-const artifactUploadUsageText = `Usage: coral-agent artifact upload <file> [--name NAME] [--media-type TYPE]
+const artifactUploadUsageText = `Usage: coral-agent artifact upload <file> [--name NAME] [--media-type TYPE] [--new-version-of <link>]
 
 --new-version-of adds the file as a new version of an artifact this agent's board uploaded (its
 coral://artifacts/<digest> link, or a series link coral://artifacts/series/<id>): the reply carries
@@ -164,12 +165,22 @@ Windows use coral-board post --file <path> (coral-board help windows); in Bash,
 coral-board post - <<'EOF' (body and closing EOF on separate lines).
 Never put backticks or $( ) inside a double-quoted post argument.`
 
+const artifactReplyUsageText = `Usage: coral-agent artifact reply <coral://artifacts/digest> <comment-id> <text | ->
+
+reply answers a comment the Operator sent you (the message names this exact command with the
+link and the comment id filled in): it posts your text into that comment's thread, as you, and
+only into a thread you were asked into. Give the text as one argument, or - to read it from
+standard input (for several lines or quotes). At most 5 replies of 8 KiB each per thread; a
+reply is checked for secrets before it is kept. A refusal (not asked, the thread ended, too many
+replies, the board paused or asleep) prints Coral's reason and exits non-zero. The options may
+stand before or after the link.`
+
 const artifactDownloadUsageText = `Usage: coral-agent artifact download <coral://artifacts/digest> [--output FILE] [--force]
 
 Downloads the artifact, checks its SHA-256 and prints the local path. The options
 may stand before or after the link; --force replaces an existing --output file.`
 
-// artifactUsage is the usage of one artifact operation, or of both when rest names none.
+// artifactUsage is the usage of one artifact operation, or of all of them when rest names none.
 func artifactUsage(rest []string) string {
 	if len(rest) > 0 {
 		switch rest[0] {
@@ -177,12 +188,18 @@ func artifactUsage(rest []string) string {
 			return artifactUploadUsageText
 		case "download":
 			return artifactDownloadUsageText
+		case "reply":
+			return artifactReplyUsageText
 		}
 	}
 	return artifactUsageText
 }
 
 func cmdArtifact(args []string) {
+	if len(args) >= 1 && args[0] == "reply" {
+		cmdArtifactReply(args[1:])
+		return
+	}
 	if len(args) >= 1 && args[0] == "download" {
 		opts, err := splitOptions(args[1:], []string{"output"}, []string{"force"})
 		if err != nil || len(opts.Positional) != 1 {
@@ -885,4 +902,81 @@ func readServer(r io.Reader) ([]byte, error) {
 		return b, err
 	}
 	return clitext.CleanJSON(b), err
+}
+
+// cmdArtifactReply is "coral-agent artifact reply <link> <comment-id> <text | ->" (#6523): the reply to a comment the Operator sent this agent (the Send-to-agent message names this
+// command with the ids filled in). The text is one argument, or - for standard input.
+func cmdArtifactReply(args []string) {
+	if len(args) != 3 {
+		fmt.Fprintf(os.Stderr, "Error: reply needs the artifact link, the comment id and the text (or - for standard input)\n%s\n", artifactUsageText)
+		os.Exit(2)
+	}
+	text := args[2]
+	if text == "-" {
+		b, err := io.ReadAll(io.LimitReader(os.Stdin, 64<<10))
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "Error: could not read the reply from standard input:", err)
+			clierr.Exit1()
+		}
+		text = string(b)
+	}
+	if err := replyToComment(serverURL, args[0], args[1], text, os.Stdout); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		clierr.Exit1()
+	}
+}
+
+// replyToComment posts text into the thread of comment commentID of the artifact ref, through the reply route (the agent's own token says who it is; the server decides whether it was
+// asked). It prints one line on success; a refusal is an error carrying Coral's own reason.
+func replyToComment(serverURL, ref, commentID, text string, stdout io.Writer) error {
+	id, err := artifactDigest(serverURL, ref)
+	if err != nil {
+		return err
+	}
+	n, err := strconv.ParseInt(commentID, 10, 64)
+	if err != nil || n <= 0 {
+		return fmt.Errorf("the comment id is the number in the message you were sent, not %q", commentID)
+	}
+	commentID = strconv.FormatInt(n, 10) // the path is exactly the digits: "+5" and "0005" are 5
+	if strings.TrimSpace(text) == "" {
+		return fmt.Errorf("a reply needs some text")
+	}
+	payload, _ := json.Marshal(map[string]string{"body": text})
+	req, err := http.NewRequest(http.MethodPost, serverURL+"/api/artifacts/"+id+"/comments/"+commentID+"/reply", bytes.NewReader(payload))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	wait := clierr.Timeout(time.Minute)
+	resp, err := (&http.Client{Timeout: wait}).Do(req)
+	if err != nil {
+		return clierr.CannotReach(hooks.RedactedURL(serverURL), err, wait)
+	}
+	defer resp.Body.Close()
+	clierr.NoteStatus(resp.StatusCode)
+	body, _ := readServer(resp.Body)
+	var reply struct {
+		ID    int64  `json:"id"`
+		Error string `json:"error"`
+		Code  string `json:"code"`
+	}
+	_ = json.Unmarshal(body, &reply)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		reason := reply.Error
+		if reason == "" {
+			reason = strings.TrimSpace(string(body))
+		}
+		if reason == "" {
+			reason = resp.Status
+		}
+		if reply.Code != "" {
+			reason += " (" + reply.Code + ")"
+		}
+		return fmt.Errorf("reply refused (HTTP %d): %s", resp.StatusCode, reason)
+	}
+	if reply.ID == 0 { // a 2xx that is not a stored comment is not a reply
+		return fmt.Errorf("the reply was not kept (HTTP %d): %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	fmt.Fprintf(stdout, "Reply posted (comment %d).\n", reply.ID)
+	return nil
 }

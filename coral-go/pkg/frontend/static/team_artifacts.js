@@ -282,7 +282,7 @@ function buildHeading({ personal, scopeName, busy }, bar) {
     refresh.innerHTML = RELOAD_ICON;
     refresh.title = 'Refresh'; refresh.setAttribute('aria-label', 'Refresh');
     if (busy) refresh.setAttribute('aria-disabled', 'true'); // not disabled: the focus stays on it while the list loads
-    refresh.addEventListener('click', () => { if (!caches[source].busy) load(false); });
+    refresh.addEventListener('click', () => { if (!caches[source].busy) load(false, true); });
     const help = el('button', 'team-artifacts-action team-artifacts-help');
     help.type = 'button';
     help.title = 'Copy instructions for agents on how to publish an artifact';
@@ -323,7 +323,7 @@ function buildStatus({ personal, items, busy, error, truncated }) {
 /** Retry, after a failed load. */
 function buildRetry(items) {
     const retry = el('button', 'team-artifacts-action team-artifacts-retry', 'Retry');
-    retry.type = 'button'; retry.addEventListener('click', () => { afterRetry = true; load(items.length > 0); });
+    retry.type = 'button'; retry.addEventListener('click', () => { afterRetry = true; load(items.length > 0 && !!caches[source].askedMore, true); }); // what failed is asked again: a next page appends, a first page (a Refresh that kept its rows, #6509) replaces them
     return retry;
 }
 
@@ -551,7 +551,9 @@ function render() {
     restoreFocus(root);
 }
 
-async function load(append = false) {
+// keep: the same list asked for again (Refresh): what is on screen stays until the new answer is here. Emptying it first shrank the scrolling box, and the browser put the person back at the top as soon as a frame
+// passed while the answer was on its way (#6509); a list of another board, agent or search is emptied (the old rows are not its rows).
+async function load(append = false, keep = false) {
     if (!isArtifactSource() || (source === 'artifacts' ? !sessionID : !team)) return;
     const scope = source;
     syncFilters(); // this board's remembered search and filters, before the first ask
@@ -563,19 +565,21 @@ async function load(append = false) {
     // A standalone agent has no team board: its artifacts are the files it uploaded.
     const standalone = scope === 'artifacts' && !team;
     const requestedSession = sessionID;
-    if (!append) { cache.items=[]; cache.hasMore=false; cache.truncated=false; cache.loaded=false; cache.cursor=''; }
+    if (!append) { if (!keep || !cache.loaded) { cache.items=[]; cache.hasMore=false; cache.truncated=false; cache.loaded=false; } cache.cursor=''; }
+    const from = append ? cache.items.length : 0; // where this answer starts: the first page, or after what is shown
+    cache.askedMore = append; // for Retry: a failed next page is asked again as a next page, a failed first page as the first
     cache.busy=true; cache.error=''; render();
     try {
         const params = new URLSearchParams({limit:'100'});
-        if (scope === 'artifacts' && standalone) { params.set('offset',String(cache.items.length)); params.set('session_id',requestedSession); }
+        if (scope === 'artifacts' && standalone) { params.set('offset',String(from)); params.set('session_id',requestedSession); }
         else if (!standalone) {
             if (scope === 'artifacts') params.set('session_id', requestedSession); // one agent's list: the same query, scoped to the agent (the totals are the agent's)
             // The search, the filters and the sort are the server's to apply; the next page is asked for by the cursor the last one gave (not by offset).
             for (const [k, v] of Object.entries(toParams(views[scope].filters))) params.set(k, v);
             if (!append) params.set('offset', '0');
             else if (cache.cursor) params.set('cursor', cache.cursor);
-            else params.set('offset', String(cache.items.length)); // a reply with no cursor is paged by offset
-        } else params.set('offset',String(cache.items.length));
+            else params.set('offset', String(from)); // a reply with no cursor is paged by offset
+        } else params.set('offset',String(from));
         const response = await (standalone
             ? fetch(serverUrl(`/api/session-artifacts?${params}`, sessionServer(state.currentSession)), {signal:cache.controller.signal})
             : boardFetch(team, `/artifacts?${params}`, {signal:cache.controller.signal}));

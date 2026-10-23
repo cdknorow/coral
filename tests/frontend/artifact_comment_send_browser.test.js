@@ -18,7 +18,7 @@ const MD = ['# Migration plan', '', '## Steps', '', '1. Add the new columns behi
     const STUB = `(() => {
         const real = window.fetch; window.__sends = [];
         window.__cs = [
-            { id: 1, parent_id: null, anchor: { quote: 'backfill in batches of 500 rows.', prefix: 'columns behind a flag and', suffix: '2. Switch' }, body: 'Batches of 500 is too small. Try 5,000.', author: { kind: 'owner', issuer: 'local', subject: 'Operator', name: 'You' }, created_at: new Date(Date.now() - 600000).toISOString() },
+            { id: 1, asks: [{ agent: 'Reviewer', open: true, replies: 2 }, { agent: 'Docs Writer', open: false, replies: 0 }], parent_id: null, anchor: { quote: 'backfill in batches of 500 rows.', prefix: 'columns behind a flag and', suffix: '2. Switch' }, body: 'Batches of 500 is too small. Try 5,000.', author: { kind: 'owner', issuer: 'local', subject: 'Operator', name: 'You' }, created_at: new Date(Date.now() - 600000).toISOString() },
             { id: 2, parent_id: 1, anchor: null, body: 'Measured: 9 s per 5,000.', author: { kind: 'agent', issuer: 'local', subject: 'qa', name: 'QA Engineer' }, created_at: new Date(Date.now() - 60000).toISOString() },
             { id: 3, parent_id: null, anchor: { quote: 'Switch reads to the new columns.' }, body: 'Fine.', author: { kind: 'owner', issuer: 'local', subject: 'Operator', name: 'You' }, created_at: new Date(Date.now() - 86400000).toISOString(), resolved_at: new Date(Date.now() - 80000000).toISOString(), resolved_by: { subject: 'Operator' } },
         ];
@@ -27,6 +27,7 @@ const MD = ['# Migration plan', '', '## Steps', '', '1. Add the new columns behi
             { name: 'Backend', role: 'Backend Dev', agent_type: 'codex', availability: 'busy' },
             { name: 'Sleepy', role: 'UI Dev', agent_type: 'claude', availability: 'sleeping' },
             { name: 'Gone', role: 'Docs Writer', agent_type: 'claude', availability: 'offline' },
+            { name: 'Rev', role: 'Reviewer', agent_type: 'claude', availability: 'available' },
             { name: 'shell', role: 'Shell', agent_type: 'terminal', availability: 'unavailable' },
         ];
         window.__send = { status: 200, body: null }; window.__you = { can_comment: true, can_lock: true };
@@ -59,7 +60,7 @@ const MD = ['# Migration plan', '', '## Steps', '', '1. Add the new columns behi
     };
     const sendBtn = id => `document.querySelector('.ac-card[data-id="${id}"] .ac-ask-open')`;
     const block = () => ev(`(() => { const b = document.querySelector('.ac-ask'); if (!b) return null;
-        return { title: b.querySelector('.ac-ask-title').textContent, agents: [...b.querySelectorAll('.ac-ask-agent')].map(li => ({ role: li.querySelector('input').value, text: li.textContent.replace(/\\s+/g, ' ').trim(), disabled: li.querySelector('input').disabled, checked: li.querySelector('input').checked, state: li.dataset.state || '' })),
+        return { title: b.querySelector('.ac-ask-title').textContent, agents: [...b.querySelectorAll('.ac-ask-agent')].map(li => ({ role: li.querySelector('input').value, text: li.textContent.replace(/\\s+/g, ' ').trim(), disabled: li.querySelector('input').getAttribute('aria-disabled') === 'true' && !li.querySelector('input').disabled, checked: li.querySelector('input').checked, state: li.dataset.state || '' })),
             note: b.querySelector('.ac-ask-note').textContent, go: (b.querySelector('.ac-ask-go') || {}).textContent || '', goDisabled: !!b.querySelector('.ac-ask-go') && b.querySelector('.ac-ask-go').disabled, close: (b.querySelector('.ac-cancel') || {}).textContent, error: b.querySelector('.ac-error').hidden ? '' : b.querySelector('.ac-error').textContent,
             fits: b.getBoundingClientRect().right <= innerWidth + 1 && document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1 }; })()`);
     try {
@@ -81,9 +82,15 @@ const MD = ['# Migration plan', '', '## Steps', '', '1. Add the new columns behi
             await waitFor(`document.querySelectorAll('.ac-ask .ac-ask-agent').length >= 3`, 'the agents', 8000);
             await sleep(200); // sleep-ok: focus moves to the first agent after the list is drawn
             let b = await block();
-            check(`${tag}: it names the board and lists its agents (a terminal is not one), asleep and not running shown and not pickable`, /ask-team/.test(b.title) && b.note === 'Each agent you pick gets this comment as a message. They answer in this thread.' && b.agents.map(a => a.role).join() === 'QA Engineer,Backend Dev,UI Dev,Docs Writer'
+            check(`${tag}: it names the board and lists its agents (a terminal is not one), asleep and not running shown and not pickable`, /ask-team/.test(b.title) && b.note === 'Each agent you pick gets this comment as a message. They answer in this thread.' && b.agents.map(a => a.role).join() === 'QA Engineer,Backend Dev,UI Dev,Docs Writer,Reviewer'
                 && b.agents.find(a => a.role === 'UI Dev').disabled && /Asleep: wake it first/.test(b.agents.find(a => a.role === 'UI Dev').text) && b.agents.find(a => a.role === 'Docs Writer').disabled && /Not running/.test(b.agents.find(a => a.role === 'Docs Writer').text)
                 && !b.agents[0].disabled && !b.agents[1].disabled, JSON.stringify(b));
+            const reasons = await ev(`[...document.querySelectorAll('.ac-ask input[aria-disabled="true"]')].map(i => ({ role: i.value, focusable: !i.disabled && i.tabIndex >= 0, why: (document.getElementById(i.getAttribute('aria-describedby')) || {}).textContent || '' }))`);
+            check(`${tag}: an agent that cannot be asked is aria-disabled and still focusable, and its reason is its description`, reasons.length === 3 && reasons.every(r => r.focusable && r.why) && reasons.find(r => r.role === 'UI Dev').why === 'Asleep: wake it first' && reasons.find(r => r.role === 'Docs Writer').why === 'Not running', JSON.stringify(reasons));
+            await ev(`document.querySelector('.ac-ask input[value="UI Dev"]').click(); true`);
+            check(`${tag}: a click on one does nothing (not ticked, the button still off)`, !(await ev(`document.querySelector('.ac-ask input[value="UI Dev"]').checked`)) && (await block()).goDisabled);
+            const rev = b.agents.find(a => a.role === 'Reviewer'), docs = b.agents.find(a => a.role === 'Docs Writer');
+            check(`${tag}: an ask the server says is open shows before anything is sent: "Already asked, 2 replies so far", not pickable; a closed one is not marked`, /Already asked, 2 replies so far/.test(rev.text) && rev.disabled && rev.state === 'asked' && !/Already asked/.test(docs.text), JSON.stringify([rev.text, docs.text]));
             check(`${tag}: nothing picked: the button is off; focus is on the first agent that can be picked`, b.goDisabled && b.go === 'Send to agent' && (await ev(`document.activeElement && document.activeElement.value`)) === 'QA Engineer', JSON.stringify([b.go, b.goDisabled]));
             await ev(`document.querySelector('.ac-ask input[value="QA Engineer"]').click(); true`);
             await ev(`document.querySelector('.ac-ask input[value="Backend Dev"]').click(); true`);
@@ -120,10 +127,10 @@ const MD = ['# Migration plan', '', '## Steps', '', '1. Add the new columns behi
             await ev(`document.querySelector('.ac-ask .ac-cancel').click(); true`);
             await ev(`window.__send = { status: 429, body: { ok: false, error: 'too many comments sent to agents; try again later' } }; ${sendBtn(1)}.click(); true`);
             await waitFor(`document.querySelectorAll('.ac-ask .ac-ask-agent').length >= 3`, 'the agents a third time', 8000);
-            await ev(`document.querySelector('.ac-ask input[value="QA Engineer"]:not(:disabled)')?.click(); true`);
+            await ev(`document.querySelector('.ac-ask input[value="QA Engineer"]:not([aria-disabled="true"])')?.click(); true`);
             b = await block();
             check(`${tag}: an asked agent is not pickable again`, b.go === 'Send to agent' && b.goDisabled);
-            await ev(`document.querySelector('.ac-ask input[value="Docs Writer"]:not(:disabled)')?.click(); document.querySelector('.ac-ask-go')?.click(); true`);
+            await ev(`document.querySelector('.ac-ask input[value="Docs Writer"]:not([aria-disabled="true"])')?.click(); document.querySelector('.ac-ask-go')?.click(); true`);
             await waitFor(`!!document.querySelector('.ac-ask .ac-error:not([hidden])')`, 'the refusal', 6000);
             b = await block();
             check(`${tag}: a refusal with no results says the server's words, and the person can try again`, /too many comments sent/.test(b.error) && b.close === 'Cancel', JSON.stringify(b.error));

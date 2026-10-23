@@ -1,6 +1,7 @@
 package vtscreen
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -32,14 +33,62 @@ func TestAScreenKeepsWhatWasDrawnOnceThroughAHundredThousandRepaints(t *testing.
 	assert.True(t, s.Fed())
 }
 
-// Each chunk has its own work budget: a screen written a million times is not cut off at a total.
-func TestEveryChunkHasTheWholeBudget(t *testing.T) {
-	s := NewScreen(120, 40)
-	for i := 0; i < 400; i++ {
-		s.Write([]byte(strings.Repeat("\x1b[2J", 1500)))
+// The cost of hostile output is bounded per byte (Security's #6481 finding: short clear-screen sequences cost 1.4 to 1.9 s of CPU per MiB in the PTY read loop under a per-chunk budget). The cell
+// operations a screen spends over any MiB are at most WorkPerByte x 1 MiB plus one burst (and one operation of overshoot per chunk), whatever the bytes are.
+func TestTheWorkOfAMiBOfHostileOutputIsBoundedPerByte(t *testing.T) {
+	const mib = 1 << 20
+	// an operation is paid for when it starts and the overshoot is a debt, so the whole MiB may overshoot by the one operation that ran the credit out (a whole 120x40 clear at most)
+	limit := int64(WorkPerByte*mib + WorkBurst + 120*40)
+	for name, unit := range map[string]string{
+		"clear screen":         "\x1b[2J",
+		"clear screen at home": "\x1b[H\x1b[2J",
+		"line feeds":           "\n",
+		"erase rows":           "\x1b[1;1H\x1b[2K",
+		"erase lines below":    "\x1b[J",
+		"alternate screen":     "\x1b[?1049h\x1b[?1049l",
+	} {
+		// The PTY read loop sees whatever sizes the agent flushes in: the bound holds for 32 KiB, 4 KiB and 64-byte writes alike.
+		for _, size := range []int{32 * 1024, 4 * 1024, 64} {
+			t.Run(fmt.Sprintf("%s in %d-byte writes", name, size), func(t *testing.T) {
+				s := NewScreen(120, 40)
+				chunk := []byte(strings.Repeat(unit, max(1, size/len(unit))))
+				for sent := 0; sent < mib; sent += len(chunk) {
+					s.Write(chunk)
+				}
+				assert.LessOrEqual(t, s.Work(), limit, "a MiB of %q costs at most the rolling budget", unit)
+			})
+		}
 	}
-	s.Write([]byte("\x1b[1;1Hstill drawing"))
-	assert.Contains(t, s.Render(), "still drawing")
+}
+
+// Ordinary output spends a small part of the budget and is unchanged: a screenful of text, scrolled output and repaints are all played as a plain Render plays them.
+func TestOrdinaryOutputIsPlayedInFullWithinTheBudget(t *testing.T) {
+	var b strings.Builder
+	for i := 0; i < 3000; i++ {
+		b.WriteString(fmt.Sprintf("line %d of ordinary output with some text on it\r\n", i))
+		if i%100 == 0 {
+			b.WriteString("\x1b[2J\x1b[1;1H") // a full repaint now and then, as a TUI does
+		}
+	}
+	out := []byte(b.String())
+	s := NewScreen(120, 40)
+	for i := 0; i < len(out); i += 4096 {
+		s.Write(out[i:min(i+4096, len(out))])
+	}
+	assert.Equal(t, Render(out, 120, 40), s.Render())
+	assert.Less(t, s.Work(), int64(WorkPerByte*len(out))/4, "far inside the budget")
+}
+
+// The budget is rolling: output after a flood is played again as it earns credit.
+func TestTheBudgetRefillsAfterAFlood(t *testing.T) {
+	s := NewScreen(120, 40)
+	flood := []byte(strings.Repeat("\x1b[2J", 32*1024/4))
+	for i := 0; i < 64; i++ {
+		s.Write(flood)
+	}
+	s.Write([]byte(strings.Repeat("quiet text ", 30000))) // earns credit
+	s.Write([]byte("\x1b[2J\x1b[1;1Hback to normal"))
+	assert.Contains(t, s.Render(), "back to normal")
 }
 
 func TestAResizedScreenKeepsWhatFits(t *testing.T) {
