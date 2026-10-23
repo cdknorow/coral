@@ -5,6 +5,7 @@
 //   panel_sandbox.js    the constant address of the panel host page
 //   view_sandbox.js     the constant address of the custom-view host page
 //   inbox_tab.js        the constant '/inbox'
+//   artifacts_tab.js    the constant '/artifacts'
 // node iframe_src_census.test.mjs
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -12,7 +13,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const STATIC = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'coral-go', 'pkg', 'frontend', 'static');
-const ALLOWED = { 'artifact_preview.js': 1, 'panel_sandbox.js': 1, 'view_sandbox.js': 1, 'inbox_tab.js': 1 };
+const ALLOWED = { 'artifact_preview.js': 1, 'panel_sandbox.js': 1, 'view_sandbox.js': 1, 'inbox_tab.js': 1, 'artifacts_tab.js': 1 };
 const found = {};
 for (const f of fs.readdirSync(STATIC).filter(n => n.endsWith('.js'))) {
     const src = fs.readFileSync(path.join(STATIC, f), 'utf8');

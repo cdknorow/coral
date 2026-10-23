@@ -38,6 +38,7 @@ const CSP = ["default-src 'self'", "script-src 'self'", "style-src 'self'", "sty
     if(p.pathname==='/auth/session')return json({authenticated:true,email:'tester@example.com',csrf:'test'});
     if(p.pathname==='/api/sessions/live')return json({sessions:[],servers:window.__noComputers?[]:computers});
     if(p.pathname==='/api/servers')return json({servers:computers});
+    if(p.pathname==='/api/account')return json({artifacts_tab:true});
     if(p.pathname==='/api/settings'&&m==='GET')return json({settings:{}});
     const match=p.pathname.match(/^\\/api\\/remote\\/([^/]+)(\\/api\\/.*)$/);
     if(!match)return original(u,o);
@@ -73,6 +74,7 @@ const CSP = ["default-src 'self'", "script-src 'self'", "style-src 'self'", "sty
         await sc('hub: board', async () => { await ev(`document.querySelector('#mb-projects-ul [data-project="@m1/same-team"]').click();true`); await waitFor(`document.getElementById('mb-messages').textContent.includes('Board message from m1')`, 'board'); }, { min: 10, expect: `document.getElementById('mb-messages').textContent.includes('Board message from m1')` });
         await sc('hub: servers', async () => { await pick('servers'); await waitFor(`document.getElementById('servers-view').getClientRects().length > 0`, 'servers'); }, { min: 8, expect: `document.getElementById('servers-view').getClientRects().length > 0 && /Laptop/.test(document.getElementById('servers-view').textContent)` });
         await sc('hub: inbox', async () => { await pick('hub-inbox'); }, { min: 3, expect: `document.getElementById('nav-select').textContent.includes('Inbox')` });
+        await sc('hub: artifacts', async () => { await pick('artifacts'); await waitFor(`!!document.getElementById('artifacts-frame')`, 'artifacts frame'); }, { min: 3, expect: `document.getElementById('nav-select').textContent.includes('Artifacts')` });
         await sc('hub: docs', async () => { await pick('docs'); }, { min: 10, expect: `document.getElementById('nav-select').textContent.includes('Docs')` });
         await sc('hub: account menu', async () => { await tap('[aria-label="Account menu"]'); }, { min: 5, expect: `document.querySelector('[aria-label="Account menu"]').getAttribute('aria-expanded') === 'true'` });
         await ev(`document.body.click(); true`);
@@ -86,7 +88,7 @@ const CSP = ["default-src 'self'", "script-src 'self'", "style-src 'self'", "sty
         }, { min: 3, expect: `document.querySelectorAll('.toast').length >= 3` });
         await ev(`document.querySelectorAll('.toast').forEach(t => t.remove()); true`);
     } finally { await client.close(); }
-    const bad = problems(results).concat(required(results, ['hub: toasts', 'hub: home', 'hub: nav menu', 'hub: chats list', 'hub: chat transcript', 'hub: chat tab notes', 'hub: chat tab commits', 'hub: boards list', 'hub: board', 'hub: servers', 'hub: inbox', 'hub: docs', 'hub: account menu', 'hub: settings general', 'hub: launch']));
+    const bad = problems(results).concat(required(results, ['hub: toasts', 'hub: home', 'hub: nav menu', 'hub: chats list', 'hub: chat transcript', 'hub: chat tab notes', 'hub: chat tab commits', 'hub: boards list', 'hub: board', 'hub: servers', 'hub: inbox', 'hub: artifacts', 'hub: docs', 'hub: account menu', 'hub: settings general', 'hub: launch']));
     if (process.env.PHONE_TARGETS_REPORT) { require('node:fs').writeFileSync(process.env.PHONE_TARGETS_REPORT, results.map(r => `${r.name}: ${r.error || r.n + ' controls, ' + r.small.length + ' small'}`).join('\n') + '\n--\n' + bad.join('\n') + '\n'); process.exit(0); }
     assert.deepEqual(bad, [], 'controls under 44 px on a phone through the Hub:\n  ' + bad.join('\n  '));
     console.log(`PASS ${results.length} Hub scenes: every control is at least 44 x 44 px`);

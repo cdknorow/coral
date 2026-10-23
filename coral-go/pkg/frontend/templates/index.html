@@ -79,6 +79,8 @@
             <button class="top-nav-tab" data-local-only id="nav-tab-jobs" data-on-click="m-switch-nav-tab" data-arg="jobs">Jobs</button>
             <button class="top-nav-tab" data-local-only id="nav-tab-tokens" data-on-click="m-switch-nav-tab" data-arg="tokens" title="Analytics — token usage and cost">Analytics</button>
             <button class="top-nav-tab" id="nav-tab-docs" data-on-click="m-switch-nav-tab" data-arg="docs">Docs</button>
+            <!-- Artifacts after Docs, on the Hub only and only where GET /api/account says artifacts_tab is true (artifacts_tab.js, #6236): the hub's /artifacts page in a frame, as the Inbox is -->
+            <button class="top-nav-tab" id="nav-tab-artifacts" data-cloud-only data-on-click="m-switch-nav-tab" data-arg="artifacts" aria-controls="artifacts-view" hidden>Artifacts</button>
             <button class="top-nav-tab" id="nav-tab-board" data-cloud-only data-on-click="m-switch-nav-tab" data-arg="board">Board</button>
         </nav>
         <div id="startup-loading" class="startup-loading" role="status" aria-live="polite">
@@ -358,6 +360,7 @@
             {{ template "includes/views/docs.html" . }}
             {{ template "includes/views/servers.html" . }}
             {{ template "includes/views/inbox.html" . }}
+            {{ template "includes/views/artifacts.html" . }}
                         </div>
 {{ template "includes/right_dock.html" . }}
             </div>

@@ -211,7 +211,7 @@ registerActions({
     'm-mobile-connect-open': (el, event) => { event.preventDefault(); window._showMobileConnectModal(); },
     'm-show-launch-modal-then-select-launch-type': el => { if (["agent", "team"].includes(el.dataset.arg)) { window.showLaunchModal(); window._selectLaunchType(el.dataset.arg); } },
     'm-switch-mobile-tab': el => { if (["agents", "board", "chat"].includes(el.dataset.arg)) { window.switchMobileTab(el.dataset.arg); } },
-    'm-switch-nav-tab': el => { if (["agents", "board", "docs", "history", "hub-inbox", "jobs", "servers", "tokens", "workflows"].includes(el.dataset.arg)) { window.switchNavTab(el.dataset.arg); } },
+    'm-switch-nav-tab': el => { if (["agents", "artifacts", "board", "docs", "history", "hub-inbox", "jobs", "servers", "tokens", "workflows"].includes(el.dataset.arg)) { window.switchNavTab(el.dataset.arg); } },
     'm-tmux-banner-close': () => { const b = document.getElementById('tmux-missing-banner'); if (b) b.style.display = 'none'; },
     'm-toggle-agentic-panel': () => { window.toggleAgenticPanel(); },
     'm-toggle-tablet-sidebar': () => { window.toggleTabletSidebar(); },
@@ -458,7 +458,7 @@ function switchNavTab(tab, opts = {}) {
     }
 
     // Toggle sidebar visibility — full-width views hide the sidebar
-    const fullWidthTabs = new Set(['tokens', 'workflows', 'servers', 'hub-inbox']);
+    const fullWidthTabs = new Set(['tokens', 'workflows', 'servers', 'hub-inbox', 'artifacts']);
     const layout = document.querySelector('.layout');
     if (layout) layout.classList.toggle('sidebar-hidden', fullWidthTabs.has(tab));
 
@@ -500,6 +500,10 @@ function switchNavTab(tab, opts = {}) {
         // The hub's /inbox page in a frame where the hub serves the dashboard, the dashboard's own Inbox (Needs you, Saved for later) on every other Coral (#4811); the tab writes no address of its own.
         showView('inbox-view');
         importOnce('./inbox_tab.js').then(m => m.showInboxTabContent());
+    } else if (tab === 'artifacts') {
+        // The hub's /artifacts page in a frame (artifacts_tab.js), the Inbox's way; the tab writes no address of its own.
+        showView('artifacts-view');
+        importOnce('./artifacts_tab.js').then(m => m.showArtifactsTabContent());
     } else if (tab === 'tokens') {
         showWhenLoaded(loadCostDashboard, 'showCostDashboard');
     } else if (tab === 'history') {

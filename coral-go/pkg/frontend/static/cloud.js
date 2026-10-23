@@ -198,5 +198,6 @@ export async function initCloud() {
     state.account = { email: s.email };
     const actions = document.querySelector('.top-bar-actions');
     if (actions && !document.getElementById('cloud-account-menu')) actions.append(buildAccountMenu(s.email));
+    importOnce('./artifacts_tab.js').then(m => m.initArtifactsTab()).catch(() => {}); // not waited for: the Artifacts tab appears when the account says it has one (#6236)
     return true;
 }
