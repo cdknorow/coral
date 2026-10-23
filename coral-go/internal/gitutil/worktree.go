@@ -101,10 +101,28 @@ func oneLine(s string) string {
 	return strings.Join(strings.Fields(strings.ReplaceAll(s, "fatal: ", "")), " ")
 }
 
+// maxWorktreePath is the longest worktree folder path accepted: git and Windows stop well before the 260 of MAX_PATH once a repository's own paths are added.
+const maxWorktreePath = 200
+
 // AddTeamWorktree makes the worktree at path on branch, from base when the branch is new, and says whether it made the branch (#6701). What an earlier run left is met, not tripped over: a registration whose
 // folder is gone is pruned, a branch that exists is checked out (its commits kept) instead of made again, a worktree already at path is reused, and an empty folder is used. A folder that is not empty and
 // no worktree is the one thing it refuses, in one line. Every failure is one plain line, not git's two.
 func AddTeamWorktree(ctx context.Context, repoDir, path, branch, base string) (branchCreated bool, err error) {
+	repoDir, path = filepath.Clean(repoDir), filepath.Clean(path)
+	if len(path) > maxWorktreePath {
+		return false, fmt.Errorf("the worktree's folder path is longer than %d characters: use a shorter board name or a shorter data folder", maxWorktreePath)
+	}
+	if info, statErr := os.Stat(path); statErr == nil && !info.IsDir() {
+		return false, fmt.Errorf("the worktree's folder %s is a file: move or delete it, then launch again", path)
+	}
+	// Two names that differ only in case are one folder on a case-insensitive disk (macOS, Windows): the second would land in the first team's worktree.
+	if entries, readErr := os.ReadDir(filepath.Dir(path)); readErr == nil {
+		for _, e := range entries {
+			if e.Name() != filepath.Base(path) && strings.EqualFold(e.Name(), filepath.Base(path)) {
+				return false, fmt.Errorf("a worktree folder named %s exists, and a name that differs only in case is the same folder on this computer: use another board name", e.Name())
+			}
+		}
+	}
 	Command(ctx, repoDir, "worktree", "prune").Run()
 	if entries, readErr := os.ReadDir(path); readErr == nil && len(entries) > 0 {
 		if registered(ctx, repoDir, path) {
