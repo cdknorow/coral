@@ -63,6 +63,7 @@ jobs:
           bash tests/release/release_notes_edits_test.sh   # lines removed from a published body on purpose; no network
           python3 tests/release/windows_build_census_test.py   # windows-tests' package build is release.yml's Windows build: same tags and programs (#5886)
           python3 tests/release/trimpath_census_test.py   # every release and installer go build has -trimpath: no builder path in a shipped trace (#6052)
+          python3 tests/release/verify_buildinfo_test.py   # verify-release reads a -trimpath build by its vcs.revision, not by an ldflags line that is no longer there (#6052)
           bash tests/release/signature_required_check_test.sh   # the N4 check: a required Windows signature never meets an unsigned build
           bash tests/release/ldflags_build_test.sh      # every build script's -X flags take effect: version and PostHog key land in the binary (#5539)
           bash tests/release/resolve_release.sh "$GITHUB_REF_NAME" | tee -a "$GITHUB_OUTPUT"

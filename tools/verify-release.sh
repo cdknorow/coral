@@ -70,6 +70,7 @@ done
 here="$(cd "$(dirname "$0")" && pwd)"
 root="$(cd "$here/.." && pwd)"
 RESOLVE="$root/tests/release/resolve_release.sh"
+. "$here/verify_buildinfo.sh"
 for need in gh jq tar unzip; do
   command -v "$need" >/dev/null 2>&1 || { echo "verify-release: $need is required" >&2; exit 2; }
 done
@@ -389,26 +390,29 @@ if [ -n "$dmgfile" ]; then
 fi
 
 # ---- build info of a program ----
-buildinfo() { # file -> "version|tags|goos/goarch" (empty fields when unknown)
-  local f="$1" v="" t="" tgt=""
+buildinfo() { # file -> "version|tags|goos/goarch|trimpath|vcs.revision|vcs.modified" (empty fields when unknown)
+  local f="$1" gi
   if command -v go >/dev/null 2>&1 && gi="$(go version -m "$f" 2>/dev/null)" && [ -n "$gi" ]; then
-    v="$(grep -o 'config\.Version=[^" ]*' <<<"$gi" | head -1 | sed 's/.*=//')"
-    t="$(awk '$1=="build" && $2 ~ /^-tags=/ {sub("-tags=","",$2); print $2}' <<<"$gi" | head -1)"
-    tgt="$(awk '$1=="build" && $2 ~ /^GOOS=/ {sub("GOOS=","",$2); os=$2} $1=="build" && $2 ~ /^GOARCH=/ {sub("GOARCH=","",$2); ar=$2} END {print os"/"ar}' <<<"$gi")"
+    bi_parse "$gi"
   else
-    v="$(strings -a "$f" 2>/dev/null | grep -o 'config\.Version=[^" ]*' | head -1 | sed 's/.*=//')"
-    t="$(strings -a "$f" 2>/dev/null | grep -o -- '-tags=[^ ]*' | head -1 | sed 's/-tags=//')"
+    echo "$(strings -a "$f" 2>/dev/null | grep -o 'config\.Version=[^" ]*' | head -1 | sed 's/.*=//')|$(strings -a "$f" 2>/dev/null | grep -o -- '-tags=[^ ]*' | head -1 | sed 's/-tags=//')|||||"
   fi
-  echo "$v|$t|$tgt"
 }
+# the commit the release tag points at, fetched from the repo (peeled: an annotated tag gives its commit, never the tag object); "-" with --local, "" when it cannot be read
+tag_commit() {
+  [ -n "$LOCAL" ] && { echo "-"; return; }
+  gh api "repos/$REPO/commits/$TAG" --jq .sha 2>/dev/null | grep -E '^[0-9a-f]{40}$' || true
+}
+TAG_COMMIT="$(tag_commit)"
 check_programs() { # subject folder ext want-target
-  local subject="$1" dir="$2" ext="$3" wtgt="$4" n=0 bad="" c f info v t tg
+  local subject="$1" dir="$2" ext="$3" wtgt="$4" n=0 bad="" c f info v t tg trim rev mod verdict
   for c in $commands; do
     f="$dir/$c$ext"
     [ -f "$f" ] || { bad="$bad $c(missing)"; continue; }
     n=$((n + 1))
-    info="$(buildinfo "$f")"; v="${info%%|*}"; t="${info#*|}"; tg="${t#*|}"; t="${t%%|*}"
-    if [ "$v" != "$want_ver" ]; then bad="$bad $c(version '${v:-none stamped}')"; fi
+    info="$(buildinfo "$f")"; IFS='|' read -r v t tg trim rev mod <<<"$info"
+    if [ -z "$TAG_COMMIT" ]; then bad="$bad $c(the tag's commit could not be read from $REPO)"
+    elif ! verdict="$(bi_verdict "$want_ver" "$TAG_COMMIT" "$v" "$trim" "$rev" "$mod" "$tg")"; then bad="$bad $c(${verdict#fail|})"; fi
     if [ "$t" != "$want_tags" ]; then bad="$bad $c(tags '${t:-none}')"; fi
     if [ -n "$wtgt" ] && [ -n "$tg" ] && [ "$tg" != "$wtgt" ]; then bad="$bad $c(target $tg)"; fi
   done
