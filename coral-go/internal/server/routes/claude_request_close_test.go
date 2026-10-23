@@ -203,3 +203,24 @@ func TestTwoParallelCodexCallsHoldARequestUntilBothFinish(t *testing.T) {
 	r.post(`{"event_type":"tool_use","summary":"Ran","tool_name":"Bash","tool_use_id":"exec-1"}`)
 	assert.False(t, r.needsInput(), "the approved call finishing closes it")
 }
+
+// With NO call in flight for the server to write, an agent's own call_ids must not stand: they would name which PostToolUse closes its request. They are dropped, and the request is answered by its
+// tool's name as before (Security's #6697 case a).
+func TestAgentCallIDsAreDroppedWhenNoCallIsInFlight(t *testing.T) {
+	r := newHoldRig(t, true) // no PreToolUse recorded: no call in flight
+	r.post(`{"event_type":"permission_request","summary":"Waiting for the user: permission (Bash)","tool_name":"Bash","detail_json":{"kind":"permission","tool_name":"Bash","call_ids":["call-fake"],"tool_use_id":"call-fake"}}`)
+	evs, err := r.h.ts.ListAgentEvents(context.Background(), "chat", 20, &r.sid)
+	require.NoError(t, err)
+	seen := false
+	for _, e := range evs {
+		if e.EventType == "permission_request" && e.DetailJSON != nil {
+			seen = true
+			assert.NotContains(t, *e.DetailJSON, "call-fake", "nothing the agent names is kept")
+			assert.NotContains(t, *e.DetailJSON, "call_ids")
+		}
+	}
+	require.True(t, seen)
+	require.True(t, r.h.deriveSingleSessionState(context.Background(), r.sid, 0).NeedsInput)
+	r.post(`{"event_type":"tool_use","summary":"Ran","tool_name":"Bash","tool_use_id":"some-call"}`)
+	assert.False(t, r.h.deriveSingleSessionState(context.Background(), r.sid, 0).NeedsInput, "answered by the tool's name, as before: the agent's ids do not hold it open")
+}
