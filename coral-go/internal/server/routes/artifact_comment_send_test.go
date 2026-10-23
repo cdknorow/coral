@@ -387,16 +387,40 @@ func TestTheOwnersListCarriesEachThreadsAsksAndNobodyElsesDoes(t *testing.T) {
 	for _, a := range asks(cmtAsOwner, cid) {
 		assert.Equal(t, false, a.(map[string]any)["open"], "a resolved thread's asks are closed")
 	}
-	// not a viewer's, an agent's, or through Coral Hub
+	// Not an agent's, a viewer's or Coral Hub's (Security's #6462 round 1: each caller below really gets a list, and it is checked to be one). An agent on the comment's board sees the
+	// thread (the test identity names a session "agent-<id>", so that is the name its board subscription has) and it has no asks key.
+	_, err := rig.h.bs.Subscribe(context.Background(), "team-a", "agent-reader", "Reader", "agent-"+sendSid(7), nil, "mentions")
+	require.NoError(t, err)
 	rig.hubOn()
-	for name, h := range map[string]map[string]string{"a hub viewer": cmtAsHub, "an agent": cmtAsAgent, "the owner's key through the tunnel": cmtAsOwnerThroughTunnel, "the hub-signed-in owner": cmtAsHubOwner} {
+	listOf := func(h map[string]string) (int, []any) {
 		code, out := rig.do("GET", cp(cmtDoc), h, nil)
-		if code != 200 {
-			continue // refused outright: nothing was shown
+		c, _ := out["comments"].([]any)
+		return code, c
+	}
+	code, seen := listOf(map[string]string{testAgentHeader: sendSid(7)})
+	require.Equal(t, 200, code, "an agent on the board reads the thread")
+	require.NotEmpty(t, seen, "and sees comments: the check below is not vacuous")
+	for _, c := range seen {
+		_, has := c.(map[string]any)["asks"]
+		assert.False(t, has, "an agent's list carries no asks key")
+	}
+	// the owner's own key sent through the tunnel (the Via stamp makes it a hub request), a hub viewer and a forged stamp: each is refused outright, so nothing is listed
+	for name, h := range map[string]map[string]string{"the owner's key through the tunnel": cmtAsOwnerThroughTunnel, "a hub viewer": cmtAsHub, "a forged stamp": cmtAsForged} {
+		code, c := listOf(h)
+		assert.Contains(t, []int{http.StatusForbidden, http.StatusUnauthorized}, code, name)
+		assert.Empty(t, c, name)
+	}
+	// the owner signed in at Coral Hub (the stamp, the owner role and the enrolled label) may read the comments, and still gets no asks
+	withLabel(t, cmtHubUser, nil)
+	code, hubSeen := listOf(cmtAsHubOwner)
+	if code == http.StatusOK {
+		require.NotEmpty(t, hubSeen, "the hub-signed-in owner reads the thread")
+		for _, c := range hubSeen {
+			_, has := c.(map[string]any)["asks"]
+			assert.False(t, has, "not through Coral Hub")
 		}
-		for _, c := range out["comments"].([]any) {
-			assert.Nil(t, c.(map[string]any)["asks"], name)
-		}
+	} else {
+		assert.Contains(t, []int{http.StatusForbidden, http.StatusUnauthorized}, code)
 	}
 }
 
