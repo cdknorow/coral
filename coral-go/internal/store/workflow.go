@@ -62,6 +62,18 @@ type WorkflowRun struct {
 	// Computed fields populated by queries
 	WorkflowName *string           `db:"workflow_name" json:"workflow_name,omitempty"`
 	Steps        []json.RawMessage `db:"-" json:"steps,omitempty"`
+
+	// Filled in by the workflow routes, never stored (#6530): the run's duration once it has finished, and for a failed run the step that failed and a one-line reason, so a list
+	// of runs needs no log parsing. Additive: nothing that was in the answer changed.
+	DurationSeconds *float64    `db:"-" json:"duration_seconds,omitempty"`
+	FailedStep      *FailedStep `db:"-" json:"failed_step,omitempty"`
+	FailureReason   string      `db:"-" json:"failure_reason,omitempty"`
+}
+
+// FailedStep names the step a failed run stopped at: its number counted from 1 (the steps' "index" and the run's "current_step" stay counted from 0, as the step-file route takes them) and its name.
+type FailedStep struct {
+	Number int    `json:"number"`
+	Name   string `json:"name"`
 }
 
 // HydrateSteps parses StepsJSON and DefaultAgentJSON into their typed fields.
