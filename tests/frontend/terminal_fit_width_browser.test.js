@@ -347,6 +347,7 @@ function assertFits(v, what) {
         };
         const sizes = {};
         for (const [label, w, h, mobile, dpr] of [['phone DPR 2', 390, 844, true, 2], ['phone DPR 3', 390, 844, true, 3], ['desktop DPR 2', 1280, 800, false, 2], ['phone DPR 1', 390, 844, true, 1]]) {
+            if (mobile) setPane(A.name, eighty.cols, eighty.rows); // a phone follows the pane at its size: set it, since the desktop window before it (and the earlier steps) sized the pane to themselves
             const ctx = await newContext(); contexts.push(ctx);
             const tab = await openTab({ contextId: ctx, width: w, height: h, mobile, dpr });
             tabs.push(tab);
