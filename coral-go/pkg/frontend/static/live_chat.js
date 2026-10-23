@@ -1,5 +1,6 @@
 /* Live history view — renders JSONL messages as a read-only conversation log */
 
+import { syncHooksComposer } from './hooks_review.js';
 import { state } from './state.js';
 import { escapeHtml, showToast, copyText } from './utils.js';
 // Load order only (#4996): the imports below with no names are loaded for what the module registers at load, in the order this module imported them before the split (the startup-sequence golden records it).
@@ -284,6 +285,7 @@ function _noteReplyState(session, data) {
     else promptOptionsBySession.delete(session.session_id);
     // A sign-in the CLI waits on (#3830): the reply is fresher than the session row.
     if (typeof data.needs_login === "boolean") loginBySession.set(session.session_id, data.needs_login ? { reason: String(data.login_reason || "") } : null);
+    syncHooksComposer(session); // Codex's hooks question is in the box's words while it is open (#6409)
 }
 
 /** The messages of the reply: the first page, or the new ones at the bottom, and what each says about the agent. */
