@@ -725,6 +725,24 @@
     margin-top: 4px;
 }
 
+.modal-content label.wf-label { margin-bottom: 0; } /* the generic dialog label leaves 12 px under itself: the field sits right under its label */
+.wf-req { font-weight: 400; color: var(--text-secondary); } /* "(required)": the label's colour, 4.5:1 on the dialog */
+.wf-step-num { font-size: 0.75rem; font-weight: 600; color: var(--text-secondary); white-space: nowrap; min-width: 3.2em; }
+.wf-more { margin-top: 4px; }
+.wf-more > summary { color: var(--text-primary); font-weight: 600; }
+.wf-more > .wf-label, .wf-more > .wf-input, .wf-more > .wf-limit-fields { margin-top: 8px; }
+.wf-limit-fields { display: grid; grid-template-columns: 5rem minmax(0, 1fr); gap: 8px; }
+.wf-limit-msg { color: var(--error-text, var(--error)); font-size: var(--fs-sm, 0.8125rem); margin-top: 6px; overflow-wrap: anywhere; }
+
+/* A phone: the dialog has its own 16 px edge; the body's 24 px made the fields start 41 px in. A step's name takes a row of its own, and every target is 44 px. */
+@media (max-width: 767px) {
+    #wf-create-modal .modal-body, #wf-create-modal .modal-footer { padding-left: 0; padding-right: 0; }
+    .wf-step-editor-top { flex-wrap: wrap; }
+    .wf-step-editor-top .wf-step-num { flex: 1; }
+    .wf-step-editor-top .wf-step-name-input { order: 3; flex: 1 1 100%; min-height: var(--control-touch-height, 44px); }
+    .wf-step-editor-top select { min-height: var(--control-touch-height, 44px); }
+}
+
 .wf-modal-error {
     background: rgba(var(--fx-red-rgb), 0.1);
     border: 1px solid rgba(var(--fx-red-rgb), 0.3);

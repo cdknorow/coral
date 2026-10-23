@@ -10,6 +10,7 @@ import { KILL_LOG_NOTE } from './render.js';
 import { formatDuration as fmtDuration } from './format.js';
 import { runFailureHtml, runFailureTag } from './run_failure.js';
 import { whenWords, resultWords, limitWords } from './job_words.js'; // the Jobs pages' words: one set for both
+import { limitSeconds, limitParts } from './time_limit.js';
 
 let workflows = [];
 let selectedWorkflowId = null;
@@ -584,12 +585,14 @@ export function deleteWorkflow(id, name) {
 
 export function showWorkflowCreateModal() {
     editingWorkflowId = null;
-    document.getElementById('wf-modal-title').textContent = 'Create Workflow';
-    document.getElementById('wf-modal-save').textContent = 'Create';
+    document.getElementById('wf-modal-title').textContent = 'New workflow';
+    document.getElementById('wf-modal-save').textContent = 'Create workflow';
     document.getElementById('wf-input-name').value = '';
     document.getElementById('wf-input-desc').value = '';
     document.getElementById('wf-input-repo').value = '';
-    document.getElementById('wf-input-max-dur').value = '3600';
+    showLimit(3600);
+    document.getElementById('wf-more').open = false;
+    clearMarks();
     document.getElementById('wf-modal-error').style.display = 'none';
     document.getElementById('wf-steps-editor').innerHTML = '';
     // Add one default step
@@ -606,12 +609,15 @@ export async function editWorkflow(id) {
     if (!wf) return;
 
     editingWorkflowId = id;
-    document.getElementById('wf-modal-title').textContent = 'Edit Workflow';
-    document.getElementById('wf-modal-save').textContent = 'Save';
+    document.getElementById('wf-modal-title').textContent = 'Edit workflow';
+    document.getElementById('wf-modal-save').textContent = 'Save changes';
     document.getElementById('wf-input-name').value = wf.name || '';
     document.getElementById('wf-input-desc').value = wf.description || '';
     document.getElementById('wf-input-repo').value = wf.repo_path || '';
-    document.getElementById('wf-input-max-dur').value = wf.max_duration_s || 3600;
+    showLimit(wf.max_duration_s || 3600);
+    // Nothing a workflow already has is hidden: More options opens when it holds something other than the defaults.
+    document.getElementById('wf-more').open = !!(wf.description || wf.repo_path || (wf.max_duration_s && wf.max_duration_s !== 3600));
+    clearMarks();
     document.getElementById('wf-modal-error').style.display = 'none';
 
     const editor = document.getElementById('wf-steps-editor');
@@ -620,6 +626,42 @@ export async function editWorkflow(id) {
     steps.forEach(s => workflowAddStep(s));
 
     document.getElementById('wf-create-modal').style.display = 'flex';
+}
+
+const MAX_LIMIT_S = 86400; // the server's ceiling for a workflow's time limit (24 hours)
+
+/** The limit in seconds as the number and unit the form shows ("1 hour", "90 minutes"). */
+function showLimit(seconds) {
+    const { n, unit } = limitParts(seconds);
+    document.getElementById('wf-input-max-dur').value = String(n);
+    document.getElementById('wf-input-max-dur-unit').value = String(unit);
+    sayLimit('');
+}
+
+const limitFromFields = () => limitSeconds(document.getElementById('wf-input-max-dur').value, document.getElementById('wf-input-max-dur-unit').value, MAX_LIMIT_S);
+
+function sayLimit(text) {
+    const m = document.getElementById('wf-limit-msg');
+    m.textContent = text;
+    m.hidden = !text;
+    const f = document.getElementById('wf-input-max-dur');
+    if (text) f.setAttribute('aria-invalid', 'true'); else f.removeAttribute('aria-invalid');
+}
+
+/** Show or clear the time limit's sentence as the person types; true when it is fine. */
+export function checkWorkflowLimit() {
+    const r = limitFromFields();
+    sayLimit(r.error || '');
+    return !r.error;
+}
+
+/** A fresh form shows no mark from the last time. */
+function clearMarks() {
+    for (const f of document.querySelectorAll('#wf-create-modal [aria-invalid]')) {
+        f.removeAttribute('aria-invalid');
+        const rest = (f.getAttribute('aria-describedby') || '').split(' ').filter(t => t && t !== 'wf-modal-error').join(' '); // the error line goes, a field's own help stays
+        if (rest) f.setAttribute('aria-describedby', rest); else f.removeAttribute('aria-describedby');
+    }
 }
 
 // The step each editor row was loaded from: the editor shows only a step's name, type and command or prompt, and Save keeps
@@ -636,12 +678,13 @@ export function workflowAddStep(step) {
     div.className = 'wf-step-editor-item';
     div.innerHTML = `
         <div class="wf-step-editor-top">
+            <span class="wf-step-num" aria-hidden="true"></span>
             <select class="wf-step-type-select" data-on-change="wf-step-type">
                 <option value="shell" ${type === 'shell' ? 'selected' : ''}>shell</option>
                 <option value="agent" ${type === 'agent' ? 'selected' : ''}>agent</option>
             </select>
             <input type="text" class="wf-step-name-input" placeholder="Step name" value="${escAttr(name)}">
-            <button class="wf-step-remove-btn" data-on-click="wf-step-remove" title="Remove step">&times;</button>
+            <button type="button" class="wf-step-remove-btn" data-on-click="wf-step-remove" title="Remove step">&times;</button>
         </div>
         <div class="wf-step-editor-body">
             <textarea class="wf-step-content" placeholder="${type === 'shell' ? 'Shell command...' : 'Agent prompt...'}" rows="2">${esc(content)}</textarea>
@@ -656,6 +699,7 @@ export function workflowAddStep(step) {
 function nameStepControls() {
     document.querySelectorAll('#wf-steps-editor .wf-step-editor-item').forEach((item, i) => {
         const n = i + 1;
+        const num = item.querySelector('.wf-step-num'); if (num) num.textContent = `Step ${n}`;
         item.querySelector('.wf-step-type-select')?.setAttribute('aria-label', `Step ${n} type`);
         item.querySelector('.wf-step-name-input')?.setAttribute('aria-label', `Step ${n} name`);
         item.querySelector('.wf-step-remove-btn')?.setAttribute('aria-label', `Remove step ${n}`);
@@ -673,18 +717,19 @@ export async function saveWorkflow() {
     const name = document.getElementById('wf-input-name').value.trim();
     const desc = document.getElementById('wf-input-desc').value.trim();
     const repo = document.getElementById('wf-input-repo').value.trim();
-    const maxDur = parseInt(document.getElementById('wf-input-max-dur').value) || 3600;
     const errEl = document.getElementById('wf-modal-error');
 
     // Collect steps
     const stepItems = document.querySelectorAll('#wf-steps-editor .wf-step-editor-item');
     const steps = [];
+    let at = 0;
     for (const item of stepItems) {
+        at++;
         const type = item.querySelector('.wf-step-type-select').value;
         const stepName = item.querySelector('.wf-step-name-input').value.trim();
         const content = item.querySelector('.wf-step-content').value.trim();
-        if (!stepName) { showError(errEl, 'All steps need a name', item.querySelector('.wf-step-name-input')); return; }
-        if (!content) { showError(errEl, `Step "${stepName}" needs a ${type === 'shell' ? 'command' : 'prompt'}`, item.querySelector('.wf-step-content')); return; }
+        if (!stepName) { showError(errEl, `Step ${at} needs a name.`, item.querySelector('.wf-step-name-input')); return; }
+        if (!content) { showError(errEl, `Step ${at} (${stepName}) needs a ${type === 'shell' ? 'command' : 'prompt'}.`, item.querySelector('.wf-step-content')); return; }
 
         // What the step had, with what the editor shows written over it (a step whose type changed drops the other type's text).
         const step = { ...(loadedSteps.get(item) || {}), name: stepName, type };
@@ -693,8 +738,11 @@ export async function saveWorkflow() {
         steps.push(step);
     }
 
-    if (!name) { showError(errEl, 'Name is required', document.getElementById('wf-input-name')); return; }
-    if (!steps.length) { showError(errEl, 'At least one step is required'); return; }
+    if (!name) { showError(errEl, 'Give the workflow a name.', document.getElementById('wf-input-name')); return; }
+    if (!steps.length) { showError(errEl, 'Add at least one step.'); return; }
+    const limit = limitFromFields();
+    if (limit.error) { document.getElementById('wf-more').open = true; sayLimit(limit.error); document.getElementById('wf-input-max-dur').focus(); showError(errEl, limit.error); return; }
+    const maxDur = limit.seconds;
 
     const body = { name, description: desc, steps, max_duration_s: maxDur };
     if (repo) body.repo_path = repo;
@@ -779,9 +827,10 @@ function showError(el, msg, field) {
     el.textContent = msg;
     el.style.display = '';
     if (!field) return;
+    const was = field.getAttribute('aria-describedby') || ''; // a field's own help (the Name's allowed characters) stays described
     field.setAttribute('aria-invalid', 'true');
-    field.setAttribute('aria-describedby', el.id);
-    field.addEventListener('input', () => { field.removeAttribute('aria-invalid'); field.removeAttribute('aria-describedby'); }, { once: true });
+    field.setAttribute('aria-describedby', [...new Set([...was.split(' ').filter(Boolean), el.id])].join(' '));
+    field.addEventListener('input', () => { field.removeAttribute('aria-invalid'); if (was) field.setAttribute('aria-describedby', was); else field.removeAttribute('aria-describedby'); }, { once: true });
     field.focus();
 }
 
@@ -790,6 +839,7 @@ function showError(el, msg, field) {
 // Ids are checked (idOf) before use: a bad one does nothing.
 registerActions({
     'wf-select': el => withId(el.dataset.workflowId, selectWorkflow),
+    'wf-limit-check': () => checkWorkflowLimit(),
     'wf-run': el => withId(el.dataset.runId, selectWorkflowRun),
     'wf-trigger': el => withId(el.dataset.workflowId, triggerWorkflow),
     'wf-edit': el => withId(el.dataset.workflowId, editWorkflow),

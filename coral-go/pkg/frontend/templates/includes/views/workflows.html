@@ -44,33 +44,45 @@
 <div id="wf-create-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="wf-modal-title" style="display:none" data-on-click="wf-modal-backdrop">
     <div class="modal-content modal-content-extra-wide">
         <div class="modal-header">
-            <h3 id="wf-modal-title">Create Workflow</h3>
+            <h3 id="wf-modal-title">New workflow</h3>
             <button class="modal-close-btn" data-on-click="wf-modal-close" aria-label="Close dialog"><span class="material-icons" aria-hidden="true">close</span></button>
         </div>
         <div class="modal-body wf-modal-body">
-            <label class="wf-label" for="wf-input-name">Name <span class="wf-hint">(letters, numbers, hyphens, underscores)</span></label>
-            <input type="text" id="wf-input-name" class="wf-input" placeholder="lint-and-fix" pattern="[a-zA-Z0-9_-]+">
+            <label class="wf-label" for="wf-input-name">Name <span class="wf-req">(required)</span></label>
+            <input type="text" id="wf-input-name" class="wf-input" placeholder="lint-and-fix" pattern="[a-zA-Z0-9_-]+" aria-required="true" aria-describedby="wf-name-help">
+            <div id="wf-name-help" class="wf-hint">Letters, numbers, hyphens and underscores.</div>
 
-            <label class="wf-label" for="wf-input-desc">Description</label>
-            <input type="text" id="wf-input-desc" class="wf-input" placeholder="Run linter, fix issues, verify fix">
-
-            <label class="wf-label" for="wf-input-repo">Repository Path</label>
-            <input type="text" id="wf-input-repo" class="wf-input" placeholder="/path/to/project">
-
-            <label class="wf-label" for="wf-input-max-dur">Max Duration (seconds)</label>
-            <input type="number" id="wf-input-max-dur" class="wf-input" value="3600" min="1" max="86400">
-
-            <label class="wf-label">Steps</label>
-            <div id="wf-steps-editor" class="wf-steps-editor"></div>
-            <button class="btn btn-sm wf-add-step-btn" data-on-click="wf-add-step">
-                <span class="material-icons" style="font-size:0.875rem" aria-hidden="true">add</span> Add Step
+            <div class="wf-label" id="wf-steps-label">Steps <span class="wf-req">(at least one)</span></div>
+            <div id="wf-steps-editor" class="wf-steps-editor" role="group" aria-labelledby="wf-steps-label"></div>
+            <button type="button" class="btn btn-sm wf-add-step-btn" data-on-click="wf-add-step">
+                <span class="material-icons" style="font-size:0.875rem" aria-hidden="true">add</span> Add step
             </button>
+
+            <details class="disclosure wf-more" id="wf-more">
+                <summary>More options</summary>
+                <label class="wf-label" for="wf-input-desc">Description <span class="wf-req">(optional)</span></label>
+                <input type="text" id="wf-input-desc" class="wf-input" placeholder="Run linter, fix issues, verify fix">
+
+                <label class="wf-label" for="wf-input-repo">Repository path <span class="wf-req">(optional)</span></label>
+                <input type="text" id="wf-input-repo" class="wf-input" placeholder="/path/to/project">
+
+                <div class="wf-label" id="wf-limit-label">Time limit</div>
+                <div class="wf-limit-fields" role="group" aria-labelledby="wf-limit-label">
+                    <input type="number" id="wf-input-max-dur" class="wf-input" value="1" min="1" step="1" inputmode="numeric" aria-label="Time limit" aria-describedby="wf-limit-msg" data-on-input="wf-limit-check">
+                    <select id="wf-input-max-dur-unit" class="wf-input" aria-label="Time limit unit" data-on-change="wf-limit-check">
+                        <option value="3600" selected>hours</option>
+                        <option value="60">minutes</option>
+                        <option value="1">seconds</option>
+                    </select>
+                </div>
+                <div id="wf-limit-msg" class="wf-limit-msg" role="alert" hidden></div>
+            </details>
 
             <div id="wf-modal-error" class="wf-modal-error" role="alert" style="display:none"></div>
         </div>
         <div class="modal-footer">
             <button class="btn" data-on-click="wf-modal-close">Cancel</button>
-            <button class="btn btn-primary" id="wf-modal-save" data-on-click="wf-save">Create</button>
+            <button class="btn btn-primary" id="wf-modal-save" data-on-click="wf-save">Create workflow</button>
         </div>
     </div>
 </div>
