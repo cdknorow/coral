@@ -82,7 +82,7 @@ let _removedTeamAgent = null;
 function _clearTeamUndo() {
     _removedTeamAgent = null;
     const line = document.getElementById('team-undo');
-    if (line) { line.hidden = true; line.textContent = ''; }
+    if (line) line.textContent = ''; // always in the page, only its text changes
 }
 function _removeTeamAgent(row) {
     if (!row) return;
@@ -96,7 +96,6 @@ function _removeTeamAgent(row) {
     const undo = document.createElement('button');
     undo.type = 'button'; undo.className = 'btn-link'; undo.setAttribute('data-on-click', 'team-agent-undo'); undo.textContent = 'Undo';
     line.append(undo);
-    line.hidden = false;
 }
 function _undoTeamAgentRemoval() {
     const r = _removedTeamAgent;

@@ -4710,6 +4710,7 @@ dialog.reminder-dialog::backdrop { background: rgba(var(--black-rgb), 0.5); }
 .team-agent-actions-cell { width: 1%; }
 .team-agent-summary-actions .btn { padding-inline: 12px; flex: none; width: auto; min-width: max-content; }
 .team-undo { margin: 8px 0 0; color: var(--text-secondary); }
+.team-undo:empty { margin: 0; height: 0; overflow: hidden; } /* in the page with nothing to say: no room, still a live region */
 .team-undo .btn-link { background: none; border: 0; padding: 0 2px; font: inherit; color: var(--accent); text-decoration: underline; cursor: pointer; }
 .team-start-more { margin-top: 12px; }
 @media (max-width: 767px) {

@@ -103,7 +103,7 @@ const BASE = require('./test_base').BASE;
         await ev(`document.getElementById('team-permission-mode').value = 'plan'; document.getElementById('team-permission-mode').dispatchEvent(new Event('change', { bubbles: true })); window.showTeamAgentModal(); true`);
         assert.equal(await ev(`document.querySelector('#team-agent-modal-acf .acf-permission-mode').value`), 'plan', 'and follows a team Mode that was changed');
         await ev(`window.hideTeamAgentModal(); document.getElementById('team-permission-mode').value = 'default'; document.getElementById('team-permission-mode').dataset.pickedByPerson = ''; true`);
-        await click('#team-agents-list .team-agent-row:last-child .team-agent-remove'); await ev(`document.getElementById('team-undo').hidden = true; true`);
+        await click('#team-agents-list .team-agent-row:last-child .team-agent-remove'); await ev(`document.getElementById('team-undo').textContent = ''; true`);
 
         console.log('Start: Mode defaults to Default, Launch Team is here');
         await click('#launch-team-next');
