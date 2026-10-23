@@ -26,7 +26,11 @@ export function setLaunchMore(open) {
     const more = document.getElementById("launch-agent-more");
     if (!more) return;
     more.hidden = !open;
-    document.getElementById("launch-agent-more-btn")?.setAttribute("aria-expanded", String(open));
+    // New Agent is two steps (#6333): the folder, then everything else (the sections, always open there). CSS shows what belongs to the stage in data-stage.
+    const step = document.getElementById("launch-step-agent");
+    if (step) step.dataset.stage = open ? "details" : "folder";
+    const dir = document.getElementById("launch-dir"), shown = document.getElementById("launch-dir-summary-path");
+    if (open && dir && shown) shown.textContent = dir.value.trim();
     const content = document.querySelector("#launch-modal .modal-content");
     if (content) content.classList.toggle("launch-simple", !open && document.getElementById("launch-step-agent").style.display !== "none");
 }

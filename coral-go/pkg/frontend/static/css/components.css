@@ -4504,6 +4504,13 @@ a.ibx-open, a.ibx-open:visited { color: var(--link-text); }
 .modal-content:has(.settings-shell) { min-height: min(30rem, 90dvh); }
 #launch-modal .modal-content:not(.sd-modal-content) { min-height: 0; } /* the chooser and the terminal form hold the hidden New Agent step's .settings-shell, which gave them the tabbed dialogs' 30rem floor: half the chooser was empty (#6316) */
 #launch-agent-more .settings-pane-title { display: none; } /* the section's name is on the tab (or the phone's select) beside it: said twice (#6316); the pane keeps its name from it */
+/* New Agent is two steps (#6333; the stage is data-stage on the step, set by launch_core.js setLaunchMore): the folder with Next, then everything else with Back and Launch; the folder shows as one line with Change in the second. */
+#launch-step-agent[data-stage="folder"] :is(#launch-agent-pick, #launch-agent-more, #launch-agent-back, #launch-agent-go, #launch-dir-summary) { display: none; }
+#launch-step-agent[data-stage="details"] :is(.launch-dir-field, #launch-dir-note, #dir-browser, #launch-agent-cancel, #launch-agent-next) { display: none; }
+.launch-dir-summary { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.launch-dir-summary-label { color: var(--text-secondary); flex: none; }
+.launch-dir-summary code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (pointer: coarse), (max-width: 767px) { .launch-dir-summary .btn { min-height: var(--control-touch-height, 44px); } }
 .sd-modal-content .team-agents-scroll { max-height: none; overflow: visible; padding-right: 0; } /* the pane scrolls, not a list inside it (a phone showed two scroll areas) */
 
 .modal-header .sd-sub { margin: .15rem 0 0; color: var(--text-secondary); font-size: .8125rem; font-weight: 400; }
@@ -4624,19 +4631,11 @@ a.ibx-open, a.ibx-open:visited { color: var(--link-text); }
 .sd-essentials { flex: none; padding: 1.1rem 1.6rem .4rem; }
 .sd-essentials label { display: block; margin-bottom: .6rem; }
 .sd-essentials input[type="text"] { box-sizing: border-box; }
-.sd-more-row { flex: none; display: flex; align-items: center; flex-wrap: wrap; gap: .25rem .75rem; padding: 0 1.6rem 1rem; }
-.sd-more-btn { display: inline-flex; align-items: center; gap: .25rem; min-height: 2.25rem; padding: .25rem .6rem .25rem .25rem; background: none; border: 0; border-radius: var(--radius-md); color: var(--text-primary); font: inherit; font-size: .875rem; font-weight: 600; cursor: pointer; }
-.sd-more-btn:hover { background: var(--bg-hover); }
-.sd-more-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.sd-more-btn .material-icons { font-size: 1.25rem; transition: transform .12s; }
-.sd-more-btn[aria-expanded="true"] .material-icons { transform: rotate(180deg); }
 .sd-more { flex: 1; min-height: 0; display: flex; border-top: 1px solid var(--border); }
 .sd-more[hidden] { display: none; }
-@media (prefers-reduced-motion: reduce) { .sd-more-btn .material-icons { transition: none; } }
 @container sd (max-width: 40rem) {
     .sd-essentials { padding: .8rem 1rem .3rem; }
-    .sd-more-row { padding: 0 1rem .8rem; }
-    .sd-essentials :is(input[type="text"], .btn), .sd-more-btn { min-height: 44px; }
+    .sd-essentials :is(input[type="text"], .btn) { min-height: 44px; }
 }
 /* Agent Team (UI audit #5589, findings 5 and 6): the team name, which every launch needs, is above the sections; the template tools are one disclosure after the picker, so the members come first. */
 .modal-content:has(.settings-shell) #launch-step-team .settings-modal-body { flex-direction: column; }

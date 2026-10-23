@@ -96,7 +96,7 @@ const STUB = `(() => { const R = window.fetch; window.__asks = 0; window.__puts 
         await ev(`window.__coralReady.then(() => true)`); await installAudit(ev); await setTheme(ev, 'dark');
         await ev(`(() => { for (const k of Object.keys(localStorage)) if (k.startsWith('coral-models:v1:')) localStorage.removeItem(k); return true; })()`);
         await ev(STUB);
-        await ev(`(async () => { await window.showLaunchModal(); window._selectLaunchType('agent'); window._toggleLaunchMore(); return true; })()`);
+        await ev(`(async () => { await window.showLaunchModal(); window._selectLaunchType('agent'); document.getElementById('launch-agent-more').dispatchEvent(new CustomEvent('sd-more-open', { bubbles: true })); return true; })()`);
         await waitFor(`!!document.querySelector('#launch-agent-acf .acf-model-select option[value="claude-a"]')`, 'launch dialog: the list', 8000);
         await ev(`[...document.querySelectorAll('#launch-modal [role=tab]')].find(b => /Agent\s*$/.test(b.textContent.trim())).click(); true`); // the Model field is in the Agent group
         await waitFor(`document.querySelector('#launch-agent-acf .acf-model-select').getClientRects().length > 0`, 'launch dialog: the Agent group shown', 3000);

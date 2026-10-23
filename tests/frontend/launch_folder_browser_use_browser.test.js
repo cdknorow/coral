@@ -41,8 +41,8 @@ const BASE = require('./test_base').BASE;
             await ev(`document.querySelector('#dir-browser .dir-browser-use').click(); true`);
             const after = await ev(`({ shown: document.getElementById('dir-browser').style.display !== 'none', value: document.getElementById('launch-dir').value, focus: document.activeElement && document.activeElement.id })`);
             check(`${tag}: Use this folder closes the list and keeps the folder in the field, focus on the field`, !after.shown && after.value === inside && after.focus === 'launch-dir', JSON.stringify(after));
-            const more = await hit('#launch-agent-more-btn');
-            check(`${tag}: More options is on screen and reachable with the list closed`, more === 'ok', more);
+            const more = await hit('#launch-agent-next');
+            check(`${tag}: Next is on screen and reachable with the list closed`, more === 'ok', more);
             // a recent folder is a choice: it closes the list
             await ev(`document.getElementById('btn-browse').click(); true`);
             await waitFor(`document.getElementById('dir-browser').style.display !== 'none'`, `${tag}: the list again`, 8000);

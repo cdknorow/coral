@@ -75,7 +75,7 @@
             </div>
 
             <!-- Step 2a: Agent form -->
-            <div id="launch-step-agent" class="launch-modal-step" style="display:none">
+            <div id="launch-step-agent" class="launch-modal-step" style="display:none" data-stage="folder">
                 <div class="sd-step-header">
                     <h3 id="launch-agent-title">
                         <button class="launch-back-btn" data-on-click="m-select-launch-type" data-arg="back" title="Back" aria-label="Back to the choices">&larr;</button>
@@ -84,12 +84,13 @@
                 </div>
                 <div class="settings-modal-body">
                     <div class="sd-essentials">
-                    <label>Working Directory:
+                    <label class="launch-dir-field">Working Directory:
                         <div class="dir-input-row">
                             <input type="text" id="launch-dir" placeholder="Choose a folder" data-coral-root="{{ .CoralRoot }}" value="">
                             <button class="btn" id="btn-browse" data-on-click="m-toggle-browser" data-browser="launch-dir dir-browser browser-list browser-current-path">Browse</button>
                         </div>
                     </label>
+                    <div id="launch-dir-summary" class="launch-dir-summary"><span class="launch-dir-summary-label">Folder</span><code id="launch-dir-summary-path"></code><button type="button" class="btn btn-small" data-on-click="m-agent-step" data-arg="folder">Change</button></div>
                     <p id="launch-dir-note" class="settings-hint launch-dir-note" role="status" hidden>This is your home folder: the agent can change any file in it.</p>
                     <div id="dir-browser" class="dir-browser" style="display:none">
                         <div class="dir-browser-header">
@@ -105,9 +106,6 @@
                     </div>
                     <div id="launch-cli-slot" class="launch-cli-slot"></div>
                     <div id="launch-tmux-slot" class="launch-cli-slot"></div>
-                    <div class="sd-more-row">
-                        <button type="button" class="sd-more-btn" id="launch-agent-more-btn" aria-expanded="false" aria-controls="launch-agent-more" data-on-click="m-toggle-launch-more"><span class="material-icons" aria-hidden="true">expand_more</span>More options</button>
-                    </div>
                     <div id="launch-agent-more" class="sd-more" data-sd-more hidden>
                     <div class="settings-shell">
                         <nav class="settings-nav" aria-label="New agent sections">
@@ -158,8 +156,11 @@
                     </div>
                 </div>
                 <div class="modal-actions">
-                    <button class="btn" data-on-click="m-hide-launch-modal">Cancel</button>
+                    <button class="btn" id="launch-agent-back" data-on-click="m-agent-step" data-arg="folder">Back</button>
+                    <button class="btn" id="launch-agent-cancel" data-on-click="m-hide-launch-modal">Cancel</button>
+                    <button class="btn btn-primary" id="launch-agent-next" data-on-click="m-agent-step" data-arg="details">Next</button>
                     <button class="btn btn-primary" id="launch-agent-go" data-on-click="m-launch-session">Launch</button>
+                    <p id="launch-stage-live" class="sr-only" role="status"></p>
                 </div>
             </div>
 

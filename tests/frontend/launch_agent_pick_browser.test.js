@@ -14,7 +14,9 @@ const BASE = require('./test_base').BASE;
         if (m) { const found = ${JSON.stringify(installed)}.includes(m[1]); return new Response(JSON.stringify({ found, agent_type: m[1], status: found ? 'available' : 'missing' }), { headers: { 'Content-Type': 'application/json' } }); } return real(u, o); }; return true; })()`);
     const open = async () => {
         await ev(`(async () => { await window.showLaunchModal(); document.querySelector('#launch-step-chooser [data-arg="agent"]').click(); return true; })()`);
-        await waitFor(`getComputedStyle(document.getElementById('launch-step-agent')).display !== 'none' && !document.getElementById('launch-agent-pick').hidden`, 'the agent choice', 8000);
+        await waitFor(`getComputedStyle(document.getElementById('launch-step-agent')).display !== 'none' && !!document.getElementById('launch-agent-next')`, 'the folder step', 8000);
+        await ev(`(() => { const i = document.getElementById('launch-dir'); if (!i.value) i.value = '/tmp'; document.getElementById('launch-agent-next').click(); return true; })()`); // the agent is chosen in the second step (#6333)
+        await waitFor(`!document.getElementById('launch-agent-pick').hidden && getComputedStyle(document.getElementById('launch-agent-pick')).display !== 'none'`, 'the agent choice', 8000);
     };
     const state = () => ev(`(() => { const g = document.getElementById('launch-agent-pick'); const sel = document.querySelector('#launch-agent-acf .acf-agent-type'); return { labels: [...g.querySelectorAll('label')].map(l => l.textContent.trim()), checked: (g.querySelector('input:checked') || {}).value || null, select: sel.value, inMore: !!g.closest('#launch-agent-more'), shown: g.getClientRects().length > 0, role: g.getAttribute('role'), name: (document.getElementById(g.getAttribute('aria-labelledby')) || {}).textContent }; })()`);
     try {
@@ -29,7 +31,7 @@ const BASE = require('./test_base').BASE;
             await stub(['codex', 'pi']);
             await open();
             let s = await state();
-            check(`${tag}: the agent choice is in the first step (not under More options), a named radio group`, s.shown && !s.inMore && s.role === 'radiogroup' && s.name === 'Agent:', JSON.stringify([s.shown, s.inMore, s.role, s.name]));
+            check(`${tag}: the agent choice is in the second step, not behind a disclosure, a named radio group`, s.shown && !s.inMore && s.role === 'radiogroup' && s.name === 'Agent:', JSON.stringify([s.shown, s.inMore, s.role, s.name]));
             check(`${tag}: installed agents first, the others marked`, JSON.stringify(s.labels) === JSON.stringify(['Codex', 'Pi', 'Claude not installed', 'Antigravity not installed']), JSON.stringify(s.labels));
             check(`${tag}: with no default chosen and Claude missing, the first installed agent is selected (the form's select agrees)`, s.checked === 'codex' && s.select === 'codex', JSON.stringify([s.checked, s.select]));
             // choosing in the first step drives the form

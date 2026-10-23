@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
 const BASE = require('./test_base').BASE;
 
-const BUDGET = { chooser: 17, agent: 15, more: 34 }; // the phone's select shows one section name, so it is under these
+const BUDGET = { chooser: 17, agent: 12, more: 40 }; // the phone's select shows one section name, so it is under these
 
 (async () => {
     const { client, Page, Emulation, ev, waitFor, PRELOAD, install } = await connect();
@@ -29,8 +29,8 @@ const BUDGET = { chooser: 17, agent: 15, more: 34 }; // the phone's select shows
             await ev(`document.querySelector('#launch-step-chooser [data-arg="agent"]').click(); true`);
             await waitFor(`getComputedStyle(document.getElementById('launch-step-agent')).display !== 'none'`, `${tag}: the New Agent step`, 8000);
             n = await words();
-            assert.ok(n <= BUDGET.agent, `${tag}: New Agent shows ${n} words, budget ${BUDGET.agent}`);
-            await ev(`document.getElementById('launch-agent-more-btn').click(); true`);
+            assert.ok(n <= BUDGET.agent, `${tag}: New Agent step 1 (the folder) shows ${n} words, budget ${BUDGET.agent}`);
+            await ev(`document.getElementById('launch-dir').value = '/tmp'; document.getElementById('launch-agent-next').click(); true`);
             await waitFor(`!document.getElementById('launch-agent-more').hidden`, `${tag}: More options open`, 8000);
             n = await words();
             assert.ok(n <= BUDGET.more, `${tag}: New Agent with More options shows ${n} words, budget ${BUDGET.more}`);

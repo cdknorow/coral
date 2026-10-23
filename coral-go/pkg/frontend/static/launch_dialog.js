@@ -20,7 +20,22 @@ const { _initAgentPresets } = await importOnce('./persona_io.js');
 const { markFieldInvalid, _launchBlocked, _launchOn, _refreshAfterLaunch, _resetDirInputs, _showLaunchStep, _syncMobileLaunchSections, hideLaunchModal, setLaunchMore } = await importOnce('./launch_core.js');
 const { initSectionDialog, showSection } = await importOnce('./section_dialog.js');
 
+/** New Agent's two steps (#6333): Next goes from the folder to the details (a folder is needed first), Back or Change returns. Focus follows, and a screen reader hears which step. */
+function _launchStage(stage) {
+    const input = document.getElementById('launch-dir');
+    if (stage === 'details') {
+        if (!input || !input.value.trim()) { if (input) { markFieldInvalid(input, "Choose a folder"); input.focus(); } return; }
+        const list = document.getElementById('dir-browser'); if (list) list.style.display = 'none'; // display-ok: the folder list is shown and hidden by style.display where it is opened (browser.js)
+    }
+    setLaunchMore(stage === 'details');
+    const live = document.getElementById('launch-stage-live');
+    if (live) live.textContent = stage === 'details' ? 'Step 2 of 2: name, agent and options' : 'Step 1 of 2: folder';
+    (stage === 'details' ? document.getElementById('launch-agent-name-input') : input)?.focus();
+}
+window._launchStage = _launchStage;
+
 function _selectLaunchType(type) {
+    if (type === "back" && document.getElementById('launch-step-agent')?.dataset.stage === 'details' && document.getElementById('launch-step-agent').style.display !== 'none') { _launchStage('folder'); return; } // the arrow goes back one step first
     if (type === "back") {
         launch.mode = null;
         _showLaunchStep("chooser");
@@ -57,7 +72,6 @@ function _selectLaunchType(type) {
     }
 }
 window._selectLaunchType = _selectLaunchType;
-window._toggleLaunchMore = () => setLaunchMore(document.getElementById('launch-agent-more')?.hidden === true);
 
 /**
  * Open the launch modal. `server` (hub mode) pre-selects a launch target; with
@@ -249,6 +263,7 @@ function _wireDirNote() {
     if (!input || input.dataset.noteWired) return;
     input.dataset.noteWired = '1';
     input.addEventListener('input', _syncDirNote); input.addEventListener('change', _syncDirNote);
+    input.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); _launchStage('details'); } }); // Enter is Next
 }
 
 
@@ -273,6 +288,7 @@ export async function launchSession() {
 
     if (!dir) {
         const agentForm = launch.mode !== "terminal";
+        if (agentForm) setLaunchMore(false); // the folder is step 1: back to it, so the flagged field can take the focus
         markFieldInvalid(document.getElementById(agentForm ? "launch-dir" : "launch-terminal-dir"), agentForm ? "Choose a folder" : "Working directory is required");
         return;
     }

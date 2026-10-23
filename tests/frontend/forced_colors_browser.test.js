@@ -71,10 +71,10 @@ const MD = '# Migration plan\n\n## Steps\n\n1. Add the new columns behind a flag
             assert.ok(focus[0] !== 'none' && parseFloat(focus[1]) >= 2, 'a focused search field is outlined: ' + JSON.stringify(focus));
 
             console.log(`7. ${mode}: the Launch dialog's section list marks the selected section, and a field in it is outlined when focused (#5735)`);
-            await ev(`(async () => { await window.showLaunchModal(); window._selectLaunchType('agent'); document.getElementById('launch-agent-more-btn')?.click(); return true; })()`);
+            await ev(`(async () => { await window.showLaunchModal(); window._selectLaunchType('agent'); document.getElementById('launch-agent-more').dispatchEvent(new CustomEvent('sd-more-open', { bubbles: true })); return true; })()`);
             await waitFor(`document.querySelectorAll('[id^="sd1-tab-"]').length >= 4`, 'the Launch section list', 15000);
             const lt = await tabs('.settings-tab[id^="sd1-tab-"]'); assert.ok(lt.n >= 4 && lt.selected && lt.other, 'Launch tabs found: ' + JSON.stringify(lt)); assert.notEqual(lt.selected, lt.other, 'the selected Launch section has a border the others do not: ' + JSON.stringify(lt));
-            const lf = await ev(`(() => { const i = document.getElementById('launch-dir'); i.focus(); const cs = getComputedStyle(i); return [cs.outlineStyle, cs.outlineWidth]; })()`);
+            const lf = await ev(`(() => { const i = document.getElementById('launch-agent-name-input'); i.focus(); const cs = getComputedStyle(i); return [cs.outlineStyle, cs.outlineWidth]; })()`);
             assert.ok(lf[0] !== 'none' && parseFloat(lf[1]) >= 2, 'a focused field in the Launch dialog is outlined (its rule drew a box-shadow): ' + JSON.stringify(lf));
             await ev(`window.hideLaunchModal(); true`);
 

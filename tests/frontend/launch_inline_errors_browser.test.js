@@ -83,7 +83,7 @@ const BASE = require('./test_base').BASE;
         await ev(`window.hideLaunchModal(); true`);
 
         console.log('4b. A new agent starts in Auto for Claude and as before for the others; a mode the person picked is kept (#5836)');
-        await ev(`window.showLaunchModal(); window._selectLaunchType('agent'); window._toggleLaunchMore(); true`);
+        await ev(`window.showLaunchModal(); window._selectLaunchType('agent'); document.getElementById('launch-agent-more').dispatchEvent(new CustomEvent('sd-more-open', { bubbles: true })); true`);
         await waitFor(`getComputedStyle(document.getElementById('launch-step-agent')).display !== 'none'`, 'the agent step');
         const pm = `document.getElementById('launch-agent-acf').querySelector('.acf-permission-mode')`;
         const setType = t => ev(`(() => { const s = document.getElementById('launch-agent-acf').querySelector('.acf-agent-type'); s.value = ${JSON.stringify(t)}; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
@@ -100,7 +100,7 @@ const BASE = require('./test_base').BASE;
         console.log('   \u2713');
 
         console.log('5. Bypass Permissions: no Allow row; the chips say pressed or not, in named groups');
-        await ev(`window.showLaunchModal(); window._selectLaunchType('agent'); window._toggleLaunchMore(); true`); // New Agent opens on the folder: its sections are behind More options
+        await ev(`window.showLaunchModal(); window._selectLaunchType('agent'); document.getElementById('launch-agent-more').dispatchEvent(new CustomEvent('sd-more-open', { bubbles: true })); true`); // New Agent opens on the folder: its sections are behind More options
         await waitFor(`getComputedStyle(document.getElementById('launch-step-agent')).display !== 'none'`, 'the agent step');
         const acf = `document.getElementById('launch-agent-acf')`;
         await ev(`(() => { const sel = ${acf}.querySelector('.acf-permission-mode'); sel.value = 'bypassPermissions'; sel.dispatchEvent(new Event('change', { bubbles: true })); ${acf}.querySelector('.acf-agent-type').value = 'claude'; ${acf}.querySelector('.acf-agent-type').dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
