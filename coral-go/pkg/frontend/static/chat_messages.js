@@ -4,7 +4,7 @@ import { makeBubble } from './chat_bubbles.js';
 import { unwrapPastedContent } from './pasted_content.js';
 import { isCoralNudge, INTERRUPT_RE, appendCoralNotice, isCoralHealthNudge, normalizeNudgeText } from './pending_messages.js';
 import { escapeHtml, renderMarkdown } from './utils.js';
-import { thumbHtml, wireThumbs } from './chat_thumbs.js';
+import { thumbHtml, wireThumbs, sharedImageChips } from './chat_thumbs.js';
 import { splitSharedImages } from './shared_images.js';
 import { chatAgentAdapter } from './chat_agents.js';
 import { SAVE_BUTTON } from './saved_marks.js';
@@ -44,15 +44,6 @@ function isCoralDelivery(msg) {
 function attachmentChips(attachments) {
     const chips = (Array.isArray(attachments) ? attachments : []).filter(a => a && a.name).map(a =>
         `<span class="chat-attachment-chip">${escapeHtml(a.name)}${a.file ? ` <span class="chat-attachment-file">${escapeHtml(a.file)}</span>` : ""}</span>${thumbHtml(a)}`);
-    return chips.length ? `<div class="chat-attachments">${chips.join("")}</div>` : "";
-}
-
-// The images pasted in the dashboard (#5284): a chip with the file's name and a thumbnail from the artifact, which Coral Hub serves too; a link that is gone (removed, retention, the owner's switch)
-// leaves the chip.
-function sharedImageChips(images) {
-    // One compact chip per image: the thumbnail with its remove button on the corner. The name is the chip's fallback, shown only while there is no thumbnail (css: the image has not
-    // loaded, a link that is gone, the shared copy removed); the thumbnail and the button carry it as their names.
-    const chips = images.map(im => `<span class="chat-attachment-image"><span class="chat-attachment-chip chat-attachment-name">${escapeHtml(im.name)}</span>${thumbHtml({ artifact: im.hex, name: im.name })}</span>`);
     return chips.length ? `<div class="chat-attachments">${chips.join("")}</div>` : "";
 }
 

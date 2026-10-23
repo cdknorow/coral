@@ -5,7 +5,7 @@
  * wins over a file name. Anything that fails (not an upload, not a image Coral serves, through the Hub where neither route is served) leaves the chip as its name.
  * A click opens the image in the Preview pane. */
 import { state } from './state.js';
-import { escapeAttr } from './utils.js';
+import { escapeAttr, escapeHtml } from './utils.js';
 import { registerActions } from './actions.js';
 import { serverUrl, sessionServer, isCloud } from './server_base.js';
 import { fetchImageSrc } from './image_source.js';
@@ -32,6 +32,15 @@ export function thumbHtml(att) {
     const unshare = artifact && !isCloud() ? `<button type="button" class="chat-attachment-unshare" data-on-click="chat-thumb-unshare" data-artifact="${escapeAttr(artifact)}" aria-label="Remove shared copy of ${escapeAttr(label)}" title="Remove shared copy" hidden><span class="material-icons" aria-hidden="true">delete</span></button>` : '';
     return `<button type="button" class="chat-attachment-thumb" data-on-click="chat-thumb-open" data-artifact="${escapeAttr(artifact)}" data-ref="${escapeAttr(ref)}" data-upload="${escapeAttr(artifact || ref ? '' : file)}" ` +
         `aria-label="Open ${escapeAttr(label)}" hidden><img alt="${escapeAttr(file || label)}" width="${SIZE}" height="${SIZE}" decoding="async"></button>${unshare}`;
+}
+
+// The images pasted in the dashboard (#5284): a chip with the file's name and a thumbnail from the artifact, which Coral Hub serves too; a link that is gone (removed, retention, the owner's switch)
+// leaves the chip.
+export function sharedImageChips(images) {
+    // One compact chip per image: the thumbnail with its remove button on the corner. The name is the chip's fallback, shown only while there is no thumbnail (css: the image has not
+    // loaded, a link that is gone, the shared copy removed); the thumbnail and the button carry it as their names.
+    const chips = images.map(im => `<span class="chat-attachment-image"><span class="chat-attachment-chip chat-attachment-name">${escapeHtml(im.name)}</span>${thumbHtml({ artifact: im.hex, name: im.name })}</span>`);
+    return chips.length ? `<div class="chat-attachments">${chips.join("")}</div>` : "";
 }
 
 const serverOf = () => (state.currentSession ? sessionServer(state.currentSession) : '');

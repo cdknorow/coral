@@ -73,7 +73,7 @@
 2	chat_bubbles.js	line > 0 ? ` (line ${line})` : ""
 1	chat_messages.js	COPY_BUTTON
 1	chat_messages.js	attachmentChips(msg.attachments)
-2	chat_messages.js	chips.join("")
+1	chat_messages.js	chips.join("")
 2	chat_messages.js	getToolIcon(view.icon)
 2	chat_messages.js	messageTimeHtml(msg.timestamp)
 2	chat_messages.js	msg.key ? SAVE_BUTTON : ""
@@ -82,9 +82,10 @@
 1	chat_messages.js	renderMarkdown(msg.text, undefined, 'chat')
 1	chat_messages.js	sharedImageChips(lead.images)
 1	chat_messages.js	thumbHtml(a)
-1	chat_messages.js	thumbHtml({ artifact: im.hex, name: im.name })
 1	chat_search.js	highlightExcerpt(hit.excerpt, hit.match_offsets)
 2	chat_thumbs.js	SIZE
+1	chat_thumbs.js	chips.join("")
+1	chat_thumbs.js	thumbHtml({ artifact: im.hex, name: im.name })
 1	chat_thumbs.js	unshare
 2	chat_tool_cards.js	bodyHtml
 1	chat_tool_cards.js	cls
@@ -366,7 +367,7 @@
 2	notifications.js	icon
 1	notifications.js	linkHtml
 2	pending_messages.js	label
-1	pending_messages.js	renderMarkdown(unwrapPastedContent(p.text), undefined, 'chat')
+1	pending_messages.js	renderMarkdown(lead.rest, undefined, 'chat')
 1	preview_pane.js	_fileIcon(tab)
 1	preview_pane.js	active
 1	preview_pane.js	buttons

@@ -8,6 +8,7 @@ import { escapeHtml, renderMarkdown } from './utils.js';
 import { makeBubble } from './chat_bubbles.js';
 import { unwrapPastedContent } from './pasted_content.js';
 import { splitSharedImages } from './shared_images.js';
+import { importOnce } from './import_once.js';
 import { state } from './state.js';
 import { storeKey } from './local_store.js';
 import { browserLocal } from './safe_storage.js';
@@ -350,11 +351,16 @@ function syncPendingGroup(container, cls, items, label) {
     for (const p of items) {
         if (have.has(p.id)) continue;
         const coral = /^\[Coral UI panel request\b/i.test(normalizeNudgeText(p.text));
+        const lead = splitSharedImages(unwrapPastedContent(p.text));
         const summary = coralNoticeSummary(normalizeNudgeText(p.text));
         const el = coral
             ? makeBubble("chat-system chat-system-general pending", `<span class="material-icons" aria-hidden="true">notifications</span><span class="chat-system-label">Coral</span><span class="chat-system-text" title="${escapeHtml(summary)}">${escapeHtml(summary)}</span><span class="pending-label">${label}</span>`)
-            : makeBubble("chat-bubble human pending", `<div class="message-text">${renderMarkdown(unwrapPastedContent(p.text), undefined, 'chat')}</div><div class="pending-label">${label}</div>`);
+            : makeBubble("chat-bubble human pending", `<div class="message-text">${renderMarkdown(lead.rest, undefined, 'chat')}</div><div class="pending-images"></div><div class="pending-label">${label}</div>`);
         el.dataset.pendingId = String(p.id);
+        // Images pasted in the dashboard lead the text as links and a download hint for the agent (#5284): the person sees the same thumbnail chips the sent message will have, never the links (#6199).
+        if (!coral && lead.images.length) {
+            importOnce('./chat_thumbs.js').then(m => { const slot = el.querySelector(':scope > .pending-images'); if (slot) { slot.innerHTML = m.sharedImageChips(lead.images); m.wireThumbs(el); } }).catch(() => {});
+        }
         // Keep send order even when a message moves between groups
         const next = Array.from(wrap.children).find(c => Number(c.dataset.pendingId) > p.id);
         wrap.insertBefore(el, next || null);
