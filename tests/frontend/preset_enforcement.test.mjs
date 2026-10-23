@@ -49,7 +49,8 @@ assert.match(e.text, /Deny entries and shell patterns are not enforced/);
 assert.equal(e.denyEnforced, false);
 assert.equal(e.patternsEnforced, false);
 e = pe.presetEnforcement('codex', AGENT_PRESETS.find(p => p.name === 'Lead Developer').capabilities, 'default');
-assert.match(e.text, /no sandbox, and it never asks.*Git Write together make it run without a sandbox/, 'Codex git_write: no sandbox (Security D)');
+assert.match(e.text, /a sandbox that can write the working folder, and it never asks/, 'Codex git_write is no sandbox-free choice (#6422): four chips are workspace-write, never');
+assert.doesNotMatch(e.text, /without a sandbox/, 'no sandbox is only an explicit choice');
 for (const t of ['agy', 'gemini', 'antigravity']) {
     e = pe.presetEnforcement(t, AGENT_PRESETS.find(p => p.name === 'Security Reviewer').capabilities, 'default');
     assert.match(e.text, /^Antigravity keeps only a mode: read-only planning/, t);

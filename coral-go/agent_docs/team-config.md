@@ -101,7 +101,7 @@ Capabilities are translated to each CLI's own permissions at launch, and that is
 | `codex` | Only a sandbox (`read-only`, `workspace-write`, or none) and whether it asks (`on-request`: the model decides, and sandboxed commands run without asking; `never`). Shell patterns and `deny` entries aren't enforced; a `deny` entry only changes the mode. `shell`, `file_read`, `file_write` and `git_write` together run Codex without a sandbox. |
 | `agy`, `gemini` | Only a mode (`--mode plan`, `--mode accept-edits`, or `--dangerously-skip-permissions`). Shell patterns and `deny` entries aren't enforced; a `deny` entry only changes the mode, and with `shell` it gives `--mode accept-edits`, which approves edits without asking. (`gemini` launches the `agy` binary.) |
 
-When capabilities set a mode, they win over the launch dialog's permission flag for Codex and Antigravity.
+A permission mode the person set (the member's own, else the team's; "Default" is none) is always applied, and for Codex and Antigravity capabilities can only narrow it: Plan with Shell, Read, Write and Git Write stays read-only, and a read-only capability set stays read-only under Bypass Permissions. With no mode set, the capabilities decide. Capabilities never mean "no sandbox": Shell, Read, Write and Git Write with no `deny` is `workspace-write` and never asks; a Codex agent runs without a sandbox only in the Bypass Permissions mode or with a bypass flag typed.
 
 **Default permission mode (#5836).** A Claude launch with no mode chosen (no `--permission-mode` or bypass flag, no saved `default_permission_mode`) starts in `--permission-mode auto`; the launch form, the team form and quick launch show Auto for Claude until another is picked, and a saved default is the person's choice for every agent type. Other CLIs start as they did: Codex's Auto (`--sandbox workspace-write -a never`) blocks the localhost board, Antigravity has no safe mode between its edits-only one and skip-permissions, and Pi has none. A task run with `auto_accept` adds `--permission-mode auto` for Claude. Through Coral Hub the default applies only when the owner lets agents skip permission prompts ("Coral Hub can turn on auto-accept" on, and Launch mode, the rule an explicit `--permission-mode auto` meets); otherwise a Hub launch or team member with no mode asks (`default`). A restart, resume, wake or team reset restores the session's own mode and never gets the default.
 
@@ -109,12 +109,12 @@ The dashboard's built-in presets get these flags (from `agent_presets.js`, pinne
 
 | Preset | Codex | Antigravity |
 |--------|-------|-------------|
-| Lead Developer | `--dangerously-bypass-approvals-and-sandbox` | `--dangerously-skip-permissions` |
+| Lead Developer | `--sandbox workspace-write -a never` | `--dangerously-skip-permissions` |
 | QA Engineer | `--sandbox workspace-write -a never` | `--dangerously-skip-permissions` |
-| Orchestrator | `--dangerously-bypass-approvals-and-sandbox --search` | `--dangerously-skip-permissions` |
+| Orchestrator | `--sandbox workspace-write -a never --search` | `--dangerously-skip-permissions` |
 | Frontend Dev | `--sandbox workspace-write -a on-request --search` | `--mode accept-edits` |
-| Backend Dev | `--dangerously-bypass-approvals-and-sandbox` | `--dangerously-skip-permissions` |
-| DevOps Engineer | `--dangerously-bypass-approvals-and-sandbox` | `--dangerously-skip-permissions` |
+| Backend Dev | `--sandbox workspace-write -a never` | `--dangerously-skip-permissions` |
+| DevOps Engineer | `--sandbox workspace-write -a never` | `--dangerously-skip-permissions` |
 | Security Reviewer | `--sandbox read-only -a on-request --search` | `--mode plan` |
 | Technical Writer | `--sandbox workspace-write -a on-request` | `--mode accept-edits` |
 | Content Writer | `--sandbox workspace-write -a on-request --search` | `--mode accept-edits` |

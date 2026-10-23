@@ -1,21 +1,21 @@
 # preset<TAB>agent<TAB>what the CLI enforces (go test ./internal/agent -run TestPresetEnforcementTable -update)
 Lead Developer	claude	allow=Agent,Bash,Bash(git branch *),Bash(git commit *),Bash(git merge *),Bash(git push *),Bash(git rebase *),Edit,Glob,Grep,Read,Write deny=-
-Lead Developer	codex	sandbox=none approval=never
+Lead Developer	codex	sandbox=workspace-write approval=never
 Lead Developer	agy	mode=skip-permissions
 QA Engineer	claude	allow=Bash,Edit,Glob,Grep,Read,Write deny=-
 QA Engineer	codex	sandbox=workspace-write approval=never
 QA Engineer	agy	mode=skip-permissions
 Orchestrator	claude	allow=Agent,Bash,Bash(git branch *),Bash(git commit *),Bash(git merge *),Bash(git push *),Bash(git rebase *),Edit,Glob,Grep,Read,WebFetch,WebSearch,Write deny=-
-Orchestrator	codex	sandbox=none approval=never search
+Orchestrator	codex	sandbox=workspace-write approval=never search
 Orchestrator	agy	mode=skip-permissions
 Frontend Dev	claude	allow=Bash(coral-board *),Bash(npm *),Bash(npx *),Edit,Glob,Grep,Read,WebFetch,WebSearch,Write deny=-
 Frontend Dev	codex	sandbox=workspace-write approval=on-request search
 Frontend Dev	agy	mode=accept-edits
 Backend Dev	claude	allow=Bash,Bash(git branch *),Bash(git commit *),Bash(git merge *),Bash(git push *),Bash(git rebase *),Edit,Glob,Grep,Read,Write deny=-
-Backend Dev	codex	sandbox=none approval=never
+Backend Dev	codex	sandbox=workspace-write approval=never
 Backend Dev	agy	mode=skip-permissions
 DevOps Engineer	claude	allow=Bash,Bash(git branch *),Bash(git commit *),Bash(git merge *),Bash(git push *),Bash(git rebase *),Edit,Glob,Grep,Read,Write deny=-
-DevOps Engineer	codex	sandbox=none approval=never
+DevOps Engineer	codex	sandbox=workspace-write approval=never
 DevOps Engineer	agy	mode=skip-permissions
 Security Reviewer	claude	allow=Bash(coral-board *),Glob,Grep,Read,WebFetch,WebSearch deny=-
 Security Reviewer	codex	sandbox=read-only approval=on-request search

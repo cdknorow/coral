@@ -318,7 +318,7 @@ func (a *CodexAgent) LaunchCommand(params LaunchParams) (string, error) {
 	// Note: Codex's sandbox may strip env vars from child processes.
 	// coral-board handles this via board_state file fallback (reads job_title
 	// from ~/.coral/board_state_{session}.json when CORAL_SUBSCRIBER_ID is unavailable).
-	parts, bypassSandbox, permissionApplied := codexCapabilityFlags(parts, params.Capabilities)
+	parts, bypassSandbox, permissionApplied := codexCapabilityFlags(parts, params.Capabilities, params.PermissionMode)
 	presetApplied := permissionApplied
 	parts, bypassSandbox, permissionApplied = codexUserFlags(parts, params.Flags, bypassSandbox, permissionApplied)
 	if !permissionApplied {
@@ -425,23 +425,33 @@ func codexHookArgs(sessionID string) []string {
 
 // codexCapabilityFlags are the permission flags from the agent's capabilities, when it has them: bypass, full
 // auto, or a sandbox mode and approval policy, and web search. bypass and applied say what was set.
-func codexCapabilityFlags(parts []string, caps *Capabilities) (out []string, bypass, applied bool) {
+//
+// An explicit permission mode (the member's own, else the team's: anything but "" and "default") is always applied, and the capabilities may only narrow it (#6425): Plan with Shell,
+// Read and Write stays read-only, Bypass with a read-only capability set is read-only.
+func codexCapabilityFlags(parts []string, caps *Capabilities, mode string) (out []string, bypass, applied bool) {
 	perms := TranslateToCodexPermissions(caps)
 	if perms == nil {
 		return parts, false, false
 	}
+	pair := codexPairOf(perms)
+	if m, ok := codexPairForMode(mode); ok {
+		if perms.FullAuto {
+			pair = codexPair{codexSandboxNone, "never"} // Shell with no deny restricts nothing: against an explicit mode it is the widest set, so the mode stands as chosen
+		}
+		pair = narrowCodexPair(m, pair)
+	}
 	switch {
-	case perms.BypassSandbox:
+	case pair.sandbox == codexSandboxNone && pair.approval == "never":
 		bypass = true
 		parts = append(parts, "--dangerously-bypass-approvals-and-sandbox")
-	case perms.FullAuto:
+	case pair.sandbox == "workspace-write" && pair.approval == "never":
 		parts = appendCodexFullAuto(parts)
 	default:
-		if perms.SandboxMode != "" {
-			parts = append(parts, "--sandbox", perms.SandboxMode)
+		if pair.sandbox != "" {
+			parts = append(parts, "--sandbox", pair.sandbox)
 		}
-		if perms.ApprovalPolicy != "" {
-			parts = append(parts, "-a", normalizeCodexApprovalPolicy(perms.ApprovalPolicy))
+		if pair.approval != "" {
+			parts = append(parts, "-a", normalizeCodexApprovalPolicy(pair.approval))
 		}
 	}
 	if perms.Search {

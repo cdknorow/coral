@@ -15,7 +15,6 @@ export function codexEnforced(caps) {
     if (!allow.size && !hasDeny) return null;
     const search = allow.has('web_access');
     const out = (sandbox, approval) => ({ sandbox, approval, search });
-    if (allow.has('shell') && allow.has('file_read') && allow.has('file_write') && allow.has('git_write') && !hasDeny) return out('none', 'never');
     if (allow.has('shell') && !hasDeny) return out('workspace-write', 'never');
     if (allow.has('shell')) return out('workspace-write', 'on-request');
     if (allow.has('file_read') && allow.has('file_write')) return out('workspace-write', 'on-request');
@@ -37,7 +36,6 @@ export function agyEnforced(caps) {
 }
 
 const CODEX_SANDBOX = {
-    'none': 'no sandbox',
     'workspace-write': 'a sandbox that can write the working folder',
     'read-only': 'a read-only sandbox',
 };
@@ -80,7 +78,6 @@ export function presetEnforcement(agentType, caps, permMode) {
             text = 'Codex: no capabilities set, so the Permission Mode decides its sandbox and approvals.';
         } else {
             text = `Codex keeps only a sandbox and an approval mode: ${CODEX_SANDBOX[m.sandbox]}, and ${CODEX_APPROVAL[m.approval]}${m.search ? '; web search on' : ''}.`;
-            if (m.sandbox === 'none') text += ' Shell, Write Files and Git Write together make it run without a sandbox.';
         }
         text += ' Deny entries and shell patterns are not enforced (a Deny entry only changes the mode).';
         return { text, denyEnforced: false, patternsEnforced: false };

@@ -326,6 +326,10 @@ func (a *AgyAgent) LaunchCommand(params LaunchParams) (string, error) {
 
 	// Permission flags from capabilities
 	if perms := TranslateToAgyPermissions(params.Capabilities); perms != nil {
+		// An explicit mode (the member's own, else the team's) is applied and the capabilities only narrow it (#6425).
+		if rank, ok := agyRankForMode(params.PermissionMode); ok {
+			perms = narrowAgyPermissions(perms, rank)
+		}
 		if perms.DangerouslySkipPermissions {
 			parts = append(parts, "--dangerously-skip-permissions")
 		}

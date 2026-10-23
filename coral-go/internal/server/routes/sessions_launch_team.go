@@ -527,10 +527,16 @@ func (h *SessionsHandler) launchTeamMember(ctx context.Context, body launchTeamR
 	if len(agentFlags) == 0 {
 		permMode := agent.PermissionModeFromFlags(body.Flags)
 		cleanFlags := stripAgentPermissionFlags(body.Flags)
-		if carried, _ := agent.SplitPermissionFlags(body.Flags); def.Capabilities.IsEmpty() && permMode == "" && len(carried) > 0 {
+		// The team's mode is every member's own unless it names one (#6425): capabilities do not replace it. A member with none gets the mode's flags with the rest of its flags; one
+		// with capabilities gets the mode as its permission mode, which the agent's command builder applies with the capabilities only narrowing it (Claude keeps the lists apart).
+		carried, _ := agent.SplitPermissionFlags(body.Flags)
+		switch {
+		case permMode == "" && len(carried) > 0 && def.Capabilities.IsEmpty():
 			cleanFlags = append(cleanFlags, carried...) // flags nobody here can read as a mode are handed on, never dropped (#6423)
-		} else if def.Capabilities.IsEmpty() && permMode != "" && permMode != "default" {
+		case permMode != "" && permMode != "default" && def.Capabilities.IsEmpty():
 			cleanFlags = append(cleanFlags, agent.PermissionFlagsForAgent(agentType, permMode)...)
+			memberPermMode = permMode
+		case permMode != "" && permMode != "default":
 			memberPermMode = permMode
 		}
 		agentFlags = cleanFlags

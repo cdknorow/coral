@@ -1,6 +1,6 @@
 {
  "_what": "Capability sets and what a Codex agent launches with (#6419). internal/agent TestCodexSandboxRuleFixture holds TranslateToCodexPermissions and the launch flags to it; tests/frontend preset_enforcement.test.mjs holds preset_enforcement.js codexEnforced to it, so the form cannot say one thing while a launch does another. Written by hand from the rule, not by the code under test: change the rule, change this file, and both tests say where they disagree.",
- "_rule": "empty -> no flags (the CLI default). Bypass (no sandbox, never asks) = shell + file_read + file_write + git_write and no deny. shell and no deny -> workspace-write, never. shell with a deny -> workspace-write, on-request. file_read + file_write -> workspace-write, on-request. file_read -> read-only, on-request. web_access alone -> read-only, on-request. anything else -> workspace-write, on-request. web_access adds search. A shell:<pattern> is not shell. Other capabilities change nothing.",
+ "_rule": "empty -> no flags (the CLI default). Capabilities never mean no sandbox (#6422): shell + file_read + file_write + git_write and no deny is the same as shell and no deny. The bypass flag comes only from the Bypass Permissions mode or a flag typed. shell and no deny -> workspace-write, never. shell with a deny -> workspace-write, on-request. file_read + file_write -> workspace-write, on-request. file_read -> read-only, on-request. web_access alone -> read-only, on-request. anything else -> workspace-write, on-request. web_access adds search. A shell:<pattern> is not shell. Other capabilities change nothing.",
  "cases": [
   {
    "name": "no capabilities at all",
@@ -1097,12 +1097,15 @@
    ],
    "deny": [],
    "expect": {
-    "sandbox": "none",
+    "sandbox": "workspace-write",
     "approval": "never",
     "search": false
    },
    "flags": [
-    "--dangerously-bypass-approvals-and-sandbox"
+    "--sandbox",
+    "workspace-write",
+    "-a",
+    "never"
    ]
   },
   {
@@ -1277,12 +1280,15 @@
    ],
    "deny": [],
    "expect": {
-    "sandbox": "none",
+    "sandbox": "workspace-write",
     "approval": "never",
     "search": true
    },
    "flags": [
-    "--dangerously-bypass-approvals-and-sandbox",
+    "--sandbox",
+    "workspace-write",
+    "-a",
+    "never",
     "--search"
    ]
   },
@@ -1361,12 +1367,15 @@
    ],
    "deny": [],
    "expect": {
-    "sandbox": "none",
+    "sandbox": "workspace-write",
     "approval": "never",
     "search": true
    },
    "flags": [
-    "--dangerously-bypass-approvals-and-sandbox",
+    "--sandbox",
+    "workspace-write",
+    "-a",
+    "never",
     "--search"
    ]
   },

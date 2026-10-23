@@ -108,7 +108,6 @@ func mapCapToClaudeTools(cap string) []string {
 // CodexPermissions represents codex-cli sandbox/permission settings.
 type CodexPermissions struct {
 	FullAuto       bool   `json:"full_auto,omitempty"`
-	BypassSandbox  bool   `json:"bypass_sandbox,omitempty"`
 	SandboxMode    string `json:"sandbox_mode,omitempty"`    // "read-only", "workspace-write", "danger-full-access"
 	ApprovalPolicy string `json:"approval_policy,omitempty"` // "on-request" or "never" (the only two Codex 0.155 takes)
 	Search         bool   `json:"search,omitempty"`
@@ -133,15 +132,8 @@ func TranslateToCodexPermissions(caps *Capabilities) *CodexPermissions {
 		perms.Search = true
 	}
 
-	// Full access (all major caps, no deny) → bypass sandbox entirely.
-	// Design decision: this matches the "full_access" preset from the spec. The combination
-	// of CapShell + CapFileRead + CapFileWrite + CapGitWrite with no deny list represents
-	// an explicitly unrestricted agent. Individual caps (e.g. CapGitWrite alone) do NOT
-	// trigger bypass — only the full combination does.
-	if allowSet[CapShell] && allowSet[CapFileRead] && allowSet[CapFileWrite] && allowSet[CapGitWrite] && !hasDeny {
-		perms.BypassSandbox = true
-		return perms
-	}
+	// No sandbox and no approvals is never read from capabilities (#6422): Shell, Read, Write and Git Write with no deny used to mean the bypass flag, which put the built-in Coding
+	// Team's Codex members outside any sandbox from four chips. It comes only from an explicit choice: the Bypass Permissions mode (appendCodexPermissionMode) or a bypass flag typed.
 
 	// Shell with no deny → automatic workspace writes without approval prompts.
 	if allowSet[CapShell] && !hasDeny {
