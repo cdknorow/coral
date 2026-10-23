@@ -4240,7 +4240,7 @@ body[data-saved-scope="all"] .saved-view .saved-scope { display: none; }
 .ibx-error { margin: 4px 0; color: var(--error-text, var(--error)); font-size: var(--fs-sm, 0.8125rem); }
 .ibx-reply { display: flex; flex-direction: column; gap: 6px; margin: 0; }
 .ibx-reply-label { font-weight: 600; font-size: var(--fs-sm, 0.8125rem); }
-.ibx-reply-input { width: 100%; box-sizing: border-box; resize: vertical; overflow-y: auto; max-height: 240px; padding: 8px; border-radius: var(--radius-md); border: 1px solid var(--border); background: var(--bg-primary); color: var(--text-primary); font: inherit; }
+.ibx-reply-input { min-height: 44px; width: 100%; box-sizing: border-box; resize: vertical; overflow-y: auto; max-height: 240px; padding: 8px; border-radius: var(--radius-md); border: 1px solid var(--border); background: var(--bg-primary); color: var(--text-primary); font: inherit; }
 .ibx-reply-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .ibx-reply-status { margin: 0; color: var(--text-secondary); font-size: var(--fs-sm, 0.8125rem); overflow-wrap: anywhere; }
 .ibx-open { margin: 0; font-size: var(--fs-sm, 0.8125rem); font-weight: 400; }
@@ -4266,6 +4266,7 @@ a.ibx-open, a.ibx-open:visited { color: var(--link-text); }
 .ibx-task-metarow .ibx-open { display: inline-block; padding-block: 6px; margin-block: -6px; } /* 24 px or more for a mouse too (WCAG 2.5.8: a link on its own, not inside a sentence), without a taller line */
 @media (pointer: coarse) {
     .ibx-task-metarow .ibx-open { min-height: 0; padding-block: 16px; margin-block: -16px; }
+    .ibx-task-metarow { padding-block: 16px; } /* the link's padding is taken back by its margin: the row holds it, so it never reaches over the task's head at 200% text (#6580) */
 }
 .saved-item { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-ml); padding: 10px 12px; }
 .saved-item .top { display: flex; align-items: center; gap: 8px; min-width: 0; }
@@ -4310,7 +4311,7 @@ a.ibx-open, a.ibx-open:visited { color: var(--link-text); }
 .saved-more { position: relative; margin-left: auto; }
 .saved-more-menu { position: absolute; right: 0; bottom: calc(100% + 4px); z-index: 5; min-width: max-content; background: var(--bg-secondary); border: 1px solid var(--control-border); border-radius: var(--radius-ml); padding: 4px; box-shadow: var(--shadow-md); }
 .saved-more-menu[hidden] { display: none; }
-.saved-item .acts .saved-more-menu .btn { width: 100%; justify-content: flex-start; color: var(--danger); }
+.saved-item .acts .saved-more-menu .btn { width: 100%; justify-content: flex-start; }
 /* Phone: Done and More stay on one row at 390 px (a little less padding and gap); a narrower screen may wrap (#5882). */
 @media (max-width: 600px) {
     .saved-item .acts { gap: 6px; }
