@@ -9,6 +9,7 @@ const { tap: tapSel, required, openBoardComposer, BOARD_COMPOSER_UP, showUpdateR
 const { STUB, HEX } = require('./helpers/comments_scale');
 const kb = require('./helpers/keyboard_census');
 const { DATA_WORLD, httpJson, UPDATE_STAGED, CLOUD_LINKED } = require('./helpers/census_world');
+const { INBOX_WORLD } = require('./helpers/inbox_world');
 const BASE = require('./test_base').BASE;
 const TEAM = 'census-k-' + Date.now().toString(36);
 const S = `(window.__coralStatic || '/static/')`;
@@ -83,6 +84,17 @@ const BUBBLES = [{ type: 'user', content: 'Is the build green?', key: 'c1', time
         await ev(`document.querySelectorAll('.modal.show, dialog[open]').forEach(m => { m.classList.remove('show'); if (m.close) m.close(); }); true`);
         await load();
         for (const [n, tab, label] of [['analytics', 'tokens', 'Analytics'], ['docs', 'docs', 'Docs'], ['inbox', 'hub-inbox', 'Inbox']]) await sc(n, async () => { await ev(`window.switchNavTab('${tab}'); true`); }, { min: 3 });
+        // the Inbox's three tabs with something in each (#6541): an agent waiting, the open tasks (one opened to its reply box), the saved messages (their filters open)
+        await sc('inbox: needs you, an agent waiting', async () => {
+            await ev(INBOX_WORLD);
+            await ev(`localStorage.removeItem('coral.inbox.tab'); window.__m.add('Waiting Agent', 'W', 1, { sleeping: false, session_id: 'wait-1' }); window.__qaState.liveSessions = window.__qaState.liveSessions.map(s => s.session_id === 'wait-1' ? { ...s, waiting_for_input: true, waiting_kind: 'permission' } : s); window.switchNavTab('hub-inbox'); import(${S} + 'inbox_tab.js').then(m => m.updateInboxTab()); true`);
+            await waitFor(`document.querySelectorAll('#inbox-needs-list .inbox-needs-item').length === 1`, 'the waiting agent', 10000);
+        }, { min: 3, expect: `document.querySelectorAll('#inbox-needs-list .inbox-needs-item').length === 1` });
+        await sc('inbox: tasks for you', async () => { await tap('#inbox-tab-tasks'); await waitFor(`document.querySelectorAll('#inbox-tasks-host .ibx-task').length === 3`, 'three tasks', 10000); }, { min: 5, expect: `document.querySelectorAll('#inbox-tasks-host .ibx-task').length === 3` });
+        await sc('inbox: a task opened', async () => { await tap('#inbox-tasks-host .ibx-task-head'); await waitFor(`!!document.querySelector('#inbox-tasks-host .ibx-reply-input')`, 'the reply box', 10000); }, { min: 7, expect: `!!document.querySelector('#inbox-tasks-host .ibx-reply-input')` });
+        await sc('inbox: saved for later', async () => { await tap('#inbox-tab-saved'); await waitFor(`document.querySelectorAll('#saved-list .saved-item').length === 4`, 'four saved items', 10000); }, { min: 8, expect: `document.querySelectorAll('#saved-list .saved-item').length === 4` });
+        await sc('inbox: saved, filters open', async () => { await tap('#saved-view .list-bar-filter-btn'); }, { min: 8, expect: `!document.getElementById('sv-menu').hidden` });
+        await ev(`localStorage.removeItem('coral.inbox.tab'); window.switchNavTab('agents'); true`);
         await sc('analytics, with data', async () => { await ev(`window.switchNavTab('tokens'); true`); await waitFor(`['cost-by-provider', 'cost-by-model', 'cost-by-thinking', 'cost-by-agent', 'cost-by-team', 'cost-by-branch'].every(id => document.querySelectorAll('#' + id + ' tbody tr').length > 0) && !!document.querySelector('#cost-spend-chart svg')`, 'the analytics data', 15000); }, { expect: `document.getElementById('cost-total-cost').textContent.includes('6.4')` });
         await ev(`window.switchNavTab('agents'); true`);
         // the update prompt (#6292, #6306): the ready notice, the confirmation it opens, and Settings > Updates below (the flag is on from here)
