@@ -23,7 +23,6 @@ const TEMPLATES = path.join(FRONTEND, 'templates');
 const KNOWN = {
   // shown and filled, through a descendant or a wrapper (#6638)
   // shown with its words already in the template (#6638)
-  'settings_dialog.js:settings-unsaved': '"Unsaved changes" appears with its words already in it',
   'terminal_backend.js:default-notice-banner': 'the tmux notice appears with its words already in it',
 };
 
