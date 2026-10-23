@@ -822,7 +822,10 @@ export async function refreshUnsavedNote() {
     let dirty = _formAtOpen !== null && formKey() !== _formAtOpen;
     if (!dirty && _formAtOpen !== null) { dirty = databaseEncryptionChanged(); }
     if (!dirty && _formAtOpen !== null) { try { dirty = await importOnce('./terminal_backend.js').then(tb => tb.hasUnsavedBackendChange(), () => false); } catch { dirty = false; } }
-    note.hidden = !dirty;
+    if (note.hidden === dirty) note.hidden = !dirty;
+    // A note, not a live region (#6656): while there are unsaved changes the Save button is described by it, so it is read when the person reaches Save, where it matters, and not announced on every edit.
+    const save = document.getElementById('settings-save-btn');
+    if (save) { if (dirty) { if (save.getAttribute('aria-describedby') !== 'settings-unsaved') save.setAttribute('aria-describedby', 'settings-unsaved'); } else if (save.hasAttribute('aria-describedby')) save.removeAttribute('aria-describedby'); }
 }
 
 export async function showSettingsModal(group) {
