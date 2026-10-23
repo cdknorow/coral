@@ -108,6 +108,17 @@ class Workflow(unittest.TestCase):
         self.assertIn("--certificate-github-workflow-trigger workflow_dispatch", WF)
         self.assertNotIn("--certificate-identity-regexp", WF)
 
+    def test_both_jobs_have_a_timeout(self):
+        for job in ("validate", "promote"):
+            self.assertRegex(job_block(job), r"(?m)^    timeout-minutes: 15\b", job)
+
+    def test_the_summary_says_when_a_promotion_is_a_prerelease_and_lists_the_revoked_versions(self):
+        up = steps(job_block("promote"))[-1]
+        self.assertIn("jq -r .prerelease promote.json", up)
+        self.assertIn("prerelease: true, clients will refuse this promotion", up)
+        self.assertIn("Revoked versions in this manifest", up)
+        self.assertIn(".revoked", up)
+
     def test_an_existing_promotion_is_replaced_only_when_asked(self):
         self.assertIn("--clobber", WF)
         self.assertIn('"${PROMOTE_REPLACE}" != true', WF)

@@ -49,6 +49,7 @@ jobs:
   validate:
     name: Validate the release
     runs-on: ubuntu-24.04
+    timeout-minutes: 15   # a hung step must not hold the promote concurrency group (a third queued dispatch displaces the pending second one)
     permissions:
       contents: read
     outputs:
@@ -104,6 +105,7 @@ jobs:
     name: Promote
     needs: validate
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     environment: release-promote   # the reviewer approves first; the code seed is this environment's secret; deployment branch: promote only
     permissions:
       id-token: write   # the keyless signature of promote.json: this job and release.yml are the only ones that may
@@ -169,6 +171,14 @@ jobs:
           gh release upload "${PROMOTE_TAG}" promote.json promote.json.sigstore.json --repo "${GITHUB_REPOSITORY}" "${clobber[@]}"
           {
             echo "### Promoted ${PROMOTE_TAG}"
+            echo
+            # A release that is still flagged pre-release (every release is, until approve-release flips it) is signed as one and the client refuses it:
+            # say so, so a promotion that cannot install anything is not mistaken for a working one. The order is approve the release first, then promote.
+            if [ "$(jq -r .prerelease promote.json)" = true ]; then
+              echo "**prerelease: true, clients will refuse this promotion** (approve the release first, then promote it)"
+              echo
+            fi
+            echo "Revoked versions in this manifest: $(jq -r 'if (.revoked | length) == 0 then "none" else (.revoked | join(", ")) end' promote.json)"
             echo
             echo '```json'
             cat promote.json
