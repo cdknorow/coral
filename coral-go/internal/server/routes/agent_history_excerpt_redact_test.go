@@ -3,6 +3,7 @@ package routes
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 // Security's finding on #6207: the search excerpt is a window cut out of the transcript text, and its ends can fall inside a secret. Redacted after, the cut token is no longer a token (a GitHub token short of
@@ -48,5 +49,35 @@ func TestASecretAtTheEdgeOfTheSearchExcerptIsNotShownCut(t *testing.T) {
 	}
 	if got := makeBoundedExcerpt(strings.Repeat("a b ", 200)+"needle"+strings.Repeat(" c d", 200), 800, 300); !strings.Contains(got, "needle") || len([]rune(got)) > 306 {
 		t.Fatalf("an ordinary excerpt is unchanged: %q", got)
+	}
+}
+
+// The redactor is given a region of at most 64 KiB around the match, not the whole message: a 5 MB tool output costs a fraction of a second, and a secret at the window's edge is still not shown cut.
+func TestAnExcerptOfAHugeMessageIsFastAndSafeAtTheEdge(t *testing.T) {
+	secret := "ghp_" + strings.Repeat("aB3dE5gH7j", 3) + "kLmNoP"
+	filler := func(n int) string { return strings.Repeat("lorem ipsum dolor sit amet ", n/27+1)[:n] }
+	for _, edge := range []string{"left", "right"} {
+		for off := 0; off <= len(secret); off += 3 {
+			var text string
+			if edge == "left" {
+				text = filler(2_500_000) + " needle " + filler(150-off) + " " + secret + " " + filler(2_500_000)
+			} else {
+				text = filler(2_500_000) + " " + secret + " " + filler(150-off) + " needle " + filler(2_500_000)
+			}
+			idx := strings.Index(text, "needle")
+			start := time.Now()
+			got := makeBoundedExcerpt(text, idx, 300)
+			if took := time.Since(start); took > time.Second {
+				t.Fatalf("%s edge, off %d: a %d byte message took %v", edge, off, len(text), took)
+			}
+			if !strings.Contains(got, "needle") {
+				t.Fatalf("%s edge, off %d: the match is missing: %q", edge, off, got)
+			}
+			for i := 0; i+9 <= len(secret); i++ {
+				if strings.Contains(got, secret[i:i+9]) {
+					t.Fatalf("%s edge, off %d: a run of the secret is shown: %q", edge, off, got)
+				}
+			}
+		}
 	}
 }

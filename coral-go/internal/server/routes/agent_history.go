@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
 
@@ -648,24 +649,16 @@ func matchMessage(text string, phrases, terms []string) (bool, [][]int, []string
 	return true, matchedOffsets, matchedTerms
 }
 
+// excerptRedactBound is how many bytes either side of the match are redacted before the window is taken: a window is a few hundred characters, so a secret that straddles the ends of this region is
+// 30 KiB away from anything shown, and a message of megabytes costs the redactor 64 KiB, not all of it.
+const excerptRedactBound = 32 << 10
+
 func makeBoundedExcerpt(text string, matchOffset int, maxChars int) string {
 	if maxChars <= 0 {
 		maxChars = 300
 	}
 	clean := cleanWhitespace(text)
-	runes := []rune(clean)
-	if len(runes) <= maxChars {
-		return clean
-	}
-	// Redact the whole text BEFORE the window is cut out of it: a window whose ends fall inside a secret leaves part of a token that the redactor no longer recognises (a GitHub token short of its last
-	// character passed unchanged, #3733's class; Security's finding on #6207). Text that cannot be checked is not shown.
-	red, err := secrets.Redactor().Text([]byte(clean))
-	if err != nil {
-		return redact.Marker
-	}
-	clean = string(red)
-	runes = []rune(clean)
-	if len(runes) <= maxChars {
+	if utf8.RuneCountInString(clean) <= maxChars {
 		return clean
 	}
 
@@ -674,14 +667,44 @@ func makeBoundedExcerpt(text string, matchOffset int, maxChars int) string {
 	if matchOffset+subLen > len(text) {
 		subLen = len(text) - matchOffset
 	}
-	rMatchOffset := -1
+	sub := ""
+	byteMatch := -1
 	if subLen > 0 {
-		rMatchOffset = strings.Index(cleanLower, strings.ToLower(text[matchOffset:matchOffset+subLen]))
+		sub = strings.ToLower(text[matchOffset : matchOffset+subLen])
+		byteMatch = strings.Index(cleanLower, sub)
+	}
+	mid := byteMatch
+	if mid < 0 {
+		mid = len(clean) / 2
+	}
+	// Redact a region around the match BEFORE the window is cut out of it: a window whose ends fall inside a secret leaves part of a token that the redactor no longer recognises (a GitHub token short of
+	// its last character passed unchanged, #3733's class; Security's finding on #6207). Text that cannot be checked is not shown.
+	lo, hi := max(0, mid-excerptRedactBound), min(len(clean), mid+excerptRedactBound)
+	for lo < len(clean) && !utf8.RuneStart(clean[lo]) {
+		lo++
+	}
+	for hi > lo && hi < len(clean) && !utf8.RuneStart(clean[hi]) {
+		hi--
+	}
+	red, err := secrets.Redactor().Text([]byte(clean[lo:hi]))
+	if err != nil {
+		return redact.Marker
+	}
+	region := string(red)
+	runes := []rune(region)
+	cutBefore, cutAfter := lo > 0, hi < len(clean)
+	if len(runes) <= maxChars && !cutBefore && !cutAfter {
+		return region
+	}
+
+	rMatchOffset := -1
+	if sub != "" {
+		rMatchOffset = strings.Index(strings.ToLower(region), sub)
 	}
 	if rMatchOffset < 0 {
 		rMatchOffset = len(runes) / 2
 	} else {
-		rMatchOffset = len([]rune(clean[:rMatchOffset]))
+		rMatchOffset = len([]rune(region[:rMatchOffset]))
 	}
 
 	halfWindow := maxChars / 2
@@ -696,10 +719,10 @@ func makeBoundedExcerpt(text string, matchOffset int, maxChars int) string {
 	}
 
 	snippet := string(runes[start:end])
-	if start > 0 {
+	if start > 0 || (start == 0 && cutBefore) {
 		snippet = "..." + snippet
 	}
-	if end < len(runes) {
+	if end < len(runes) || (end == len(runes) && cutAfter) {
 		snippet = snippet + "..."
 	}
 	return snippet
