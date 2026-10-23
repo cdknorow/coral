@@ -3,7 +3,8 @@ name: Promote draft rehearsal (throwaway, trial branch only)
 # #6394: runs the create and upload commands of promote.yml's publish step on a throwaway DRAFT release, checks what GitHub made of them, and deletes the draft.
 # It never publishes (a published immutable release cannot be undone) and it is never merged: it exists on a trial branch only.
 on:
-  workflow_dispatch:
+  push:
+    branches: ["trial/6394-draft-rehearsal"]
 
 permissions: {}
 
