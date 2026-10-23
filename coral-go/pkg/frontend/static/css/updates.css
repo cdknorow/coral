@@ -53,6 +53,13 @@
 .leftover-tmux-banner.update-fail .update-fail-acts { display: flex; align-items: center; gap: 8px; flex: none; }
 @media (max-width: 767px) { .leftover-tmux-banner.update-fail .leftover-tmux-text { flex: 1 1 calc(100% - 44px); min-width: 0; } .leftover-tmux-banner.update-fail .update-fail-acts { flex: 1 1 100%; justify-content: flex-end; } .leftover-tmux-banner.update-fail .btn { min-height: 44px; } }
 
+/* the ready notice (#6292): the same banner in the accent colour; on a phone the buttons go under the text, 44 px */
+.leftover-tmux-banner.update-ready { border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); background: color-mix(in srgb, var(--accent) 8%, var(--bg-secondary)); }
+.leftover-tmux-banner.update-ready .material-icons { color: var(--accent); }
+.leftover-tmux-banner.update-ready .update-ready-acts { display: flex; align-items: center; gap: 8px; flex: none; }
+@media (max-width: 767px) { .leftover-tmux-banner.update-ready .leftover-tmux-text { flex: 1 1 calc(100% - 44px); min-width: 0; } .leftover-tmux-banner.update-ready .update-ready-acts { flex: 1 1 100%; justify-content: flex-end; } }
+@media (pointer: coarse) { .leftover-tmux-banner.update-ready .btn { min-height: 44px; min-width: 44px; } }
+
 /* what the build adds to the mockup: a long list of agents scrolls (the heading and the buttons stay), a note and an error line in the dialog, the facts under the switches, a 44 px dismiss on a touch screen */
 .update-confirm .modal-body { max-height: min(60vh, 520px); overflow-y: auto; }
 .update-warn-body { min-width: 0; flex: 1; }
@@ -68,6 +75,9 @@
 
 /* a link in the Settings > Updates card: a 44 px target on a phone, and a darker accent in the light theme (the accent was 4.44:1 on the panel) */
 [data-theme="light"] .update-link { color: var(--accent-dim); }
+/* the source address inside the confirmation's first sentence (#6292): inline, so the sentence reads as one line on a phone too (.update-link is a 44 px block there) */
+.update-source-link { color: var(--accent); text-decoration: underline; overflow-wrap: anywhere; }
+[data-theme="light"] .update-source-link { color: var(--accent-dim); }
 @media (max-width: 767px) { .update-link { display: inline-flex; align-items: center; min-height: 44px; } }
 
 /* The update channel and the releases waiting for approval (#5558) */

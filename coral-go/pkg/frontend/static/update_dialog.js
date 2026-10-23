@@ -5,7 +5,7 @@ import { attachDialogFocus } from './dialog_focus.js';
 import { browserSession } from './safe_storage.js';
 import { importOnce } from './import_once.js';
 
-const { RESUME_KEY, reasonText, requestRelaunch } = await importOnce('./update_api.js');
+const { RESUME_KEY, RELEASES_REPO, RELEASES_URL, reasonText, requestRelaunch } = await importOnce('./update_api.js');
 
 // What happens after Relaunch, by how this Coral was installed (the docs' per-platform table): none of it promises that this page comes back by itself
 const AFTER = {
@@ -19,6 +19,13 @@ const STATE_WORDS = { working: 'working', idle: 'idle', waiting: 'waiting for yo
 
 const mk = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+/** Which of the restarted agents come back on their own (the server's `resumes`), in words: " 2 start again on their own afterwards; 1 starts a new conversation." Empty when the server does not say. */
+function comeBack(back, fresh, n) {
+    const parts = [];
+    if (back) parts.push(back === n ? `All ${n} start again on their own afterwards` : `${back} start${back === 1 ? 's' : ''} again on their own afterwards`);
+    if (fresh) parts.push(fresh === n ? `All ${n} start a new conversation` : `${fresh} start${fresh === 1 ? 's' : ''} a new conversation`);
+    return parts.length ? ` ${parts.join('; ')}.` : '';
+}
 let dialog = null;
 let current = null; // the status the dialog shows
 
@@ -37,16 +44,21 @@ function draw(note) {
     const s = current, r = s.relaunch, n = r.restarts.length;
     dialog.replaceChildren();
     const content = mk('div', 'modal-content modal-md update-confirm');
-    const head = mk('div', 'modal-header'); const h = mk('h3', null, 'Relaunch Coral to update?'); h.id = 'update-confirm-title'; head.append(h);
+    const head = mk('div', 'modal-header'); const h = mk('h3', null, `Install Coral ${s.staged.version} and relaunch?`); h.id = 'update-confirm-title'; head.append(h);
     const body = mk('div', 'modal-body'); body.id = 'update-confirm-body';
     const days = s.staged.days;
-    body.append(mk('p', null, `Coral ${s.staged.version} is downloaded and verified${days >= 1 ? ` (ready for ${plural(days, 'day')})` : ''}. You are on ${s.installed}.`));
+    // Where it comes from: Coral's releases on the one pinned repository. The status says the repository only after verification; the words and the link are this page's (RELEASES_URL), never built from the status's text.
+    const from = mk('p'); from.append(document.createTextNode(`Coral ${s.staged.version} comes from Coral's releases on GitHub (`));
+    if (s.source === RELEASES_REPO) { const a = mk('a', 'update-source-link', RELEASES_URL.replace('https://', '')); a.href = RELEASES_URL; a.target = '_blank'; a.rel = 'noopener noreferrer'; from.append(a); } else from.append(document.createTextNode(s.source ? `github.com/${s.source}` : 'github.com'));
+    from.append(document.createTextNode(`). It was downloaded and its signature was checked${days >= 1 ? ` (ready for ${plural(days, 'day')})` : ''}. You are on ${s.installed}.`));
+    body.append(from);
     if (note) { const p = mk('p', 'update-note', note); p.setAttribute('role', 'status'); body.append(p); }
     if (n > 0) {
         const warn = mk('div', 'update-warn');
         const icon = mk('span', 'material-icons', 'warning'); icon.setAttribute('aria-hidden', 'true');
         const inner = mk('div', 'update-warn-body');
-        const lead = mk('p'); lead.append(mk('b', null, `Relaunching restarts ${plural(n, 'agent')}`), document.createTextNode(` that run in Coral's own terminal (pty). Their work in progress stops.`));
+        const back = r.restarts.filter(a => a.resumes === true).length, fresh = r.restarts.filter(a => a.resumes === false).length;
+        const lead = mk('p'); lead.append(mk('b', null, `Relaunching restarts ${plural(n, 'agent')}`), document.createTextNode(` that run in Coral's own terminal (pty). Their work in progress stops.${comeBack(back, fresh, n)}`));
         const list = mk('ul', 'update-agents'); list.tabIndex = 0; list.setAttribute('aria-label', 'Agents that restart');
         for (const a of r.restarts) {
             const li = mk('li'); li.append(mk('span', 'update-agent-name', a.name || a.sessionId), mk('span', 'update-agent-state', STATE_WORDS[a.state] || a.state));
@@ -57,11 +69,11 @@ function draw(note) {
         inner.append(lead, list, mk('p', 'update-keep', r.tmuxRestart ? 'Agents in tmux restart too: the bundled tmux changed.' : 'Agents in tmux keep running and reattach.'));
         warn.append(icon, inner); body.append(warn);
     }
-    body.append(mk('p', 'update-later-note', 'Not now? The update installs the next time Coral starts.'));
+    body.append(mk('p', 'update-later-note', 'Nothing is installed until you choose Install. Later changes nothing: the update stays ready and the button stays in the top bar.'));
     const acts = mk('div', 'modal-actions modal-footer');
-    const later = mk('button', 'btn update-later', 'Not now'); later.type = 'button';
+    const later = mk('button', 'btn update-later', 'Later'); later.type = 'button';
     later.addEventListener('click', close);
-    const go = mk('button', 'btn btn-primary update-go', n > 0 ? `Relaunch and restart ${plural(n, 'agent')}` : 'Relaunch now'); go.type = 'button';
+    const go = mk('button', 'btn btn-primary update-go', n > 0 ? `Install and restart ${plural(n, 'agent')}` : 'Install and relaunch'); go.type = 'button';
     go.addEventListener('click', () => sendRelaunch(go, later));
     // the safe answer starts with focus when something would restart; with nothing to lose the action itself does
     (n > 0 ? later : go).setAttribute('data-initial-focus', '');

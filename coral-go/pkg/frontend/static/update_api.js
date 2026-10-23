@@ -34,6 +34,11 @@ export const INSTALL_KINDS = ['app', 'msi', 'portable', 'tarball', 'homebrew', '
 const NOT_READY = ['not_checked', 'up_to_date', 'not_promoted', 'backoff', 'check_failed', 'unsupported_install', 'switch_off', 'applying'];
 const ROLLBACK_REASONS = ['did_not_start', 'not_healthy', 'swap_failed', 'verify_failed', 'other'];
 const VERSION_RE = /^\d{1,4}\.\d{1,4}\.\d{1,4}$/;
+const SOURCE_RE = /^[A-Za-z0-9._-]{1,100}\/[A-Za-z0-9._-]{1,100}$/;
+/** Where Coral's releases are: the only address the update prompt links to, a constant of this page and never the status's own word (#6292: the status names the repository, this page decides what it links). */
+export const RELEASES_REPO = 'subgentic/coral';
+export const RELEASES_URL = `https://github.com/${RELEASES_REPO}`;
+
 
 /** The status with every field present and of its type (an older or newer server never throws in the UI). */
 export function normalizeStatus(raw) {
@@ -56,6 +61,7 @@ export function normalizeStatus(raw) {
         latest: VERSION_RE.test(str(raw.latest)) ? raw.latest : '',
         rollback: raw.last_rollback && typeof raw.last_rollback === 'object' ? { at: str(raw.last_rollback.at), from: str(raw.last_rollback.from), to: str(raw.last_rollback.to), reason: ROLLBACK_REASONS.includes(raw.last_rollback.reason) ? raw.last_rollback.reason : 'other', restartFailed: raw.last_rollback.restart_failed === true } : null,
         auto: typeof raw.auto === 'boolean' ? raw.auto : null,
+        source: raw.staged && SOURCE_RE.test(str(raw.staged.source)) ? raw.staged.source : '', // staged.source: the repository the staged update came from, sent by the server only for a verified update (#6292); anything but owner/name is ignored
         // Release channels (#5558; the server's #5557): the fields are optional, an older server sends none and the pane then draws no channel group.
         hasChannel: raw.channel === 'approved' || raw.channel === 'agentic',
         channel: raw.channel === 'agentic' ? 'agentic' : 'approved', // anything else is read as approved: the safe side wins

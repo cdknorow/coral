@@ -12,6 +12,7 @@
 
 import { copyText } from './utils.js';
 import { importOnce } from './import_once.js';
+const { HUB_RELAUNCH_ON, HUB_RELAUNCH_OFF } = await importOnce('./update_words.js'); // a lazy module loads the others through importOnce, so a failed load is retried
 
 const STATUS_URL = '/api/cloud/status';
 // 'Let Coral Hub act as the Operator' (#3377): a local-only owner setting. The route answers only
@@ -145,6 +146,13 @@ class CloudPanel {
     }
 
     part(role) { return this.root.querySelector(`[data-cloud="${role}"]`); }
+    /** The plain sentence under the Coral Hub relaunch switch, for the position it is in (#6292): what the Hub's owner can then do to this computer. */
+    hubRelaunchWords(box) {
+        const t = this.part('hub-relaunch-state');
+        if (!t || !box) return;
+        t.textContent = box.checked ? HUB_RELAUNCH_ON : HUB_RELAUNCH_OFF;
+        box.setAttribute('aria-describedby', 'settings-cloud-hub-relaunch-desc settings-cloud-hub-relaunch-state');
+    }
 
     say(text) {
         const s = this.part('status');
@@ -281,7 +289,8 @@ class CloudPanel {
         if (redact) redact.checked = st.redact_tokens !== false;
         // Relaunching for an update from the hub (#5280, #5383): on unless the owner turned it off here.
         const hubRelaunch = this.part('hub-relaunch');
-        if (hubRelaunch) hubRelaunch.checked = st.hub_relaunch_updates === true;
+        if (hubRelaunch) hubRelaunch.checked = st.hub_relaunch_updates === true; // an explicit true only: the server's default is off
+        this.hubRelaunchWords(hubRelaunch);
         // Cross-team switches from the hub (#5572): the owner may turn a team's messaging and file sharing on or off unless this lock is off (the server reads an unset or unreadable lock as off).
         const hubCrossTeam = this.part('hub-cross-team');
         if (hubCrossTeam) hubCrossTeam.checked = st.hub_cross_team_settings !== false;
@@ -502,7 +511,7 @@ class CloudPanel {
         });
         this.part('owner-record')?.addEventListener('click', () => this.confirmOwner());
         this.part('redact-tokens')?.addEventListener('change', (e) => this.act('PUT', '/api/cloud/redact-tokens', { redact: e.target.checked }));
-        this.part('hub-relaunch')?.addEventListener('change', (e) => this.act('PUT', '/api/cloud/hub-relaunch', { allow: e.target.checked }));
+        this.part('hub-relaunch')?.addEventListener('change', (e) => { this.hubRelaunchWords(e.target); this.act('PUT', '/api/cloud/hub-relaunch', { allow: e.target.checked }); });
         this.part('hub-cross-team')?.addEventListener('change', (e) => this.act('PUT', '/api/cloud/hub-cross-team', { allow: e.target.checked }));
         this.part('hub-operator')?.addEventListener('change', (e) => this.setHubOperator(e.target.checked));
     }

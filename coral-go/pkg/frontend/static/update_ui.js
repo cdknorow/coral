@@ -91,7 +91,27 @@ function renderBanner() {
     if (!wasShown) banner.setAttribute('role', 'alert');
 }
 
-function notify() { renderPill(); renderBanner(); }
+/** The one-time notice (#6292): a verified update that this install can apply now, said once per version in this browser. Review opens the confirmation; Later closes the notice and changes nothing (the control stays). Never drawn where the control is not (Homebrew, unsupported, no run record, Coral Hub off), and never in a hidden tab (it would be marked seen unread). */
+const READY_SEEN_KEY = 'coral-update-ready-seen';
+export function readyNotice(s) {
+    if (!relaunchOffered(s) || s.relaunch.reason === 'no_run_record' || !s.relaunch.available) return null;
+    return { key: s.staged.version, lead: `Coral ${s.staged.version} is ready.`, rest: ' It is downloaded and checked. Nothing is installed until you say yes.' };
+}
+function renderReadyNotice() {
+    const box = $('update-ready-notice');
+    if (!box) return;
+    const n = readyNotice(status);
+    if (!n) { box.hidden = true; return; }
+    if (!box.hidden && box.dataset.key === n.key) return; // already showing this one: not announced again
+    if (browserLocal.get(READY_SEEN_KEY) === n.key || document.hidden) return;
+    browserLocal.set(READY_SEEN_KEY, n.key);
+    box.dataset.key = n.key;
+    box.querySelector('.update-ready-lead').textContent = n.lead;
+    box.querySelector('.update-ready-rest').textContent = n.rest;
+    box.hidden = false;
+}
+
+function notify() { renderPill(); renderBanner(); renderReadyNotice(); }
 
 export async function refreshUpdateStatus() {
     status = await fetchUpdateStatus();
@@ -131,6 +151,9 @@ export function startUpdateUi() {
     const banner = $('update-fail-banner');
     banner?.querySelector('.update-fail-details')?.addEventListener('click', openUpdatesSettings);
     banner?.querySelector('.update-fail-again')?.addEventListener('click', tryAgain);
+    const ready = $('update-ready-notice');
+    ready?.querySelector('.update-ready-review')?.addEventListener('click', () => { ready.hidden = true; openDialog(); });
+    ready?.querySelector('.update-ready-later')?.addEventListener('click', () => { ready.hidden = true; });
     banner?.querySelector('.update-fail-close')?.addEventListener('click', () => { browserLocal.set(DISMISSED_KEY, banner.dataset.key || ''); banner.hidden = true; });
     timer = pollEvery(refreshUpdateStatus, POLL_MS); // skips a hidden tab and an overloaded server (overload.js)
     phone.addEventListener('change', placePill);

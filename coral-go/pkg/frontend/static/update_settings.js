@@ -5,6 +5,7 @@ import { importOnce } from './import_once.js';
 import { copyText, showToast } from './utils.js';
 import { isCloud } from './server_base.js';
 const { ageTier, notAvailable, notReadyText, fetchHubRelaunch, requestCheckNow, savePrefs, saveChannel, serverHas } = await importOnce('./update_api.js');
+const { HUB_RELAUNCH_ON, HUB_RELAUNCH_OFF } = await importOnce('./update_words.js');
 const { failureNotice, getUpdateStatus, refreshUpdateStatus, relaunchOffered } = await importOnce('./update_ui.js');
 
 const mk = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
@@ -38,7 +39,7 @@ function card(s) {
     } else if (relaunchOffered(s)) {
         const days = s.staged.days, tier = ageTier(days);
         title.textContent = `Coral ${s.staged.version} is ready`;
-        sub.textContent = `Downloaded and verified ${days < 1 ? 'earlier today' : plural(days, 'day') + ' ago'}. It installs the next time Coral starts.`;
+        sub.textContent = `Downloaded and its signature was checked ${days < 1 ? 'earlier today' : plural(days, 'day') + ' ago'}. Nothing is installed until you say yes.`;
         dot.dataset.k = tier; c.dataset.k = tier;
         act = mk('button', 'btn btn-primary update-act', 'Relaunch to update'); act.type = 'button';
         act.setAttribute('aria-haspopup', 'dialog');
@@ -169,7 +170,7 @@ export async function showUpdatesPane() {
     // The Coral Hub relaunch switch lives in Settings > Network and Hub (with the rest of what the hub may do here); this pane only says where it is
     if (hubOn !== null && !unmanaged) {
         const r = mk('div', 'settings-row'); const dt = mk('dt', null, 'Relaunch from Coral Hub'); const dd = mk('dd');
-        dd.append(mk('span', 'toggle-desc', `${hubOn ? 'On' : 'Off'}. `));
+        dd.append(mk('span', 'toggle-desc', `${hubOn ? HUB_RELAUNCH_ON : HUB_RELAUNCH_OFF} `));
         const go = mk('button', 'btn btn-small', 'Change in Network and Hub'); go.type = 'button';
         go.addEventListener('click', () => window.showSettingsModal && window.showSettingsModal('network'));
         dd.append(go); r.append(dt, dd); grid.append(r);
