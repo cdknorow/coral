@@ -63,6 +63,8 @@ var (
 	humanSendExtraEnters = 3
 	// How long a message never seen in the box waits for the agent's event before it is typed again, or not confirmed.
 	humanSendConfirmWait = 2500 * time.Millisecond
+	// How much longer a slow CLI command (/compact: it runs for seconds before its screen or its transcript shows anything) is waited for after humanSendConfirmWait, looking for any sign it ran (#6258).
+	humanSendSlowCommandWait = 12 * time.Second // the confirm wait and this together stay under the 20 s the dashboard waits for a composer send's answer
 	// The same for a message with attached images (#4794): the CLI reads the images before its UserPromptSubmit hook.
 	humanSendAttachConfirmWait = 6 * time.Second
 	// Times a message lost while the agent started is typed again, at most.
@@ -294,6 +296,14 @@ func (h *SessionsHandler) deliverHumanSend(ctx context.Context, name, agentType,
 			if !waited {
 				continue
 			}
+			// A slow command (/compact) leaves the box at once and shows nothing for seconds: Codex answered 409 "may not have been sent" 6 s before its compaction finished (#6258). Keep looking for a sign that it ran
+			// (the screen moved, an event, the transcript grew) for humanSendSlowCommandWait more; with no sign at all it is still not confirmed, and never typed again.
+			if command && slowCommandRe.MatchString(text) && time.Since(typedAt) < confirmWait+humanSendSlowCommandWait {
+				if screen != before || h.eventAfter(ctx, sessionID, base, func(string) bool { return true }) || tx.grew(h, ctx, sessionID, agentType) {
+					return nil
+				}
+				continue
+			}
 			if busy && ptymanager.InputBoxEmpty(screen) {
 				return nil // typed to an agent in the middle of a turn, and its box is empty: queued behind its work (#4794). A box
 				// holding anything else (an image chip and the text the match above could not read, a draft) may still hold the message.
@@ -389,6 +399,9 @@ func echoedSince(before, now, text string) bool {
 // hooksReviewAnswerRe is a person picking one of the hooks-review dialog's three options by its digit, which is the dialog's own way
 // to answer (the digit alone selects it): the only thing typed into that dialog, because it is the person's choice.
 var hooksReviewAnswerRe = regexp.MustCompile(`^[1-3]$`)
+
+// slowCommandRe is a CLI command that runs for seconds before anything shows: /compact (Claude, Codex, Antigravity) and /init.
+var slowCommandRe = regexp.MustCompile(`^/(compact|init)(?:[ \t].*)?$`)
 
 // slashCommandRe is a CLI command: a slash, a name, then nothing or arguments on the same line ("/tmp/x is
 // missing" is a message: its first word has a second slash).
@@ -503,6 +516,15 @@ func (h *SessionsHandler) readLiveTranscript(ctx context.Context, sessionID, age
 		return nil
 	}
 	return h.jsonl.ReadTranscriptForLiveContext(ctx, sessionID, ls.WorkingDir, agentType)
+}
+
+// grew reports whether the transcript gained anything since the mark (a command writes no user message of its own: Codex's compaction is a record of its own).
+func (m transcriptMark) grew(h *SessionsHandler, ctx context.Context, sessionID, agentType string) bool {
+	if !m.ok {
+		return false
+	}
+	tv := h.readSendTranscript(ctx, sessionID, agentType)
+	return tv != nil && tv.Total > m.total
 }
 
 // tookPrompt reports whether the transcript gained a user message that is this text since the mark.
