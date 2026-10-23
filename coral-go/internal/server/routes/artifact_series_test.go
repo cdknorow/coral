@@ -381,3 +381,46 @@ func TestEveryMemberOfASeriesIsProtectedFromPruning(t *testing.T) {
 	assert.False(t, kept[d[0]], "the Operator's own keep list is only what it kept")
 	_ = sid
 }
+
+// #6495 (QA's #6483): the first version, uploaded again once it has a series, says which series it is in, to its own board only.
+func TestV1UploadedAgainNamesItsSeriesToItsOwnBoardOnly(t *testing.T) {
+	rig, _ := ownerRig(t)
+	v1 := rig.uploadText("a1", "plan.txt", "plan, first draft")
+	code, out := rig.uploadVersion("a1", "plan.txt", "plan, second draft", "coral://artifacts/"+v1)
+	require.Equal(t, http.StatusCreated, code, fmt.Sprint(out))
+	sid := out["series_id"].(string)
+
+	again := func(session string) map[string]any {
+		code, out := rig.upload(session, "plan.txt", "text/plain", strings.NewReader("plan, first draft"))
+		require.Contains(t, []int{http.StatusOK, http.StatusCreated}, code, fmt.Sprint(out))
+		return out
+	}
+	mine := again("a2") // team-a, as a1
+	assert.Equal(t, sid, mine["series_id"])
+	assert.Equal(t, float64(1), mine["version"])
+	assert.Equal(t, float64(2), mine["versions"])
+	for _, other := range []string{"b1", "o1", "n1"} { // another team, the owner's own agents, no team
+		out := again(other)
+		_, has := out["series_id"]
+		assert.False(t, has, "%s holds the same bytes and is not told another team's series", other)
+	}
+	// bytes in no series: nothing added
+	loose := rig.upload
+	code, plain := loose("a1", "other.txt", "text/plain", strings.NewReader("not in any series"))
+	require.Equal(t, http.StatusCreated, code)
+	_, has := plain["series_id"]
+	assert.False(t, has)
+}
+
+// An agent refused on the Send route is told "the dashboard" and no more: the command line is refused there too (#6495).
+func TestAnAgentRefusedOnSendIsToldTheDashboardOnly(t *testing.T) {
+	const send = "POST /api/artifacts/{id}/comments/{cid}/send"
+	assert.Contains(t, operatorOnlyRoutes, send)
+	assert.True(t, dashboardOnlyRoutes[send])
+	assert.Equal(t, " (from the dashboard)", operatorOnlyWhere(send))
+	assert.NotContains(t, operatorOnlyWhere(send), "command line")
+	assert.Contains(t, operatorOnlyWhere("POST /api/settings"), "command line outside an agent", "every other route's refusal reads as before")
+	for route := range dashboardOnlyRoutes {
+		assert.Contains(t, operatorOnlyRoutes, route, "a dashboard-only route is an operator-only route")
+	}
+}

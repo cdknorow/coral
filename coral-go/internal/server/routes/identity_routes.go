@@ -473,3 +473,17 @@ func ValidateAgentSessionRoutes(routes chi.Routes) error {
 	}
 	return nil
 }
+
+// dashboardOnlyRoutes are the operator-only routes the Operator can use only from the dashboard (the command line is refused too): their refusal of an agent says "the dashboard" and
+// no more, so an agent is not pointed at a way that does not work (#6495, QA's #6483).
+var dashboardOnlyRoutes = map[string]bool{
+	"POST /api/artifacts/{id}/comments/{cid}/send": true,
+}
+
+// operatorOnlyWhere is the end of an agent's refusal on an operator-only route: where the Operator does it.
+func operatorOnlyWhere(route string) string {
+	if dashboardOnlyRoutes[route] {
+		return " (from the dashboard)"
+	}
+	return " (the dashboard, or the command line outside an agent)"
+}

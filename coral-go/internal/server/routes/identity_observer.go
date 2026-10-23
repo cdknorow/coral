@@ -204,7 +204,7 @@ func (o *IdentityObserver) Middleware(next http.Handler) http.Handler {
 				// board (#3869). A request with no token is left to strict mode.
 				if only {
 					o.refuse(w, http.StatusForbidden, "forbidden_for_agent",
-						"An agent can't "+operatorOnlyRoutes[r.Method+" "+route]+": that is for the Operator (the dashboard, or the command line outside an agent)")
+						"An agent can't "+operatorOnlyRoutes[r.Method+" "+route]+": that is for the Operator"+operatorOnlyWhere(r.Method+" "+route))
 					return
 				}
 			}
