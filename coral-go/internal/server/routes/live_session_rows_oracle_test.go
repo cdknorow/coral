@@ -503,6 +503,7 @@ func (h *SessionsHandler) liveSessionRowsBefore4713(r *http.Request, trace *phas
 			"board_job_title":       boardJobTitle(boardSubs, liveBoardNames, tmuxName, sid),
 			"board_unread":          boardUnread,
 			"held_inputs":           ptymanager.HeldCount(tmuxName), // automated sends the gate holds (#3578)
+			"held_since":            heldSinceField(tmuxName),       // when the oldest of them was first held, UTC, null at none (#6503)
 			"board_is_orchestrator": boardSubscriberFlag(boardSub),
 			"log_path":              agent.LogPath,
 			"sleeping":              liveSleeping[sid],
