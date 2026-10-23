@@ -194,6 +194,21 @@ func (s *JobScheduler) runWorktreeDir(repoPath string, runID int64) string {
 	return filepath.Join(s.worktreeRoot, fmt.Sprintf("job-run-%d-%s", runID, filepath.Base(filepath.Clean(repoPath))))
 }
 
+// IsRunWorktreeFolder reports whether path is exactly the folder the scheduler makes for run runID of a job on repo: job-run-<id>-<repo name> under root (Coral's worktrees folder), or the legacy
+// <repo>_task_run_<id> beside the repository, and never the repository itself. A run that made no worktree records the job's repository as its worktree path, which may be a person's own checkout:
+// only a folder that passes this is ever listed or removed as a run's worktree (#6736, Security's #6741).
+func IsRunWorktreeFolder(root, repo string, runID int64, path string) bool {
+	repo, path = filepath.Clean(repo), filepath.Clean(path)
+	if repo == "" || repo == "." || path == repo {
+		return false
+	}
+	name := filepath.Base(repo)
+	if root != "" && filepath.Clean(filepath.Dir(path)) == filepath.Clean(root) && filepath.Base(path) == fmt.Sprintf("job-run-%d-%s", runID, name) {
+		return true
+	}
+	return filepath.Dir(path) == filepath.Dir(repo) && filepath.Base(path) == fmt.Sprintf("%s_task_run_%d", name, runID)
+}
+
 // SetNextFireTimeFn sets the cron evaluation function.
 func (s *JobScheduler) SetNextFireTimeFn(fn func(cronExpr, tz string, after time.Time) (time.Time, error)) {
 	s.nextFireTimeFn = fn
@@ -888,6 +903,9 @@ func runGitCmd(ctx context.Context, repoPath string, args ...string) error {
 // a branch the agent committed to would make finished work unreachable, so a
 // run that produced commits leaves its branch behind for the user to find.
 func (s *JobScheduler) cleanupWorktree(repoPath, worktreePath, runBranch, baseBranch string) {
+	if filepath.Clean(worktreePath) == filepath.Clean(repoPath) { // never the job's own repository, which may be a person's checkout (#6736)
+		return
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	err := runGitCmd(ctx, repoPath, "worktree", "remove", "--", worktreePath) // no --force: git keeps a worktree with unsaved work, and so does the branch (#6701)
