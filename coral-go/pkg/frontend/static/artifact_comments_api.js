@@ -29,14 +29,16 @@ export function normalizeComment(c) {
         createdAt: c.created_at || '', editedAt: c.edited_at || '', resolved: !!c.resolved_at, resolvedBy: c.resolved_by ? (c.resolved_by.subject || '') : '', deleted: !!c.deleted, mine: !!c.mine,
         can: { reply: !!can.reply, edit: !!can.edit, delete: !!can.delete, resolve: !!can.resolve },
         asks: Array.isArray(c.asks) ? c.asks.map(k => ({ agent: String(k.agent || ''), open: !!k.open, replies: Math.max(0, Number(k.replies) || 0) })) : [], // the agents asked into this thread, on the owner's list only (#6462)
+        // the artifact (version) the comment was written on, and, read with series=1 for a later version, where its text stands in the version on show: found, ambiguous, gone or unchecked (#6459)
+        artifactId: c.artifact_id || '', version: c.version == null ? null : c.version, fromVersion: c.from_version == null ? null : c.from_version, carried: c.carried || '',
     };
 }
 
 const boardQuery = (board) => (board ? `&board=${encodeURIComponent(board)}` : '');
 
 /** { comments, locked, canComment, canLock, reason, limits }: every comment of the artifact (the panel filters by state itself). `you` is what the server says of the viewer. */
-export async function listComments(hex, server, board) {
-    const d = await requestJson('GET', `${base(hex, server)}?state=all${boardQuery(board)}`);
+export async function listComments(hex, server, board, series = false) {
+    const d = await requestJson('GET', `${base(hex, server)}?state=all${boardQuery(board)}${series ? '&series=1' : ''}`);
     const you = d.you || {};
     const out = { comments: (d.comments || []).map(normalizeComment), locked: !!d.locked, canComment: !!you.can_comment, canLock: !!you.can_lock, reason: you.reason || '', limits: d.limits || {} };
     // Through Coral Hub the comments can be read and not written: writing, replying, resolving and the lock are not routed from there (pkg/tunnel/routes.go). Offering the controls would end in a refused request, so the panel says where to write instead (#6245).

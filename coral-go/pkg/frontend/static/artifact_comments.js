@@ -58,7 +58,7 @@ function avatar(c) {
  *  size decides sheet(). */
 let panelSeq = 0; // one id per panel (the viewer's and the docked pane's)
 export function attachComments(dialog, body, host, opts = {}) {
-    const st = { hex: null, server: undefined, board: undefined, source: '', text: false, data: null, showResolved: false, active: null, composing: null, busy: false, error: '', ranges: new Map(), orphan: new Set(), gone: false };
+    const st = { groupOpen: {}, series: false, hex: null, server: undefined, board: undefined, source: '', text: false, data: null, showResolved: false, active: null, composing: null, busy: false, error: '', ranges: new Map(), orphan: new Set(), gone: false };
     const askedBy = new Map(); // comment id -> Map(agent role, lowercase -> words): who was asked into a thread from this panel (the server refuses a second ask of an open one, and says so)
     const panel = el('aside', 'ac-panel'); panel.setAttribute('aria-label', 'Comments'); panel.hidden = true;
     panel.id = `ac-panel-${++panelSeq}`; // the toggle names it (aria-controls): where the opened comments are
@@ -95,12 +95,16 @@ export function attachComments(dialog, body, host, opts = {}) {
         for (const c of all) if (c.parentId != null && !c.deleted) { if (!replies.has(c.parentId)) replies.set(c.parentId, []); replies.get(c.parentId).push(c); }
         return all.filter(c => c.parentId == null && (!c.deleted || replies.has(c.id))).map(c => ({ c, replies: replies.get(c.id) || [] }));
     };
-    const openCount = () => threads().filter(t => !t.c.deleted && !t.c.resolved).length;
+    // A comment of an EARLIER version of the series (read with series=1) is `found` in this one (pinned on its text like any), `ambiguous` (the text is here more than once: never pinned to a guess) or gone
+    // (`gone`, `unchecked`): the last two are listed apart and are about the older version's text, so nothing on this one's text marks them (#6472).
+    const groupOf = (c) => (c.fromVersion == null || c.carried === 'found') ? 'main' : c.carried === 'ambiguous' ? 'look' : 'earlier';
+    const ownHex = (c) => c.artifactId || st.hex; // a carried comment's replies, resolving and edits go to the version it was written on
+    const openCount = () => threads().filter(t => !t.c.deleted && !t.c.resolved && groupOf(t.c) !== 'earlier').length;
     async function refresh() {
         if (!st.hex || !st.text) return;
         const hex = st.hex;
         try {
-            const data = await api.listComments(hex, st.server, st.board);
+            const data = await api.listComments(hex, st.server, st.board, st.series);
             if (hex !== st.hex) return;
             st.data = data; st.gone = false;
             if (!st.visibilitySet) {
@@ -127,10 +131,10 @@ export function attachComments(dialog, body, host, opts = {}) {
     // Where each comment's quote sits now. Needed when the comments or the document change, not when a comment is made current.
     function locate() {
         st.ranges.clear(); st.orphan.clear();
-        if (!st.data) return;
+        if (!st.data || dialog.classList.contains('av-comparing')) return;
         const ix = docIndex();
         for (const { c } of threads()) {
-            if (c.deleted || !c.anchor || c.anchor.whole) continue;
+            if (c.deleted || !c.anchor || c.anchor.whole || groupOf(c) !== 'main') continue;
             const hit = locateQuote(ix.text, c.anchor);
             if (!hit) { st.orphan.add(c.id); continue; }
             const first = ix.at(hit.start), last = ix.at(hit.end - 1);
@@ -143,7 +147,7 @@ export function attachComments(dialog, body, host, opts = {}) {
     function highlight() {
         const hl = window.CSS && CSS.highlights;
         if (hl) { hl.delete('ac-comment'); hl.delete('ac-active'); }
-        if (!st.data || !hl || typeof Highlight !== 'function') return;
+        if (!st.data || !hl || typeof Highlight !== 'function' || dialog.classList.contains('av-comparing')) return; // while two versions are compared the drawn text is the diff, not the version the comments are on
         const open = [];
         for (const { c } of threads()) { const r = st.ranges.get(c.id); if (r && !c.resolved) open.push(r); }
         if (open.length) hl.set('ac-comment', new Highlight(...open));
@@ -212,9 +216,20 @@ export function attachComments(dialog, body, host, opts = {}) {
             panel.append(lock);
         }
         const wrap = el('ul', 'ac-list');
-        const shown = list.filter(t => st.showResolved || !t.c.resolved);
+        const shownAll = list.filter(t => st.showResolved || !t.c.resolved);
+        const shown = shownAll.filter(t => groupOf(t.c) === 'main');
         for (const t of shown) wrap.append(card(t));
-        if (!shown.length) wrap.append(el('p', 'ac-empty', 'No open comments. Select some text to add one.'));
+        const groups = [['look', 'Needs a look', true], ['earlier', 'From earlier versions', false]];
+        for (const [g, label, open] of groups) {
+            const members = shownAll.filter(t => groupOf(t.c) === g);
+            if (!members.length) continue;
+            const li = el('li', 'ac-groupitem'), d = el('details', 'ac-group'); d.open = st.groupOpen[g] ?? open; d.dataset.group = g;
+            d.append(el('summary', '', `${label} (${members.length})`));
+            for (const t of members) d.append(card(t));
+            d.addEventListener('toggle', () => { st.groupOpen[g] = d.open; });
+            li.append(d); wrap.append(li);
+        }
+        if (!shownAll.length) wrap.append(el('p', 'ac-empty', 'No open comments. Select some text to add one.'));
         panel.append(wrap);
         if (st.composing && st.composing.anchor) panel.append(composer());
         else if (d.canComment && !d.locked) {
@@ -244,9 +259,13 @@ export function attachComments(dialog, body, host, opts = {}) {
             const a = c.anchor || {};
             if (a.start_line) m.append(el('span', 'ac-lines', a.end_line && a.end_line !== a.start_line ? `lines ${a.start_line}-${a.end_line}` : `line ${a.start_line}`));
             if (c.resolved) m.append(el('span', 'ac-pill ac-pill-resolved', 'resolved'));
-            if (st.orphan.has(c.id)) m.append(el('span', 'ac-pill ac-pill-orphan', 'text changed'));
+            if (c.fromVersion != null) {
+                const g = groupOf(c);
+                if (g === 'main') m.append(el('span', 'ac-from', `from v${c.fromVersion}`)); // muted text, not a pill
+                else m.append(el('span', 'ac-pill ac-pill-orphan', g === 'look' ? 'text appears twice' : 'text no longer present'));
+            } else if (st.orphan.has(c.id)) m.append(el('span', 'ac-pill ac-pill-orphan', 'text changed'));
             if (!c.deleted && c.can.resolve) {
-                const r = act(c.resolved ? 'Reopen' : 'Resolve', () => run(() => (c.resolved ? api.reopenComment : api.resolveComment)(st.hex, st.server, c.id), c.resolved ? 'Comment reopened' : 'Comment resolved'));
+                const r = act(c.resolved ? 'Reopen' : 'Resolve', () => run(() => (c.resolved ? api.reopenComment : api.resolveComment)(ownHex(c), st.server, c.id), c.resolved ? 'Comment reopened' : 'Comment resolved'));
                 r.classList.add('ac-resolve'); r.setAttribute('aria-label', `${c.resolved ? 'Reopen' : 'Resolve'} the thread by ${c.authorName || c.authorId || 'unknown'}`);
                 resolveBtn = r;
             }
@@ -254,6 +273,7 @@ export function attachComments(dialog, body, host, opts = {}) {
         if (resolveBtn) { const row = el('div', 'ac-headrow'); row.append(m, resolveBtn); main.append(row); } // Resolve at the top right: the name line wraps beside it, never under it
         else main.append(m);
         main.append(editing(c) || el('p', 'ac-body' + (c.deleted ? ' ac-deleted' : ''), c.deleted ? 'Comment deleted' : c.body));
+        if (top && c.fromVersion != null && groupOf(c) !== 'main') main.append(el('p', 'ac-from ac-from-note', groupOf(c) === 'look' ? `From v${c.fromVersion}. The quote is in this version more than once, so it is not pinned to either.` : `On v${c.fromVersion}. Its text is not in this version.`));
         main.append(actions(c, top));
         e.append(main);
         return e;
@@ -269,7 +289,7 @@ export function attachComments(dialog, body, host, opts = {}) {
         // The reply box at the foot of the card, where Docs has it; it opens the composer in place.
         if (!c.deleted && c.can.reply && !(st.composing && st.composing.parentId === c.id)) {
             const rb = btn('ac-replybox', 'Reply…', `Reply to the comment by ${c.authorName || c.authorId || 'unknown'}`);
-            rb.addEventListener('click', () => { st.composing = { parentId: c.id }; st.error = ''; render(); panel.querySelector('.ac-input')?.focus(); });
+            rb.addEventListener('click', () => { st.composing = { parentId: c.id, hex: ownHex(c) }; st.error = ''; render(); panel.querySelector('.ac-input')?.focus(); });
             li.append(rb);
         }
         if (st.composing && st.composing.parentId === c.id) li.append(composer());
@@ -281,15 +301,16 @@ export function attachComments(dialog, body, host, opts = {}) {
     function actions(c, top) {
         const row = el('div', 'ac-actions');
         if (c.deleted) return row;
-        if (c.can.edit) row.append(act('Edit', () => { st.composing = { editId: c.id }; st.error = ''; render(); panel.querySelector('.ac-input')?.focus(); }));
-        if (c.can.delete) row.append(act('Delete', () => confirmThen('Delete this comment?', () => run(() => api.deleteComment(st.hex, st.server, c.id), 'Comment deleted'))));
+        const who = c.authorName || c.authorId || 'unknown';
+        if (c.can.edit) row.append(act('Edit', `Edit the comment by ${who}`, () => { st.composing = { editId: c.id }; st.error = ''; render(); panel.querySelector('.ac-input')?.focus(); }));
+        if (c.can.delete) row.append(act('Delete', `Delete the comment by ${who}`, () => confirmThen('Delete this comment?', () => run(() => api.deleteComment(ownHex(c), st.server, c.id), 'Comment deleted'))));
         // Send to agent (#6357, #6456): the owner, on this computer, for a thread of this board that is open; never through Coral Hub
         if (top && canAsk(c)) { const b = act('Send to agent', () => openAsk(c)); b.classList.add('ac-ask-open'); b.setAttribute('aria-label', `Send the comment by ${c.authorName || c.authorId || 'unknown'} to an agent`); b.setAttribute('aria-expanded', String(!!st.ask && st.ask.id === c.id)); row.append(b); }
         // not an .ac-act: it writes nothing, so a read-only viewer has it too
-        if (top && st.ranges.has(c.id)) { const j = btn('ac-jump', 'Show in text', 'Show this comment\'s text in the document'); j.addEventListener('click', () => jumpTo(c.id)); row.append(j); }
+        if (top && st.ranges.has(c.id)) { const j = btn('ac-jump', 'Show in text', `Show the text of the comment by ${who} in the document`); j.addEventListener('click', () => jumpTo(c.id)); row.append(j); }
         return row;
     }
-    const act = (text, fn) => { const b = btn('ac-act', text); b.addEventListener('click', fn); return b; };
+    const act = (text, label, fn) => { if (typeof label === 'function') { fn = label; label = ''; } const b = btn('ac-act', text, label); b.addEventListener('click', fn); return b; };
 
     // ── Send to agent: the picker inside the card, and what came of the ask
     const canAsk = (c) => !isCloud() && !!st.board && !!st.data?.canLock && !c.deleted && !c.resolved && c.parentId == null;
@@ -316,7 +337,7 @@ export function attachComments(dialog, body, host, opts = {}) {
         if (focusRole) [...panel.querySelectorAll('.ac-ask input[type="checkbox"]')].find(i => i.value === focusRole)?.focus();
     }
     async function openAsk(c) {
-        const k = st.ask = { id: c.id, agents: null, picked: new Set(), results: null, busy: false, error: '' };
+        const k = st.ask = { id: c.id, hex: ownHex(c), agents: null, picked: new Set(), results: null, busy: false, error: '' };
         render();
         panel.querySelector('.ac-ask')?.scrollIntoView({ block: 'nearest', behavior: scrollBehavior() });
         try {
@@ -333,7 +354,7 @@ export function attachComments(dialog, body, host, opts = {}) {
         k.busy = true; k.error = ''; redrawAsk();
         const hex = st.hex;
         let res;
-        try { res = await api.sendComment(hex, st.server, k.id, [...k.picked]); } catch { res = { ok: false, status: 0, results: [], error: 'Coral could not be reached.' }; }
+        try { res = await api.sendComment(k.hex || hex, st.server, k.id, [...k.picked]); } catch { res = { ok: false, status: 0, results: [], error: 'Coral could not be reached.' }; }
         if (st.ask !== k) return;
         k.busy = false;
         if (res.results.length) {
@@ -379,8 +400,8 @@ export function attachComments(dialog, body, host, opts = {}) {
             const text = ta.value.trim();
             if (!text) { st.error = 'Write something first.'; err.textContent = st.error; err.hidden = false; return; }
             send.disabled = true;
-            if (editOf) run(() => api.editComment(st.hex, st.server, editOf.id, text), 'Comment saved');
-            else run(async () => { const c = await api.createComment(st.hex, st.server, { body: text, anchor: cm.anchor, parentId: cm.parentId, board: st.board }); st.active = c.id; st.scrollCard = true; }, cm.parentId != null ? 'Reply posted' : 'Comment posted');
+            if (editOf) run(() => api.editComment(ownHex(editOf), st.server, editOf.id, text), 'Comment saved');
+            else run(async () => { const c = await api.createComment(cm.hex || st.hex, st.server, { body: text, anchor: cm.anchor, parentId: cm.parentId, board: st.board }); st.active = c.id; st.scrollCard = true; }, cm.parentId != null ? 'Reply posted' : 'Comment posted');
         });
         ta.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); cancel.click(); } else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) box.requestSubmit(); });
         return box;
@@ -502,9 +523,11 @@ export function attachComments(dialog, body, host, opts = {}) {
     return {
         /** The Comments button in either layout: the owner places it when toggleHost was given. */
         toggle,
+        /** Whether the panel (a phone's sheet) is open, and open or close it without remembering a choice: the version compare closes the sheet that would hide the document from the keyboard. */
+        sheetOpen: () => isOpen(), setSheet: (open) => setSheet(open),
         /** A new artifact is on show. */
         // The computer whose artifact it is: the caller's, else the one on show (the rule renderArtifact reads the content by); a bare /api/ route is the hub's own and 404s there (#6245).
-        open(hex, server, board) { region(false); { const hl = window.CSS && CSS.highlights; if (hl) { hl.delete('ac-comment'); hl.delete('ac-active'); } } docIx = null; st.hex = hex; st.server = server || contextServer(); st.board = board; st.data = null; st.active = null; st.composing = null; st.error = ''; st.text = false; st.gone = false; st.filter = 'open'; st.visibilitySet = false; render(); setSheet(false); },
+        open(hex, server, board, series = false) { st.series = !!series; region(false); { const hl = window.CSS && CSS.highlights; if (hl) { hl.delete('ac-comment'); hl.delete('ac-active'); } } docIx = null; st.hex = hex; st.server = server || contextServer(); st.board = board; st.data = null; st.active = null; st.composing = null; st.error = ''; st.text = false; st.gone = false; st.filter = 'open'; st.visibilitySet = false; render(); setSheet(false); },
         /** The document was drawn: `text` says whether it is text the comments apply to. */
         docRendered(source, text) { st.source = source || ''; st.text = !!text; if (!st.text) { render(); return; } region(true); refresh(); },
         close() { hover(null); setSheet(false); region(false); docIx = null; st.ranges.clear(); st.hex = null; st.data = null; clearTimeout(selTimer); selBtn.hidden = true; const hl = window.CSS && CSS.highlights; if (hl) { hl.delete('ac-comment'); hl.delete('ac-active'); } render(); },

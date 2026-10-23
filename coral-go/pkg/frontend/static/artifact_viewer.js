@@ -14,6 +14,7 @@ import { pushOverlay, popOverlay } from './overlay_history.js';
 import { readersAllowed, readersDisclosure } from './artifact_readers.js';
 // Asked for when used, not imported: this module loads lazily and may only import startup modules statically.
 const { attachComments, commentBoard } = await importOnce('./artifact_comments.js');
+const { attachVersions } = await importOnce('./artifact_versions.js');
 
 const HEX_RE = /^[a-f0-9]{64}$/;
 let _dialog = null;
@@ -22,6 +23,9 @@ let _gen = 0;
 let _returnFocus = null;
 let _server = undefined; // the server of the artifact on show, for the artifacts it links
 let _comments = null;    // the comments panel of the viewer (#5182)
+let _versions = null;    // the version bar of the viewer (#6472)
+let _hex = '';           // the artifact on show and what it was opened with, for a version chosen from the bar
+let _lastOpts = {};
 let _overlay = 0;        // its entry in overlay_history.js while it is open on a phone (#5219)
 
 /** Render an artifact's text: Markdown through the strict renderer, anything else as plain text. */
@@ -69,6 +73,13 @@ function _build() {
     });
     keepFragmentsInside(d.querySelector('.artifact-viewer-body'));
     _comments = attachComments(d, d.querySelector('.artifact-viewer-body'), d.querySelector('.artifact-viewer-main'));
+    _versions = attachVersions(d, {
+        body: () => d.querySelector('.artifact-viewer-body'),
+        show: (row) => openArtifactViewer(row.digest, { ..._lastOpts, filename: row.name || _lastOpts.filename, mediaType: row.media_type, switched: true }),
+        reload: () => openArtifactViewer(_hex, { ..._lastOpts, switched: false }),
+        sheetOpen: () => _comments.sheetOpen(),
+        setSheet: (open) => _comments.setSheet(open),
+    });
     // Back or Forward changes the page under the viewer (#3532 routes): close it with the page.
     window.addEventListener('popstate', () => { if (!_overlay) closeArtifactViewer(); }); // on a phone the viewer has its own history entry (overlay_history.js)
     document.body.appendChild(d);
@@ -84,7 +95,7 @@ export function openArtifactViewer(hex, opts = {}) {
     _abort?.abort();
     _abort = new AbortController();
     const gen = ++_gen;
-    _server = opts.server;
+    _server = opts.server; _hex = hex; _lastOpts = opts;
     const url = serverUrl(artifactPath(hex), opts.server);
     const title = d.querySelector('.artifact-viewer-title');
     title.textContent = opts.filename || 'Artifact';
@@ -98,12 +109,13 @@ export function openArtifactViewer(hex, opts = {}) {
     const wasOpen = !d.hidden;
     d.hidden = false;
     if (!wasOpen && window.innerWidth <= 767 && !_overlay) _overlay = pushOverlay(() => closeArtifactViewer({ popped: true })); // Back closes it, above the preview's full screen, under its comments sheet
-    _comments.open(hex, opts.server, commentBoard(opts));
+    _comments.open(hex, opts.server, commentBoard(opts), true); // true: the comments of earlier versions of a series too (the server answers the plain list for an artifact in none)
+    _versions.open(hex, opts.server, { switched: !!opts.switched });
     // "Who can read this", for the Operator (the owner through Coral Hub): drawn only when the machine answers it; anyone else sees nothing.
     const readers = d.querySelector('.artifact-viewer-readers');
     readers.hidden = true; readers.replaceChildren();
     readersAllowed(hex, opts.server).then(ok => { if (ok && gen === _gen && !d.hidden) { readers.replaceChildren(readersDisclosure(hex, opts.server)); readers.hidden = false; } }).catch(() => {});
-    d.querySelector('.artifact-viewer-close').focus();
+    if (!opts.switched) d.querySelector('.artifact-viewer-close').focus(); // a version chosen from the bar keeps the keyboard on the bar
     renderArtifact(body, `coral://artifacts/${hex}`, { server: opts.server, filename: opts.filename, mediaType: opts.mediaType }, {
         signal: _abort.signal,
         isStale: () => gen !== _gen || d.hidden,
@@ -122,6 +134,7 @@ export function openArtifactViewer(hex, opts = {}) {
 
  function closeArtifactViewer(opts) {
     if (!_dialog || _dialog.hidden) return;
+    _versions?.close();
     _comments?.close(); // the sheet (above it) goes first, so Back's order and ours agree
     if (_overlay) { const id = _overlay; _overlay = 0; if (!opts || !opts.popped) popOverlay(id); }
     _abort?.abort();

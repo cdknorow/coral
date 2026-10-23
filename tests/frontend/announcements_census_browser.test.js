@@ -6,6 +6,7 @@ const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
 const { watch, clear, log, problems, said } = require('./helpers/announce_census');
 const { openBoardComposer } = require('./helpers/phone_targets');
+const VERSIONS = require('./helpers/artifact_versions_stub');
 const BASE = require('./test_base').BASE;
 const S = `(window.__coralStatic || '/static/')`;
 
@@ -98,6 +99,21 @@ const S = `(window.__coralStatic || '/static/')`;
                 if (back !== 'This one will not go.') throw new Error('the words are not back in the box (' + JSON.stringify(back) + ')');
                 await ev(`window.__boardPost = 201; true`);
             }, { must: [[/Could not send/i, 'the failure']] });
+            // the artifact viewer's versions (#6480): a switch says where you are once, and a compare says what changed once (the count is text, not a second live region)
+            await ev(VERSIONS.STUB);
+            await ev(`import(${S} + 'artifact_viewer.js').then(v => v.openArtifactViewer(${JSON.stringify(VERSIONS.H3)}, { filename: 'release-plan.md' })).then(() => true)`);
+            await waitFor(`!!document.querySelector('#artifact-viewer .av-current') && document.querySelector('#artifact-viewer .artifact-viewer-body').textContent.includes('Release plan')`, `${tag}: the version bar`, 10000);
+            await scene(`${tag}: a version is chosen`, async () => {
+                await ev(`document.querySelector('#artifact-viewer .av-current').click(); true`);
+                await wait(200); // sleep-ok: the list opens
+                await ev(`document.querySelector('#artifact-viewer .av-option[data-version="2"]').click(); true`);
+                await waitFor(`document.querySelector('#artifact-viewer .artifact-viewer-body').textContent.includes('Revoke sits beside Rename')`, `${tag}: v2`, 8000);
+            }, { must: [[/Showing v2 of 3/i, 'the version shown']] });
+            await scene(`${tag}: two versions are compared`, async () => {
+                await ev(`document.querySelector('#artifact-viewer .av-compare').click(); true`);
+                await waitFor(`!!document.querySelector('#artifact-viewer .av-heading')`, `${tag}: the compare view`, 8000);
+            }, { must: [[/Changes since v1/i, 'the compare']] });
+            await ev(`document.querySelector('#artifact-viewer .artifact-viewer-close').click(); true`);
         }
     } finally { await client.close(); }
     if (process.env.ANNOUNCE_REPORT) { require('node:fs').writeFileSync(process.env.ANNOUNCE_REPORT, scenes.map(s => `## ${s.name}\n` + s.entries.map(e => `  ${String(e.t).padStart(5)} ms ${e.loud ? '!' : ' '} ${e.region}: ${e.text}${process.env.ANNOUNCE_HOW ? '   [' + e.how + ']' : ''}`).join('\n')).join('\n') + '\n--\n' + found.join('\n') + '\n'); process.exit(0); }
