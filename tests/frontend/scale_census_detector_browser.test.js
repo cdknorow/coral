@@ -28,9 +28,12 @@ const { SCALE, scaleOf } = require('./helpers/phone_targets');
         assert.ok(r.overlap.some(o => /Alpha/.test(o) && /Beta/.test(o)), 'two controls over each other are found: ' + JSON.stringify(r));
         assert.ok(r.offscreen.some(o => /Gamma/.test(o)), 'a control past the edge is found: ' + JSON.stringify(r));
         assert.ok(r.hscroll, 'a row wider than the screen is found: ' + JSON.stringify(r));
+        // a scene whose text list is longer at the larger size (a control that appears when the text is big) is still measured: the label added there is found too, and the 13px one that was always there
+        await ev(`(() => { const st = document.createElement('style'); st.textContent = '.late-at-200 { display: none } html[style*="32px"] .late-at-200 { display: block }'; document.head.appendChild(st); const b = document.createElement('button'); b.className = 'late-at-200'; b.style.fontSize = '13px'; b.textContent = 'Appears at 200'; document.body.appendChild(b); return true; })()`);
         await ev(`document.documentElement.style.fontSize = ''; true`);
         const after = await scaleOf(ev, 'made page');
         assert.ok(after.fixed.some(f => /Fixed size/.test(f)), 'text in px that ignores the root font is found: ' + JSON.stringify(after.fixed));
+        // (a label that exists only at the larger size has no 16 px twin to compare with: it is not a pair, and not a pass by silence either: the 13px one beside it is still reported above)
         console.log('PASS the 200% detector finds a cut label, an overlap, a control past the edge, a wide row and text that did not grow, and nothing on the dashboard itself');
     } finally { await client.close(); }
 })().catch(e => { console.error(e); process.exit(1); });

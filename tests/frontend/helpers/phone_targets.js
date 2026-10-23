@@ -143,7 +143,10 @@ async function scaleOf(ev, name) {
         await new Promise(r => setTimeout(r, 350)); // sleep-ok: the page reflows at the new size
         const r = await ev(SCALE);
         const big = await ev(TEXT_SIZES);
-        r.fixed = base.length === big.length ? base.map((b, i) => ({ b, g: big[i] })).filter(({ b, g }) => g[0] === b[0] && g[1] < b[1] * 1.5 && b[1] < 24 && !ALLOW_FIXED.some(([sn, el]) => new RegExp(sn).test(name) && new RegExp(el).test(`${b[0]} ${b[2]}`))).map(({ b, g }) => `${b[0]} "${b[2]}" ${b[1]}px stays ${g[1]}px`) : [];
+        // paired by what the text is (the element's description and its words, the nth of each), not by position: a scene that shows more or fewer elements at the larger size is still measured for every text it has at both
+        const keyed = list => { const seen = new Map(), out = new Map(); for (const t of list) { const k = `${t[0]} ${t[2]}`, n = (seen.get(k) || 0) + 1; seen.set(k, n); out.set(`${k} #${n}`, t); } return out; };
+        const was = keyed(base), now = keyed(big);
+        r.fixed = [...was].filter(([k, b]) => now.has(k)).map(([k, b]) => ({ b, g: now.get(k) })).filter(({ b, g }) => g[1] < b[1] * 1.5 && b[1] < 24 && !ALLOW_FIXED.some(([sn, el]) => new RegExp(sn).test(name) && new RegExp(el).test(`${b[0]} ${b[2]}`))).map(({ b, g }) => `${b[0]} "${b[2]}" ${b[1]}px stays ${g[1]}px`);
         if (scaleShot && (r.hscroll || r.offscreen.length || r.overlap.length || r.clipped.length || r.fixed.length)) await scaleShot(name).catch(() => {});
         return r;
     } finally { await ev(`document.documentElement.style.fontSize = ${JSON.stringify(was)}; true`).catch(() => {}); }
