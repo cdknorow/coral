@@ -1,6 +1,6 @@
 /* xterm.js terminal renderer — streams raw ANSI output via WebSocket */
 
-import { terminalFontFor, DESKTOP_FONT } from './terminal_font.js';
+import { terminalFontFor, DESKTOP_FONT, isPhoneViewer } from './terminal_font.js';
 import { setTerminalFocused, setTerminalSize, setTerminalState } from './terminal_statusbar.js';
 import { state } from './state.js';
 import { markRestarting, currentIsRestarting, showRestartingOverlay, hideSessionOverlay } from './session_overlay.js';
@@ -40,7 +40,6 @@ let _containerEl = null;
 let _seq = 0;            // the last resize sent on the current socket (0: none yet)
 let _askedSize = null;   // { cols, rows } that resize asked for
 let _followBox = '';     // the container's size when this window started following
-const PHONE_MAX_WIDTH = 767; // the mobile layout's breakpoint (mobile.js, css/mobile.css)
 
 // ── Fit to width (#3455) ─────────────────────────────────────────────────
 // While following a pane wider than the window (a phone, a narrow viewer), the operator can scale
@@ -136,7 +135,7 @@ export function terminalFontSize() {
 }
 
 function _isPhoneWidth() {
-    return window.innerWidth <= PHONE_MAX_WIDTH;
+    return isPhoneViewer(); // a narrow window, or a touch screen of a phone's size in landscape (terminal_font.js, #6675)
 }
 
 /** True when this window may set the shared pane's size: the interactive owner of the selected

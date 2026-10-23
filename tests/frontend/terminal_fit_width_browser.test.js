@@ -127,6 +127,7 @@ async function openTab({ contextId, width, height, mobile, fakeHubView = false, 
     await Promise.all([Page.enable(), Runtime.enable()]);
     await Page.addScriptToEvaluateOnNewDocument({ source: PRELOAD + (fakeHubView ? 'window.__fakeHubView = true;' : '') });
     await Emulation.setDeviceMetricsOverride({ width, height, deviceScaleFactor: dpr, mobile });
+    await Emulation.setTouchEmulationEnabled({ enabled: !!mobile }); // a phone has a coarse pointer
     await Page.bringToFront();
     const ev = async expr => {
         const r = await Runtime.evaluate({ expression: expr, awaitPromise: true, returnByValue: true });
@@ -361,6 +362,26 @@ function assertFits(v, what) {
             await tab.close(); tabs.pop();
         }
         console.log(`   ✓ the canvas backing store follows the pixel ratio, on load and after a font change: ${JSON.stringify(sizes)}`);
+
+        console.log('12. A phone turned to landscape follows the pane at its size and never sets it (#6675)');
+        // 844x390 and 800x360 are above the 767 px breakpoint, so they drew the desktop layout and sized the shared pane to themselves (80x24 became 53x15, and 53x3 with the keyboard up) for everyone watching.
+        const landscape = {};
+        for (const [label, w, h] of [['844x390', 844, 390], ['800x360', 800, 360], ['844x200 (keyboard open)', 844, 200]]) {
+            setPane(A.name, eighty.cols, eighty.rows);
+            const ctx = await newContext(); contexts.push(ctx);
+            const tab = await openTab({ contextId: ctx, width: w, height: h, mobile: true });
+            tabs.push(tab);
+            await show(tab, A, null);
+            await sleep(900); // sleep-ok: a resize that must NOT happen: nothing to wait for
+            const after = paneSize(A.name);
+            assert.deepEqual(after, eighty, `${label}: a landscape phone does not set the shared pane's size (it is ${after.cols}x${after.rows})`);
+            const view = await tab.waitFor(`(async () => { const v = await ${VIEW}; return v && v.following && v.cols === ${eighty.cols} && v.rows === ${eighty.rows} ? v : null; })()`, `${label}: the xterm following the pane at 80x24`, 15000); // it catches up with the pane within a few seconds
+            assert.deepEqual(paneSize(A.name), eighty, `${label}: and the pane is still 80x24 once it has`);
+            assert.equal(view.sent + view.http, 0, `${label}: no resize was sent (${JSON.stringify(view)})`);
+            landscape[label] = { pane: `${after.cols}x${after.rows}`, font: view.font };
+            await tab.close(); tabs.pop();
+        }
+        console.log(`   ✓ the pane stays 80x24 for a phone in landscape: ${JSON.stringify(landscape)}`);
 
         console.log('\nAll terminal fit-to-width checks passed');
     } finally {
