@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/subgentic/coral/internal/cliauth"
+	"github.com/subgentic/coral/internal/clitext"
 )
 
 // What the tray's exit items say depends on the terminal backend the server runs (#6064, #6131). On the built-in terminal (pty, the default, and always on Windows) quitting Coral stops the server the
@@ -233,7 +234,12 @@ func wakeGuardNow(client *http.Client, baseURL string) (guarded bool, why string
 	if json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&st) != nil || !st.GuardedNow {
 		return false, ""
 	}
-	return true, st.GuardWhy
+	// The words go into a menu title, a tooltip and a notification: whoever answers on the port (only Coral holds it) can change text, not more; cleaned and capped (Security, #144).
+	why = clitext.CleanName(st.GuardWhy)
+	if r := []rune(why); len(r) > 100 {
+		why = string(r[:100])
+	}
+	return true, why
 }
 
 // readAgentsNow asks the server for both.

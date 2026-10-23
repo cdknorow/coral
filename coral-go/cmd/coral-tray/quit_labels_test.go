@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -253,6 +254,30 @@ func TestGuardedWakeSaysItWillNotWake(t *testing.T) {
 		}
 		if !c.wakes && got.why != "" && !strings.Contains(it.quitTip, why) {
 			t.Errorf("%s: the tooltip does not say why: %q", c.name, it.quitTip)
+		}
+	}
+}
+
+// Security's note on #144: the guard's words come from the HTTP answer and go into a menu title, so they are cleaned and capped.
+func TestTheGuardWordsAreCleanedAndCapped(t *testing.T) {
+	long := strings.Repeat("x", 300)
+	for name, tc := range map[string]struct{ in, want string }{
+		"control characters and a line break": {"Coral woke\x1b its agents\r\nless than 10 minutes ago", ""},
+		"a very long sentence":                {long, long[:100]},
+		"the real sentence":                   {"Coral woke its agents less than 10 minutes ago", "Coral woke its agents less than 10 minutes ago"},
+	} {
+		body, _ := json.Marshal(map[string]any{"guarded_now": true, "guard_why": tc.in})
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write(body) }))
+		guarded, why := wakeGuardNow(srv.Client(), srv.URL)
+		srv.Close()
+		if !guarded {
+			t.Errorf("%s: not guarded", name)
+		}
+		if strings.ContainsAny(why, "\x1b\r\n") || len([]rune(why)) > 100 {
+			t.Errorf("%s: %q", name, why)
+		}
+		if tc.want != "" && why != tc.want {
+			t.Errorf("%s: %q, want %q", name, why, tc.want)
 		}
 	}
 }
