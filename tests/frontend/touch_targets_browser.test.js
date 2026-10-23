@@ -93,7 +93,7 @@ const UNDERSIZED = `(() => {
 
         // #4976: the Agent Team dialog's member cards (move up and down, edit, remove) and its Back arrow.
         await ev(`window.showLaunchModal(); window._selectLaunchType('team'); true`);
-        await waitFor(`!!document.getElementById('team-template-selector') && getComputedStyle(document.getElementById('launch-step-team')).display !== 'none'`, 'the team step');
+        await waitFor(`!!document.getElementById('team-template-search') && getComputedStyle(document.getElementById('launch-step-team')).display !== 'none'`, 'the team step');
         await ev(`window._addTeamAgent('Amy', 'First.'); window._addTeamAgent('Bo', 'Second.'); true`); // the dialog starts with no members (#5989)
         await waitFor(`!!document.querySelector('#team-agents-list .team-agent-row')`, 'the team dialog with its member cards');
         const teamSmall = await ev(UNDERSIZED);

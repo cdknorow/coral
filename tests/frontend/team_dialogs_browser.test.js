@@ -39,17 +39,19 @@ const BASE = require('./test_base').BASE;
 
         console.log('The team form starts with no members (#5989), a hint for the name, and moves its agents');
         await openTeam();
-        await waitFor(`!!document.getElementById('team-template-selector')`, 'the template choice');
+        await waitFor(`document.querySelectorAll('#team-template-list [role=option]').length > 0`, 'the template choice');
         assert.deepEqual(await teamRows(), [], 'no members nobody picked');
+        await ev(`document.querySelector('#launch-step-team .team-step-tab[data-step="members"]').click(); true`);
         assert.equal(await ev(`getComputedStyle(document.querySelector('#launch-step-team .team-agents-empty')).display !== 'none'`), true, 'the line that says what to do');
+        await ev(`document.querySelector('#launch-step-team .team-step-tab[data-step="team"]').click(); true`);
         assert.equal(await ev(`document.getElementById('launch-team-dir').value === '' && document.getElementById('launch-team-dir').required && document.getElementById('launch-team-dir').getBoundingClientRect().height > 0`), true, 'the folder is on the first screen, empty and required');
-        assert.equal(await ev(`!!document.getElementById('team-goal') && document.getElementById('team-goal').getBoundingClientRect().height > 0`), true, 'the optional first task');
+        assert.equal(await ev(`!!document.getElementById('team-goal') && !!document.getElementById('team-goal').closest('#team-panel-start')`), true, 'the optional first task is on the Start step');
         await ev(`window._addTeamAgent('Amy', 'First.'); true`);
         // #4950: the team form is a sectioned dialog that opens on Members; the name is above the sections (#5589 finding 6), so every section has it and Launch Team without it stays where it is.
-        assert.equal(await ev(`document.querySelector('#launch-step-team .settings-tabs [aria-selected=true] .settings-tab-name').textContent`), 'Members');
+        assert.equal(await ev(`document.querySelector('#launch-step-team .team-step-tab[aria-selected=true]').dataset.step`), 'team'); // the three steps (#6397): the dialog opens on Team; the name and the folder are there
         await ev(`document.getElementById('team-board-name').value = ''; document.querySelector('#launch-step-team [data-on-click="m-launch-team"]').click(); true`);
         await waitFor(`document.activeElement && document.activeElement.id === 'team-board-name'`, 'Launch Team without a name puts the focus on the name');
-        assert.equal(await ev(`document.querySelector('#launch-step-team .settings-tabs [aria-selected=true] .settings-tab-name').textContent`), 'Members', 'and stays on Members');
+        assert.equal(await ev(`document.querySelector('#launch-step-team .team-step-tab[aria-selected=true]').dataset.step`), 'team', 'and stays on Team');
         assert.deepEqual(await hint(), ['', false]);
         await ev(`{ const i = document.getElementById('team-board-name'); i.value = 'taken'; i.dispatchEvent(new Event('input', { bubbles: true })); } true`);
         await waitFor(`window._validateTeamName() && /exists/.test(document.getElementById('team-board-name-hint').textContent)`, 'the existing-board hint');
@@ -72,19 +74,18 @@ const BASE = require('./test_base').BASE;
         await ev(`{ const d = document.getElementById('launch-team-dir'); d.value = '/work/repo'; d.dispatchEvent(new Event('change', { bubbles: true })); window._checkTeamGitDir && window._checkTeamGitDir(); } true`);
 
         console.log('Templates: the list has the built-ins, loading one fills the agents, saving adds it to the list');
-        const opts = await ev(`[...document.querySelectorAll('#team-template-selector option')].map(o => o.textContent)`);
-        assert.equal(opts[0], 'Select a template...'); assert.ok(opts.some(o => /^Coding Team \(5 agents\)$/.test(o)), JSON.stringify(opts));
+        const opts = await ev(`[...document.querySelectorAll('#team-template-list [role=option]')].map(o => o.textContent)`);
+        assert.ok(opts.some(o => /^Coding Team5 members$/.test(o)), JSON.stringify(opts));
         await ev(`window._loadTeamTemplateFromSelect('Dungeon Master'); true`);
         assert.deepEqual((await teamRows()).slice(0, 2), ['Dungeon Master', 'Warrior']); assert.equal((await teamRows()).length, 7);
-        assert.equal(await ev(`document.getElementById('team-template-selector').value`), '', 'back to the placeholder');
-        await waitFor(`[...document.querySelectorAll('.toast')].some(t => /Loaded template "Dungeon Master"/.test(t.textContent))`, 'the loaded toast');
+        assert.equal(await ev(`document.querySelector('#team-template-list [aria-selected=true]').dataset.name`), 'Dungeon Master', 'the chosen template is marked');
         await ev(`window._saveTeamTemplate(); true`);
         await waitFor(`getComputedStyle(document.getElementById('save-template-modal')).display !== 'none'`, 'the save dialog');
         assert.equal(await ev(`document.getElementById('save-template-name').value`), 'fresh', 'named after the board');
         await ev(`document.getElementById('save-template-name').value = ''; window._confirmSaveTemplate(); true`);
         assert.ok((await toasts()).some(t => /Template name is required/.test(t)));
         await ev(`document.getElementById('save-template-name').value = 'My Crew'; window._confirmSaveTemplate(); true`);
-        await waitFor(`[...document.querySelectorAll('#team-template-selector option')].some(o => o.textContent === 'My Crew (7 agents) (saved)')`, 'the saved template in the list');
+        await waitFor(`[...document.querySelectorAll('#team-template-list [role=option]')].some(o => o.textContent === 'My Crew7 members, saved')`, 'the saved template in the list');
         assert.equal(await ev(`getComputedStyle(document.getElementById('save-template-modal')).display`), 'none');
 
         console.log('The team-agent dialog: a name is required, Save adds the agent, Edit changes it');

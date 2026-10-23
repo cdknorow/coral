@@ -18,7 +18,6 @@ const { _checkPermissionFlag } = await importOnce('./cli_dialogs.js');
 const { _checkTeamGitDir, _initTeamForm, _loadExistingTeamBoards } = await importOnce('./team_dialogs.js');
 const { _initAgentPresets } = await importOnce('./persona_io.js');
 const { markFieldInvalid, _launchBlocked, _launchOn, _refreshAfterLaunch, _resetDirInputs, _showLaunchStep, _syncMobileLaunchSections, hideLaunchModal, setLaunchMore } = await importOnce('./launch_core.js');
-const { initSectionDialog, showSection } = await importOnce('./section_dialog.js');
 
 /** New Agent's two steps (#6333): Next goes from the folder to the details (a folder is needed first), Back or Change returns. Focus follows, and a screen reader hears which step. */
 function _launchStage(stage) {
@@ -64,8 +63,6 @@ function _selectLaunchType(type) {
     } else if (type === "team") {
         _initTeamForm();
         _checkTmuxHere();
-        const shell = document.querySelector('#launch-step-team .settings-shell');
-        if (shell) { initSectionDialog(shell); showSection(shell, 'members'); } // always opens on Members; the name, which every launch needs, is above the sections (#5589 finding 6), and the keyboard starts in it
         document.getElementById('team-board-name')?.focus();
     } else {
         document.getElementById("launch-terminal-name").focus();

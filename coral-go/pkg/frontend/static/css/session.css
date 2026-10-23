@@ -2191,7 +2191,7 @@
 .group-chevron[aria-expanded="false"] svg { transform: rotate(-90deg); }
 @media (pointer: coarse) { .group-chevron { width: 44px; height: 44px; margin-left: -12px; } }
 @media (prefers-reduced-motion: reduce) { .group-chevron svg { transition: none; } }
-#team-agents-list:not(:empty) + .team-agents-empty { display: none; }
+.team-agents-container:has(#team-agents-list:not(:empty)) .team-agents-empty { display: none; }
 .team-agents-empty { margin: .6rem 0; color: var(--text-secondary); font-size: var(--fs-base); }
 #team-goal { width: 100%; box-sizing: border-box; resize: vertical; font: inherit; }
 .group-chevron-deco { pointer-events: none; margin-left: -8px; height: 16px; } /* decorative: the whole header is the control, so it does not set the header's height */
