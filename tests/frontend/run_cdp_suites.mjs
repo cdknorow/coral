@@ -693,7 +693,7 @@ async function signIn(shard) {
 
 // What a suite that hit its timeout had in front of it, written to CDP_EVIDENCE_DIR/<suite>-shard<n> before the runner kills it (a hang that comes once in a few hundred suites and
 // passes at once on the retry leaves nothing else to look at): a screenshot of every page, the pages' addresses, Chrome's and the test Coral's processes with their CPU, the last
-// 200 lines of coral.log, and the test Coral's goroutines. Every part is best effort and bounded; the whole capture takes at most about 30 s. Redacted: the sign-in token in an
+// 200 lines of coral.log, and the test Coral's goroutines. Every part is best effort and bounded; the whole capture is cut off at 45 s (a wedged page costs up to 18 s: each step has its own bound). Redacted: the sign-in token in an
 // address, and this machine's user name.
 const redactEvidence = s => redactEvidenceText(s, [process.env.USERNAME, process.env.USER, os.userInfo().username, process.env.COMPUTERNAME]);
 async function captureTimeoutEvidence(shard, suite) {
@@ -713,6 +713,19 @@ async function captureTimeoutEvidence(shard, suite) {
     for (const x of targets.filter(y => y.type === 'page')) {
       try {
         const c = await within(5000, CDP({ port: Number(shard.env.CDP_PORT), target: x.id }));
+        try { // the page's console and exceptions so far: Runtime.enable and Log.enable replay what the page kept, so an exception thrown at startup (before the feed was connected) is still there
+          const seen = [];
+          c.Runtime.consoleAPICalled(e => seen.push(`console.${e.type}: ${(e.args || []).map(a => a.value !== undefined ? a.value : a.description || a.type).join(' ')}`));
+          c.Runtime.exceptionThrown(e => seen.push(`exception: ${e.exceptionDetails && (e.exceptionDetails.exception && e.exceptionDetails.exception.description || e.exceptionDetails.text)} at ${e.exceptionDetails && e.exceptionDetails.url}:${e.exceptionDetails && e.exceptionDetails.lineNumber}`));
+          c.Log.entryAdded(e => seen.push(`log.${e.entry.level} ${e.entry.source}: ${e.entry.text} ${e.entry.url || ''}`));
+          await within(4000, c.Runtime.enable()); await within(4000, c.Log.enable());
+          await new Promise(r => setTimeout(r, 700));
+          note(`page-${i}.console.txt`, seen.slice(0, 200).join('\n') + '\n');
+        } catch (e) { note(`page-${i}.console.error.txt`, `${e.message}\n`); }
+        try { // what the page itself says: did it finish loading, what is it still waiting for, what is its service worker doing
+          const st = await within(6000, c.Runtime.evaluate({ returnByValue: true, awaitPromise: true, expression: `(async () => { const nav = performance.getEntriesByType('navigation')[0] || {}; const res = performance.getEntriesByType('resource'); return JSON.stringify({ url: location.href, readyState: document.readyState, visibility: document.visibilityState, hasFocus: document.hasFocus(), nav: { type: nav.type, domContentLoadedEventEnd: nav.domContentLoadedEventEnd, loadEventStart: nav.loadEventStart, loadEventEnd: nav.loadEventEnd, duration: nav.duration }, resources: res.length, lastResources: res.slice(-8).map(r => ({ name: r.name.replace(location.origin, ''), start: Math.round(r.startTime), end: Math.round(r.responseEnd), transfer: r.transferSize })), signedOutPanel: !!document.getElementById('signed-out-panel'), signedOutPanelOpen: !!(document.getElementById('signed-out-panel') && document.getElementById('signed-out-panel').open), swController: !!(navigator.serviceWorker && navigator.serviceWorker.controller), coralReady: typeof window.__coralReady, parts: window.__coralReady && window.__coralReady.parts, feed: await (async () => { try { const st = (await import((window.__coralStatic || '/static/') + 'state.js')).state; const w = st.coralWs; return w ? { readyState: w.readyState, url: String(w.url).replace(/[?].*/, ''), bufferedAmount: w.bufferedAmount } : 'no socket'; } catch (e) { return 'unreadable: ' + e.message; } })(), now: Math.round(performance.now()) }); })()` }));
+          note(`page-${i}.state.json`, String(st.result && st.result.value) + '\n');
+        } catch (e) { note(`page-${i}.state.error.txt`, `${e.message}\n`); }
         try { const shot = await within(8000, c.Page.captureScreenshot({ format: 'png' })); fs.writeFileSync(path.join(dir, `page-${i}.png`), Buffer.from(shot.data, 'base64')); }
         finally { await c.close().catch(() => {}); }
       } catch (e) { note(`page-${i}.error.txt`, `${e.message}\n`); }
@@ -753,7 +766,7 @@ async function runAttempt(t, shard) {
     track(p);
     let out = ''; p.stdout.on('data', d => out += d); p.stderr.on('data', d => out += d);
     let timedOut = false;
-    const timer = setTimeout(async () => { timedOut = true; try { await captureTimeoutEvidence(shard, t); } catch { /* the capture never keeps the kill from happening */ } killTree(p); }, timeoutS * 1000);
+    const timer = setTimeout(async () => { timedOut = true; try { await Promise.race([captureTimeoutEvidence(shard, t), sleep(45000)]); } catch { /* the capture never keeps the kill from happening, and never holds it more than 45 s */ } killTree(p); }, timeoutS * 1000);
     let closed = false;
     p.on('close', () => { closed = true; });
     p.on('error', e => { clearTimeout(timer); untrack(p); resolve({ status: 'fail', code: 'spawn', secs: '0.0', shard: shard.n, log: shard.log, out: `[runner] could not start the suite: ${e.message}` }); });

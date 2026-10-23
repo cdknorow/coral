@@ -7,7 +7,11 @@ export function redactEvidence(text, names = []) {
     .replace(/("(?:login_token|token|api_key|apikey|key|password|secret|access_token|session_token)"\s*:\s*)"[^"]*"/gi, '$1"REDACTED"')
     .replace(/\b(authorization\s*[:=]\s*)(?:bearer\s+|basic\s+)?[^\s"',;]+/gi, '$1REDACTED')
     .replace(/\bbearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer REDACTED')
-    .replace(/(x-coral-[a-z-]*token\s*[:=]\s*)[^\s"',;]+/gi, '$1REDACTED');
+    .replace(/(x-coral-[a-z-]*token\s*[:=]\s*)[^\s"',;]+/gi, '$1REDACTED')
+    // A colon form without quotes (token: X), single-quoted members ({'token':'X'}), and a whole Cookie / Set-Cookie header line.
+    .replace(/\b((?:login_|access_|session_|api_|auth_)?token|api_?key|secret|password)(\s*:\s*)(?!REDACTED)[^\s"',;}]+/gi, '$1$2REDACTED')
+    .replace(/('(?:login_token|token|api_key|apikey|key|password|secret|access_token|session_token)'\s*:\s*)'[^']*'/gi, "$1'REDACTED'")
+    .replace(/\b((?:set-)?cookie\s*:\s*)[^\r\n]*/gi, '$1REDACTED');
   for (const name of names.filter(n => n && n.length >= 4)) out = out.split(name).join('<redacted>');
   return out;
 }
