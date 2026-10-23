@@ -10,36 +10,7 @@ const { scene, tap: tapSel, problems, required } = require('./helpers/phone_targ
 const BASE = require('./test_base').BASE;
 const TEAM = 'census-' + Date.now().toString(36);
 const S = `(window.__coralStatic || '/static/')`;
-// Data for the screens that are empty on a fresh server: a History chat, a workflow with a run, a scheduled job (the paths the dashboard's own suites stub).
-const WF = { id: 7, name: 'Nightly build', description: 'Builds nightly', enabled: true, steps: [{ name: 's1', type: 'shell', command: 'echo hi' }] };
-const WF2 = { id: 8, name: 'Weekly report', description: 'Weekly', enabled: true, steps: [{ name: 's1', type: 'shell', command: 'echo hi' }] }, WF3 = { id: 9, name: 'Release check', description: 'Release', enabled: false, steps: [{ name: 's1', type: 'shell', command: 'echo hi' }] };
-const RUN = { id: 31, workflow_id: 7, workflow_name: 'Nightly build', status: 'failed', trigger_type: 'manual', started_at: '2026-10-15T10:00:00Z', finished_at: '2026-10-15T10:01:00Z',
-    steps: [{ index: 0, name: 's1', type: 'shell', status: 'failed', exit_code: 1, output_tail: 'boom' }] };
-const JOB = { id: 5, name: 'Hourly job', cron_expr: '0 * * * *', enabled: true, agent_type: 'claude', prompt: 'p', repo_path: '/tmp', consecutive_failures: 0 };
-const JOB2 = { ...JOB, id: 6, name: 'Daily job', cron_expr: '0 9 * * *' }, JOB3 = { ...JOB, id: 7, name: 'Weekly job', cron_expr: '0 9 * * 1', enabled: false };
-const DATA_WORLD = `(() => {
-    const inner = window.fetch;
-    const json = b => Promise.resolve(new Response(JSON.stringify(b), { headers: { 'content-type': 'application/json' } }));
-    window.fetch = (url, opts = {}) => {
-        const u = String(url && url.url || url).replace(/^https?:\\/\\/[^/]+/, ''), path = u.split('?')[0], m = (opts.method || 'GET').toUpperCase();
-        if (m === 'GET') {
-            if (path === '/api/workflows') return json({ workflows: [${JSON.stringify(WF)}, ${JSON.stringify(WF2)}, ${JSON.stringify(WF3)}] });
-            if (path === '/api/workflows/7') return json(${JSON.stringify(WF)});
-            if (/^\\/api\\/workflows\\/7\\/runs/.test(path)) return json({ runs: [${JSON.stringify(RUN)}] });
-            if (path === '/api/workflows/runs/31') return json(${JSON.stringify(RUN)});
-            if (path === '/api/scheduled/jobs') return json({ jobs: [${JSON.stringify(JOB)}, ${JSON.stringify(JOB2)}, ${JSON.stringify(JOB3)}] });
-            if (path === '/api/scheduled/jobs/5') return json(${JSON.stringify(JOB)});
-            if (/^\\/api\\/scheduled\\/jobs\\/5\\/runs/.test(path)) return json({ runs: [] });
-            if (path === '/api/sessions/history') return json({ sessions: [{ session_id: 'census-chat', summary_title: 'Release notes chat', source_type: 'claude' }, { session_id: 'census-chat-2', summary_title: 'Build fix chat', source_type: 'claude' }, { session_id: 'census-chat-3', summary_title: 'Planning chat', source_type: 'codex' }], total: 3, page: 1, page_size: 50 });
-            if (path === '/api/sessions/history/census-chat') return json({ agent_type: 'claude', messages: [{ type: 'user', content: 'hello' }, { type: 'assistant', text: 'Hi there.' }], total: 2, start: 0 });
-            if (path === '/api/sessions/history/census-chat/notes') return json({ notes_md: 'A note' });
-            if (path === '/api/sessions/history/census-chat/git') return json({ commits: [] });
-            if (/^\\/api\\/sessions\\/history\\/census-chat\\/(tags|events|tasks|agent-notes|files)$/.test(path) || path === '/api/tags') return json([]);
-        }
-        return inner(url, opts);
-    };
-})();`;
-async function httpJson(method, p, body) { const r = await fetch(BASE + p, { method, headers: { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) }); let data = null; try { data = await r.json(); } catch { /* no body */ } return { status: r.status, data }; }
+const { DATA_WORLD, httpJson } = require('./helpers/census_world');
 
 (async () => {
     const { client, Page, Emulation, ev, waitFor, PRELOAD, install } = await connect();
@@ -119,10 +90,24 @@ async function httpJson(method, p, body) { const r = await fetch(BASE + p, { met
         await ev(`window.hideLaunchModal(); true`);
         await sc('create task', async () => { await ev(`(async () => { await window.showCreateTaskModal(); return true; })()`); }, { min: 8, expect: `document.getElementById('create-task-modal').getClientRects().length > 0 && /Create Task/.test(document.getElementById('create-task-modal').textContent)` });
         await ev(`window.hideCreateTaskModal(); true`);
+        // Message bubbles as the chat draws them (a person's, an agent's with markdown: code, a link, a list) and the toasts a person meets: their colours are part of the contrast pass (#6171).
+        const BUBBLES = [{ type: 'user', content: 'Is the build green?', key: 'c1', timestamp: '2026-10-19T00:00:00Z' }, { type: 'assistant', text: 'Yes. **All 12 checks pass.**\n\n- the unit tests\n- the lint\n\n`go test ./...` is clean, see [the run](https://example.com/run/1).\n\n```sh\ngo build ./...\n```', key: 'c2', timestamp: '2026-10-19T00:00:05Z' }];
+        await sc('chat bubbles', async () => {
+            await ev(`import(${S} + 'live_chat.js').then(m => { document.getElementById('census-box')?.remove(); const box = document.createElement('div'); box.id = 'census-box'; box.className = 'chat-messages chat-prose';
+                box.style.cssText = 'position:fixed;left:0;top:0;right:0;bottom:0;overflow:auto;background:var(--bg-primary);z-index:99999;padding:12px'; document.body.appendChild(box);
+                m.renderTranscript(${JSON.stringify(BUBBLES)}, box, 'claude'); return true; })`);
+            // the dashboard names each Save by its message when it syncs a watched chat; this box is not one of those
+            await ev(`import(${S} + 'saved_marks.js').then(m => { document.querySelectorAll('#census-box .chat-save-btn').forEach(b => m.nameSaveButton(b)); return true; })`);
+        }, { min: 1, expect: `document.querySelectorAll('#census-box .chat-bubble').length >= 2` });
+        await ev(`document.getElementById('census-box')?.remove(); true`);
+        await sc('toasts', async () => {
+            await ev(`import(${S} + 'utils.js').then(m => { m.showToast('Saved to the board.', false, 60000); m.showToast('Could not reach the agent.', true, 60000); m.showToast('Upload failed.', true, 60000, { action: { label: 'Retry', onClick() {} } }); return true; })`);
+        }, { min: 3, expect: `document.querySelectorAll('.toast').length >= 3` });
+        await ev(`document.querySelectorAll('.toast').forEach(t => t.remove()); true`);
         await sc('settings menu', async () => { await tap('[aria-controls="top-bar-settings-menu"]'); }, { min: 6, expect: `getComputedStyle(document.getElementById('top-bar-settings-menu')).display !== 'none'` });
         await ev(`document.body.click(); true`);
     } finally { await httpJson('DELETE', `/api/board/${TEAM}`).catch(() => {}); if (standIn) await standIn.stop().catch(() => {}); await guard.restore().catch(() => {}); await client.close(); }
-    const bad = problems(results).concat(required(results, ['home (agent list)', 'agent chat and composer', 'composer: model menu', 'chat: find bar', 'terminal view', 'side panel: files', 'side panel: browse', 'side panel: artifacts', 'side panel: customize tabs', 'artifact, full screen', 'artifact: comments sheet', 'team settings: workflow', 'history list', 'history chat', 'history chat: notes', 'history chat: commits', 'board: a team board', 'workflows list', 'workflow detail', 'workflow edit', 'workflow run detail', 'jobs list', 'job detail', 'job edit', 'docs', 'settings: general', 'settings: agents', 'settings: terminal', 'settings: notifications', 'settings: files', 'settings: cleanup', 'settings: network', 'settings: security', 'launch: chooser', 'launch: new agent', 'launch: team', 'create task', 'settings menu']));
+    const bad = problems(results).concat(required(results, ['chat bubbles', 'toasts', 'home (agent list)', 'agent chat and composer', 'composer: model menu', 'chat: find bar', 'terminal view', 'side panel: files', 'side panel: browse', 'side panel: artifacts', 'side panel: customize tabs', 'artifact, full screen', 'artifact: comments sheet', 'team settings: workflow', 'history list', 'history chat', 'history chat: notes', 'history chat: commits', 'board: a team board', 'workflows list', 'workflow detail', 'workflow edit', 'workflow run detail', 'jobs list', 'job detail', 'job edit', 'docs', 'settings: general', 'settings: agents', 'settings: terminal', 'settings: notifications', 'settings: files', 'settings: cleanup', 'settings: network', 'settings: security', 'launch: chooser', 'launch: new agent', 'launch: team', 'create task', 'settings menu']));
     if (process.env.PHONE_TARGETS_REPORT) { require('node:fs').writeFileSync(process.env.PHONE_TARGETS_REPORT, results.map(r => `${r.name}: ${r.error || r.n + ' controls, ' + r.small.length + ' small'}`).join('\n') + '\n--\n' + bad.join('\n') + '\n'); process.exit(0); }
     assert.deepEqual(bad, [], 'controls under 44 px on a phone:\n  ' + bad.join('\n  '));
     console.log(`PASS ${results.length} scenes: every control is at least 44 x 44 px`);

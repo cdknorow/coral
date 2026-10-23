@@ -4,7 +4,7 @@
 const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
 const { safePaused } = require('./helpers/paused');
-const { scene, tap: tapSel, problems, required } = require('./helpers/phone_targets');
+const { scene, tap: tapSel, problems, required, useThemeSetter } = require('./helpers/phone_targets');
 const { BASE } = require('./test_base');
 const HOST = new URL(BASE).host;
 const CSP = ["default-src 'self'", "script-src 'self'", "style-src 'self'", "style-src-attr 'unsafe-inline'", "font-src 'self'", "img-src 'self' data: blob:", `connect-src 'self' ws://${HOST}`, "object-src 'none'", "base-uri 'none'", "form-action 'self'", "frame-ancestors 'none'"].join('; ');
@@ -19,6 +19,8 @@ const CSP = ["default-src 'self'", "script-src 'self'", "style-src 'self'", "sty
         await Promise.all([Page.enable(), Network.enable()]);
         await Network.setBypassServiceWorker({ bypass: true });
         await Emulation.setDeviceMetricsOverride({ width: 390, height: 844, deviceScaleFactor: 1, mobile: true }); await Emulation.setTouchEmulationEnabled({ enabled: true });
+        // the hub's page follows the system theme (#6087): the contrast pass switches the emulated colour scheme, not the dashboard's own setting
+        useThemeSetter(async (_ev, theme) => { await Emulation.setEmulatedMedia({ features: [{ name: 'prefers-color-scheme', value: theme }] }); await new Promise(r => setTimeout(r, 300)); }); // sleep-ok: the page repaints for the new scheme
         await Fetch.enable({ patterns: [{ urlPattern: `${BASE}/*`, resourceType: 'Document', requestStage: 'Response' }] });
         safePaused(client, async e => {
             if (e.responseStatusCode !== 200) return Fetch.continueRequest({ requestId: e.requestId });
@@ -79,8 +81,12 @@ const CSP = ["default-src 'self'", "script-src 'self'", "style-src 'self'", "sty
         await ev(`window.hideSettingsModal(); true`);
         await sc('hub: launch', async () => { await ev(`(async () => { await window.showLaunchModal(); return true; })()`); }, { min: 5, expect: `document.querySelector('#launch-modal .modal-content').getClientRects().length > 0` });
         await ev(`(window.hideLaunchModal || (() => {}))(); true`);
+        await sc('hub: toasts', async () => {
+            await ev(`import((window.__coralStatic || '/static/') + 'utils.js').then(m => { m.showToast('Saved to the board.', false, 60000); m.showToast('Could not reach the agent.', true, 60000); m.showToast('Upload failed.', true, 60000, { action: { label: 'Retry', onClick() {} } }); return true; })`);
+        }, { min: 3, expect: `document.querySelectorAll('.toast').length >= 3` });
+        await ev(`document.querySelectorAll('.toast').forEach(t => t.remove()); true`);
     } finally { await client.close(); }
-    const bad = problems(results).concat(required(results, ['hub: home', 'hub: nav menu', 'hub: chats list', 'hub: chat transcript', 'hub: chat tab notes', 'hub: chat tab commits', 'hub: boards list', 'hub: board', 'hub: servers', 'hub: inbox', 'hub: docs', 'hub: account menu', 'hub: settings general', 'hub: launch']));
+    const bad = problems(results).concat(required(results, ['hub: toasts', 'hub: home', 'hub: nav menu', 'hub: chats list', 'hub: chat transcript', 'hub: chat tab notes', 'hub: chat tab commits', 'hub: boards list', 'hub: board', 'hub: servers', 'hub: inbox', 'hub: docs', 'hub: account menu', 'hub: settings general', 'hub: launch']));
     if (process.env.PHONE_TARGETS_REPORT) { require('node:fs').writeFileSync(process.env.PHONE_TARGETS_REPORT, results.map(r => `${r.name}: ${r.error || r.n + ' controls, ' + r.small.length + ' small'}`).join('\n') + '\n--\n' + bad.join('\n') + '\n'); process.exit(0); }
     assert.deepEqual(bad, [], 'controls under 44 px on a phone through the Hub:\n  ' + bad.join('\n  '));
     console.log(`PASS ${results.length} Hub scenes: every control is at least 44 x 44 px`);

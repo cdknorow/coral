@@ -1,4 +1,5 @@
 'use strict';
+const { installAudit, setTheme } = require('./contrast');
 // The phone touch-target census (#6130): at 390 px with touch, every visible control on a scene is at least 44 x 44 px. measure() is an expression for ev(): the controls (buttons, links, inputs, selects,
 // summaries, role=button/tab/menuitem/switch) under 44 px in either direction, and how many controls the scene has at all (so a scene that never rendered cannot pass by being empty). A checkbox or radio
 // counts as its label. A link inside running text is inline and exempt (WCAG 2.2 target size, inline exception); everything else under 44 px fails, unless it is on the reviewed ALLOW list below.
@@ -36,6 +37,30 @@ const allowedDup = (scene, d) => ALLOW_DUPS.some(([s, r, n]) => new RegExp(s).te
 const ALLOW_UNNAMED = [];
 const allowedUnnamed = (scene, u) => ALLOW_UNNAMED.some(([s, c]) => new RegExp(s).test(scene) && new RegExp(c).test(u));
 
+// Reviewed exceptions for text or an icon under its WCAG AA ratio (#6171): [scene pattern, element pattern ("sel text"), theme pattern, why]. Empty: a failing colour is fixed in the theme tokens, not listed.
+const ALLOW_CONTRAST = [];
+const allowedContrast = (scene, theme, f) => ALLOW_CONTRAST.some(([s, e, t]) => new RegExp(s).test(scene) && new RegExp(e).test(`${f.sel} ${f.text}`) && new RegExp(t).test(theme));
+
+/** Every visible text and icon on the screen against what is behind it, in both themes (4.5:1 text, 3:1 large text and icons; contrast.js): the page's own theme is put back after. Skipped with PHONE_TARGETS_NO_CONTRAST. */
+let themeSetter = setTheme;
+/** How the suite switches the theme: the dashboard's own applyTheme by default; a page the Hub serves follows the system theme (#6087), so its suite sets the emulated colour scheme instead: fn(ev, 'light' | 'dark'). */
+function useThemeSetter(fn) { themeSetter = fn; }
+async function contrastOf(ev, name) {
+    if (process.env.PHONE_TARGETS_NO_CONTRAST) return { fails: [], checked: -1 };
+    const was = await ev(`document.documentElement.getAttribute('data-theme') || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')`);
+    const out = []; let checked = 0;
+    try {
+        await installAudit(ev);
+        for (const theme of ['light', 'dark']) {
+            await themeSetter(ev, theme);
+            const r = await ev(`window.__audit(['body'], {})`);
+            checked += r.checked;
+            for (const f of r.fails) if (!allowedContrast(name, theme, f)) out.push({ theme, ...f });
+        }
+    } finally { await themeSetter(ev, was).catch(() => {}); }
+    return { fails: out, checked };
+}
+
 const allowed = (scene, c) => ALLOW.some(([s, d]) => new RegExp(s).test(scene) && new RegExp(d).test(`${c.d} ${c.t}`));
 
 /** Click a control a person could tap: it throws when the selector matches nothing or the match is not on screen, so a scene that depends on it fails as "did not open" instead of measuring the screen it was already on. */
@@ -45,14 +70,15 @@ async function tap(ev, selector) {
 }
 
 /** Record one scene: its controls and the ones under 44 px (minus the allow list). `expect` is an expression that must be true once the scene is open (its own content is showing), checked before anything is measured. */
-async function scene(ev, results, name, setup, { min = 3, expect } = {}) {
+async function scene(ev, results, name, setup, { min = 3, expect, contrastOnly = false } = {}) {
     try {
         await setup();
         if (expect) { await new Promise(r => setTimeout(r, 400)); if (!(await ev(expect))) throw new Error(`the scene is not showing (${expect.slice(0, 80)})`); } // sleep-ok: the scene's own transition settles
     } catch (e) { results.push({ name, error: String(e && e.message || e).slice(0, 200) }); return; }
     await new Promise(r => setTimeout(r, 600)); // sleep-ok: the scene's own transitions settle
-    const m = await ev(MEASURE);
-    results.push({ name, n: m.n, min, small: m.small.filter(c => !allowed(name, c)), dups: (m.dups || []).filter(d => !allowedDup(name, d)), unnamed: (m.unnamed || []).filter(u => !allowedUnnamed(name, u)) });
+    const m = contrastOnly ? { n: min, small: [], dups: [], unnamed: [] } : await ev(MEASURE); // contrastOnly (the desktop pass): only the colours are looked at
+    const cr = await contrastOf(ev, name);
+    results.push({ name, contrast: cr.fails, contrastChecked: cr.checked, n: m.n, min, small: m.small.filter(c => !allowed(name, c)), dups: (m.dups || []).filter(d => !allowedDup(name, d)), unnamed: (m.unnamed || []).filter(u => !allowedUnnamed(name, u)) });
 }
 
 /** The problems in the results: a scene that failed to open, one with too few controls to be the real screen, and every control under 44 px. */
@@ -63,6 +89,8 @@ function problems(results) {
         else {
             if (r.n < r.min) out.push(`${r.name}: only ${r.n} controls (expected at least ${r.min}): the scene did not render`);
             for (const c of r.small) out.push(`${r.name}: ${c.d} "${c.t}" ${c.w}x${c.h}${c.via}`);
+            if (r.contrastChecked === 0) out.push(`${r.name}: the contrast pass looked at nothing (the scene is empty or the audit did not run)`);
+            for (const f of r.contrast || []) out.push(`${r.name}: [${f.theme}] ${f.what} ${f.sel} "${f.text}" ${f.ratio}:1, needs ${f.need}:1 (${f.fg} on ${f.bg})`);
             for (const u of r.unnamed || []) out.push(`${r.name}: ${u} has no accessible name`);
             if (!process.env.PHONE_TARGETS_NO_DUPS) for (const d of r.dups || []) out.push(`${r.name}: ${d.count} ${d.role} controls are all named "${d.name}" (${d.where.join(', ')})`);
         }
@@ -76,4 +104,4 @@ function required(results, names) {
     return names.filter(n => !have.has(n)).map(n => `${n}: the scene was never visited`);
 }
 
-module.exports = { MEASURE, ALLOW, ALLOW_DUPS, ALLOW_UNNAMED, scene, tap, problems, required };
+module.exports = { MEASURE, ALLOW, ALLOW_DUPS, ALLOW_UNNAMED, ALLOW_CONTRAST, useThemeSetter, scene, tap, problems, required };
