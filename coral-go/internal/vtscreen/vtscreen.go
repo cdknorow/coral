@@ -627,9 +627,9 @@ func (s *Screen) Write(data []byte) {
 	s.credit = min(WorkBurst, s.credit+len(data)*WorkPerByte)
 	s.t.budget = min(Budget, s.credit)
 	start := s.t.budget
-	s.t.write(data)
+	s.t.write(data) // plays nothing while the credit is not above zero
 	spent := start - s.t.budget
-	s.credit = max(0, s.credit-spent)
+	s.credit -= spent // an operation is paid for as it starts: the overshoot is a debt the next bytes pay off, never forgiven (so tiny writes cannot each overshoot for free)
 	s.work += int64(spent)
 }
 

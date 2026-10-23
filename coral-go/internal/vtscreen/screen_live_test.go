@@ -37,23 +37,27 @@ func TestAScreenKeepsWhatWasDrawnOnceThroughAHundredThousandRepaints(t *testing.
 // operations a screen spends over any MiB are at most WorkPerByte x 1 MiB plus one burst (and one operation of overshoot per chunk), whatever the bytes are.
 func TestTheWorkOfAMiBOfHostileOutputIsBoundedPerByte(t *testing.T) {
 	const mib = 1 << 20
-	// an operation is paid for when it starts, so each 32 KiB chunk may overshoot by the one that ran the credit out (a whole 120x40 clear at most)
-	limit := int64(WorkPerByte*mib + WorkBurst + (mib/(32*1024)+1)*120*40)
+	// an operation is paid for when it starts and the overshoot is a debt, so the whole MiB may overshoot by the one operation that ran the credit out (a whole 120x40 clear at most)
+	limit := int64(WorkPerByte*mib + WorkBurst + 120*40)
 	for name, unit := range map[string]string{
 		"clear screen":         "\x1b[2J",
 		"clear screen at home": "\x1b[H\x1b[2J",
 		"line feeds":           "\n",
 		"erase rows":           "\x1b[1;1H\x1b[2K",
 		"erase lines below":    "\x1b[J",
+		"alternate screen":     "\x1b[?1049h\x1b[?1049l",
 	} {
-		t.Run(name, func(t *testing.T) {
-			s := NewScreen(120, 40)
-			chunk := []byte(strings.Repeat(unit, 32*1024/len(unit)))
-			for sent := 0; sent < mib; sent += len(chunk) {
-				s.Write(chunk)
-			}
-			assert.LessOrEqual(t, s.Work(), limit, "a MiB of %q costs at most the rolling budget", unit)
-		})
+		// The PTY read loop sees whatever sizes the agent flushes in: the bound holds for 32 KiB, 4 KiB and 64-byte writes alike.
+		for _, size := range []int{32 * 1024, 4 * 1024, 64} {
+			t.Run(fmt.Sprintf("%s in %d-byte writes", name, size), func(t *testing.T) {
+				s := NewScreen(120, 40)
+				chunk := []byte(strings.Repeat(unit, max(1, size/len(unit))))
+				for sent := 0; sent < mib; sent += len(chunk) {
+					s.Write(chunk)
+				}
+				assert.LessOrEqual(t, s.Work(), limit, "a MiB of %q costs at most the rolling budget", unit)
+			})
+		}
 	}
 }
 
