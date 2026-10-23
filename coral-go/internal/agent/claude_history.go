@@ -278,7 +278,11 @@ func (c *claudeCursor) keepTail(line []byte) {
 type claudeLine struct {
 	Type      string `json:"type"`
 	Timestamp string `json:"timestamp"`
-	Message   *struct {
+	// The CLI's own entries: text it injected (a loaded skill, a caveat), a subagent's prompt, the summary that opens a compacted session. None is something the person typed (#6207).
+	IsMeta           bool `json:"isMeta"`
+	IsSidechain      bool `json:"isSidechain"`
+	IsCompactSummary bool `json:"isCompactSummary"`
+	Message          *struct {
 		Content claudeFirstText `json:"content"`
 	} `json:"message"`
 }
@@ -354,7 +358,7 @@ func (c *claudeCursor) add(line []byte) {
 	if c.fts.b.Len() != before {
 		c.ftsVer++
 	}
-	if e.Type == "user" && c.firstMsg == "" && !injectedUserText(text) {
+	if e.Type == "user" && c.firstMsg == "" && !e.IsMeta && !e.IsSidechain && !e.IsCompactSummary && !injectedUserText(text) {
 		c.firstMsg = clipFirstMessage(text)
 	}
 	if e.Type == "assistant" && c.summary == "" && text != "" {
