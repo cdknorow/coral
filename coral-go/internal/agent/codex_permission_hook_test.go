@@ -25,6 +25,7 @@ func TestCodexHookEventsForTheVersion(t *testing.T) {
 
 // #6615: a Codex that has the PermissionRequest hook gets Coral's hook for it, with its trust entry; one that may not, or whose version is unknown, gets the five it always had.
 func TestCodexLaunchInstallsPermissionRequestOnlyForACodexThatHasIt(t *testing.T) {
+	withHookTool(t) // a Coral tools folder with the hook tool in it: on Windows a launch carries no Coral hooks without one (the sibling test TestCodex_InjectsCoralAgenticHooks does the same)
 	old := CodexVersionProbe
 	t.Cleanup(func() { CodexVersionProbe = old })
 	launch := func(version string, probe bool) string {
