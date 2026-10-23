@@ -72,6 +72,10 @@ type autoWakeStatus struct {
 	Woken   int               `json:"woken"`
 	Failed  []autoWakeFailure `json:"failed"`
 	Waiting int               `json:"waiting"` // agents asleep because Coral stopped (off or guarded)
+	// GuardedNow and GuardWhy: the crash-loop guard as it stands now. A Coral started now would skip the wake, for this reason (the words of the notice it would show). The tray's Quit
+	// reads them, so its label does not promise a wake the guard would skip (#319).
+	GuardedNow bool   `json:"guarded_now"`
+	GuardWhy   string `json:"guard_why,omitempty"`
 }
 
 type autoWaker struct {
@@ -360,7 +364,9 @@ func (h *SessionsHandler) AutoWakeStatus(w http.ResponseWriter, r *http.Request)
 		errForbidden(w, "not through Coral Hub")
 		return
 	}
-	writeJSON(w, http.StatusOK, h.autoWake.snapshot())
+	st := h.autoWake.snapshot()
+	st.GuardedNow, st.GuardWhy = h.autoWakeGuarded()
+	writeJSON(w, http.StatusOK, st)
 }
 
 // DismissAutoWake: POST /api/system/auto-wake/dismiss, "Not now": the agents stay asleep.
