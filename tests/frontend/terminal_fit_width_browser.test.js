@@ -39,9 +39,16 @@ function paneSize(name) {
     const [cols, rows] = tmux('display-message', '-p', '-t', `=${name}:`, '#{pane_width} #{pane_height}').trim().split(/\s+/).map(Number);
     return { cols, rows };
 }
+// Size the pane and wait until tmux says it has that size (a window that a browser tab was following can be sized back by that tab's last resize message: ask again until it holds, and fail if it never does).
 function setPane(name, cols, rows) {
-    tmux('resize-window', '-t', `=${name}:`, '-x', String(cols), '-y', String(rows));
-    assert.deepEqual(paneSize(name), { cols, rows }, 'tmux sized the pane');
+    let last = null;
+    for (let i = 0; i < 30; i++) {
+        tmux('resize-window', '-t', `=${name}:`, '-x', String(cols), '-y', String(rows));
+        last = paneSize(name);
+        if (last.cols === cols && last.rows === rows) return;
+        execFileSync('sleep', ['0.1']); // sleep-ok: waiting for tmux, which has no event to wait for here
+    }
+    assert.deepEqual(last, { cols, rows }, 'tmux sized the pane');
 }
 
 async function httpJson(method, path, body) {
@@ -261,6 +268,7 @@ function assertFits(v, what) {
         assert.equal(v.font, 13);
         assert.equal(v.btn.shown, false, 'no toggle where the window fits the pane');
         console.log(`   ✓ ${v.cols} cols at 13 px, toggle hidden`);
+        await desk.close(); tabs.pop(); // step 8 sizes the pane itself: this tab must not follow and resize it back
 
         console.log('8. A desktop viewing a pane wider than its window (a View-only hub): fit never goes below a readable font (#6231)');
         const wider = { cols: 120, rows: 24 };
