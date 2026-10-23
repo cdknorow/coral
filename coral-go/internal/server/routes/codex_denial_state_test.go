@@ -16,10 +16,10 @@ import (
 	"github.com/subgentic/coral/internal/store"
 )
 
-// #6645: what clears a Codex's open approval request. Codex sends a PermissionRequest hook when its dialog opens and a PostToolUse when the approved tool ran; a denial has no hook, so the
-// agent's own rollout (its transcript) is the signal: a later record of the turn (a tool's output, a message, reasoning) means the turn went on, and a turn_aborted means it was cancelled.
-// The rollout record types here are the ones Coral already reads (event_msg task_started and turn_aborted; response_item for the rest); the timeline is built to the order Codex Test's real
-// capture shows (a call is recorded before its dialog opens, nothing is written while the dialog is open).
+// #6645: what clears a Codex's open approval request. Codex sends a PermissionRequest hook when its dialog opens and a PostToolUse when the approved tool ran; a refusal has no hook, so the
+// agent's own rollout (its transcript) is the signal. Codex Test's real capture (#6646, Codex 0.163.0) shows that a refusal (the menu's No, or Esc) ABORTS the turn: it writes the tool's output,
+// bookkeeping, a message and event_msg/turn_aborted, with no later hook, and there is no refusal that lets the turn go on. So the cases below are: the dialog open (nothing written), the abort
+// tail, and any later record of the turn closing the request.
 type codexRig struct {
 	t       *testing.T
 	h       *SessionsHandler
@@ -90,25 +90,29 @@ func TestACodexApprovalStaysOpenWhileTheDialogIsOpen(t *testing.T) {
 	assert.True(t, r.needsInput(), "and it stays open as long as nothing is written")
 }
 
-func TestACodexDenialClearsTheRequestWhenTheTurnGoesOn(t *testing.T) {
+// Any record of the turn written a whole second after the request closes it: the first record of the tail a refusal writes is the tool's output; the others are what a turn that went on would write
+// (a message, reasoning, another call), kept so a Codex that does continue after a refusal would not be held for.
+func TestAnyLaterRolloutRecordClosesACodexRequest(t *testing.T) {
 	for name, record := range map[string][2]string{
-		"the tool's output (denied)": {"response_item", "function_call_output"},
-		"a model message":            {"response_item", "message"},
-		"reasoning":                  {"response_item", "reasoning"},
-		"another tool call":          {"response_item", "function_call"},
+		"the tool's output (the first record of a refusal's tail)": {"response_item", "custom_tool_call_output"},
+		"a function call's output":                                 {"response_item", "function_call_output"},
+		"a model message":                                          {"response_item", "message"},
+		"reasoning":                                                {"response_item", "reasoning"},
+		"another tool call":                                        {"response_item", "function_call"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			r := newCodexRig(t)
 			r.openDialog()
 			require.True(t, r.needsInput())
 			r.line(record[0], record[1], 3*time.Second) // the turn went on, a whole second after the dialog opened
-			assert.False(t, r.needsInput(), "the denial is seen from the turn's next record: no hook is needed")
+			assert.False(t, r.needsInput(), "seen from the turn's next record: no hook is needed")
 			assert.False(t, r.h.blockedOnBox(context.Background(), r.name, "codex", r.sid), "so a person's message is not held for the rest of the turn")
 		})
 	}
 }
 
-func TestACancelledCodexApprovalClearsTheRequest(t *testing.T) {
+// A refusal aborts the turn (the real No and Esc): turn_aborted alone, as the tail ends.
+func TestACodexRefusalAbortsTheTurnAndClearsTheRequest(t *testing.T) {
 	r := newCodexRig(t)
 	r.openDialog()
 	require.True(t, r.needsInput())
@@ -123,4 +127,30 @@ func TestACodexApprovalIsClearedByItsToolsOwnPostToolUse(t *testing.T) {
 	require.True(t, r.needsInput())
 	r.post(`{"event_type":"tool_use","summary":"Ran: ls","tool_name":"Bash"}`)
 	assert.False(t, r.needsInput(), "approved: the tool ran")
+}
+
+// Codex Test's real timeline (#6646, Codex 0.163.0, trusted hooks): the call is recorded as response_item/custom_tool_call about 60 ms BEFORE the PermissionRequest hook; nothing at all is written
+// to the rollout while the dialog is open (58 s observed); the menu's No (and Esc) end the turn: the tail is custom_tool_call_output, token_count, message, then event_msg/turn_aborted, and no
+// hook follows. The sequence below is that one, with the dialog open for 1.5 s.
+func TestACodexRealTimelineOpenDialogThenNoClearsOnlyAfterItsTail(t *testing.T) {
+	r := newCodexRig(t)
+	r.line("event_msg", "task_started", -3*time.Second)
+	r.post(`{"event_type":"prompt_submit","summary":"User submitted prompt"}`)
+	r.line("response_item", "custom_tool_call", -60*time.Millisecond) // recorded just before its dialog opens
+	r.post(`{"event_type":"permission_request","summary":"Waiting for the user: permission (Bash)","tool_name":"Bash","detail_json":{"kind":"permission","tool_name":"Bash"}}`)
+	require.True(t, r.needsInput())
+	assert.True(t, r.h.blockedOnBox(context.Background(), r.name, "codex", r.sid))
+
+	time.Sleep(1500 * time.Millisecond) // the dialog stays open and Codex writes nothing
+	assert.True(t, r.needsInput(), "nothing written while the dialog is open: still open, even a second and a half on")
+	assert.True(t, r.h.blockedOnBox(context.Background(), r.name, "codex", r.sid), "and a person's message is still held")
+
+	// The person chooses No: the tool's output, bookkeeping, a message and the abort are written, newer than the request.
+	r.line("response_item", "custom_tool_call_output", 0)
+	assert.False(t, r.needsInput(), "the first record of the tail closes it")
+	r.line("event_msg", "token_count", 0)
+	r.line("response_item", "message", 0)
+	r.line("event_msg", "turn_aborted", 0)
+	assert.False(t, r.needsInput(), "and the abort keeps it closed")
+	assert.False(t, r.h.blockedOnBox(context.Background(), r.name, "codex", r.sid))
 }
