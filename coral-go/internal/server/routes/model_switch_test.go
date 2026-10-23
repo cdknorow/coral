@@ -380,6 +380,21 @@ func TestSwitchLevelIsConfirmedByClaudesOwnEntryNotTheNextReply(t *testing.T) {
 	assert.Equal(t, http.StatusAccepted, code, "the next choice is accepted at once")
 }
 
+// A choice replaced a moment ago (High, then Extra high 1 ms apart) leaves its own entry in the transcript: it is not the answer to the newer choice (#6219: "set the level to high, not xhigh").
+func TestAReplacedLevelsEntryIsNotTheNewChoicesAnswer(t *testing.T) {
+	r := newSwitchRig(t, "claude")
+	_, _ = r.post(t, map[string]any{"thinking": "high"})
+	_, _ = r.post(t, map[string]any{"thinking": "xhigh"})
+	r.waitTyped(t, "/effort xhigh")
+	r.localCommand(t, "/effort", "high", "Set effort level to high (saved as your default for new sessions)") // the replaced choice's entry, written late
+	time.Sleep(60 * time.Millisecond)                                                                         // sleep-ok: it must not end the newer switch
+	assert.Equal(t, switchPending, r.state(t).State, "the entry for High does not fail or finish the choice of Extra high")
+	r.localCommand(t, "/effort", "xhigh", "Set effort level to xhigh (saved as your default for new sessions)")
+	r.waitState(t, switchDone)
+	_, th := r.storedModel(t)
+	assert.Equal(t, "xhigh", th)
+}
+
 func TestSwitchLevelThatClaudeSetToAnotherLevelFails(t *testing.T) {
 	r := newSwitchRig(t, "claude")
 	_, _ = r.post(t, map[string]any{"thinking": "max"})

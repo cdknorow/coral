@@ -388,6 +388,10 @@ func (h *SessionsHandler) confirmLevel(ctx context.Context, sessionID, workDir, 
 				if c.Name != "/effort" || c.Output == "" {
 					continue
 				}
+				// Only the entry for the level asked for: a choice that was replaced a moment ago (High, then Extra high) has its own entry, which is not this one's answer (#6219).
+				if (level != "" && !strings.EqualFold(c.Args, level)) || (level == "" && c.Args != "" && !strings.EqualFold(c.Args, "auto")) {
+					continue
+				}
 				if m := effortSetR.FindStringSubmatch(c.Output); m != nil { // before the refusal words: the level's own description ("on supported models") is not an error
 					if level == "" || strings.EqualFold(m[1], level) {
 						return ""

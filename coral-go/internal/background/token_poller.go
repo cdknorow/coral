@@ -465,38 +465,9 @@ func extractClaudeUsage(path string) *claudeUsageData {
 	return &p.claudeUsageData
 }
 
-// resolveClaudeTranscriptPath finds the Claude JSONL file for a session.
+// resolveClaudeTranscriptPath finds the Claude JSONL file for a session: the one jsonl finds for the chat (the folder as named and with its links resolved, the one written last).
 func resolveClaudeTranscriptPath(sessionID, workingDir string) string {
-	home, _ := os.UserHomeDir()
-	basePath := os.Getenv("CLAUDE_PROJECTS_DIR")
-	if basePath == "" {
-		basePath = filepath.Join(home, ".claude", "projects")
-	}
-
-	// Try working directory hint first
-	if workingDir != "" {
-		encoded := transcriptlink.ClaudeProjectDirName(workingDir)
-		candidate := filepath.Join(basePath, encoded, sessionID+".jsonl")
-		if _, err := os.Stat(candidate); err == nil {
-			return candidate
-		}
-	}
-
-	// Search all project dirs
-	entries, err := os.ReadDir(basePath)
-	if err != nil {
-		return ""
-	}
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		candidate := filepath.Join(basePath, entry.Name(), sessionID+".jsonl")
-		if _, err := os.Stat(candidate); err == nil {
-			return candidate
-		}
-	}
-	return ""
+	return jsonl.ResolveClaudeTranscript(sessionID, workingDir)
 }
 
 // ── Pi JSONL token tracking ─────────────────────────────────
