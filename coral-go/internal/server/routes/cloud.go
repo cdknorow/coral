@@ -45,7 +45,7 @@ const MaxModeSetting = "cloud_max_mode"
 // (the account this computer is linked to) through POST /api/hub-auto-accept {"allow": bool}; turning it off ends every enable that came from the hub.
 const AllowHubAutoAcceptSetting = "cloud_allow_hub_auto_accept"
 
-// HubRelaunchSetting is the local switch "Let Coral Hub relaunch this Coral to install updates" (#5280). On unless set to "false",
+// HubRelaunchSetting is the local switch "Let Coral Hub relaunch this Coral to install updates" (#5280). Off unless set to "true" (#6290),
 // read from the settings store on every relaunch request, and never reachable through the tunnel: its write has its own route, and
 // PUT /api/settings refuses it like the mode cap.
 const HubRelaunchSetting = "hub_relaunch_updates"
@@ -65,7 +65,7 @@ func HubCrossTeamAllowed(settings map[string]string) bool {
 	return setreg.Bool(settings, HubCrossTeamSetting)
 }
 
-// HubRelaunchAllowed reads the switch (default on).
+// HubRelaunchAllowed reads the switch: on only for the word true, so a person who never touched it (nothing stored, or any other word) is off (#6290).
 func HubRelaunchAllowed(settings map[string]string) bool {
 	return setreg.Bool(settings, HubRelaunchSetting)
 }

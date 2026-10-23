@@ -281,7 +281,7 @@ class CloudPanel {
         if (redact) redact.checked = st.redact_tokens !== false;
         // Relaunching for an update from the hub (#5280, #5383): on unless the owner turned it off here.
         const hubRelaunch = this.part('hub-relaunch');
-        if (hubRelaunch) hubRelaunch.checked = st.hub_relaunch_updates !== false;
+        if (hubRelaunch) hubRelaunch.checked = st.hub_relaunch_updates === true;
         // Cross-team switches from the hub (#5572): the owner may turn a team's messaging and file sharing on or off unless this lock is off (the server reads an unset or unreadable lock as off).
         const hubCrossTeam = this.part('hub-cross-team');
         if (hubCrossTeam) hubCrossTeam.checked = st.hub_cross_team_settings !== false;

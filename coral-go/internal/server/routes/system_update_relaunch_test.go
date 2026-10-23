@@ -102,7 +102,7 @@ func newRelaunchEnv(t *testing.T) *relaunchEnv {
 	was := relaunchNeedsLocalApproval
 	relaunchNeedsLocalApproval = false
 	t.Cleanup(func() { relaunchNeedsLocalApproval = was })
-	e := &relaunchEnv{t: t, settings: map[string]string{MaxModeSetting: "launch"}, label: ownerA, on: true,
+	e := &relaunchEnv{t: t, settings: map[string]string{MaxModeSetting: "launch", HubRelaunchSetting: "true"}, label: ownerA, on: true,
 		now:    time.Date(2026, 10, 20, 12, 0, 0, 0, time.UTC),
 		agents: []RestartAgent{{SessionID: "claude-1", Name: "Dev", State: "idle"}}}
 	e.up = &stubUpdater{rec: UpdaterRecord{Enabled: true, Installed: "1.4.130", State: updStaged, Supported: true,

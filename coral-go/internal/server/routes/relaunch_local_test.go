@@ -1,19 +1,52 @@
 package routes
 
 import (
+	"context"
 	"net/http"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/subgentic/coral/internal/store"
 )
 
 // The local relaunch (#5280 step 3): the person at this computer relaunches into the staged update with the same acknowledgement token the Hub's owner uses, from a route of its own that
 // is never carried through the Hub. The Hub's mode cap, Operator opt-out and switch are about what Coral Hub may do and do not apply to the person here.
 
 func (e *relaunchEnv) postLocal(body string, hdr map[string]string) (int, map[string]any) {
-	return e.do(e.h.RelaunchLocal, "POST", "/api/system/update/relaunch-local", body, hdr)
+	return e.do(asLocalPerson(e.h.RelaunchLocal), "POST", "/api/system/update/relaunch-local", body, hdr)
+}
+
+// asLocalPerson stands for the dashboard on this computer: the request comes from the person's browser, the one caller kind a yes may come from.
+func asLocalPerson(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		h(w, r.WithContext(context.WithValue(r.Context(), callerKindKey{}, callerDashCookie)))
+	}
+}
+
+// #6290: the install is a person's yes. An agent's session token, a request with no caller kind and one the Hub carries are each refused with nothing started, and the
+// token stays good for the person's own click afterwards.
+func TestTheLocalRelaunchIsNeverAnAgentsOrAnUnknownCallersYes(t *testing.T) {
+	e := newRelaunchEnv(t)
+	tok := e.localToken()
+	forged := map[string]string{"Origin": "http://127.0.0.1:8420", "Sec-Fetch-Site": "same-origin"} // what a script copies from a browser
+	for name, c := range map[string]struct {
+		h   http.HandlerFunc
+		hdr map[string]string
+	}{
+		"an agent's session token":              {asLocalPerson(e.h.RelaunchLocal), map[string]string{store.SessionTokenHeader: "agent-token"}},
+		"an agent's token with browser headers": {asLocalPerson(e.h.RelaunchLocal), map[string]string{store.SessionTokenHeader: "agent-token", "Origin": forged["Origin"], "Sec-Fetch-Site": "same-origin"}},
+		"no caller kind, browser headers":       {e.h.RelaunchLocal, forged},
+	} {
+		code, out := e.do(c.h, "POST", "/api/system/update/relaunch-local", ack(tok), c.hdr)
+		assert.Equal(t, 403, code, "%s: %v", name, out)
+		assert.Empty(t, e.up.applies, name+": nothing started")
+	}
+	code, _ := e.postLocal(ack(tok), nil)
+	assert.Equal(t, 202, code, "the person's own click still works with the same token")
+	assert.Equal(t, []string{"local"}, e.up.applies)
 }
 
 func (e *relaunchEnv) localToken() string {

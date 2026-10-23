@@ -719,6 +719,11 @@ func (h *UpdateRelaunchHandler) RelaunchLocal(w http.ResponseWriter, r *http.Req
 	if !h.localOnly(w, r) {
 		return
 	}
+	// The yes is a person's: an agent's session token (or anything that is not the dashboard or the signed command line) never installs, whatever else the request carries (#6290).
+	if !humanInputCaller(r) {
+		writeError(w, http.StatusForbidden, "operator_only", "only the Operator can install an update")
+		return
+	}
 	h.relaunch(w, r, localIdentity)
 }
 
