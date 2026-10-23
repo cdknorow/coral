@@ -79,10 +79,10 @@ import { lazyFns, lazyWindowFns, loadTeamContext, loadTeamSettings, loadWorkflow
 const {
     showWorkflowsTab, selectWorkflow, selectWorkflowRun, killWorkflowRun, deleteWorkflow,
     showWorkflowCreateModal, hideWorkflowCreateModal, editWorkflowWithAgent, workflowAddStep,
-    workflowStepTypeChanged, saveWorkflow, workflowsBackToList, launchWorkflowAgent,
+    workflowStepTypeChanged, saveWorkflow, workflowsBackToList, launchWorkflowAgent, checkWorkflowLimit,
 } = lazyFns(loadWorkflows, ['showWorkflowsTab', 'selectWorkflow', 'selectWorkflowRun', 'killWorkflowRun', 'deleteWorkflow',
     'showWorkflowCreateModal', 'hideWorkflowCreateModal', 'editWorkflowWithAgent', 'workflowAddStep',
-    'workflowStepTypeChanged', 'saveWorkflow', 'workflowsBackToList', 'launchWorkflowAgent']);
+    'workflowStepTypeChanged', 'saveWorkflow', 'workflowsBackToList', 'launchWorkflowAgent', 'checkWorkflowLimit']);
 const { showCostDashboard, _refreshCostDashboard, _costTimeRangeChanged } =
     lazyFns(loadCostDashboard, ['showCostDashboard', '_refreshCostDashboard', '_costTimeRangeChanged']);
 // The board view's header, composer and subscribers sheet (#3645). Pause and deleting the board
@@ -282,6 +282,7 @@ registerActions({
     'wf-modal-backdrop': (el, event) => { if (event.target === el) hideWorkflowCreateModal(); },
     'wf-modal-close': () => hideWorkflowCreateModal(),
     'wf-add-step': () => workflowAddStep(),
+    'wf-limit-check': () => checkWorkflowLimit(),
     'wf-save': () => saveWorkflow(),
 });
 // The Cost view's own controls (#3645); the table's actions register with its module.

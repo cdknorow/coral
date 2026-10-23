@@ -839,7 +839,6 @@ function showError(el, msg, field) {
 // Ids are checked (idOf) before use: a bad one does nothing.
 registerActions({
     'wf-select': el => withId(el.dataset.workflowId, selectWorkflow),
-    'wf-limit-check': () => checkWorkflowLimit(),
     'wf-run': el => withId(el.dataset.runId, selectWorkflowRun),
     'wf-trigger': el => withId(el.dataset.workflowId, triggerWorkflow),
     'wf-edit': el => withId(el.dataset.workflowId, editWorkflow),

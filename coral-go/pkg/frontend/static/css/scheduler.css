@@ -43,7 +43,7 @@
     color: var(--text-secondary);
     font-size: var(--fs-md);
     cursor: pointer;
-    transition: background 0.15s, border-color 0.15s, color 0.15s;
+    transition: none; /* the global button fade (base.css) left the old choice looking chosen for a moment: two presets lit at once */
 }
 
 .sched-preset:hover {

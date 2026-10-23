@@ -35,6 +35,9 @@ const STUB = `(() => {
 
             // 1. first screen: Name, Steps with one step showing; the rest behind More options
             assert.equal(await ev(vis('#wf-input-name')), true, at + 'Name');
+            const pat = await ev(`(() => { const m = document.querySelector('#wf-create-modal .modal-content').getBoundingClientRect(), x = document.querySelector('#wf-create-modal .modal-close-btn').getBoundingClientRect(), f = document.getElementById('wf-modal-save').getBoundingClientRect(); return { xRight: Math.round(m.right - x.right), xTop: Math.round(x.top - m.top), btnRight: Math.round(m.right - f.right) }; })()`);
+            assert.ok(pat.xRight >= 0 && pat.xRight <= 40 && pat.xTop <= 40, at + 'the X is at the top right: ' + JSON.stringify(pat));
+            assert.ok(pat.btnRight <= 40, at + 'the buttons are at the bottom right, as in New job: ' + JSON.stringify(pat));
             assert.equal(await ev(`document.querySelectorAll('#wf-steps-editor .wf-step-editor-item').length`), 1, at + 'one empty step is already there');
             for (const id of ['#wf-input-desc', '#wf-input-repo', '#wf-input-max-dur']) assert.equal(await ev(vis(id)), false, at + id + ' is behind More options');
             assert.equal(await ev(`document.getElementById('wf-more').open`), false);
@@ -111,6 +114,10 @@ const STUB = `(() => {
             assert.equal(await ev(`document.querySelectorAll('#wf-steps-editor .wf-step-editor-item').length`), 1);
             assert.equal(await ev(`document.querySelectorAll('#wf-create-modal [aria-invalid]').length`), 0, at + 'no mark is left over');
         }
+        // the Workflows page behind the dialog: no count, no empty pill after the title
+        await ev(`document.querySelector('#wf-create-modal .modal-close-btn').click(); window.switchNavTab('workflows'); true`);
+        await waitFor(`document.getElementById('wf-title').textContent === 'Workflows'`, 'the Workflows page', 8000);
+        assert.equal(await ev(`(() => { const b = document.getElementById('wf-count-badge'); return !b.textContent.trim() && !b.checkVisibility(); })()`), true, 'with no count the badge is not drawn');
         console.log('PASS workflow form: Name, Steps first, the rest behind More options; errors in words');
     } finally { await client.close(); }
 })().catch(e => { console.error(e); process.exit(1); });

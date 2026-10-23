@@ -46,6 +46,16 @@ const STUB = `(() => {
             assert.equal(await ev(`document.getElementById('cron-preview').getAttribute('role')`), 'status');
             assert.equal(await ev(`document.getElementById('job-modal-more').open`), false, at + 'More options starts closed');
             await ev(`document.querySelector('.sched-preset:nth-child(3)').click(); true`);
+            // only the chosen preset looks chosen, right after the click (no fade from the one before), and a hover or focus is not the chosen look
+            const looks = await ev(`[...document.querySelectorAll('.sched-preset')].map(b => getComputedStyle(b).backgroundColor)`);
+            const chosen = looks[2];
+            assert.deepEqual(looks.map((c, i) => c === chosen && i !== 2), [false, false, false, false, false], at + 'no other preset has the chosen preset\'s fill: ' + JSON.stringify(looks));
+            assert.deepEqual(await ev(`[...document.querySelectorAll('.sched-preset')].map(b => b.getAttribute('aria-pressed'))`), ['false', 'false', 'true', 'false', 'false'], at + 'and only one is pressed');
+            // the dialog's pattern: a Close X at the top right, the buttons at the bottom right
+            const pat = await ev(`(() => { const m = document.querySelector('#job-modal .modal-content').getBoundingClientRect(), x = document.querySelector('#job-modal .modal-close-btn'), f = document.getElementById('job-modal-submit').getBoundingClientRect(), c = x ? x.getBoundingClientRect() : null; return { hasX: !!x, xRight: c ? Math.round(m.right - c.right) : -1, xTop: c ? Math.round(c.top - m.top) : -1, name: x && x.getAttribute('aria-label'), btnRight: Math.round(m.right - f.right) }; })()`);
+            assert.equal(pat.hasX, true, at + 'New job has a Close X'); assert.equal(pat.name, 'Close dialog');
+            assert.ok(pat.xRight >= 0 && pat.xRight <= 40 && pat.xTop <= 40, at + 'the X is at the top right: ' + JSON.stringify(pat));
+            assert.ok(pat.btnRight <= 40, at + 'the buttons are at the bottom right: ' + JSON.stringify(pat));
             await waitFor(`/every day at 02:00/.test(document.getElementById('cron-preview').textContent)`, 'daily preview', 8000);
             await shot(`job-form-${w}`);
 
@@ -125,6 +135,9 @@ const STUB = `(() => {
             await ev(`document.querySelector('#job-modal-no-workflows button').click(); true`);
             await waitFor(`document.getElementById('wf-create-modal') && getComputedStyle(document.getElementById('wf-create-modal')).display !== 'none'`, 'New workflow opens', 8000);
             assert.equal(await ev(`getComputedStyle(document.getElementById('job-modal')).display`), 'none', at + 'the job form closes');
+            await ev(`document.querySelector('#wf-create-modal .modal-close-btn').click(); window.showJobModal(); true`);
+            await ev(`document.querySelector('#job-modal .modal-close-btn').click(); true`);
+            assert.equal(await ev(`getComputedStyle(document.getElementById('job-modal')).display`), 'none', at + 'the X closes New job');
         }
         console.log('PASS job form: Name, Workflow and When first; the rest behind More options; errors in words');
     } finally { await client.close(); }

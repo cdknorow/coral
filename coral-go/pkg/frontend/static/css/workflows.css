@@ -30,6 +30,7 @@
     font-size: var(--type-page-size);
 }
 
+.wf-count-badge:empty { display: none; } /* no count, no badge: an empty pill after "Workflows" says nothing */
 .wf-count-badge {
     font-size: 0.6875rem;
     background: var(--bg-tertiary);
