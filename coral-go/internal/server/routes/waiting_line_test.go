@@ -89,8 +89,8 @@ func TestWaitingLineABlobIsNotShown(t *testing.T) {
 }
 
 func TestWaitingLineHasNoTerminalControl(t *testing.T) {
-	l := lineOf(t, "\x1b[31mrm -rf build\x1b[0m \x1b]0;title\x07 ‮evil​ text\x00")
-	for _, bad := range []string{"\x1b", "\x07", "‮", "​", "\x00"} {
+	l := lineOf(t, "\x1b[31mrm -rf build\x1b[0m \x1b]0;title\x07 \u202eevil\u200b text\x00")
+	for _, bad := range []string{"\x1b", "\x07", "\u202e", "\u200b", "\x00"} {
 		assert.NotContains(t, l, bad)
 	}
 	assert.Contains(t, l, "rm -rf build")
