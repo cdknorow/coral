@@ -13,7 +13,7 @@ import { stopCaptureRefresh } from './capture.js';
 import { renderLiveSessions, KILL_LOG_NOTE } from './render.js';
 import { loadAgentEvents, renderEventTimeline } from './agentic_state.js';
 import { addPendingMessage, confirmPendingMessage, removePendingMessage, resetLiveHistory, effectiveLiveViewMode } from './live_chat.js';
-import { serverFetch, currentServer, serverForSession, sessionServer, isCloud } from './server_base.js';
+import { serverFetch, currentServer, serverForSession, sessionServer } from './server_base.js';
 import { applySleepingView } from './sleeping_view.js';
 import { hubBlocked, blockedReason } from './hub_access.js';
 import { prepareImage, artifactErrorText, PICKER_ACCEPT, parseUploadReply, uploadStatusFailure, uploadCodeFailure, UPLOAD_UNFINISHED } from './image_attach.js';
@@ -1003,7 +1003,7 @@ export function openImagePicker() {
 /** Pictures chosen in the picker go up one after another, not at once (a phone on a slow connection, and the hub's limit on parallel requests); each is made smaller first when it is a big photo. */
 export async function uploadPickedImages(files, session = state.currentSession) {
     for (const file of files) {
-        const prepared = await prepareImage(file, { viaHub: isCloud() });
+        const prepared = await prepareImage(file);
         if (prepared.error) { showToast(prepared.error, true); continue; }
         await uploadAndInsertImage(prepared.file, session);
     }

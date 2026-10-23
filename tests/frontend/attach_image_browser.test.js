@@ -1,6 +1,6 @@
 // The Add image button (#6088), against the real server and a stand-in agent, at 1280 px (a mouse) and 390 px (a phone with touch):
 // the button is there and named at each size, 44 px on a phone; picking files uploads them one after another through the existing strip; a photo over 2 MB is made smaller in the browser and a PNG
-// is not; an image over 20 MB (16 MB through Coral Hub) is refused before any request; a HEIC is refused in words a person can act on; the picker offers no SVG and no HEIC; the server's retry time is
+// is not; an image over 20 MB (the same through Coral Hub) is refused before any request; a HEIC is refused in words a person can act on; the picker offers no SVG and no HEIC; the server's retry time is
 // shown in the viewer's own time. (The Launch tier through the hub is hub_blocked_controls_browser's.)
 // Drives Chrome over CDP through agent_view_harness.js; run_cdp_suites.mjs finds CDP suites by that name.
 const assert = require('node:assert/strict');
@@ -40,6 +40,7 @@ async function httpJson(method, p, body, headers = {}) {
                         const f = o.body.get('file'); const r = { start: performance.now(), name: f.name, type: f.type, size: f.size, session: o.body.get('session_id') }; window.__rec.ups.push(r);
                         if (window.__upMode === 'empty') return new Response('', { status: 200 });
                         if (window.__upMode === 'stalled' || window.__upMode === 'tooslow') return new Response(JSON.stringify({ error: 'upload cut', code: window.__upMode === 'stalled' ? 'upload_stalled' : 'upload_too_slow' }), { status: 408, headers: { 'Content-Type': 'application/json' } });
+                        if (window.__upMode === 'toolarge') return new Response(JSON.stringify({ error: 'request too large', code: 'request_too_large' }), { status: 413, headers: { 'Content-Type': 'application/json' } });
                         if (typeof window.__upMode === 'number') return new Response(JSON.stringify({ error: 'request too large' }), { status: window.__upMode, headers: { 'Content-Type': 'application/json' } });
                         if (window.__upMode === 'throw') throw new TypeError('network down');
                         try { return await real(u, o); } finally { r.end = performance.now(); } }
@@ -83,16 +84,16 @@ async function httpJson(method, p, body, headers = {}) {
             check(`${tag}: a ${(big.jpegBefore / 1048576).toFixed(1)} MB photo is made smaller (${(big.jpegAfter / 1048576).toFixed(1)} MB): a JPEG, long side 2560 px, the shape kept`, big.jpegBefore > 2 * 1048576 && big.jpegAfter < big.jpegBefore && big.jpegType === 'image/jpeg' && big.jpegName === 'IMG_1.jpg' && big.long === 2560 && Math.abs(big.short - 1600) <= 1, JSON.stringify(big));
             check(`${tag}: a ${(big.pngBefore / 1048576).toFixed(1)} MB PNG screenshot goes up as it is`, big.pngBefore > 2 * 1048576 && big.pngSame && big.pngAfter === big.pngBefore, JSON.stringify(big));
 
-            // 4. the limits: 20 MB here, 16 MB through Coral Hub; before any request
+            // 4. the limit: 20 MB, here and through Coral Hub (#6201); before any request
             const n0 = await ev(`window.__rec.ups.length`);
             await ev(`window.__rec.toasts.length = 0; true`);
             await ev(`(async () => { const f = new File([new Uint8Array(21 * 1048576)], 'huge.png', { type: 'image/png' }); const dt = new DataTransfer(); dt.items.add(f); const i = document.getElementById('attach-image-input'); i.files = dt.files; i.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
             await waitFor(`window.__rec.toasts.some(t => /over 20 MB/.test(t))`, `${tag}: the 21 MB image is refused in words`, { timeout: 8000 });
             check(`${tag}: a 21 MB image makes no request`, (await ev(`window.__rec.ups.length`)) === n0);
             const hub = await ev(`(async () => { const m = await import(${S} + 'image_attach.js'); const mkf = mbs => new File([new Uint8Array(Math.round(mbs * 1048576))], 'x.png', { type: 'image/png' });
-                const a = await m.prepareImage(mkf(17), { viaHub: true }), b = await m.prepareImage(mkf(15), { viaHub: true }), c = await m.prepareImage(mkf(17), { viaHub: false });
-                return { a: a.error || '', b: !!b.file, c: !!c.file }; })()`);
-            check(`${tag}: through Coral Hub the limit is 16 MB (17 refused with the reason, 15 passes); on this computer 17 passes`, /over 16 MB/.test(hub.a) && /Coral Hub/.test(hub.a) && hub.b && hub.c, JSON.stringify(hub));
+                const a = await m.prepareImage(mkf(19)), b = await m.prepareImage(mkf(21)), c = await m.prepareImage(mkf(17)); // viaHub is gone: one limit
+                return { a: !!a.file, b: b.error || '', c: !!c.file, hubCap: m.HUB_CAP === undefined && m.capFor === undefined }; })()`);
+            check(`${tag}: one limit of 20 MB, here and through Coral Hub: 17 and 19 pass, 21 is refused as over 20 MB, and no 16 MB Hub cap is left`, hub.a && hub.c && /over 20 MB/.test(hub.b) && !/Coral Hub/.test(hub.b) && hub.hubCap, JSON.stringify(hub));
 
             // 5. a HEIC: refused in words, before any request, by name and by type
             await ev(`window.__rec.toasts.length = 0; true`);
@@ -120,7 +121,7 @@ async function httpJson(method, p, body, headers = {}) {
             await waitFor(`window.__rec.ups.length === window.__nBefore + 1 && document.querySelectorAll('#image-attachments .image-attachment').length === ${a0 + 1}`, `${tag}: Retry uploads the same picture again`, { timeout: 10000 });
             check(`${tag}: Retry sends the same picture again and it is attached`, (await ev(`window.__rec.ups[window.__rec.ups.length - 1].name`)) === 'cut.png' && (await attached()) === a0 + 1);
             await ev(`import(${S} + 'controls.js').then(m => { for (let i = m.getPendingAttachments().length - 1; i >= 0; i--) m.removeAttachment(i); })`);
-            for (const [mode, re, want, retry] of [[413, '/too big/', 'That image is too big to send. Pick a smaller one.', false], [408, '/took too long/', 'The upload took too long. Try again, on a faster connection if you can.', true], [503, '/timed out/', 'Upload timed out. Try a smaller image.', true], ['stalled', '/stalled/', 'The upload stalled. Try again.', true], ['tooslow', '/timed out/', 'Upload timed out. Try a smaller image.', true], [502, "/didn't finish/", "Upload didn't finish. Try again.", true], ['throw', "/didn't finish/", "Upload didn't finish. Try again.", true]]) {
+            for (const [mode, re, want, retry] of [[413, '/too big/', 'That image is too big to send. Pick a smaller one.', false], [408, '/took too long/', 'The upload took too long. Try again, on a faster connection if you can.', true], [503, '/timed out/', 'Upload timed out. Try a smaller image.', true], ['toolarge', '/through Coral Hub/', 'That image is too large to send through Coral Hub.', false], ['stalled', '/stalled/', 'The upload stalled. Try again.', true], ['tooslow', '/timed out/', 'Upload timed out. Try a smaller image.', true], [502, "/didn't finish/", "Upload didn't finish. Try again.", true], ['throw', "/didn't finish/", "Upload didn't finish. Try again.", true]]) {
                 await ev(`window.__upMode = ${typeof mode === 'number' ? mode : JSON.stringify(mode)}; document.querySelectorAll('.toast').forEach(t => t.remove()); true`);
                 await pick([mk(`'x.png'`, 40, 30, 'image/png')]);
                 await waitFor(toastOf(re), `${tag}: the ${mode} message`, { timeout: 8000 });

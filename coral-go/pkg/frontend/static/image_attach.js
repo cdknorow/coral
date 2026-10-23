@@ -5,9 +5,6 @@
 
 const MiB = 1024 * 1024;
 export const SERVER_CAP = 20 * MiB; // the server's limit for one image (uploads.go maxFileSize)
-// Coral Hub caps a request body at 16 MiB and 60 s today; for POST /api/upload it is being raised to 24 MiB and about 5 minutes. Until that ships, an image over 16 MiB is refused here, through the
-// hub, with a plain message. When the hub's change is out, delete this constant and use SERVER_CAP alone.
-export const HUB_CAP = 16 * MiB;
 export const DOWNSCALE_OVER = 2 * MiB;
 export const LONG_SIDE = 2560;
 export const JPEG_QUALITY = 0.85;
@@ -18,9 +15,6 @@ export const HEIC_REFUSAL = "Coral can't read HEIC photos. Send it as a JPEG or 
 
 const isHeic = f => /^image\/(heic|heif|heics|avif)$/i.test(f.type || '') || /\.(heic|heif|heics|avif)$/i.test(f.name || '');
 const mb = n => `${Math.round(n / MiB)} MB`;
-
-/** The limit for one image: the hub's while the dashboard is Coral Hub's, else the server's. */
-export const capFor = viaHub => (viaHub ? HUB_CAP : SERVER_CAP);
 
 /** A photo is made smaller when it is over 2 MB and is not a PNG or a GIF (those are screenshots and animations: kept whole). */
 export function shouldDownscale(file) {
@@ -46,16 +40,15 @@ async function downscale(file) {
     } finally { bmp.close && bmp.close(); }
 }
 
-/** A picked file as it is uploaded: { file } or { error } (a sentence for a toast). viaHub: the dashboard is Coral Hub's. */
-export async function prepareImage(file, { viaHub = false } = {}) {
+/** A picked file as it is uploaded: { file } or { error } (a sentence for a toast). */
+export async function prepareImage(file) {
     if (isHeic(file)) return { error: HEIC_REFUSAL };
     if (!/^image\//i.test(file.type || '')) return { error: 'That file is not a picture.' };
     let out = file;
     if (shouldDownscale(file)) {
         try { out = await downscale(file); } catch { out = file; } // the original goes when the browser cannot draw it
     }
-    const cap = capFor(viaHub);
-    if (out.size > cap) return { error: `That image is over ${mb(cap)}${viaHub ? ' (the limit through Coral Hub)' : ''}.` };
+    if (out.size > SERVER_CAP) return { error: `That image is over ${mb(SERVER_CAP)}.` }; // the same limit here and through Coral Hub (its POST /api/upload takes 22 MiB, #6201)
     return { file: out };
 }
 
@@ -84,6 +77,7 @@ export function parseUploadReply(text) {
 export function uploadCodeFailure(code) {
     if (code === 'upload_stalled') return { text: 'The upload stalled. Try again.', retry: true };
     if (code === 'upload_too_slow') return { text: 'Upload timed out. Try a smaller image.', retry: true };
+    if (code === 'request_too_large') return { text: 'That image is too large to send through Coral Hub.', retry: false }; // the hub's own body limit (413), above the 20 MB the dashboard checks first
     return null;
 }
 
