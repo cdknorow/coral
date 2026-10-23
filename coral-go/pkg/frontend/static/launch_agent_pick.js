@@ -29,7 +29,11 @@ export async function buildAgentPick({ group, form, server, implicitDefault }) {
     if (group._pickToken !== token || !group.isConnected) return; // another New Agent opened meanwhile
     const order = TYPES.map((_, i) => i).sort((a, b) => (found[b] === true) - (found[a] === true) || a - b); // installed first, then the rest as they were
     const note = document.getElementById('launch-codex-note'); // Codex stops on Coral's hooks question the first time (hooks_review.js, #6409): said once, here, for this computer's Codex
-    const sync = () => { const v = ALIAS[select.value] || select.value; for (const r of group.querySelectorAll('input')) r.checked = r.value === v; if (note) note.hidden = !(v === 'codex' && normServer(server) === LOCAL_SERVER); };
+    const sync = () => { const v = ALIAS[select.value] || select.value; for (const r of group.querySelectorAll('input')) r.checked = r.value === v; if (note) { note.hidden = !(v === 'codex' && normServer(server) === LOCAL_SERVER); describeBy(note); } };
+    const describeBy = note => { // the agent radios (the group and each choice) are described by the note while it shows: a hidden note would still be read, so the link is only there then
+        const on = !note.hidden;
+        for (const el of [group, ...group.querySelectorAll('input')]) { if (on) el.setAttribute('aria-describedby', note.id); else el.removeAttribute('aria-describedby'); }
+    };
     for (const i of order) {
         const [type, label] = TYPES[i];
         const wrap = document.createElement('label');

@@ -47,6 +47,11 @@ const HOOKS = { question: 'Hooks need review: 3 hooks are new or changed', optio
             const want = mobile ? "Answer Codex's hooks question first" : "Answer Codex's question about Coral's hooks first";
             check(`${tag}: the box says to answer it first`, (await ev(`document.getElementById('command-input').placeholder`)) === want, await ev(`document.getElementById('command-input').placeholder`));
 
+            const hint = () => ev(`(() => { const h = document.getElementById('composer-hooks-hint'), i = document.getElementById('command-input'); const ids = (i.getAttribute('aria-describedby') || '').split(/\\s+/).filter(Boolean);
+                return { shown: !!h && !h.hidden && h.getClientRects().length > 0, text: h ? h.textContent : '', described: ids.map(id => (document.getElementById(id) || {}).textContent || '').join(' ') }; })()`);
+            const hk = await hint();
+            check(`${tag}: the instruction is also a visible line, and the box is described by it (not the placeholder only)`, hk.shown && hk.text === "Answer Codex's question about Coral's hooks first" && hk.described.includes(hk.text), JSON.stringify(hk));
+
             // a message typed anyway is refused by the server and the refusal shows (the 409 stays); nothing was answered for the person
             await ev(`(() => { const i = document.getElementById('command-input'); i.value = 'hello'; i.dispatchEvent(new Event('input', { bubbles: true })); i.focus(); return true; })()`);
             await ev(`document.getElementById('command-input').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); true`);
@@ -59,6 +64,8 @@ const HOOKS = { question: 'Hooks need review: 3 hooks are new or changed', optio
             await waitFor(`!/Answer Codex/.test(document.getElementById('command-input').placeholder)`, 'the box back to its words', 8000);
             const back = await ev(`document.getElementById('command-input').placeholder`);
             check(`${tag}: answered, the box has its own words back`, /^Message codex-q/.test(back), back);
+            const gone = await hint();
+            check(`${tag}: and the line and the description go with it`, !gone.shown && gone.text === '' && !gone.described.includes('hooks'), JSON.stringify(gone));
 
             // the New Agent step: Codex chosen on this computer says it once; another agent says nothing
             console.log(`${tag}: New Agent`);
@@ -68,12 +75,19 @@ const HOOKS = { question: 'Hooks need review: 3 hooks are new or changed', optio
             await waitFor(`!document.getElementById('launch-agent-pick').hidden && getComputedStyle(document.getElementById('launch-agent-pick')).display !== 'none'`, 'the agent choice', 8000);
             const note = () => ev(`(() => { const n = document.getElementById('launch-codex-note'); return { shown: !!n && !n.hidden && n.getClientRects().length > 0, text: n ? n.textContent : '', count: document.querySelectorAll('#launch-modal .launch-codex-note').length }; })()`);
             await ev(`document.querySelector('#launch-agent-pick input[value="claude"]').click(); true`);
+            const radios = () => ev(`(() => ({ group: document.getElementById('launch-agent-pick').getAttribute('aria-describedby'), radios: [...document.querySelectorAll('#launch-agent-pick input')].map(r => r.getAttribute('aria-describedby')) }))()`);
             check(`${tag}: Claude chosen: no note`, !(await note()).shown);
+            const r0 = await radios();
+            check(`${tag}: Claude chosen: the agent radios are described by nothing (a hidden note would still be read)`, r0.group === null && r0.radios.every(x => x === null), JSON.stringify(r0));
             await ev(`document.querySelector('#launch-agent-pick input[value="codex"]').click(); true`);
             const n = await note();
+            const r1 = await radios();
+            check(`${tag}: Codex chosen: the radio group and every radio are described by the note`, r1.group === 'launch-codex-note' && r1.radios.length === 4 && r1.radios.every(x => x === 'launch-codex-note'), JSON.stringify(r1));
             check(`${tag}: Codex chosen: one line says Codex will ask about Coral's hooks on this computer, and where to answer`, n.shown && n.count === 1 && /Codex will ask you to trust Coral's hooks on this computer/.test(n.text) && /chat/.test(n.text), JSON.stringify(n));
             await ev(`document.querySelector('#launch-agent-pick input[value="pi"]').click(); true`);
             check(`${tag}: another agent chosen: the note goes`, !(await note()).shown);
+            const r2 = await radios();
+            check(`${tag}: and by nothing once it goes`, r2.group === null && r2.radios.every(x => x === null), JSON.stringify(r2));
             await ev(`window.hideLaunchModal(); true`);
         }
     } finally { await client.close(); }

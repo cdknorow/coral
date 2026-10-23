@@ -22,4 +22,13 @@ export function syncHooksComposer(session) {
     const cur = state.currentSession;
     const open = !!session && !!cur && cur.session_id === session.session_id && session.agent_type === 'codex' && isHooksReview(promptOptionsBySession.get(session.session_id));
     setHooksPlaceholder(input, open ? (window.innerWidth <= 767 ? HOOKS_PLACEHOLDER_PHONE : HOOKS_PLACEHOLDER) : '');
+    // The instruction is also a line that stays (a placeholder is gone once a person types, and is not read as the box's description): the box is described by it while it shows.
+    const hint = document.getElementById('composer-hooks-hint');
+    if (hint) {
+        if (open) { if (hint.textContent !== HOOKS_PLACEHOLDER) hint.textContent = HOOKS_PLACEHOLDER; } else if (hint.textContent) hint.textContent = '';
+        hint.hidden = !open;
+        const ids = (input.getAttribute('aria-describedby') || '').split(/\s+/).filter(x => x && x !== hint.id);
+        if (open) ids.push(hint.id);
+        if (ids.length) input.setAttribute('aria-describedby', ids.join(' ')); else input.removeAttribute('aria-describedby');
+    }
 }
