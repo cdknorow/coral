@@ -345,6 +345,7 @@ function syncPendingGroup(container, cls, items, label) {
         wrap = document.createElement("div");
         wrap.className = `pending-messages ${cls}`;
     }
+    if (wrap.dataset.count !== String(items.length)) wrap.dataset.count = String(items.length); // a phone says "2 queued" once instead of a label on every bubble (#6737)
     const want = new Set(items.map(p => p.id));
     for (const el of Array.from(wrap.children)) {
         if (!want.has(Number(el.dataset.pendingId))) el.remove();

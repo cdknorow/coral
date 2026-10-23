@@ -4025,6 +4025,12 @@ body[data-agent-cli]:not([data-agent-cli=""], [data-agent-cli="claude"]) .signin
 .signin-line-btn { display: inline-flex; align-items: center; gap: var(--space-sm); padding: 2px 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: help; }
 .signin-line-btn .material-icons { font-size: 1rem; }
 .signin-line-hint[hidden] { display: none; }
+/* A phone (#6737): the line is the short fact and its button opens the rest (what waits, and what to do): at 200% text the whole sentence was four lines. */
+.signin-line-why-hint { display: none; }
+@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) and (max-width: 950px) {
+    .signin-line-why { display: none; }
+    .signin-line-why-hint { display: inline; }
+}
 /* About Claude's background work: scheduled jobs and workflows. On those pages and the agents page; not on Chats, the Board, Docs, Analytics, the Inbox or Servers, where it says nothing a person can use (#6200). */
 body[data-nav-tab]:not([data-nav-tab="agents"], [data-nav-tab="jobs"], [data-nav-tab="workflows"]) .signin-line { display: none; }
 .signin-line-dismiss { margin-left: auto; display: inline-flex; align-items: center; justify-content: center; min-width: 28px; min-height: 28px; padding: 0; border: 0; border-radius: var(--radius-md); background: none; color: var(--text-secondary); cursor: pointer; }

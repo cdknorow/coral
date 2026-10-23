@@ -32,7 +32,7 @@ const PRELOAD = `(() => {
         await Page.addScriptToEvaluateOnNewDocument({ source: PRELOAD });
         const state = () => ev(`(() => { const l = document.getElementById('claude-signin-line'), b = document.getElementById('signin-line-btn'), h = document.getElementById('signin-line-hint');
             const r = l.getBoundingClientRect();
-            return { shown: !l.hidden && l.getClientRects().length > 0, text: l.querySelector('button').textContent.replace(/\\s+/g, ' ').trim(), title: b.title, role: (document.getElementById('claude-signin-live') || {getAttribute: () => null}).getAttribute('role'), lineRole: l.getAttribute('role'), live: (document.getElementById('claude-signin-live') || {}).textContent, hintShown: !h.hidden, expanded: b.getAttribute('aria-expanded'),
+            return { shown: !l.hidden && l.getClientRects().length > 0, text: l.querySelector('button').innerText.replace(/\\s+/g, ' ').trim(), title: b.title, role: (document.getElementById('claude-signin-live') || {getAttribute: () => null}).getAttribute('role'), lineRole: l.getAttribute('role'), live: (document.getElementById('claude-signin-live') || {}).textContent, hintShown: !h.hidden, expanded: b.getAttribute('aria-expanded'),
                 alerts: document.querySelectorAll('#claude-signin-line [role=alert], .toast').length, color: getComputedStyle(l).color, errorColor: getComputedStyle(document.documentElement).getPropertyValue('--error').trim(),
                 fits: r.left >= 0 && r.right <= innerWidth, overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth }; })()`);
         const load = async (view, signed) => {
@@ -51,9 +51,9 @@ const PRELOAD = `(() => {
             await load(view, false);
             await waitFor(`!document.getElementById('claude-signin-line').hidden`, 'the line from the first status answer');
             let s = await state();
-            check(`${view.name}: "${s.text}"`, s.shown && s.text === "info Claude isn't signed in: scheduled jobs and workflows that use it are waiting");
+            check(`${view.name}: "${s.text}"`, s.shown && s.text === (view.mobile ? "info Claude isn't signed in" : "info Claude isn't signed in: scheduled jobs and workflows that use it are waiting")); // a phone: the short fact, the rest behind the button (#6737)
             check('hover says what to do (title)', s.title === 'Sign in with claude in a terminal');
-            check('a calm line: it is said by a status region that is always in the page (the line itself is not live), no alert, no toast, not the error colour', s.role === 'status' && s.lineRole === null && s.live === s.text.replace(/^info\s*/, '') && s.alerts === 0 && s.color !== s.errorColor, JSON.stringify([s.role, s.lineRole, s.live, s.text]));
+            check('a calm line: it is said by a status region that is always in the page (the line itself is not live), no alert, no toast, not the error colour', s.role === 'status' && s.lineRole === null && s.live === "Claude isn't signed in: scheduled jobs and workflows that use it are waiting" && s.alerts === 0 && s.color !== s.errorColor, JSON.stringify([s.role, s.lineRole, s.live, s.text]));
             check('the hint is shut until it is tapped', s.hintShown === false && s.expanded === 'false');
             await ev(`document.getElementById('signin-line-btn').click(); true`);
             s = await state();

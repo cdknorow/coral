@@ -66,7 +66,7 @@ export function applySigninStatus(data) {
     if (line.hidden !== hide) line.hidden = hide;
     // What a screen reader says, once, when the line appears: a region that is always in the page gets the words (a status that appears with its words is often not read). The line itself is not live.
     const live = document.getElementById('claude-signin-live'), btn0 = document.getElementById('signin-line-btn');
-    const said = hide || !btn0 ? '' : [...btn0.childNodes].filter(n => n.nodeType === 3).map(n => n.textContent).join('').replace(/\s+/g, ' ').trim();
+    const said = hide || !btn0 ? '' : (btn0.lastElementChild.textContent || '').replace(/\s+/g, ' ').trim(); // the button's label (its last element, after the icon): the whole sentence, though a phone shows only its first part (#6737)
     if (live && live.textContent !== said) live.textContent = said;
     if (hide) { // a tap's hint does not stay open for the next time
         const hint = document.getElementById('signin-line-hint'), btn = document.getElementById('signin-line-btn');
