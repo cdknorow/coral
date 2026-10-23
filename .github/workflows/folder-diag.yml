@@ -60,7 +60,7 @@ jobs:
           CDP_FULL: "1"
         run: |
           set -o pipefail
-          node run_cdp_suites.mjs --timeout 180 --keep --retries 0 --only launch_folder_browser_use_browser4_browser,settings_text_budget_browser,settings_terminal_pty_only_browser --results-out "$RUNNER_TEMP/results.json" 2>&1 | tee "$RUNNER_TEMP/run.log" || true
+          node run_cdp_suites.mjs --timeout 180 --keep --retries 0 --only launch_folder_browser_use_browser --results-out "$RUNNER_TEMP/results.json" 2>&1 | tee "$RUNNER_TEMP/run.log" || true
           mkdir -p "$RUNNER_TEMP/out"; cp "$RUNNER_TEMP/run.log" "$RUNNER_TEMP/out/"; cp fixtures/settings_modal_trace.windows.json "$RUNNER_TEMP/out/" || true
       - name: keep the output
         if: always()
