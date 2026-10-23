@@ -188,12 +188,21 @@ const remindAgent = async (team, subscriber, existing = null, onChanged = null) 
     // Its own dialog (#6329): window.prompt is not available in the native app
     const { openReminderDialog } = await importOnce('./reminder_dialog.js');
     const name = existing?.name || subscriber;
+    // Edit reminder opens with the instruction and the exact interval in force: a route of its own for the person (the availability read is shared and cached, so it never carries the text). Anything but a 200 saying active is "no text to show": the box opens empty with the interval the Team view has.
+    let inForce = null;
+    if (existing?.reminder) {
+        try {
+            const resp = await boardFetch(team, `/reminder?subscriber_id=${encodeURIComponent(subscriber)}`);
+            const body = resp.status === 200 ? await resp.json() : null;
+            if (body && body.active === true && typeof body.message === 'string') inForce = body;
+        } catch { /* no text to show */ }
+    }
     openReminderDialog({
         title: existing?.reminder ? `Edit the reminder for ${name}` : `Remind ${name}`,
         intro: (every) => `Sends this instruction to ${name} ${every} until you stop it.`,
         askMessage: true,
-        minutes: existing?.reminder_interval_seconds ? existing.reminder_interval_seconds / 60 : 5, // exact: 30 seconds opens as 0.5, 150 as 2.5
-        message: typeof existing?.reminder_message === 'string' ? existing.reminder_message : '', // the instruction in force, when the server tells it
+        minutes: Number(inForce?.interval_seconds) > 0 ? inForce.interval_seconds / 60 : existing?.reminder_interval_seconds ? existing.reminder_interval_seconds / 60 : 5, // exact: 30 seconds opens as 0.5, 150 as 2.5
+        message: inForce ? inForce.message : '', // the instruction in force, as the server stores it (the dialog shows it as one line)
         submitLabel: existing?.reminder ? 'Save reminder' : 'Start reminder',
         onSubmit: async ({ message, seconds }) => {
             const response = await boardFetch(team, `/reminder`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({subscriber_id:subscriber,message,interval_seconds:seconds}) });
