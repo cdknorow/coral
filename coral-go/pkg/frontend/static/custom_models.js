@@ -65,7 +65,6 @@ function chips(m) {
     return wrap;
 }
 
-function totalRows() { return PROVIDERS.reduce((n, [p]) => n + rows(p).length, 0); }
 const full = (p) => rows(p).length >= (limits.max_per_family || 50);
 
 /** The one form: a new model picks its provider here (the first with room), an edited one keeps its own. */
@@ -147,7 +146,6 @@ function render() {
         li.append(text, chips(m), edit, rm); list.append(li);
     });
     const adding = editing && editing.index === -1;
-    if (!totalRows() && !adding) list.append(mk('li', 'cm-empty', 'None added.'));
     host.append(list);
     if (adding) { const fm = form(editing.provider, -1); host.append(fm.f); queueMicrotask(fm.focus); }
     else {

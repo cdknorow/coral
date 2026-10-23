@@ -4598,7 +4598,6 @@ a.ibx-open, a.ibx-open:visited { color: var(--link-text); }
 .cm-name { color: var(--text-secondary); font-size: 0.8125rem; overflow-wrap: anywhere; }
 .cm-levels { display: inline-flex; flex-wrap: wrap; gap: var(--space-xs, 2px) var(--space-sm, 4px); }
 .cm-chip { font-size: 0.6875rem; padding: 1px var(--space-sm, 4px); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-secondary); }
-.cm-empty { color: var(--text-secondary); font-size: 0.8125rem; }
 .cm-form { display: flex; flex-direction: column; gap: var(--space-md, 8px); width: 100%; min-width: 0; }
 .cm-field { display: flex; flex-direction: column; gap: var(--space-xs, 2px); font-size: 0.75rem; color: var(--text-secondary); margin: 0; }
 .cm-field .settings-input { width: 100%; margin: 0; }

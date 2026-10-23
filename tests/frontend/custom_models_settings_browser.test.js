@@ -43,7 +43,7 @@ const LIMITS = { max_per_family: 50, max_total: 200, efforts: { claude: ['low', 
 
         console.log('1. the list, add, edit, remove (desktop, light)');
         await open({ w: 1280, h: 900, phone: false }, 'light');
-        let t = await ev(`[...document.querySelectorAll('#settings-custom-models .cm-row, #settings-custom-models .cm-empty')].map(r => r.innerText.replace(/\\s+/g, ' ').trim())`);
+        let t = await ev(`[...document.querySelectorAll('#settings-custom-models .cm-row')].map(r => r.innerText.replace(/\\s+/g, ' ').trim())`);
         check(`one list of what the server has, each row naming its provider (${JSON.stringify(t)})`, t.length === 3 && /^Claude global-opus-5-5 Global Opus 5\.5 low high/.test(t[0]) && t[1].startsWith('Antigravity img-test <img src=x onerror="window.__pwn=1">') && /^Pi openai\/gpt-5-mini/.test(t[2]) && (await ev(`document.querySelectorAll('#settings-custom-models [data-cm-add]').length`)) === 1);
         check('a name with markup is shown as text and never becomes an element', (await ev(`document.querySelectorAll('#settings-custom-models img').length + (window.__pwn ? 1 : 0)`)) === 0);
         check('nothing is unsaved yet', (await ev(`document.querySelector('#settings-custom-models .cm-status').textContent`)) === '');
