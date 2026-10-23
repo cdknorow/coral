@@ -191,12 +191,23 @@ func TestSharedWSTick_WaiterCanLeave(t *testing.T) {
 // panickyRemoteHub panics in Snapshot while armed, optionally after a gate.
 type panickyRemoteHub struct {
 	fakeRemoteHub
-	armed atomic.Bool
-	gate  chan struct{}
+	armed    atomic.Bool
+	gate     chan struct{}
+	entered  chan struct{} // closed when an armed Snapshot has started (nil: not signalled)
+	enterOne sync.Once
+	gens     atomic.Int64 // Generation calls: one per sharedWSTick loop, so a queued caller shows
+}
+
+func (p *panickyRemoteHub) Generation() uint64 {
+	p.gens.Add(1)
+	return p.fakeRemoteHub.Generation()
 }
 
 func (p *panickyRemoteHub) Snapshot() background.RemoteSnapshot {
 	if p.armed.Load() {
+		if p.entered != nil {
+			p.enterOne.Do(func() { close(p.entered) })
+		}
 		if p.gate != nil {
 			<-p.gate
 		}
@@ -210,7 +221,7 @@ func (p *panickyRemoteHub) Snapshot() background.RemoteSnapshot {
 // next tick builds normally.
 func TestSharedWSTick_PanicDuringBuildDoesNotWedge(t *testing.T) {
 	h, _ := newSharedListHandler(t)
-	hub := &panickyRemoteHub{gate: make(chan struct{})}
+	hub := &panickyRemoteHub{gate: make(chan struct{}), entered: make(chan struct{})}
 	hub.set("remote-a")
 	hub.armed.Store(true)
 	h.SetRemoteAgents(hub)
@@ -221,22 +232,25 @@ func TestSharedWSTick_PanicDuringBuildDoesNotWedge(t *testing.T) {
 		_, err := h.sharedWSTick(req)
 		builder <- err
 	}()
-	require.Eventually(t, func() bool {
-		h.wsList.mu.Lock()
-		defer h.wsList.mu.Unlock()
-		return h.wsList.building != nil
-	}, time.Second, time.Millisecond)
+	// The build is inside Snapshot, held at the gate: it has read armed, so disarming now only
+	// affects the retry (disarming earlier could let the first build succeed under load).
+	select {
+	case <-hub.entered:
+	case <-time.After(30 * time.Second):
+		t.Fatal("the build never reached the remote snapshot")
+	}
+	hub.armed.Store(false) // the retry after wake-up succeeds
 
 	// A second connection queues behind the build that is about to panic.
 	waiter := make(chan error, 1)
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		hub.armed.Store(false) // the retry after wake-up succeeds
 		_, err := h.sharedWSTick(req.WithContext(ctx))
 		waiter <- err
 	}()
-	time.Sleep(20 * time.Millisecond)
+	// Its first loop's generation read comes right before it takes the lock and waits on the build.
+	require.Eventually(t, func() bool { return hub.gens.Load() >= 2 }, 30*time.Second, time.Millisecond)
 	close(hub.gate)
 
 	require.ErrorContains(t, <-builder, "panicked")
