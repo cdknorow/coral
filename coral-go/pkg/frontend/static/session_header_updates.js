@@ -1,4 +1,5 @@
 /* Live updates to the open agent's header: its folder, branch, waiting state, goal and status (moved out of render.js, #4996; no behaviour change). */
+import { syncHeldNotice } from './held_inputs.js';
 import { _shortPath, _gitStateSummary, _repoBranch, deriveSessionState } from './session_state.js';
 import { startupSignedOut } from './signin_line.js';
 import { setText, setHidden, setTitle, setHtml, setDisplay, setClassName, setPill } from './dom_write.js';
@@ -68,6 +69,7 @@ export function updateSessionBranch(branch, repoName, gitState) {
 }
 
 export function updateWaitingIndicator(s) {
+    syncHeldNotice(s); // automated messages held for over a minute: the agent view says so (#6473)
     const dot = document.getElementById("session-status-dot");
     const banner = document.getElementById("waiting-banner");
     if (dot) {

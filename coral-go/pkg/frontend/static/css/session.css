@@ -2208,3 +2208,8 @@
 .workflow-mode-line > label { flex: 1 1 auto; min-width: 0; }
 .workflow-mode-line > .settings-info-btn { margin-bottom: 6px; }
 @media (pointer: coarse) { .workflow-mode-line > .settings-info-btn { width: var(--control-touch-height, 44px); height: var(--control-touch-height, 44px); border-radius: var(--radius-md); margin-bottom: 0; } }
+
+/* Automated messages held for over a minute (#6473): one line on the agent's row, in the warning colour but small; the agent view has the same words with Show terminal. */
+.session-held-line { margin-top: 2px; font-size: var(--fs-xs, 0.75rem); line-height: 1.3; color: var(--warning); overflow-wrap: anywhere; }
+.composer-held { color: var(--warning); }
+.composer-held[hidden] { display: none; }
