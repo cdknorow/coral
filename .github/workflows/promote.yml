@@ -121,7 +121,9 @@ jobs:
         run: |
           python3 -I - <<'PY'
           import os, re
-          for part in re.split(r"[\r\n\v\f\x1c-\x1e\x85  ]", os.environ.get("RELEASE_CODE", "")):
+          # every character a line break may be, by number (no invisible character is typed into this file); U+2028 and U+2029 are line breaks to YAML itself
+          breaks = "[\\r\\n\\v\\f\\x1c-\\x1e\\x85" + chr(0x2028) + chr(0x2029) + "]"
+          for part in re.split(breaks, os.environ.get("RELEASE_CODE", "")):
               if part:
                   print("::add-mask::" + part)
           PY

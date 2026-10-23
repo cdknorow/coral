@@ -78,6 +78,27 @@ class Workflow(unittest.TestCase):
         names = [re.search(r"name: (.*)", x).group(1) if "name:" in x else x.split("\n")[0] for x in s]
         self.assertLess(names.index("Check the release code"), min(i for i, n in enumerate(names) if n.startswith("Sign") or n.startswith("Upload")))
 
+    def test_the_workflow_holds_only_visible_ascii(self):
+        # U+2028 and U+2029 are line breaks to YAML: a typed escape that became the character itself broke the file once (the workflow did not parse)
+        bad = [hex(ord(c)) for c in WF if (ord(c) > 126) or (ord(c) < 32 and c not in "\n")]
+        self.assertEqual(bad, [])
+
+    def test_the_mask_step_masks_every_line_of_a_hostile_code_and_prints_nothing_else(self):
+        block = steps(job_block("promote"))[0]
+        m = re.search(r"<<'PY'\n(.*?)\n          PY", block, re.S)
+        self.assertTrue(m)
+        code = "\n".join(line[10:] for line in m.group(1).split("\n"))
+        hostile = "123456" + chr(10) + "::error::x" + chr(0x2028) + "::stop-commands::t" + chr(0x0b) + "tail" + chr(0x85) + "end" + chr(13) + "last"
+        r = subprocess.run([sys.executable, "-I", "-c", code], env={"RELEASE_CODE": hostile}, capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        lines = r.stdout.split("\n")[:-1]
+        self.assertTrue(lines)
+        for line in lines:
+            self.assertTrue(line.startswith("::add-mask::"), line)
+            for ch in (chr(10), chr(13), chr(0x0b), chr(0x0c), chr(0x85), chr(0x2028), chr(0x2029)):
+                self.assertNotIn(ch, line)
+        self.assertEqual([line[len("::add-mask::"):] for line in lines], ["123456", "::error::x", "::stop-commands::t", "tail", "end", "last"])
+
     def test_no_checkout_names_a_ref(self):
         self.assertNotRegex(WF, r"(?m)^\s+ref:")
 
