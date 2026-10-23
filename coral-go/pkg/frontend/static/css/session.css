@@ -2211,5 +2211,5 @@
 
 /* Automated messages held for over a minute (#6473): one line on the agent's row, in the warning colour but small; the agent view has the same words with Show terminal. */
 .session-held-line { margin-top: 2px; font-size: var(--fs-xs, 0.75rem); line-height: 1.3; color: var(--warning); overflow-wrap: anywhere; }
-.composer-held { color: var(--warning); }
+.composer-hint.composer-held, .composer-hint.composer-held .cni-link { color: var(--warning); } /* as the row's line: the .composer-hint colour is as specific, so this one names both (#6492) */
 .composer-held[hidden] { display: none; }

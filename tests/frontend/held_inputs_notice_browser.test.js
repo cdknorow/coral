@@ -41,6 +41,8 @@ const BASE = require('./test_base').BASE;
             v = await view();
             check(`${tag}: held for over the minute: the row says "2 messages waiting: Coral can't see the input box"`, v.row === "2 messages waiting: Coral can't see the input box", JSON.stringify(v.row));
             check(`${tag}: the agent view says it too, with a Show terminal button; no deliver button anywhere`, v.shown && v.text === "2 messages waiting: Coral can't see the input box" && v.btn === 'Show terminal' && v.action === 'terminal-view-open' && !v.deliver, JSON.stringify(v));
+            const colours = await ev(`({ row: getComputedStyle(document.querySelector('.session-held-line')).color, view: getComputedStyle(document.querySelector('#composer-held-notice')).color, button: getComputedStyle(document.querySelector('#composer-held-notice button')).color })`);
+            check(`${tag}: the agent view's line is the row line's warning colour (the words stay: it is not colour alone)`, colours.row === colours.view && colours.row !== 'rgb(0, 0, 0)', JSON.stringify(colours));
             const boxW = await ev(`document.getElementById('command-input').getBoundingClientRect().width / document.querySelector('.command-pane-body').getBoundingClientRect().width`);
             check(`${tag}: the message box keeps its width beside the line (a phone put it in a column once)`, boxW >= 0.5, String(boxW));
             check(`${tag}: only the agent that holds has it (the other row has none) and nothing scrolls sideways`, v.rowLines === 1 && v.fits, JSON.stringify([v.rowLines, v.fits]));
