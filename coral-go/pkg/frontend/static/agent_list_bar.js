@@ -8,8 +8,6 @@ import { sessionServer, sessionTeamKey, keyLabel, LOCAL_SERVER } from './server_
 import { serverLabel } from './launch_server.js';
 import { state } from './state.js';
 import { redrawLiveList } from './list_hooks.js';
-import { isBranchShown, isAgentLineShown, AGENT_LINE_PARTS, AGENT_LINE_LABEL } from './session_rows.js';
-import { toggleShowBranches, toggleAgentLine } from './list_display_settings.js';
 import { syncDisplayPanels, inListHeaders, isDisplayPanelOpen, DISPLAY_PANEL_OPEN } from './display_panel.js';
 import { setData, setHidden, setAttr } from './dom_write.js';
 
@@ -67,9 +65,8 @@ export function syncAgentListBars(sessions, matched) {
     const text = narrowed ? `${matched} of ${n} agent${n === 1 ? '' : 's'}` : `${n} agent${n === 1 ? '' : 's'}`;
     // The summary line and the Display button's count tell, with the panel shut, which filters and which sort are on (the sort counts when it is not the list's own order).
     const sortOn = f.sort && f.sort !== EMPTY.sort;
-    const branchesOn = isBranchShown(); // a display option that differs from its default is told here too (#5117, #5133)
-    const hiddenParts = AGENT_LINE_PARTS.filter(p => !isAgentLineShown(p)); // the agent line's options are on unless turned off: an option that is off is told here
-    const parts = [...MODEL.chips(f).map(c => c.label), ...(sortOn ? [`Sort: ${SORT_LABEL[f.sort]}`] : []), ...(branchesOn ? ['Branches shown'] : []), ...hiddenParts.map(p => `${AGENT_LINE_LABEL[p]} hidden`)];
+    // Only the filters and the sort are told here, and only they are cleared by Clear: a display preference (which agent line parts, branches) is the person's own setting, kept in the Display panel and never listed over the agent list (#6232).
+    const parts = [...MODEL.chips(f).map(c => c.label), ...(sortOn ? [`Sort: ${SORT_LABEL[f.sort]}`] : [])];
     const summary = parts.length ? `${parts.join(' · ')}${narrowed ? ` (${text})` : ''}` : '';
     for (const el of inListHeaders('[data-agent-list-summary]')) {
         if (el.dataset.text !== summary) {
@@ -78,8 +75,8 @@ export function syncAgentListBars(sessions, matched) {
             if (summary) {
                 const t = document.createElement('span'); t.className = 'agent-list-summary-text'; t.textContent = summary;
                 const clear = document.createElement('button'); clear.type = 'button'; clear.className = 'agent-list-summary-clear'; clear.textContent = 'Clear';
-                clear.setAttribute('aria-label', branchesOn || hiddenParts.length ? 'Clear filters, sort and display options' : 'Clear filters and sort');
-                clear.addEventListener('click', () => { if (branchesOn) toggleShowBranches(); for (const p of hiddenParts) toggleAgentLine(p); onChange({ ...EMPTY }); });
+                clear.setAttribute('aria-label', 'Clear filters and sort');
+                clear.addEventListener('click', () => onChange({ ...EMPTY }));
                 el.append(t, clear);
             }
         }

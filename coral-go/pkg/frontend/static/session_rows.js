@@ -398,8 +398,6 @@ export function _renderAgentListWithSubgroups(agents, teamDefaultDir, isCompact,
 
 /** The line under an agent's name that says what it runs (#5133, #5742): its provider, its model and its thinking level ("Claude · Opus 5.5 · High"). Three options, each kept per viewer and on
  *  unless turned off: Show provider, Show model, Show thinking level. A viewer who set the old single "Show agent type" switch keeps that choice for all three until they change one. */
-export const AGENT_LINE_PARTS = ['provider', 'model', 'thinking'];
-export const AGENT_LINE_LABEL = { provider: 'Provider', model: 'Model', thinking: 'Thinking level' };
 const AGENT_LINE_KEY = { provider: 'coral-show-provider', model: 'coral-show-model', thinking: 'coral-show-thinking' };
 export function isAgentLineShown(part) {
     try {

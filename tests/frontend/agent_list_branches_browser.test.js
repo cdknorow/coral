@@ -49,7 +49,7 @@ const KEY = 'coral-show-branches';
             { name: 'phone 390, dark', width: 390, height: 844, mobile: true, theme: 'dark' },
             { name: 'phone 390, light', width: 390, height: 844, mobile: true, theme: 'light' },
         ]) {
-            console.log(`${view.name}: off as it starts, ticked on, kept over a reload, Clear turns it off`);
+            console.log(`${view.name}: off as it starts, ticked on, kept over a reload, unticked turns it off`);
             await load(view);
             await ev(`localStorage.removeItem(${JSON.stringify(KEY)}); true`);
             assert.equal(await scene(), 2);
@@ -73,8 +73,8 @@ const KEY = 'coral-show-branches';
             assert.ok(s.lineText.includes('fix/login'), `the line names the branch (${s.lineText})`);
             await shutPanel(view);
             s = await state(view);
-            assert.ok(s.summary.includes('Branches shown'), `the summary line tells it with the panel shut (${s.summary})`);
-            assert.match(s.buttonName, /1 on/, 'and the Display button counts it');
+            assert.equal(s.summary, '', `a display preference is not listed over the agent list (${s.summary}) (#6232)`);
+            assert.equal(s.buttonName, 'Display options', 'and the Display button does not count it');
 
             // kept in this browser: a reload keeps it
             await Page.reload(); await Page.loadEventFired(); await install();
@@ -94,9 +94,8 @@ const KEY = 'coral-show-branches';
             assert.equal((await state(view)).stored, 'false');
             await tick(view);
             await waitFor(`document.querySelectorAll(${JSON.stringify(list(view) + ' .session-worktree-line')}).length === 2`, `${view.name}: ticked again`, 4000);
-            await shutPanel(view);
-            await ev(`document.querySelector(${JSON.stringify(list(view) + ' .agent-list-summary-clear')}).click(); true`);
-            await waitFor(`document.querySelectorAll(${JSON.stringify(list(view) + ' .session-worktree-line')}).length === 0`, `${view.name}: Clear turns it off`, 4000);
+            await tick(view); // unticked in the panel: there is no Clear for a display preference (#6232)
+            await waitFor(`document.querySelectorAll(${JSON.stringify(list(view) + ' .session-worktree-line')}).length === 0`, `${view.name}: unticking turns it off`, 4000);
             s = await state(view);
             assert.equal(s.summary.includes('Branches shown'), false); assert.equal(s.stored, 'false');
         }

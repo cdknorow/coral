@@ -87,19 +87,19 @@ const LEGACY = 'coral-show-agent-type';
             await waitFor(`document.querySelectorAll(${JSON.stringify(list(view) + ' .session-model')}).length === 0`, `${view.name}: all three off: no line`, 4000);
             await shutPanel(view);
             s = await state(view);
-            assert.equal(s.summary.includes('Provider hidden') && s.summary.includes('Model hidden') && s.summary.includes('Thinking level hidden'), true, `the summary line tells what is off with the panel shut (${s.summary})`);
-            assert.match(s.buttonName, /3 on/, 'and the Display button counts them');
+            assert.equal(s.summary, '', `a display preference is not listed over the agent list: no summary line (${s.summary}) (#6232)`);
+            assert.equal(s.buttonName, 'Display options', 'and the Display button does not count them');
 
-            // kept in this browser: a reload keeps them off; Clear turns them back on
+            // kept in this browser: a reload keeps them off; they are turned back on in the panel (there is no Clear for them)
             await Page.reload(); await Page.loadEventFired(); await install();
             await installAudit(ev); await setTheme(ev, view.theme);
             await scene();
             await waitFor(`document.querySelectorAll(${JSON.stringify(list(view) + ' li.session-group-item')}).length >= 3`, 'the agents after a reload', 4000);
             assert.equal((await state(view)).texts.length, 0, 'still no line after a reload');
-            await ev(`document.querySelector(${JSON.stringify(list(view) + ' .agent-list-summary-clear')}).click(); true`);
-            await want(view, ['Claude · Opus 4.1 · High', 'Claude · Opus 4.1 · Medium', 'Claude · Opus 4.1'], 'Clear turns the three back on');
-            assert.equal((await state(view)).summary, '');
             await openPanel(view);
+            for (const k of ['provider', 'model', 'thinking']) await tick(view, k);
+            await want(view, ['Claude · Opus 4.1 · High', 'Claude · Opus 4.1 · Medium', 'Claude · Opus 4.1'], 'ticking the three in the panel turns them back on');
+            assert.equal((await state(view)).summary, '');
             const audit = await auditRegion(ev, [list(view) + ' [data-display-panel]', list(view) + ' .session-model']);
             assert.deepEqual(audit.fails, [], `${view.name}: contrast of the three options and the line: ` + JSON.stringify(audit.fails));
             assert.ok(audit.checked >= 4, `the audit looked at the options and the lines (${audit.checked})`);
