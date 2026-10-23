@@ -1119,6 +1119,12 @@
     line-height: 1.4;
     margin: 2px 0 12px;
 }
+h3.cni-question { margin-bottom: 4px; } /* a heading with its text under it (#306) */
+.cni-question-detail {
+    font-size: 0.875rem;
+    line-height: 1.45;
+    margin: 0 0 12px;
+}
 .cni-context-text {
     color: var(--text-secondary);
     font-size: 0.8125rem;

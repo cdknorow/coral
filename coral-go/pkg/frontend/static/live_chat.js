@@ -281,7 +281,7 @@ function _noteReplyState(session, data) {
     // of a prompt that may be open on the terminal.
     pendingToolBySession.set(session.session_id, data.pending || null);
     const po = data.prompt_options;
-    if (po) promptOptionsBySession.set(session.session_id, { question: po.question || "", options: po.options || [], review: po.review || [], multi: !!po.multi, submit: po.submit || null });
+    if (po) promptOptionsBySession.set(session.session_id, { title: po.title || "", question: po.question || "", options: po.options || [], review: po.review || [], multi: !!po.multi, submit: po.submit || null });
     else promptOptionsBySession.delete(session.session_id);
     // A sign-in the CLI waits on (#3830): the reply is fresher than the session row.
     if (typeof data.needs_login === "boolean") loginBySession.set(session.session_id, data.needs_login ? { reason: String(data.login_reason || "") } : null);
