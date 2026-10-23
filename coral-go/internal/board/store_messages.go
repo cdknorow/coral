@@ -69,10 +69,21 @@ func (s *Store) PostSystemMessage(ctx context.Context, project, sender, content 
 	return s.postMessage(ctx, project, sender, content, targetGroupID, "", "", true, nil)
 }
 
+// PostDefusedMessage posts content as subscriberID (the Operator's own message to an agent) exactly as given: the caller has already cleaned it (clitext.Clean) and then defused the
+// mentions it quotes (DefuseMentions puts a zero-width space after an @, which Clean would remove again, so this path does not clean a second time). Only server code calls it, with
+// text it built itself.
+func (s *Store) PostDefusedMessage(ctx context.Context, project, subscriberID, content string) (*Message, error) {
+	return s.insertMessage(ctx, project, subscriberID, content, nil, "", "", false, nil)
+}
+
 func (s *Store) postMessage(ctx context.Context, project, subscriberID, content string, targetGroupID *string, origin, hubUser string, system bool, taskID *int64) (*Message, error) {
 	// No terminal control is stored (#3580): a post is printed in agents' terminals by
 	// coral-board, and system posts quote task titles agents wrote.
-	content = clitext.Clean(content)
+	return s.insertMessage(ctx, project, subscriberID, clitext.Clean(content), targetGroupID, origin, hubUser, system, taskID)
+}
+
+// insertMessage stores a message whose content is already clean.
+func (s *Store) insertMessage(ctx context.Context, project, subscriberID, content string, targetGroupID *string, origin, hubUser string, system bool, taskID *int64) (*Message, error) {
 	now := nowUTC()
 	var originVal, hubUserVal *string
 	if origin != "" {
