@@ -345,7 +345,7 @@ jobs:
   # cached. Chrome is the runner image's. The runner's run folder is put under runner.temp (TEMP/TMP), so the logs of a failed
   # part can be uploaded; nothing is uploaded when a part passes.
   cdp:
-    name: cdp (windows-latest, part ${{ matrix.part }}/3)
+    name: cdp (windows-latest, ${{ matrix.name }})
     runs-on: windows-latest
     timeout-minutes: 60
     env:
@@ -353,7 +353,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        part: [1, 2, 3]
+        # The three parts of the default run, then the strict phase (suites against a Coral with strict local auth, signed in through 'coral open --print'), as cdp-gate.yml runs
+        # it on Linux (#6265). The tmux phase and the sequences have no Windows form: the sequence's Coral starts with --backend tmux ("tmux is required to launch agents"), so
+        # terminal_pane_size (which drives tmux itself) stays on Linux and macOS; its partner terminal_scroll already runs in a default part. --no-tmux: a --strict run would
+        # otherwise add the tmux shard too (9 suites that cannot start here).
+        include:
+          - { name: "part 1/3", args: "--part 1/3", id: "1" }
+          - { name: "part 2/3", args: "--part 2/3", id: "2" }
+          - { name: "part 3/3", args: "--part 3/3", id: "3" }
+          - { name: "strict", args: "--strict --no-tmux", id: "strict" }
     defaults:
       run:
         shell: bash
@@ -392,7 +400,7 @@ jobs:
           p='C:\Program Files\Google\Chrome\Application\chrome.exe'
           [ -f "$p" ] || { echo "::error::no Chrome at $p on this runner image"; exit 1; }
           echo "path=$p" >> "$GITHUB_OUTPUT"
-      - name: run part ${{ matrix.part }}/3
+      - name: run ${{ matrix.name }}
         working-directory: tests/frontend
         env:
           CHROME: ${{ steps.chrome.outputs.path }}
@@ -405,12 +413,12 @@ jobs:
           set -o pipefail
           # --allow-flaky, for 159 only (#6195 finds the hang that makes one suite in a few hundred time out once and pass on its retry, then removes it): a suite that passes on its one retry
           # no longer fails the part, but it is listed in the job summary below, so a green run cannot hide it; a suite that fails twice still fails.
-          node run_cdp_suites.mjs --timeout 180 --keep --fail-on-leak --allow-flaky --part "${{ matrix.part }}/3" --results-out "$RUNNER_TEMP/results.json" 2>&1 | tee "$RUNNER_TEMP/run.log"
+          node run_cdp_suites.mjs --timeout 180 --keep --fail-on-leak --allow-flaky ${{ matrix.args }} --results-out "$RUNNER_TEMP/results.json" 2>&1 | tee "$RUNNER_TEMP/run.log"
       - name: flaky suites in the job summary
         if: always()
         run: |
           {
-            echo "### cdp part ${{ matrix.part }}/3: suites that passed only on a retry (tolerated for 159, #6195)"
+            echo "### cdp ${{ matrix.name }}: suites that passed only on a retry (tolerated for 159, #6195)"
             flaky=$(grep -aE '^(RETRY|FLAKY)' "$RUNNER_TEMP/run.log" | sed 's/^/    /' || true)
             echo "${flaky:-none}"
           } >> "$GITHUB_STEP_SUMMARY"
@@ -418,7 +426,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: windows-cdp-evidence-${{ matrix.part }}-a${{ github.run_attempt }}
+          name: windows-cdp-evidence-${{ matrix.id }}-a${{ github.run_attempt }}
           path: ${{ runner.temp }}/timeout-evidence
           retention-days: 7
           if-no-files-found: ignore
@@ -426,7 +434,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: windows-cdp-${{ matrix.part }}-a${{ github.run_attempt }}
+          name: windows-cdp-${{ matrix.id }}-a${{ github.run_attempt }}
           path: |
             ${{ runner.temp }}/run.log
             ${{ runner.temp }}/results.json
