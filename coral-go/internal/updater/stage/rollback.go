@@ -46,13 +46,15 @@ func (c *checker) keepRollback(ctx context.Context) error {
 		// find; a fresh copy is fetched below, and verified again.
 		_ = os.RemoveAll(s.Dir)
 	}
+	// The manifest from the version's first promotion (promote-v<version>, #326), the sums and the package from its product release.
 	base := c.cfg.DownloadBase + "v" + version + "/"
 	files := map[string][]byte{}
 	for _, f := range []struct {
-		name string
-		max  int64
-	}{{ManifestFile, verify.MaxManifestBytes}, {ManifestBundleFile, verify.MaxBundleBytes}, {SumsFile, verify.MaxSumsBytes}, {SumsBundleFile, verify.MaxBundleBytes}} {
-		b, err := c.get(ctx, base+f.name, f.max)
+		from, name string
+		max        int64
+	}{{RollbackBase(c.cfg.DownloadBase, version), ManifestFile, verify.MaxManifestBytes}, {RollbackBase(c.cfg.DownloadBase, version), ManifestBundleFile, verify.MaxBundleBytes},
+		{base, SumsFile, verify.MaxSumsBytes}, {base, SumsBundleFile, verify.MaxBundleBytes}} {
+		b, err := c.get(ctx, f.from+f.name, f.max)
 		if err != nil {
 			return fmt.Errorf("%s: %w", f.name, err)
 		}

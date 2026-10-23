@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -46,22 +47,39 @@ func (tr *twoReleases) serve(w http.ResponseWriter, req *http.Request) {
 	tr.mu.Lock()
 	defer tr.mu.Unlock()
 	parts := strings.Split(strings.TrimPrefix(req.URL.Path, "/"), "/")
-	if len(parts) == 3 && parts[0] == "latest" && parts[1] == "download" {
-		http.Redirect(w, req, "/download/"+tr.latest+"/"+parts[2], http.StatusFound)
-		return
-	}
 	if len(parts) != 3 || parts[0] != "download" {
 		http.NotFound(w, req)
 		return
 	}
 	tr.hits[parts[1]+"/"+parts[2]]++
-	body, ok := tr.tags[parts[1]][parts[2]]
+	body, ok := servedFrom(tr.tags, tr.latest, parts[1], parts[2])
 	if !ok {
 		http.NotFound(w, req)
 		return
 	}
 	w.Header().Set("Content-Length", fmt.Sprint(len(body)))
 	w.Write(body)
+}
+
+// servedFrom is the layout of the releases (#326): the manifest and its bundle only under promote-<n> (n up to the latest promotion's sequence:
+// every promotion's tag exists) and promote-v<version> (that version's own), everything else only under the product tag v<version>.
+func servedFrom(tags map[string]map[string][]byte, latest, tag, file string) ([]byte, bool) {
+	promoteFile := file == ManifestFile || file == ManifestBundleFile
+	if v, ok := strings.CutPrefix(tag, RollbackPrefix); ok {
+		body, ok := tags["v"+v][file]
+		return body, ok && promoteFile
+	}
+	if n, ok := strings.CutPrefix(tag, PromotionPrefix); ok {
+		var m struct{ Sequence int64 }
+		seq, err := strconv.ParseInt(n, 10, 64)
+		if err != nil || json.Unmarshal(tags[latest][ManifestFile], &m) != nil || seq < 1 || seq > m.Sequence || !promoteFile {
+			return nil, false
+		}
+		body, ok := tags[latest][file]
+		return body, ok
+	}
+	body, ok := tags[tag][file]
+	return body, ok && !promoteFile
 }
 
 func (tr *twoReleases) hit(tagFile string) int {
@@ -81,7 +99,7 @@ func newTwo(t *testing.T) (*twoReleases, Config) {
 	tr.srv = httptest.NewServer(http.HandlerFunc(tr.serve))
 	t.Cleanup(tr.srv.Close)
 	cfg := Config{DataDir: t.TempDir(), Installed: "1.4.125", Pins: verify.DefaultPins(), Verifier: &fakeSigner{},
-		Fetcher: &verify.Fetcher{Scheme: "http", Allow: func(string) bool { return true }}, LatestBase: tr.srv.URL + "/latest/download/",
+		Fetcher:      &verify.Fetcher{Scheme: "http", Allow: func(string) bool { return true }},
 		DownloadBase: tr.srv.URL + "/download/", Asset: msiName, Now: func() time.Time { return testNow }, Rollback: true}
 	return tr, cfg
 }

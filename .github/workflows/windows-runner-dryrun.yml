@@ -55,7 +55,11 @@ jobs:
         run: |
           if (-not $env:VERSION) {
             # The newest release, a pre-release too (the releases are pre-releases until the operator promotes one), whose packages are all published.
+            # (promote-* releases are promotions, not product releases: #326)
             $tag = gh release list --repo "${{ github.repository }}" --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName'
+            if ($tag -like 'promote-*') {
+              $tag = gh api "repos/${{ github.repository }}/releases?per_page=40" --jq '[.[] | select((.draft | not) and (.tag_name | startswith("promote-") | not))][0].tag_name'
+            }
             if ($LASTEXITCODE -ne 0 -or -not $tag) { throw "could not read the latest release" }
             $env:VERSION = $tag.TrimStart('v')
             echo "VERSION=$env:VERSION" >> $env:GITHUB_ENV

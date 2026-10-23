@@ -23,8 +23,16 @@ func TestEveryTamperedReleaseIsRefusedAtItsOwnStageAndStagesNothing(t *testing.T
 	releaseAsPromote := ReleaseCert("v1.4.131")
 	promoteAsRelease := PromoteCert()
 	wrongPromoteRepo := PromoteCert()
-	wrongPromoteRepo.SAN = strings.Replace(wrongPromoteRepo.SAN, "coral-promote", "coral-other", 1)
-	wrongPromoteRepo.SourceRepositoryURI = strings.Replace(wrongPromoteRepo.SourceRepositoryURI, "coral-promote", "coral-other", 1)
+	wrongPromoteRepo.SAN = strings.Replace(wrongPromoteRepo.SAN, FakeRepo+"/", FakeRepo+"-other/", 1)
+	wrongPromoteRepo.SourceRepositoryURI += "-other"
+	wrongPromoteRepo.SourceRepositoryID = "9000003"
+	// promote.yml run from another ref than main (#326, Security): a branch, or a tag; and started by a push
+	fromBranch, fromTag, byPush := PromoteCert(), PromoteCert(), PromoteCert()
+	fromBranch.SAN = strings.Replace(fromBranch.SAN, "@refs/heads/main", "@refs/heads/feature", 1)
+	fromBranch.SourceRepositoryRef = "refs/heads/feature"
+	fromTag.SAN = strings.Replace(fromTag.SAN, "@refs/heads/main", "@refs/tags/v1.4.131", 1)
+	fromTag.SourceRepositoryRef = "refs/tags/v1.4.131"
+	byPush.BuildTrigger = "push"
 	now := time.Now()
 
 	cases := []struct {
@@ -59,6 +67,9 @@ func TestEveryTamperedReleaseIsRefusedAtItsOwnStageAndStagesNothing(t *testing.T
 		}, stage: verify.StageSumsDigest},
 		{name: "the manifest signed as the release workflow", spec: Spec{PromoteID: &releaseAsPromote}, stage: verify.StageManifestSignature},
 		{name: "the manifest signed by another repository's promote workflow", spec: Spec{PromoteID: &wrongPromoteRepo}, stage: verify.StageManifestSignature},
+		{name: "the manifest signed by promote.yml run from a branch", spec: Spec{PromoteID: &fromBranch}, stage: verify.StageManifestSignature},
+		{name: "the manifest signed by promote.yml run from a tag", spec: Spec{PromoteID: &fromTag}, stage: verify.StageManifestSignature},
+		{name: "the manifest signed by promote.yml started by a push", spec: Spec{PromoteID: &byPush}, stage: verify.StageManifestSignature},
 		{name: "the manifest signed under a Sigstore this updater does not trust", spec: Spec{PromoteSigner: other}, stage: verify.StageManifestSignature},
 		{name: "the sums signed as the promote workflow", spec: Spec{ReleaseID: &promoteAsRelease}, stage: verify.StageSumsSignature},
 		{name: "the sums signed for another tag", spec: Spec{ReleaseTag: "v1.4.99"}, stage: verify.StageSumsSignature},
@@ -111,10 +122,23 @@ func TestReplayedRevokedAndDowngradedPromotionsAreRefused(t *testing.T) {
 	require.NoError(t, verify.SaveState(dir, st))
 
 	r.cfg.Installed = "1.4.131"
-	r.publish(Spec{Version: "1.4.132", Sequence: 3}) // an old promotion served again for a newer version
+	// An old promotion (sequence 3) for a newer version, published again as the next promote-<n>: its sequence isn't the tag's, so it is
+	// skipped and the real newest promotion (1.4.131, installed) is what counts (#326).
+	old, err := r.s.NewRelease(Spec{Version: "1.4.132", Sequence: 3})
+	require.NoError(t, err)
+	r.gh.Publish(old, false)
+	r.gh.PublishPromotion(6, old.Manifest, old.ManifestBundle)
 	res := r.check()
+	assert.Equal(t, stage.ResultUpToDate, res.Result, "%+v", res)
+	stillOnly(t, r.cfg.DataDir, "1.4.131")
+	// The same old promotion under its own number, on a GitHub where the newer ones are hidden: nothing below the accepted sequence is taken.
+	hidden := newRig(t)
+	hidden.s = r.s
+	hidden.cfg.Verifier, hidden.cfg.DataDir, hidden.cfg.Installed = r.cfg.Verifier, r.cfg.DataDir, "1.4.131"
+	hidden.gh.Publish(old, true)
+	res = hidden.check()
 	assert.Equal(t, stage.ResultFailed, res.Result, "%+v", res)
-	assert.Equal(t, verify.StageManifestRules, res.FailedStage, "a lower sequence than the last accepted is a replay")
+	stillOnly(t, r.cfg.DataDir, "1.4.131")
 
 	r2 := newRig(t)
 	r2.publish(Spec{Version: "1.4.131", Sequence: 5, Revoked: []string{"1.4.133"}})
@@ -142,12 +166,12 @@ func TestTheNetworksWaysToBeWrongAreRefusedAndStageNothing(t *testing.T) {
 		fail string
 	}{
 		{"the manifest redirects to a host that is not allowed", func(r *rig, rel *Release) {
-			r.gh.RedirectTo["latest/"+stage.ManifestFile] = "http://localhost:" + portOf(r.gh.URL()) + "/" + FakeRepo + "/releases/download/v1.4.131/" + stage.ManifestFile
+			r.gh.RedirectTo["promote-1/"+stage.ManifestFile] = "http://localhost:" + portOf(r.gh.URL()) + "/" + FakeRepo + "/releases/download/promote-1/" + stage.ManifestFile
 		}, stage.ResultFailed, "manifest"},
 		{"the manifest redirects to another scheme", func(r *rig, rel *Release) {
-			r.gh.RedirectTo["latest/"+stage.ManifestFile] = "https://127.0.0.1:1/x"
+			r.gh.RedirectTo["promote-1/"+stage.ManifestFile] = "https://127.0.0.1:1/x"
 		}, stage.ResultFailed, "manifest"},
-		{"the manifest answers with a server error", func(r *rig, rel *Release) { r.gh.Status["latest/"+stage.ManifestFile] = 503 }, stage.ResultFailed, "manifest"},
+		{"the manifest answers with a server error", func(r *rig, rel *Release) { r.gh.Status["promote-1/"+stage.ManifestFile] = 503 }, stage.ResultFailed, "manifest"},
 		{"a bundle answers with a server error", func(r *rig, rel *Release) { r.gh.Status["v1.4.131/"+stage.SumsBundleFile] = 500 }, stage.ResultFailed, stage.SumsBundleFile},
 		{"the sums bundle is larger than the limit", func(r *rig, rel *Release) {
 			r.gh.Mutate = func(p string, b []byte) []byte {
@@ -173,3 +197,11 @@ func TestTheNetworksWaysToBeWrongAreRefusedAndStageNothing(t *testing.T) {
 }
 
 func portOf(u string) string { return u[strings.LastIndex(u, ":")+1:] }
+
+// stillOnly: the staged release is still version, nothing else was staged over it.
+func stillOnly(t *testing.T, dataDir, version string) {
+	t.Helper()
+	staged, err := stage.LoadStaged(dataDir)
+	require.NoError(t, err)
+	assert.Equal(t, version, staged.Version)
+}

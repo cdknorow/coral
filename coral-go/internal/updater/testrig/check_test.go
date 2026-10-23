@@ -72,8 +72,10 @@ func TestCheckStagesAReleaseSignedUnderTheFakeSigstore(t *testing.T) {
 	assert.Equal(t, rel.Package, got, "the staged package is the released one, byte for byte")
 	assert.Equal(t, sum(rel.Package), staged.Record.PackageSHA256)
 	assert.Equal(t, int64(7), staged.Record.Sequence)
-	assert.Positive(t, r.gh.Hits["rehearsal.invalid/coral/releases/latest/download/promote.json"], "the manifest was asked for at latest/download")
-	assert.Positive(t, r.gh.Hits["rehearsal.invalid/coral/releases/download/v1.4.131/promote.json"], "and came through the redirect, from the second address")
+	assert.Positive(t, r.gh.Hits["rehearsal.invalid/coral/releases/download/promote-7/promote.json"], "the manifest came from its promotion's release (#326)")
+	assert.Positive(t, r.gh.Hits["rehearsal.invalid/coral/releases/download/promote-8/promote.json"], "after a look for a newer one")
+	assert.Zero(t, r.gh.Hits["rehearsal.invalid/coral/releases/download/v1.4.131/promote.json"], "never from the product release")
+	assert.Positive(t, r.gh.Hits["rehearsal.invalid/coral/releases/download/v1.4.131/"+stage.SumsFile], "the sums from the product release")
 
 	assert.Equal(t, stage.ResultAlreadyStaged, r.check().Result, "the same release again")
 

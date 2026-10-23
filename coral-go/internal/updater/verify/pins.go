@@ -22,8 +22,9 @@ const (
 	ReleaseWorkflow = ".github/workflows/release.yml"
 	// ReleaseTrigger is how release.yml runs (a pushed tag).
 	ReleaseTrigger = "push"
-	// PromoteTrigger is how the promote workflow runs (by hand, for one tag).
-	PromoteTrigger = "workflow_dispatch"
+	// PromoteWorkflow is the path of the promote workflow in Repo (#326); PromoteTrigger is how it runs (by hand, for one tag).
+	PromoteWorkflow = ".github/workflows/promote.yml"
+	PromoteTrigger  = "workflow_dispatch"
 )
 
 // Pins is what a verification trusts. DefaultPins is the compiled-in set; a test may build another.
@@ -47,16 +48,18 @@ type Pins struct {
 	MacTeamIDs []string
 }
 
-// DefaultPins is the compiled-in set. The promote workflow's place is decided with the approval model (note section 3: a second locked-down
-// repository, option A, is assumed here); until that workflow exists no manifest verifies, so nothing installs.
+// DefaultPins is the compiled-in set. The promote workflow lives in Repo itself (the operator's decision, #326): .github/workflows/promote.yml, run
+// by hand on main and approved in the protected environment "promote". Its identity is distinct from release.yml's in three ways the verifier
+// checks: the workflow file in the SAN, the ref (refs/heads/main, never a tag) and the trigger (workflow_dispatch, never push), so a release build
+// can never sign a promotion and a promotion can never sign a release's sums.
 func DefaultPins() Pins {
 	return Pins{
 		Repo:                Repo,
 		RepoID:              RepoID,
 		Issuer:              Issuer,
-		PromoteRepo:         "subgentic/coral-promote",
-		PromoteRepoID:       "1429118389", // subgentic/coral-promote's id: GitHub's own number for the repository, so a renamed or recreated repository does not verify
-		PromoteWorkflow:     ".github/workflows/promote.yml",
+		PromoteRepo:         Repo,
+		PromoteRepoID:       RepoID,
+		PromoteWorkflow:     PromoteWorkflow,
 		PromoteRef:          "refs/heads/main",
 		MaxManifestLifetime: 60 * 24 * time.Hour,
 		MaxSkew:             5 * time.Minute,

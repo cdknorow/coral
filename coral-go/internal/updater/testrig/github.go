@@ -3,6 +3,7 @@ package testrig
 import (
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -10,14 +11,17 @@ import (
 	"github.com/subgentic/coral/internal/updater/verify"
 )
 
-// FakeGitHub serves releases the way github.com does for the updater: /<repo>/releases/latest/download/<file> (redirecting to the newest release's file, as
-// GitHub does, to a second address) and /<repo>/releases/download/<tag>/<file>. It listens on loopback only. A test can make any file wrong with Mutate,
-// Status or RedirectTo.
+// FakeGitHub serves releases the way github.com does for the updater: /<repo>/releases/download/<tag>/<file>, redirecting to a second address as
+// GitHub does, and /<repo>/releases/latest/download/<file> for the product's stable names. A product release (v<version>) has the sums, their
+// bundle and the package; a promotion is a release of its own (#326): promote-<sequence> with promote.json and its bundle, and promote-v<version>
+// with the first promotion of that version. It listens on loopback only. A test can make any file wrong with Mutate, Status or RedirectTo.
 type FakeGitHub struct {
-	srv, cdn *httptest.Server
-	mu       sync.Mutex
-	releases map[string]*Release // by tag
-	latest   string
+	srv, cdn   *httptest.Server
+	mu         sync.Mutex
+	releases   map[string]*Release  // product releases, by tag
+	promotions map[int64]promotion  // promote-<sequence>
+	firsts     map[string]promotion // promote-v<version>
+	latest     string
 	// Mutate may change a file's bytes on its way out (the path is "<tag>/<file>" or "latest/<file>"); nil leaves them.
 	Mutate func(path string, body []byte) []byte
 	// Status answers a path with this status and no body.
@@ -30,9 +34,13 @@ type FakeGitHub struct {
 	Hits map[string]int
 }
 
+// promotion is a promote release's two files.
+type promotion struct{ manifest, bundle []byte }
+
 // NewFakeGitHub starts the server; Close stops it.
 func NewFakeGitHub() *FakeGitHub {
-	g := &FakeGitHub{releases: map[string]*Release{}, Status: map[string]int{}, RedirectTo: map[string]string{}, Hits: map[string]int{}}
+	g := &FakeGitHub{releases: map[string]*Release{}, promotions: map[int64]promotion{}, firsts: map[string]promotion{}, Status: map[string]int{},
+		RedirectTo: map[string]string{}, Hits: map[string]int{}}
 	g.srv = httptest.NewServer(http.HandlerFunc(g.serve))
 	g.cdn = httptest.NewServer(http.HandlerFunc(g.serve))
 	return g
@@ -41,36 +49,52 @@ func NewFakeGitHub() *FakeGitHub {
 // Close stops both listeners.
 func (g *FakeGitHub) Close() { g.srv.Close(); g.cdn.Close() }
 
-// Publish adds a release; it is the latest when latest is true.
+// Publish adds a product release and the first promotion of its version (promote-v<version>, kept for the rollback). With latest it is also
+// promoted now: promote-<r.Sequence>, and the product's latest release.
 func (g *FakeGitHub) Publish(r *Release, latest bool) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.releases[r.Tag] = r
+	if _, ok := g.firsts[r.Version]; !ok {
+		g.firsts[r.Version] = promotion{r.Manifest, r.ManifestBundle}
+	}
 	if latest {
 		g.latest = r.Tag
+		g.promotions[r.Sequence] = promotion{r.Manifest, r.ManifestBundle}
 	}
+}
+
+// PublishPromotion publishes promote-<seq> with these two files, whatever they are (a test's junk or forged promotion).
+func (g *FakeGitHub) PublishPromotion(seq int64, manifest, bundle []byte) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.promotions[seq] = promotion{manifest, bundle}
 }
 
 // URL is the address of the server.
 func (g *FakeGitHub) URL() string { return g.srv.URL }
 
-// Config is what the updater's stage.Config needs to use this server instead of github.com: the base URLs, and a fetcher that allows its host over http.
+// Config is what the updater's stage.Config needs to use this server instead of github.com: the base URL, and a fetcher that allows its host over http.
 func (g *FakeGitHub) Config(c *stage.Config) {
-	c.LatestBase = g.srv.URL + "/" + FakeRepo + "/releases/latest/download/"
 	c.DownloadBase = g.srv.URL + "/" + FakeRepo + "/releases/download/"
 	c.Fetcher = &verify.Fetcher{Scheme: "http", Allow: func(host string) bool { return host == "127.0.0.1" }}
 }
 
 func (g *FakeGitHub) file(tag, name string) ([]byte, bool) {
+	if p, ok := g.promotionFor(tag); ok {
+		switch name {
+		case stage.ManifestFile:
+			return p.manifest, p.manifest != nil
+		case stage.ManifestBundleFile:
+			return p.bundle, p.bundle != nil
+		}
+		return nil, false
+	}
 	r, ok := g.releases[tag]
 	if !ok {
 		return nil, false
 	}
 	switch {
-	case name == stage.ManifestFile:
-		return r.Manifest, true
-	case name == stage.ManifestBundleFile:
-		return r.ManifestBundle, true
 	case name == stage.SumsFile:
 		return r.Sums, true
 	case name == stage.SumsBundleFile:
@@ -79,6 +103,36 @@ func (g *FakeGitHub) file(tag, name string) ([]byte, bool) {
 		return r.Package, true
 	}
 	return nil, false
+}
+
+// promotionFor is the promotion a promote-<sequence> or promote-v<version> tag names.
+func (g *FakeGitHub) promotionFor(tag string) (promotion, bool) {
+	if v, ok := strings.CutPrefix(tag, stage.RollbackPrefix); ok {
+		p, ok := g.firsts[v]
+		return p, ok
+	}
+	if n, ok := strings.CutPrefix(tag, stage.PromotionPrefix); ok {
+		seq, err := strconv.ParseInt(n, 10, 64)
+		if err != nil || seq < 1 {
+			return promotion{}, false
+		}
+		if p, ok := g.promotions[seq]; ok {
+			return p, true
+		}
+		// The workflow numbers promotions without gaps, so every promote-<n> below the highest exists; a test that publishes only sequence 7
+		// gets 1 to 6 as well, each carrying the next published promotion's files (a sequence that isn't its own: the updater skips them).
+		var next int64
+		for s := range g.promotions {
+			if s > seq && (next == 0 || s < next) {
+				next = s
+			}
+		}
+		if next == 0 {
+			return promotion{}, false
+		}
+		return g.promotions[next], true
+	}
+	return promotion{}, false
 }
 
 func (g *FakeGitHub) serve(w http.ResponseWriter, req *http.Request) {

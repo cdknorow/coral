@@ -40,6 +40,9 @@ type State struct {
 	Version  string   `json:"version"`
 	Sequence int64    `json:"sequence"`
 	Revoked  []string `json:"revoked"`
+	// Seen is the highest sequence of a manifest that passed verification (Observe), installed or not: where the next check starts looking
+	// for promote-<sequence> releases (#326). Only a hint for finding them: the rules use Sequence.
+	Seen int64 `json:"seen_sequence,omitempty"`
 	// LastFailure is the last refusal: Stage, Reason and When (RFC 3339), for Settings > Updates.
 	LastFailure *FailureRecord `json:"last_failure,omitempty"`
 	LastCheck   string         `json:"last_check,omitempty"`
@@ -181,6 +184,23 @@ func verifyRelease(v BundleVerifier, pins Pins, c Candidate, asset func(version 
 		Asset: name, PackageSHA256: want, SumsSHA256: m.SHA256SumsSHA, ManifestSHA256: sha256Hex(c.Manifest),
 		VerifiedAt: now.UTC().Format(time.RFC3339), Revoked: m.Revoked,
 	}, nil
+}
+
+// PromotedManifest checks a promote manifest by itself: its signature under the promote workflow's identity, then the document. It is how a check
+// tells a real promotion from anything else published under a promote-<sequence> tag (#326) before using it; Release verifies it again, with the
+// rest of the chain.
+func PromotedManifest(v BundleVerifier, pins Pins, manifest, bundle []byte) (*Manifest, error) {
+	if len(manifest) == 0 || len(manifest) > MaxManifestBytes {
+		return nil, fail(StageManifestDocument, "manifest size %d is outside 1..%d", len(manifest), MaxManifestBytes)
+	}
+	if _, err := v.VerifyBundle(bundle, manifest, promoteIdentity(pins)); err != nil {
+		return nil, fail(StageManifestSignature, "%v", err)
+	}
+	m, err := ParseManifest(manifest)
+	if err != nil {
+		return nil, fail(StageManifestDocument, "%v", err)
+	}
+	return m, nil
 }
 
 func promoteIdentity(p Pins) Identity {

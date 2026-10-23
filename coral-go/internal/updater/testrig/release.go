@@ -15,12 +15,13 @@ import (
 
 // The identities of the rehearsal: nothing of Coral's real release or promote workflow, and an OIDC issuer that cannot exist (.invalid, RFC 6761).
 const (
-	FakeIssuer      = "https://oidc.rehearsal.invalid"
-	FakeRepo        = "rehearsal.invalid/coral"
-	FakePromoteRepo = "rehearsal.invalid/coral-promote"
+	FakeIssuer = "https://oidc.rehearsal.invalid"
+	FakeRepo   = "rehearsal.invalid/coral"
+	// FakePromoteRepo is the repository of the fake promote workflow: the release repository itself, as Coral's (#326).
+	FakePromoteRepo = FakeRepo
 	// The rehearsal repositories' numeric ids: the pins require them (#5536).
 	FakeRepoID        = "9000001"
-	FakePromoteRepoID = "9000002"
+	FakePromoteRepoID = FakeRepoID
 	// FakeCommit is the commit the fake release workflow says it built.
 	FakeCommit = "0123456789abcdef0123456789abcdef01234567"
 )
@@ -56,9 +57,11 @@ func PromoteCert() CertID {
 // Asset is the Linux amd64 package of a version, as release.yml names it.
 func Asset(version string) string { return "coral-linux-amd64-" + version + ".tar.gz" }
 
-// Release is a fake release: the package, the sums file, the promote manifest and the two signatures.
+// Release is a fake release: the package, the sums file, the promote manifest and the two signatures. Sequence is the promotion's: FakeGitHub
+// publishes the manifest as the release promote-<Sequence> (#326).
 type Release struct {
 	Version, Tag   string
+	Sequence       int64
 	Package        []byte
 	Sums           []byte
 	Manifest       []byte
@@ -140,7 +143,10 @@ func (s *Signer) NewRelease(sp Spec) (*Release, error) {
 	if files == nil {
 		files = map[string][]byte{"coral": []byte("coral " + sp.Version + "\n")}
 	}
-	r := &Release{Version: sp.Version, Tag: tag, Package: sp.Package}
+	r := &Release{Version: sp.Version, Tag: tag, Package: sp.Package, Sequence: sp.Sequence}
+	if r.Sequence == 0 {
+		r.Sequence = 1
+	}
 	if r.Package == nil {
 		r.Package = tarGz(files)
 	}

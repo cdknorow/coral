@@ -124,10 +124,9 @@ func (r *fakeRelease) serve(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	switch {
-	case strings.HasPrefix(req.URL.Path, "/latest/download/"):
-		http.Redirect(w, req, "/download/v"+r.version+"/"+name, http.StatusFound)
 	case strings.HasPrefix(req.URL.Path, "/download/"):
-		body, ok := r.files[name]
+		tag := strings.Split(strings.TrimPrefix(req.URL.Path, "/download/"), "/")[0]
+		body, ok := servedFrom(map[string]map[string][]byte{"v" + r.version: r.files}, "v"+r.version, tag, name)
 		if name == asset(r.version) && r.served != nil {
 			body = r.served
 		}
@@ -161,9 +160,9 @@ func newEnv(t *testing.T, installed string) *env {
 	e := &env{t: t, rel: newFakeRelease(t, "1.4.130"), data: t.TempDir(), signer: &fakeSigner{}, now: testNow}
 	e.cfg = Config{
 		DataDir: e.data, Installed: installed, Pins: verify.DefaultPins(), Verifier: e.signer, Asset: asset,
-		Fetcher:    &verify.Fetcher{Scheme: "http", Allow: func(h string) bool { return h == "127.0.0.1" }},
-		LatestBase: e.rel.srv.URL + "/latest/download/", DownloadBase: e.rel.srv.URL + "/download/",
-		Now: func() time.Time { return e.now },
+		Fetcher:      &verify.Fetcher{Scheme: "http", Allow: func(h string) bool { return h == "127.0.0.1" }},
+		DownloadBase: e.rel.srv.URL + "/download/",
+		Now:          func() time.Time { return e.now },
 	}
 	return e
 }
@@ -309,7 +308,7 @@ func TestAVerificationFailureStopsBeforeTheDownload(t *testing.T) {
 	st := e.state()
 	require.NotNil(t, st.LastFailure)
 	assert.Equal(t, verify.StageManifestSignature, st.LastFailure.Stage)
-	assert.Equal(t, "1.4.130", st.LastFailure.Version)
+	assert.Empty(t, st.LastFailure.Version, "an unverified manifest's version is not recorded as if it were known (#326)")
 }
 
 func TestFailuresBackOffAndASuccessResets(t *testing.T) {

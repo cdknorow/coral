@@ -18,7 +18,7 @@ func oldHomePins() Pins {
 	return p
 }
 
-// withPromoteID is p with a promote repository id, for the tests that run a fake verifier through the whole release (the real pin is empty until that repository exists).
+// withPromoteID is p with another promote repository id, for the tests that run a fake verifier through the whole release.
 func withPromoteID(p Pins) Pins {
 	p.PromoteRepoID = "2222"
 	return p
@@ -28,8 +28,12 @@ func TestDefaultPinsNameTheNewHomeAndItsID(t *testing.T) {
 	p := DefaultPins()
 	assert.Equal(t, "subgentic/coral", p.Repo)
 	assert.Equal(t, "1160696364", p.RepoID, "the id survived the transfer (the certificate carried it before and after)")
-	assert.Equal(t, "subgentic/coral-promote", p.PromoteRepo)
-	assert.Equal(t, "1429118389", p.PromoteRepoID, "the promote repository's id is pinned: a manifest from a repository of another id does not verify")
+	// The promote workflow lives in the same repository (#326): the same name and id, told apart from release.yml by the workflow file, the ref
+	// and the trigger (TestTheReleaseAndPromoteIdentitiesNeverMatch).
+	assert.Equal(t, "subgentic/coral", p.PromoteRepo)
+	assert.Equal(t, p.RepoID, p.PromoteRepoID, "the repository's id is pinned for the promote workflow too")
+	assert.Equal(t, ".github/workflows/promote.yml", p.PromoteWorkflow)
+	assert.Equal(t, "refs/heads/main", p.PromoteRef)
 }
 
 // The macOS apply installs nothing without a team (see Pins.MacTeamIDs): the one Developer ID team of the app's signature is pinned.

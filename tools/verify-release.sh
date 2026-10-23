@@ -433,7 +433,8 @@ if [ "$NOPREV" = 0 ] && [ -n "$meta" ]; then
     PREV="$(gh release list --repo "$REPO" --limit 40 --exclude-drafts --json tagName,isPrerelease,publishedAt 2>/dev/null |
       jq -r --arg t "$TAG" --argjson pre "$want_pre" '
         (map(select(.tagName == $t)) | first | .publishedAt) as $at
-        | map(select(.tagName != $t and .isPrerelease == $pre and .publishedAt < $at)) | sort_by(.publishedAt) | last | .tagName // empty')"
+        | map(select(.tagName != $t and (.tagName | startswith("promote-") | not) and .isPrerelease == $pre and .publishedAt < $at))
+        | sort_by(.publishedAt) | last | .tagName // empty')"   # a promote-* release (#326) is a promotion, never a product release
   fi
   if [ -n "$PREV" ]; then
     mkdir -p "$PREVDIR"

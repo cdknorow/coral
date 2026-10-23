@@ -112,7 +112,7 @@ func TestCoralUpdateTakesOnlyTheCompiledInPinsAndTheRealTrust(t *testing.T) {
 				case *ast.KeyValueExpr:
 					if id, ok := x.Key.(*ast.Ident); ok {
 						switch id.Name {
-						case "LatestBase", "DownloadBase", "Scheme", "Allow":
+						case "DownloadBase", "Scheme", "Allow":
 							t.Errorf("%s: sets %s, an address or host rule (%s)", filepath.Base(name), id.Name, fset.Position(x.Pos()))
 						}
 					}

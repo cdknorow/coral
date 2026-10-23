@@ -188,9 +188,13 @@ func (s *State) Accept(rec *Record) error {
 
 // Observe records what a manifest that passed verification revokes, at once and not only at install: a version it names is revoked for good. Version and Sequence stay
 // what is installed (Accept moves them), so a staged older release stays installable if a newer one cannot be downloaded. Without this, a manifest replayed between staging
-// and install (an older one, still unexpired, that does not revoke what a later one did) would be taken as new (#5301).
+// and install (an older one, still unexpired, that does not revoke what a later one did) would be taken as new (#5301). Seen keeps the highest verified sequence: where the
+// next check starts looking for promotions (#326), a hint only, never a rule.
 func (s *State) Observe(rec *Record) {
 	s.Revoked = unionVersions(s.Revoked, rec.Revoked)
+	if rec.Sequence > s.Seen {
+		s.Seen = rec.Sequence
+	}
 }
 
 // Refuse records a refusal for Settings > Updates.
