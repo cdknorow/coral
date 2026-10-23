@@ -193,7 +193,7 @@ func (r *rehearsalMSI) Start(ctx context.Context, install string) error {
 	cmd := exec.Command(os.Getenv("ComSpec"))
 	cmd.Dir = install
 	cmd.SysProcAttr = &syscall.SysProcAttr{
-		CmdLine:       `cmd.exe /c "ping -n 3000 127.0.0.1 | "` + tray + `" --server-child ` + strings.Join(r.serverArgs, " ") + ` 2>>"` + filepath.Join(config.ResolveCoralDir(""), "server-child.log") + `""`,
+		CmdLine:       `cmd.exe /c "ping -n 3000 127.0.0.1 | "` + tray + `" --server-child ` + strings.Join(r.serverArgs, " ") + ` 2>>"` + filepath.Join(filepath.Dir(config.ResolveCoralDir("")), "server-child.log") + `""`,
 		CreationFlags: 0x00000008 | 0x00000200, // DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
 		HideWindow:    true,
 	}

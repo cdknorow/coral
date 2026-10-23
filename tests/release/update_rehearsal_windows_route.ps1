@@ -94,7 +94,9 @@ function Read-Result([string]$name) {
 }
 function Keep-Logs([string]$name) {
     if (-not $LogDir) { return }
-    foreach ($p in @('tray.log', 'server-child.log', 'updates\*.log')) {
+    $sc = Join-Path $Work 'server-child.log'
+    if (Test-Path -LiteralPath $sc) { Copy-Item -LiteralPath $sc (Join-Path $LogDir "$name-server-child.log") -Force }
+    foreach ($p in @('tray.log', 'updates\*.log')) {
         Get-ChildItem -Path (Join-Path $data $p) -ErrorAction SilentlyContinue | ForEach-Object { Copy-Item -LiteralPath $_.FullName (Join-Path $LogDir "$name-$($_.Name)") -Force }
     }
 }
@@ -105,12 +107,15 @@ function New-Scenario([string]$name, [hashtable]$plan, [string]$from = $installD
     New-Item -ItemType Directory -Force -Path $data | Out-Null
     Install-Msi $script:oldMsi "$name-install"
     if ((Installed-Version) -ne $N) { Fail "$name`: version $N was not installed" }
+    # Coral will not start in a data folder other users can use (a runner's temp folder is one): owner-only, as Coral itself makes its own
+    icacls $data /inheritance:r /grant:r "$($env:USERNAME):(OI)(CI)F" | Out-Null
+    if ($LASTEXITCODE -ne 0) { Fail "$name`: icacls on the data folder failed" }
     Write-Plan $plan
     & (Join-Path $installDir 'coral-update.exe') serve $installDir
     if ($LASTEXITCODE -ne 0) { Fail "$name`: the server was not started" }
     if (-not (Wait-Health)) {
         Keep-Logs $name
-        $sl = Join-Path $data 'server-child.log'
+        $sl = Join-Path $Work 'server-child.log'
         if (Test-Path -LiteralPath $sl) { Get-Content -LiteralPath $sl -Tail 30 | ForEach-Object { Write-Host "server: $_" } } else { Write-Host 'server: no server-child.log' }
         Get-Process | Where-Object { $_.Path -like "$installDir*" } | ForEach-Object { Write-Host "running: $($_.Name)" }
         Fail "$name`: the server did not come up"
