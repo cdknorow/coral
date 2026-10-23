@@ -86,6 +86,7 @@ func TestAnswerPrompt_CodexHookTrust(t *testing.T) {
 			}
 			require.NoError(t, json.NewDecoder(resp.Body).Decode(&reply))
 			assert.Equal(t, "Hooks need review 2 hooks are new or changed. Hooks can run outside the sandbox after you trust them.", reply.PromptOptions.Question)
+			assert.Equal(t, "Hooks need review", reply.PromptOptions.Title, "the heading, for its own line on the card (#306)")
 			assert.Equal(t, []string{"Review hooks", trust, "Continue without trusting (hooks won't run)"}, labels(reply.PromptOptions.Options))
 			assert.True(t, reply.PromptOptions.Options[0].Selected)
 		})

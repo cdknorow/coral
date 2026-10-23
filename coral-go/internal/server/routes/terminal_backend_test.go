@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -279,6 +280,9 @@ func TestTerminalBackendKeepsTmuxWhileAgentsAreInIt(t *testing.T) {
 
 // A tmux server that cannot be asked (a client/server version mismatch after an upgrade) is not "no agents": the next start keeps tmux, so nothing running is hidden (#6064, Security's must).
 func TestTerminalBackendKeepsTmuxWhenItsServerCannotBeAsked(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Coral never offers tmux on Windows: the next start is always pty (#304), so there is no tmux to keep")
+	}
 	dataDir, err := os.MkdirTemp("/tmp", "cu")
 	require.NoError(t, err)
 	t.Cleanup(func() { os.RemoveAll(dataDir) })

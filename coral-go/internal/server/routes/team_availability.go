@@ -141,8 +141,13 @@ func (h *SessionsHandler) teamAvailabilityUncached(w http.ResponseWriter, r *htt
 		errInternalServer(w, err.Error())
 		return
 	}
+	// exists: the board has a subscriber, a message or an open task (#285), so the CLI can tell an absent board from an empty one.
+	exists := len(agents) > 0 || len(snap.tasks) > 0
+	if !exists {
+		exists, _ = h.bs.BoardExists(ctx, name)
+	}
 	w.Header().Set("Cache-Control", "no-store")
-	writeJSON(w, http.StatusOK, map[string]any{"board": name, "team": name, "working_mode": mode, "observed_at": time.Now().UTC().Format(time.RFC3339), "agents": agents, "summary": availabilitySummary(agents), "unassigned_tasks": boardTasksAssignedTo(snap.tasks, ""), "health_report": availabilityHealthReport(snap.tasks)})
+	writeJSON(w, http.StatusOK, map[string]any{"board": name, "team": name, "exists": exists, "working_mode": mode, "observed_at": time.Now().UTC().Format(time.RFC3339), "agents": agents, "summary": availabilitySummary(agents), "unassigned_tasks": boardTasksAssignedTo(snap.tasks, ""), "health_report": availabilityHealthReport(snap.tasks)})
 }
 
 // loadBoardStatus reads the board's sessions, subscribers, tasks, terminals, state events, waits and personal tasks,

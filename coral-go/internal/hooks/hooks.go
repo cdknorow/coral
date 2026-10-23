@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/subgentic/coral/internal/config"
 	"github.com/subgentic/coral/internal/executil"
 	"github.com/subgentic/coral/internal/tmux"
 	"io"
@@ -28,7 +29,9 @@ func CoralBase() string {
 	}
 	port := os.Getenv("CORAL_PORT")
 	if port == "" {
-		port = "8420"
+		// Nothing says where Coral is: the address the running server recorded in its lock file, else the platform's own default (8450 on Windows,
+		// 8420 elsewhere): 8420 on Windows sent a command typed in a plain terminal to the wrong port, where this platform's Coral never listens (#235).
+		return config.LocalServerURL()
 	}
 	return "http://localhost:" + port
 }

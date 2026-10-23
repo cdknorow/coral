@@ -18,7 +18,7 @@ func TestResolveBackend(t *testing.T) {
 		{"", "screen", "darwin", "pty", false},
 		{"pty", "tmux", "darwin", "pty", true},
 		{"tmux", "pty", "linux", "tmux", true},
-		{"tmux", "", "windows", "tmux", true},
+		{"tmux", "", "windows", "pty", false}, // not honoured on Windows (#304); the entry points refuse it first
 	} {
 		got, forced := ResolveBackend(c.flag, c.saved, c.goos)
 		if got != c.want || forced != c.forced {

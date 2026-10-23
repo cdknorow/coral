@@ -127,7 +127,7 @@ func Consume(dataDir string, now time.Time) (Marker, error) {
 	}
 	age := now.Sub(time.Unix(m.IssuedAt, 0))
 	if age > MarkerTTL || age < -time.Minute {
-		return Marker{}, ErrMarkerExpired
+		return m, ErrMarkerExpired // the folder it names still parses: the caller that starts Coral again uses it
 	}
 	return m, nil
 }

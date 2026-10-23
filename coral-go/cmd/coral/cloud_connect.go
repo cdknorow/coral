@@ -47,7 +47,7 @@ func isTerminal(f *os.File) bool { return term.IsTerminal(int(f.Fd())) }
 // cancelled, 1 otherwise.
 func runCloud(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	usage := func() int {
-		fmt.Fprintln(stderr, "usage: coral cloud connect [--force] [--ticket-file <path|-> [--proof-file <path>]] [--url http://localhost:8420] [--home DIR]")
+		fmt.Fprintln(stderr, "usage: coral cloud connect [--force] [--ticket-file <path|-> [--proof-file <path>]] [--url "+defaultCoralURL()+"] [--home DIR]")
 		fmt.Fprintln(stderr, "       coral cloud status [--url ...] [--home DIR]")
 		fmt.Fprintln(stderr, "       coral cloud disconnect [--url ...] [--home DIR]")
 		return 2
@@ -73,6 +73,7 @@ func runCloud(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if err := fs.Parse(args[1:]); err != nil {
 		return usage()
 	}
+	*base = runningServerURL(fs, *base, *home)
 	if fs.NArg() > 0 {
 		fmt.Fprintf(stderr, "coral cloud %s: unexpected argument %q (a credential is never taken from the command line; use --ticket-file)\n", cmd, fs.Arg(0))
 		return 2
@@ -116,23 +117,37 @@ type cloudClient struct {
 func newCloudClient(base, home, cmd string, stderr io.Writer) (*cloudClient, int) {
 	server := strings.TrimRight(base, "/")
 	if !loopbackURL(server) {
-		fmt.Fprintf(stderr, "coral cloud %s: %s is not this computer: this command only talks to the Coral running here\n", cmd, server)
+		fmt.Fprintf(stderr, "%s: %s is not this computer: this command only talks to the Coral running here\n", commandName(cmd), server)
 		return nil, 2
 	}
 	token, err := cloud.ReadCLIToken(config.ResolveCoralDir(home))
 	if err != nil {
-		fmt.Fprintf(stderr, "coral cloud %s: could not read Coral's command-line token (%v): run this as the user Coral runs as, with Coral started (and --home if it uses one)\n", cmd, err)
+		fmt.Fprintf(stderr, "%s: could not read Coral's command-line token (%v): run this as the user Coral runs as, with Coral started (and --home if it uses one)\n", commandName(cmd), err)
 		return nil, 2
 	}
 	return &cloudClient{cli: cloud.CLIClient{Base: server, Token: token}, server: server, cmd: cmd, stderr: stderr}, 0
 }
 
 // who names the command in messages.
+// exitCannotReach is the exit code for "Coral is not running there": 3, as #101's clierr table has it (2 usage, 3 cannot reach,
+// 4 timed out); to become clierr.ExitUnreachable once that lands (#235).
+const exitCannotReach = 3
+
 func (c *cloudClient) who() string {
 	if c.label != "" {
 		return c.label
 	}
-	return "coral cloud " + c.cmd
+	return commandName(c.cmd)
+}
+
+// commandName is how a message names the command: "coral cloud status", but "coral open", "coral set-password" ... by their own
+// name, never "coral cloud open" (#235).
+func commandName(cmd string) string {
+	switch cmd {
+	case "connect", "status", "disconnect":
+		return "coral cloud " + cmd
+	}
+	return "coral " + cmd
 }
 
 // call sends one request. code is -1 when out was filled from a 200, else the
@@ -150,8 +165,8 @@ func (c *cloudClient) call(ctx context.Context, method, path string, body any, h
 	case ctx.Err() != nil:
 		return 130
 	case err != nil:
-		fmt.Fprintf(c.stderr, "%s: Coral is not running at %s: start it and run this again\n", c.who(), c.server)
-		return 4
+		fmt.Fprintf(c.stderr, "%s: Coral is not running at %s: start it and run this again (or give --url, or --home for its data folder)\n", c.who(), c.server)
+		return exitCannotReach
 	}
 	defer resp.Body.Close()
 	data, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<16))

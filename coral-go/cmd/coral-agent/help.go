@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/subgentic/coral/internal/clihelp"
 )
@@ -51,6 +52,22 @@ func handleHelp(args []string, w io.Writer) (bool, int) {
 
 // commandUsage returns the usage for one command, or for one task
 // subcommand when rest names it.
+// usageError is a refusal of the command line itself (a value that is not what the command takes), as opposed to a failure of the work: it exits 2 with the
+// command's usage line, as the exit-codes topic says.
+type usageError struct{ msg string }
+
+func (e usageError) Error() string { return e.msg }
+
+// failUsage prints msg and the usage of cmd on stderr and exits 2. Nothing is written to stdout.
+func failUsage(msg, cmd string, rest []string) {
+	usage := commandUsage(cmd, rest)
+	if cmd == "ui" {
+		usage = strings.SplitN(usage, string([]byte{10, 10}), 2)[0] // the one-line forms, not the paragraph on handing a panel to a subagent
+	}
+	fmt.Fprintf(os.Stderr, "Error: %s\n%s\n", msg, usage)
+	os.Exit(2)
+}
+
 func commandUsage(cmd string, rest []string) string {
 	switch cmd {
 	case "task":
@@ -65,7 +82,7 @@ func commandUsage(cmd string, rest []string) string {
 	case "ui":
 		return uiUsageText
 	case "artifact":
-		return artifactUsageText
+		return artifactUsage(rest)
 	case "notify":
 		return notifyUsageText
 	case "docs":

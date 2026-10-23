@@ -187,13 +187,13 @@ func TestTargetsFailureFormat(t *testing.T) {
 	defer func() { serverURL = oldURL }()
 
 	err := runTargets("alpha", "Orchestrator", "s", &bytes.Buffer{})
-	want := "listing targets failed (503): not_linked: this Coral isn't connected to Coral Hub"
+	want := "listing targets failed. Coral says: not_linked: this Coral isn't connected to Coral Hub (HTTP 503)"
 	if err == nil || err.Error() != want {
 		t.Fatalf("got %v, want %q", err, want)
 	}
 	reply = `{"ok":false,"error":"not_orchestrator"}`
 	err = runTargets("alpha", "Worker", "s", &bytes.Buffer{})
-	if want = "listing targets failed (503): not_orchestrator"; err == nil || err.Error() != want {
+	if want = "listing targets failed. Coral says: not_orchestrator (HTTP 503)"; err == nil || err.Error() != want {
 		t.Fatalf("got %v, want %q", err, want)
 	}
 }
@@ -216,7 +216,7 @@ func TestSendPrintsAnAttachmentRefusalsCode(t *testing.T) {
 	var out bytes.Buffer
 	for _, args := range [][]string{{"--address", "homelab/qa", "--attach", "coral://artifacts/ab", "hi"}, {"--board", "beta", "--attach", "coral://artifacts/ab", "hi"}} {
 		err := runSend(args, id, &out)
-		if err == nil || !strings.Contains(err.Error(), "(422): attach_secret: coral://artifacts/ab looks like it contains a secret") {
+		if err == nil || !strings.Contains(err.Error(), "Coral says: attach_secret: coral://artifacts/ab looks like it contains a secret") {
 			t.Errorf("%v: %v", args, err)
 		}
 	}

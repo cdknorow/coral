@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/subgentic/coral/internal/clierr"
+	"github.com/subgentic/coral/internal/clihelp"
 	"net/http"
 	"net/url"
 	"os"
@@ -21,10 +22,10 @@ func cmdTaskUnblock(st *boardState, args []string) {
 		fmt.Fprintln(os.Stderr, "task ID must be positive")
 		clierr.Exit1()
 	}
-	fs := flag.NewFlagSet("task-unblock", flag.ExitOnError)
+	fs := flag.NewFlagSet("task-unblock", flag.ContinueOnError)
 	blocker := fs.Int64("blocker", 0, "Remove this prerequisite task ID")
 	all := fs.Bool("all", false, "Remove all prerequisites")
-	fs.Parse(args[1:])
+	clihelp.ParseFlags(fs, args[1:], func() string { return commandUsage(os.Args[1], os.Args[2:]) })
 	if fs.NArg() != 0 || *blocker < 0 || (*all == (*blocker > 0)) {
 		fmt.Fprintln(os.Stderr, "choose exactly one of --blocker ID or --all")
 		clierr.Exit1()

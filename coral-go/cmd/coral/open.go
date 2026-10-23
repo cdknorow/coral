@@ -57,9 +57,10 @@ func runOpen(args []string, stdout, stderr io.Writer) int {
 	home := fs.String("home", "", "Coral's data folder, if the server was started with --home")
 	page := fs.String("path", "/", "the dashboard page to open, e.g. /chats or /team/<board>")
 	if err := fs.Parse(args); err != nil || fs.NArg() > 0 {
-		fmt.Fprintln(stderr, "usage: coral open [--print] [--path /page] [--url http://localhost:8420] [--home DIR]")
+		fmt.Fprintln(stderr, "usage: coral open [--print] [--path /page] [--url "+defaultCoralURL()+"] [--home DIR]")
 		return 2
 	}
+	*base = runningServerURL(fs, *base, *home)
 	if !loginlink.ValidPage(*page) {
 		fmt.Fprintln(stderr, "coral open: --path must be a page of the dashboard, like /chats or /team/<board>")
 		return 2

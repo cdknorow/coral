@@ -250,11 +250,11 @@ func TestPostRefusesAnUnknownOptionBeforeTheText(t *testing.T) {
 	dir := subscribedDataDir(t, srv.URL)
 	res := runBoard(t, srv.URL, dir, "post", "--too", "Lead", "hello")
 	assert.Equal(t, 2, res.code, res.stderr)
-	assert.Contains(t, res.stderr, "did you mean --to")
+	assert.Contains(t, res.stderr, "Did you mean --to")
 	res = runBoard(t, srv.URL, dir, "post", "--nope", "hello")
 	assert.Equal(t, 2, res.code)
 	assert.Contains(t, res.stderr, "unknown option")
-	assert.NotContains(t, res.stderr, "did you mean")
+	assert.NotContains(t, res.stderr, "Did you mean")
 	assert.Empty(t, srv.requests())
 }
 
@@ -262,7 +262,7 @@ func TestPostRefusesAnUnknownOptionBeforeTheText(t *testing.T) {
 func TestHelpTopicsBoard(t *testing.T) {
 	srv := newRecordingServer(t)
 	dir := subscribedDataDir(t, srv.URL)
-	for topic, want := range map[string]string{"windows": "$OutputEncoding", "exit-codes": "ERRORLEVEL", "json": "task list --json", "timeouts": "CORAL_TIMEOUT"} {
+	for topic, want := range map[string]string{"windows": "$OutputEncoding", "exit-codes": "ERRORLEVEL", "json": "task show <id> --json", "timeouts": "CORAL_TIMEOUT"} {
 		res := runBoard(t, srv.URL, dir, "help", topic)
 		assert.Equal(t, 0, res.code, topic)
 		assert.Contains(t, res.stdout, want, topic)
@@ -331,7 +331,7 @@ func TestUsageExitAndFileFolderAndSendTypo(t *testing.T) {
 
 	res = runBoard(t, srv.URL, dir, "send", "--board", "other", "--reply-too", "4", "hello")
 	assert.Equal(t, 2, res.code, res.stderr)
-	assert.Contains(t, res.stderr, "did you mean --reply-to")
+	assert.Contains(t, res.stderr, "Did you mean --reply-to")
 	res = runBoard(t, srv.URL, dir, "send", "--BOARD", "other", "use", "--force", "here")
 	assert.NotContains(t, res.stderr, "unknown option", "options are read in any case, and --words after the text are text")
 	assert.NotContains(t, res.stderr, "needs a value")

@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/subgentic/coral/internal/clierr"
+	"github.com/subgentic/coral/internal/clihelp"
 	"net/http"
 	"net/url"
 	"os"
@@ -35,10 +36,10 @@ func cmdTaskPark(st *boardState, args []string, unpark bool) {
 		fmt.Printf("Unparked Task #%d\n", id)
 		return
 	}
-	fs := flag.NewFlagSet("task-park", flag.ExitOnError)
+	fs := flag.NewFlagSet("task-park", flag.ContinueOnError)
 	reason := fs.String("reason", "", "Why it is set aside (required)")
 	until := fs.String("until", "", "When it comes back by itself (optional)")
-	fs.Parse(args[1:])
+	clihelp.ParseFlags(fs, args[1:], func() string { return commandUsage(os.Args[1], os.Args[2:]) })
 	if *reason == "" {
 		fmt.Fprintln(os.Stderr, usage)
 		clierr.Exit1()

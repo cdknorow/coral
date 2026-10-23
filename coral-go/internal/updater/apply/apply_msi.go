@@ -16,7 +16,8 @@ package apply
 //  6. msiexec, from the system folder (E), run by this user, NOT elevated, with basic UI and a fixed set of properties: Windows Installer itself asks
 //     for consent (UAC) for the per-machine part, showing the package, and no process of Coral's is ever elevated. Basic UI runs no ExitDialog,
 //     so the MSI's own "Launch Coral" (#78) can't fire.
-//  7. Start the new Coral as this user, never from the installer, and check it is up. If it isn't: the rollback, with the user told first: msiexec
+//  7. Start the new Coral as this user, never from the installer, from the folder Windows Installer has the new product in after the install
+//     (a major upgrade can move it: #321), and check it is up. If it isn't: the rollback, with the user told first: msiexec
 //     /x the new product (its code read from the verified package and matched to the registered one: C), then /i the previous version's MSI,
 //     verified again where it is used (C). Each is its own consent prompt.
 
@@ -82,6 +83,12 @@ type MSI interface {
 	// Start starts Coral (coral-tray) from the install folder as this user; Healthy waits until it is up.
 	Start(ctx context.Context, install string) error
 	Healthy(ctx context.Context, install string) error
+	// ApplyProcessRunning reports whether another apply is running: a live coral-update.exe in the install folder, or a live coral-update-*.exe in copies (the folder
+	// trigger.Launch copies the updater to) whose bytes are the installed updater's. The deciding check for "another apply is replacing the install", made from the processes, not
+	// from a lock file (which can be planted, or unreadable while a live apply moves it).
+	ApplyProcessRunning(install, copies string) bool
+	// NotifyBrief tells the person something with a short wait (the apply is about to end; a long one would hold its lock open and make the next click busy too).
+	NotifyBrief(title, text string)
 	// Notify tells the person something while Coral is down (a message box).
 	Notify(title, text string)
 }
@@ -161,12 +168,22 @@ func RunMSI(ctx context.Context, mc MSIConfig) Result {
 		return res
 	}
 	if stage.CheckRunning(dir, now) {
-		res.Result = ResultBusy
+		res.Result, res.FailedStage = ResultBusy, BusyCheck
 		return res
 	}
 	release, err := stage.TakeLock(dir, stage.ApplyLockFile, now)
 	if err != nil {
-		res.Result = ResultBusy
+		// Busy only when a real updater is running, the install's own or a copy Launch made (checked from the processes, whatever the lock says or whether it can be read).
+		// Otherwise (a lock that cannot be made, a planted or dead one) nobody is applying, the server has quit for the click, and Coral is started again.
+		if errors.Is(err, stage.ErrBusy) {
+			inst, _ := mc.MSI.Install()
+			if mc.MSI.ApplyProcessRunning(inst, filepath.Join(dir, "apply")) {
+				res.Result, res.FailedStage = ResultBusy, BusyApply // a real apply is replacing the install: nothing may start Coral under it
+				mc.MSI.NotifyBrief("Coral update", "Another update may be running; start Coral from the Start menu when it's done.")
+				return res
+			}
+		}
+		res.Result, res.FailedStage = ResultFailed, "apply_lock"
 		return res
 	}
 	defer release()
@@ -295,9 +312,9 @@ func RunMSI(ctx context.Context, mc MSIConfig) Result {
 		// Unless the new product is registered already (the prompt was answered at the last moment and the install landed after msiexec was
 		// ended): then the recovery runs now, as the next run's would, rather than starting the old Coral into a folder Windows Installer
 		// replaced. It gets a context of its own, the apply's having ended.
-		if reg, rerr := m.RegisteredProduct(); rerr == nil && sameProductCode(reg, product) {
+		if landed, ferr := installedFolder(m, product); ferr == nil {
 			rctx, cancel := context.WithTimeout(context.Background(), msiRecoveryTimeout)
-			r, ok := recoverMSI(rctx, mc, cfg, dir, install)
+			r, ok := recoverMSI(rctx, mc, cfg, dir, landed)
 			cancel()
 			if ok {
 				return r
@@ -330,10 +347,16 @@ func RunMSI(ctx context.Context, mc MSIConfig) Result {
 	}
 	_ = writeMSIJournal(dir, msiJournal{Phase: "installed", From: cfg.Installed, To: rec.Version, Product: product, Record: rec, StartedAt: now})
 
-	// 7: start the new Coral as this user, never from the installer; roll back if it doesn't come up.
-	startErr := m.Start(ctx, install)
+	// 7: start the new Coral as this user, never from the installer; roll back if it doesn't come up. It is started from the folder Windows
+	// Installer has the new product in now, not the one read before msiexec: a major upgrade can move the install (the x86 packages up to
+	// 1.4.156 were in Program Files (x86), the x64 ones are in Program Files, #321).
+	newInstall, err := installedFolder(m, product)
+	if err != nil {
+		return rollBackMSI(ctx, mc, cfg, dir, &st, install, product, rec.Version, "installed_folder")
+	}
+	startErr := m.Start(ctx, newInstall)
 	if startErr == nil {
-		startErr = m.Healthy(ctx, install)
+		startErr = m.Healthy(ctx, newInstall)
 	}
 	if startErr != nil {
 		return rollBackMSI(ctx, mc, cfg, dir, &st, install, product, rec.Version, "health")
@@ -361,6 +384,27 @@ func joinReason(a, b string) string {
 		return b
 	}
 	return a + "," + b
+}
+
+// installedFolder is the folder of the product Windows Installer has registered now, when that product is the verified package's (product):
+// the one msiexec just installed, found through Windows Installer as Install finds it, never a path from the package or the network. A
+// folder the apply would not touch (outside Program Files) is an error, as it is before an update.
+func installedFolder(m MSI, product string) (string, error) {
+	reg, err := m.RegisteredProduct()
+	if err != nil {
+		return "", err
+	}
+	if !sameProductCode(reg, product) {
+		return "", fmt.Errorf("the registered product %s is not the installed package's %s", reg, product)
+	}
+	dir, err := m.Install()
+	if err != nil {
+		return "", err
+	}
+	if why := m.Unsupported(dir); why != "" {
+		return "", fmt.Errorf("the installed product's folder is not one the updater uses (%s)", why)
+	}
+	return dir, nil
 }
 
 // startOld starts the installed (unchanged) Coral again after an attempt that didn't install anything; a failure is said in the result.
@@ -422,6 +466,10 @@ func rollBackMSI(ctx context.Context, mc MSIConfig, cfg Config, dir string, st *
 		m.Notify("Coral update", fmt.Sprintf("Coral was removed but Coral %s wasn't installed again. To install it, %s", cfg.Installed, releaseHint(cfg.Installed, rbRec)))
 		res.RestartFailed = true
 		return done(ResultFailed, "rollback_install_"+codeOrErr(code, err), "restart_failed")
+	}
+	// The previous version is back in its own folder, which need not be the one the new version was in (#321): it is found again the same way.
+	if dir, err := m.Install(); err == nil && m.Unsupported(dir) == "" {
+		install = dir
 	}
 	if err := m.Start(ctx, install); err != nil {
 		res.RestartFailed = true

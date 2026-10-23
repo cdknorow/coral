@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"github.com/stretchr/testify/assert"
 	"github.com/subgentic/coral/internal/hooks"
 	"github.com/subgentic/coral/internal/testguard"
 	"io"
@@ -166,4 +167,29 @@ func TestAgentSearchQueryAfterDoubleDash(t *testing.T) {
 	if !strings.Contains(reqs, "--help flag") && !strings.Contains(reqs, "--help+flag") && !strings.Contains(reqs, "--help%20flag") {
 		t.Fatalf("query not sent: %q", reqs)
 	}
+}
+
+// Each task page lists its real options, and an artifact page is about its own operation (#282 rows 4, 7, 8).
+func TestAgentHelpListsRealOptions(t *testing.T) {
+	srv, _ := failingServer(t)
+	_, out, _ := runAgent(t, srv.URL, "task", "edit", "--help")
+	for _, want := range []string{"--title", "--body", "--priority", "--blocked-by"} {
+		assert.Contains(t, out, want)
+	}
+	_, out, _ = runAgent(t, srv.URL, "task", "complete", "--help")
+	for _, want := range []string{"--message", "--outcome", "--artifacts", "--candidate-revision"} {
+		assert.Contains(t, out, want)
+	}
+	_, out, _ = runAgent(t, srv.URL, "task", "list", "--help")
+	assert.Contains(t, out, "[--json]")
+	assert.Contains(t, out, "your tasks")
+	_, out, _ = runAgent(t, srv.URL, "task", "current", "--help")
+	assert.Contains(t, out, "[--json]")
+	_, out, _ = runAgent(t, srv.URL, "artifact", "download", "--help")
+	assert.Contains(t, out, "artifact download")
+	assert.NotContains(t, out, "artifact upload")
+	assert.NotContains(t, out, "<<'EOF'")
+	_, out, _ = runAgent(t, srv.URL, "artifact", "upload", "--help")
+	assert.NotContains(t, out, "artifact download")
+	assert.Contains(t, out, "Bash")
 }

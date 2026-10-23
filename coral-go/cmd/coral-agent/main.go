@@ -13,11 +13,14 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"github.com/subgentic/coral/internal/cliauth"
 	"github.com/subgentic/coral/internal/clierr"
+	"github.com/subgentic/coral/internal/clihelp"
 	"github.com/subgentic/coral/internal/clitext"
+	"github.com/subgentic/coral/internal/config"
 	"github.com/subgentic/coral/internal/taskcli"
 	"io"
 	"net/http"
@@ -39,7 +42,10 @@ func printUsage() {
 	fmt.Println(agentUsageText)
 }
 
-const agentUsageText = `coral-agent - launch Coral agents and work with your own tasks
+// agentUsageText is the usage with this platform's default port filled in (8450 on Windows, 8420 elsewhere).
+var agentUsageText = strings.ReplaceAll(agentUsageTextTemplate, "{{PORT}}", strconv.Itoa(config.DefaultPort))
+
+const agentUsageTextTemplate = `coral-agent - launch Coral agents and work with your own tasks
 
 Commands:
   bind-codex <coral-id> <thread-id> Link a verified native Codex transcript
@@ -52,11 +58,11 @@ Commands:
                                  directory) with your default settings;
                                  --board joins it to that board (its id)
   task add "title" [--body "details"] [--priority P]  Create a task
-  task list [--json]             List all tasks (--json: a JSON array)
+  task list [--json]             List your tasks (--json: a JSON array)
   task detail <id> [--json]      Read requirements, dependencies and results (always JSON)
   task claim [id]                Claim a named ready task or next ready work
-  task edit <id>                 Edit unstarted task text/dependencies
-  task current                   Show your current in-progress task
+  task edit <id> [options]       Edit unstarted task text/dependencies (task edit --help)
+  task current [--json]          Show your current in-progress task
   task complete <id> [--message "note"]  Complete with outcome/evidence
   task cancel <id> [--message "reason"]  Cancel a task
   history search <query> [flags] Search conversation history (post-compaction)
@@ -72,7 +78,8 @@ Output:
               (Downloaded artifacts are always byte for byte.)
 
 Environment:
-  CORAL_URL   Server URL (default http://localhost:8420)
+  CORAL_URL   Coral's address (default: the one the running Coral recorded,
+              else http://localhost:{{PORT}}, this platform's port)
   CORAL_PORT  Server port (overrides CORAL_URL)
 
 Help topics:  coral-agent help windows | exit-codes | json | timeouts` + "\n\n" + clierr.Table
@@ -133,8 +140,7 @@ func main() {
 	case "--help", "-h", "help":
 		printUsage()
 	default:
-		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", os.Args[1])
-		printUsage()
+		fmt.Fprintf(os.Stderr, "Unknown command: %s. Run coral-agent help for the commands.\n", os.Args[1])
 		os.Exit(2) // usage
 	}
 }
@@ -142,15 +148,9 @@ func main() {
 const artifactUsageText = `Usage: coral-agent artifact upload <file> [--name NAME] [--media-type TYPE] [--new-version-of <link>]
        coral-agent artifact download <coral://artifacts/digest> [--output FILE] [--force]
        coral-agent artifact reply <coral://artifacts/digest> <comment-id> <text | ->
-       (options may stand before or after the link; --force replaces an existing
-       --output file)
+Run coral-agent artifact upload --help, artifact download --help or artifact reply --help for one of them.`
 
-reply answers a comment the Operator sent you (the message names this exact command with the
-link and the comment id filled in): it posts your text into that comment's thread, as you, and
-only into a thread you were asked into. Give the text as one argument, or - to read it from
-standard input (for several lines or quotes). At most 5 replies of 8 KiB each per thread; a
-reply is checked for secrets before it is kept. A refusal (not asked, the thread ended, too many
-replies, the board paused or asleep) prints Coral's reason and exits non-zero.
+const artifactUploadUsageText = `Usage: coral-agent artifact upload <file> [--name NAME] [--media-type TYPE] [--new-version-of <link>]
 
 --new-version-of adds the file as a new version of an artifact this agent's board uploaded (its
 coral://artifacts/<digest> link, or a series link coral://artifacts/series/<id>): the reply carries
@@ -160,9 +160,40 @@ bytes as an older version are refused (non-zero), so nobody takes it for the new
 Upload long reports, logs, diffs and evidence instead of pasting them into posts.
 Link the returned coral://artifacts/<digest> in a short board post: a one-line
 summary, then numbered points, one per line; answer numbered posts by number.
-Use @Name; put SHAs, branches and paths in backticks. For short posts with backticks,
-use coral-board post - <<'EOF' (body and closing EOF on separate lines).
+Use @Name; put SHAs, branches and paths in backticks. To post a longer text from
+Windows use coral-board post --file <path> (coral-board help windows); in Bash,
+coral-board post - <<'EOF' (body and closing EOF on separate lines).
 Never put backticks or $( ) inside a double-quoted post argument.`
+
+const artifactReplyUsageText = `Usage: coral-agent artifact reply <coral://artifacts/digest> <comment-id> <text | ->
+
+reply answers a comment the Operator sent you (the message names this exact command with the
+link and the comment id filled in): it posts your text into that comment's thread, as you, and
+only into a thread you were asked into. Give the text as one argument, or - to read it from
+standard input (for several lines or quotes). At most 5 replies of 8 KiB each per thread; a
+reply is checked for secrets before it is kept. A refusal (not asked, the thread ended, too many
+replies, the board paused or asleep) prints Coral's reason and exits non-zero. The options may
+stand before or after the link.`
+
+const artifactDownloadUsageText = `Usage: coral-agent artifact download <coral://artifacts/digest> [--output FILE] [--force]
+
+Downloads the artifact, checks its SHA-256 and prints the local path. The options
+may stand before or after the link; --force replaces an existing --output file.`
+
+// artifactUsage is the usage of one artifact operation, or of all of them when rest names none.
+func artifactUsage(rest []string) string {
+	if len(rest) > 0 {
+		switch rest[0] {
+		case "upload":
+			return artifactUploadUsageText
+		case "download":
+			return artifactDownloadUsageText
+		case "reply":
+			return artifactReplyUsageText
+		}
+	}
+	return artifactUsageText
+}
 
 func cmdArtifact(args []string) {
 	if len(args) >= 1 && args[0] == "reply" {
@@ -175,10 +206,14 @@ func cmdArtifact(args []string) {
 			if err == nil {
 				err = fmt.Errorf("download needs exactly one artifact link")
 			}
-			fmt.Fprintf(os.Stderr, "Error: %v\n%s\n", err, artifactUsageText)
+			fmt.Fprintf(os.Stderr, "Error: %v\n%s\n", err, artifactDownloadUsageText)
 			os.Exit(2)
 		}
 		path, err := downloadArtifactOpts(serverURL, opts.Positional[0], opts.Values["output"], opts.Bools["force"])
+		var ue usageError
+		if errors.As(err, &ue) {
+			failUsage(ue.msg, "artifact", args)
+		}
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			clierr.Exit1()
@@ -195,7 +230,7 @@ func cmdArtifact(args []string) {
 		if err == nil {
 			err = fmt.Errorf("upload needs exactly one file")
 		}
-		fmt.Fprintf(os.Stderr, "Error: %v\n%s\n", err, artifactUsageText)
+		fmt.Fprintf(os.Stderr, "Error: %v\n%s\n", err, artifactUploadUsageText)
 		os.Exit(2)
 	}
 	file := opts.Positional[0]
@@ -261,7 +296,7 @@ func uploadArtifact(serverURL, file, name, mediaType, sid, newVersionOf string, 
 			}
 			return fmt.Errorf("artifact upload refused (rate limited): %s", reason)
 		}
-		return fmt.Errorf("artifact upload failed (HTTP %d): %s", resp.StatusCode, reason)
+		return fmt.Errorf("artifact upload failed. Coral says: %s (HTTP %d)", reason, resp.StatusCode)
 	}
 	// A 2xx with no coral:// id is not a stored artifact: never print it as a link (#4004 (b):
 	// defends against a success-shaped refusal, so the exit code is the only thing that can be wrong).
@@ -270,7 +305,7 @@ func uploadArtifact(serverURL, file, name, mediaType, sid, newVersionOf string, 
 		if reason == "" {
 			reason = resp.Status
 		}
-		return fmt.Errorf("artifact upload returned no artifact id (HTTP %d): %s", resp.StatusCode, reason)
+		return fmt.Errorf("artifact upload returned no artifact id. Coral says: %s (HTTP %d)", reason, resp.StatusCode)
 	}
 	if reply.Stripped {
 		fmt.Fprintln(stderr, "Note: Coral removed this image's metadata (camera, location) before storing it, so its id is the SHA-256 of the stored bytes, not of your file.")
@@ -284,13 +319,17 @@ func taskUsageText() string {
 
 Subcommands:
   add "title" [--body "details"] [--priority P]
-  list
+  list [--json]                  List your tasks (--json: a JSON array)
   claim [id]                     Claim a specific ready task or next ready work
-  current                        Show your current in-progress task
-  detail <id>                    Read instructions, prerequisites and artifacts
-  edit <id> [options]             Edit unstarted task text/dependencies
+  current [--json]               Show your current in-progress task
+                                 (--json: the task as JSON, null when there is none)
+  detail <id> [--json]           Read instructions, prerequisites and artifacts
+  edit <id> [--title TEXT] [--body TEXT] [--priority P] [--blocked-by JSON]
+                                 Edit an unstarted task (any of the options)
   publish <id>                   Publish a draft
-  complete <id> [options]         Complete with outcome/evidence
+  complete <id> [--message "note"] [--outcome success|failed]
+       [--artifacts manifest.json] [--candidate-revision REVISION]
+                                 Complete with outcome/evidence
   cancel <id> [--message "reason"]
 
 Add options:
@@ -368,7 +407,7 @@ func cmdLaunch(args []string) {
 		}
 	}
 
-	fs := flag.NewFlagSet("launch", flag.ExitOnError)
+	fs := flag.NewFlagSet("launch", flag.ContinueOnError)
 	agentType := fs.String("type", "", "Agent type: claude, codex, agy, pi or terminal (default: your Coral setting)")
 	name := fs.String("name", "", "Display name")
 	model := fs.String("model", "", "Model (default: your Coral setting for the agent type)")
@@ -378,7 +417,7 @@ func cmdLaunch(args []string) {
 		fmt.Fprintln(os.Stderr, `Usage: coral-agent launch [dir] [--type T] [--name N] [--model M] [--prompt P] [--board ID]`)
 		fs.PrintDefaults()
 	}
-	fs.Parse(flagArgs)
+	clihelp.ParseFlags(fs, flagArgs, func() string { return commandUsage(os.Args[1], os.Args[2:]) })
 
 	if dir == "" {
 		dir = "."
@@ -418,7 +457,7 @@ func cmdLaunch(args []string) {
 			msg, _ = result["error"].(string)
 		}
 		if msg == "" {
-			msg = string(data)
+			msg = clierr.Describe(nil, status, data)
 		}
 		fmt.Fprintf(os.Stderr, "Error launching agent: %s\n", msg)
 		clierr.Exit1()
@@ -469,7 +508,7 @@ func cmdTaskAdd(args []string) {
 		}
 	}
 
-	fs := flag.NewFlagSet("task-add", flag.ExitOnError)
+	fs := flag.NewFlagSet("task-add", flag.ContinueOnError)
 	priority := fs.String("priority", "medium", "Task priority (critical, high, medium, low)")
 	taskBody := fs.String("body", "", "Detailed description/instructions")
 	blockedBy := fs.String("blocked-by", "", "Dependency IDs or rule objects as JSON")
@@ -480,7 +519,7 @@ func cmdTaskAdd(args []string) {
 	parent := fs.Int64("parent", 0, "Parent task ID")
 	retry := fs.Int64("retry-of", 0, "Finished task ID to retry")
 	completionGates := fs.String("completion-gates", "", "JSON completion gates (experimental and disabled by default)")
-	fs.Parse(reordered)
+	clihelp.ParseFlags(fs, reordered, func() string { return commandUsage(os.Args[1], os.Args[2:]) })
 
 	if title == "" {
 		fmt.Fprintln(os.Stderr, `Usage: coral-agent task add "title" [--body "details"] [--priority P]`)
@@ -526,7 +565,7 @@ func cmdTaskAdd(args []string) {
 		clierr.Exit1()
 	}
 	if status != http.StatusCreated && status != http.StatusOK {
-		fmt.Fprintf(os.Stderr, "Error creating task: %s\n", string(data))
+		fmt.Fprintf(os.Stderr, "Error creating task: %s\n", clierr.Describe(nil, status, data))
 		clierr.Exit1()
 	}
 
@@ -542,7 +581,7 @@ func cmdTaskList(asJSON bool) {
 		clierr.Exit1()
 	}
 	if statusCode != http.StatusOK {
-		fmt.Fprintf(os.Stderr, "Error listing tasks: %s\n", string(data))
+		fmt.Fprintf(os.Stderr, "Error listing tasks: %s\n", clierr.Describe(nil, statusCode, data))
 		clierr.Exit1()
 	}
 
@@ -597,7 +636,7 @@ func cmdTaskClaim(args ...string) {
 		return
 	}
 	if status != http.StatusOK {
-		fmt.Fprintf(os.Stderr, "Error claiming task: %s\n", string(data))
+		fmt.Fprintf(os.Stderr, "Error claiming task: %s\n", clierr.Describe(nil, status, data))
 		taskcli.PrintBlocked(os.Stderr, data)
 		clierr.Exit1()
 	}
@@ -634,7 +673,7 @@ func cmdTaskCurrent(asJSON bool) {
 		return
 	}
 	if status != http.StatusOK {
-		fmt.Fprintf(os.Stderr, "Error: %s\n", string(data))
+		fmt.Fprintf(os.Stderr, "Error: %s\n", clierr.Describe(nil, status, data))
 		clierr.Exit1()
 	}
 
@@ -675,12 +714,12 @@ func cmdTaskFinish(args []string, verb string) {
 		clierr.Exit1()
 	}
 
-	fs := flag.NewFlagSet("task-"+verb, flag.ExitOnError)
+	fs := flag.NewFlagSet("task-"+verb, flag.ContinueOnError)
 	message := fs.String(flagName, "", flagHelp)
 	outcome := fs.String("outcome", "success", "success or failed")
 	artifactsFile := fs.String("artifacts", "", "JSON artifact manifest")
 	candidateRevision := fs.String("candidate-revision", "", "Exact source/build revision represented by completion evidence")
-	fs.Parse(args[1:])
+	clihelp.ParseFlags(fs, args[1:], func() string { return commandUsage(os.Args[1], os.Args[2:]) })
 
 	body := map[string]any{"session_id": resolveSessionID()}
 	if verb == "complete" {
@@ -712,7 +751,7 @@ func cmdTaskFinish(args []string, verb string) {
 		clierr.Exit1()
 	}
 	if status != http.StatusOK {
-		fmt.Fprintf(os.Stderr, "Error %s task: %s\n", errWord, string(data))
+		fmt.Fprintf(os.Stderr, "Error %s task: %s\n", errWord, clierr.Describe(nil, status, data))
 		clierr.Exit1()
 	}
 
@@ -736,8 +775,7 @@ func printTaskWorkflow(task map[string]any) {
 func positiveTaskID(arg string) int64 {
 	id, err := strconv.ParseInt(arg, 10, 64)
 	if err != nil || id <= 0 {
-		fmt.Fprintln(os.Stderr, "Task ID must be a positive integer")
-		clierr.Exit1()
+		failUsage("Task ID must be a positive integer", "task", os.Args[2:])
 	}
 	return id
 }
@@ -768,12 +806,12 @@ func cmdTaskEdit(args []string) {
 		clierr.Exit1()
 	}
 	id := positiveTaskID(args[0])
-	fs := flag.NewFlagSet("task-edit", flag.ExitOnError)
+	fs := flag.NewFlagSet("task-edit", flag.ContinueOnError)
 	fs.String("title", "", "Task title")
 	fs.String("body", "", "Task details")
 	fs.String("priority", "", "Task priority")
 	fs.String("blocked-by", "", "Dependency JSON")
-	fs.Parse(args[1:])
+	clihelp.ParseFlags(fs, args[1:], func() string { return commandUsage(os.Args[1], os.Args[2:]) })
 	body := map[string]any{"session_id": resolveSessionID()}
 	fs.Visit(func(f *flag.Flag) {
 		if f.Name == "blocked-by" {

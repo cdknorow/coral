@@ -6,6 +6,8 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+
+	"github.com/subgentic/coral/internal/board"
 )
 
 func (h *BoardHandler) isPaused(project string) bool {
@@ -14,36 +16,83 @@ func (h *BoardHandler) isPaused(project string) bool {
 	return h.paused[project]
 }
 
-// SetPaused pauses or resumes a board (the Operator's Pause and Resume, sleep and wake). The
+// SetPaused pauses or resumes a board (the Operator's Pause and Resume, and a wake). The
 // flag is stored with the board, so a restart doesn't un-pause it (#3668, the audit's finding 2).
+// A pause set here is a person's: auto-wake keeps it (#286).
 func (h *BoardHandler) SetPaused(project string, paused bool) {
+	h.pauseMu.Lock()
+	defer h.pauseMu.Unlock()
+	h.setPaused(project, paused, false)
+}
+
+// PauseForSleep pauses a board because its agents sleep (a team sleep, or Coral's restart with agents left sleeping), a pause
+// auto-wake lifts (LiftSleepPause). A board already paused keeps its pause as it is: a person's stays a person's (#286).
+func (h *BoardHandler) PauseForSleep(project string) {
+	h.pauseMu.Lock() // the check and the pause as one step: a person's Pause in between is never stored as sleep's
+	defer h.pauseMu.Unlock()
+	h.mu.RLock()
+	already := h.paused[project]
+	h.mu.RUnlock()
+	if !already {
+		h.setPaused(project, true, true)
+	}
+}
+
+// LiftSleepPause resumes a board whose pause sleep or Coral's restart put there, when auto-wake has woken one of its agents
+// (as the dashboard's Wake resumes the board, #286). A person's Pause is kept. It reports whether it resumed the board.
+func (h *BoardHandler) LiftSleepPause(project string) bool {
+	h.pauseMu.Lock() // the check and the resume as one step: a person's Pause in between is never resumed
+	defer h.pauseMu.Unlock()
+	h.mu.RLock()
+	bySleep := h.paused[project] && h.sleepPaused[project]
+	h.mu.RUnlock()
+	if bySleep {
+		h.setPaused(project, false, false)
+	}
+	return bySleep
+}
+
+// setPaused changes the pause in memory and in the store; the caller holds pauseMu, so the stored row always ends as the maps do.
+func (h *BoardHandler) setPaused(project string, paused, bySleep bool) {
 	h.mu.Lock()
 	if paused {
 		h.paused[project] = true
 	} else {
 		delete(h.paused, project)
 	}
+	if paused && bySleep {
+		h.sleepPaused[project] = true
+	} else {
+		delete(h.sleepPaused, project)
+	}
 	h.mu.Unlock()
 	if h.bs != nil {
-		if err := h.bs.SetBoardPaused(context.Background(), project, paused); err != nil {
+		by := ""
+		if bySleep {
+			by = board.PausedBySleep
+		}
+		if err := h.bs.SetBoardPausedBy(context.Background(), project, paused, by); err != nil {
 			slog.Warn("[board] storing a board's pause", "board", project, "error", err)
 		}
 	}
 }
 
-// LoadPaused restores the boards paused before a restart.
+// LoadPaused restores the boards paused before a restart, and who paused each.
 func (h *BoardHandler) LoadPaused(ctx context.Context) {
 	if h.bs == nil {
 		return
 	}
-	boards, err := h.bs.PausedBoards(ctx)
+	boards, err := h.bs.PausedBoardsBy(ctx)
 	if err != nil {
 		slog.Warn("[board] reading the paused boards", "error", err)
 		return
 	}
 	h.mu.Lock()
-	for _, b := range boards {
+	for b, by := range boards {
 		h.paused[b] = true
+		if by == board.PausedBySleep {
+			h.sleepPaused[b] = true
+		}
 	}
 	h.mu.Unlock()
 }

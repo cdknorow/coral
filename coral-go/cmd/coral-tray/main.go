@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/subgentic/coral/internal/backendchoice"
 	"github.com/subgentic/coral/internal/logsafe"
 	"io"
 	"log"
@@ -66,6 +67,11 @@ func main() {
 	serverChild := flag.Bool("server-child", false, "Run Coral's server for the tray (used internally, #4163)")
 	fromInstaller := flag.Bool(installerLaunchFlag, false, "Started by the installer's Launch Coral: starts nothing when elevated (used internally, #5883)")
 	flag.Parse()
+	// The tray passes --backend on to the server it supervises: a tmux that Coral would not offer here is refused at once, not by a child that then crash-loops (#304).
+	if msg := backendchoice.FlagProblem(runtime.GOOS, *backendFlag); msg != "" {
+		fmt.Fprintf(os.Stderr, "coral-tray: %s\n", msg)
+		os.Exit(2)
+	}
 
 	// Before the tray spawns its background process, which would inherit this elevated token.
 	if installerLaunchRefused(*fromInstaller, processElevated) {
@@ -421,7 +427,7 @@ func runForeground(host string, port int, noBrowser, debugMode bool, backendType
 		}
 		refreshExit := func() {
 			a := runningNow.Load().(agentsNow)
-			it := exitItemsFor(runtime.GOOS, runningBackend.Load().(string), a.count, a.wakes)
+			it := exitItemsWhy(runtime.GOOS, runningBackend.Load().(string), a.count, a.wakes, a.why)
 			mShutdown.SetTitle(it.shutdown)
 			mShutdown.SetTooltip(it.shutTip)
 			mQuit.SetTitle(it.quit)

@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/subgentic/coral/internal/config"
 	"io"
 	"net"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -239,7 +241,7 @@ func TestEndpointFromEnv_PreservesExplicitURLAndSupportsHostPortFallback(t *test
 		{"host and port", "", "127.0.0.1", "8455", "http://127.0.0.1:8455"},
 		{"IPv6 host", "", "::1", "8420", "http://[::1]:8420"},
 		{"wildcard host", "", "0.0.0.0", "8420", "http://127.0.0.1:8420"},
-		{"legacy defaults", "", "", "", "http://localhost:8420"},
+		{"legacy defaults", "", "", "", "http://localhost:" + strconv.Itoa(config.DefaultPort)}, // the platform default: 8450 on Windows, 8420 elsewhere
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -296,7 +298,7 @@ func TestSubprocess_EndpointInitialization(t *testing.T) {
 			coralURL:  "",
 			coralHost: "",
 			coralPort: "",
-			wantURL:   "http://localhost:8420",
+			wantURL:   "http://localhost:" + strconv.Itoa(config.DefaultPort), // no lock file in the (empty) data folder: the platform default
 		},
 	}
 
@@ -305,6 +307,7 @@ func TestSubprocess_EndpointInitialization(t *testing.T) {
 			cmd := exec.Command(os.Args[0], "-test.run=^TestSubprocess_EndpointInitialization$")
 			cmd.Env = append(os.Environ(),
 				"TEST_SUBPROCESS_ENDPOINT=1",
+				"CORAL_DATA_DIR="+t.TempDir(), "CORAL_DIR=", // an empty data folder: the running Coral's lock file is not read
 				"CORAL_URL="+tt.coralURL,
 				"CORAL_HOST="+tt.coralHost,
 				"CORAL_PORT="+tt.coralPort,

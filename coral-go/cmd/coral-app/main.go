@@ -192,15 +192,20 @@ func main() {
 	// Also applies on <body> at DOMContentLoaded as a safety net.
 	log.Println("[WEBVIEW] injecting native app JS (class flags, external link handler)")
 	w.Init(logHintScript(config.ResolveCoralDir(*dataDir)))
+	// documentElement and body can be null where the script runs (a blank first page): each is marked only when it exists, and again at DOMContentLoaded.
 	w.Init(`window.__CORAL_APP__ = true;
-	document.documentElement.classList.add('native-app');
-	if (navigator.platform && navigator.platform.indexOf('Mac') !== -1) document.documentElement.classList.add('native-macos');
-	if (navigator.platform && navigator.platform.indexOf('Win') !== -1) document.documentElement.classList.add('native-windows');
-	document.addEventListener('DOMContentLoaded', function() {
-		document.body.classList.add('native-app');
-		if (navigator.platform && navigator.platform.indexOf('Mac') !== -1) document.body.classList.add('native-macos');
-		if (navigator.platform && navigator.platform.indexOf('Win') !== -1) document.body.classList.add('native-windows');
-	});
+	(function() {
+		var mac = navigator.platform && navigator.platform.indexOf('Mac') !== -1;
+		var win = navigator.platform && navigator.platform.indexOf('Win') !== -1;
+		function mark(el) {
+			if (!el || !el.classList) return;
+			el.classList.add('native-app');
+			if (mac) el.classList.add('native-macos');
+			if (win) el.classList.add('native-windows');
+		}
+		mark(document.documentElement);
+		document.addEventListener('DOMContentLoaded', function() { mark(document.documentElement); mark(document.body); });
+	})();
 
 	// Server health check — detect when the backend crashes
 	(function() {
@@ -270,6 +275,7 @@ func main() {
 
 	// What a link may do in this window (#5094): see linkInterceptScript.
 	w.Init(linkInterceptScript)
+	w.Init(titlebarFollowScript)
 
 	// The native functions are bound on every page the window shows and the Go side is not told the page's origin, so each takes a
 	// per-launch token first and refuses a call without it. Only an init script that runs on the dashboard's origin hands the
@@ -285,6 +291,7 @@ func main() {
 	natives := []apptoken.Native{
 		{Page: "_coralOpenExternal", Native: "__coralNativeOpenExternal"},
 		{Page: "_coralAppSignIn", Native: "__coralNativeAppSignIn"},
+		{Page: "_coralTitlebar", Native: "__coralNativeTitlebar"},
 	}
 
 	// Bind native URL opener — WKWebView doesn't support window.open(),
@@ -301,6 +308,16 @@ func main() {
 			return
 		}
 		log.Printf("[WEBVIEW] opening external URL: %s", loginlink.Redact(raw))
+	})
+
+	// The title bar follows the page's theme: the page reports the colours of --bg-primary and --border (see titlebarFollowScript) and the native side
+	// checks that they are colours before it paints the caption with them.
+	w.Bind("__coralNativeTitlebar", func(token, bg, border string) {
+		if !guard.Allowed(token) {
+			refused("titlebar")
+			return
+		}
+		w.Dispatch(func() { setTitlebarColors(bg, border) })
 	})
 
 	// Bind JS console.log to Go logger in debug mode
@@ -453,3 +470,22 @@ func originOf(raw string) string {
 	}
 	return u.Scheme + "://" + u.Host
 }
+
+// titlebarFollowScript reports the page's theme colours to the native title bar (the page-facing _coralTitlebar exists only on the dashboard's origin): once the page is
+// ready, and again whenever the theme changes (data-theme, a custom theme's inline variables, or the system's mode when the choice is System).
+const titlebarFollowScript = `(function() {
+	var timer = null;
+	function push() {
+		if (typeof window._coralTitlebar !== 'function' || !document.body) return;
+		var cs = getComputedStyle(document.body);
+		window._coralTitlebar(cs.getPropertyValue('--bg-primary').trim(), cs.getPropertyValue('--border').trim());
+	}
+	function later() { clearTimeout(timer); timer = setTimeout(push, 60); }
+	document.addEventListener('DOMContentLoaded', function() {
+		push();
+		var opts = { attributes: true, attributeFilter: ['data-theme', 'style', 'class'] };
+		new MutationObserver(later).observe(document.documentElement, opts);
+		new MutationObserver(later).observe(document.body, opts);
+		try { window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', later); } catch (e) {}
+	});
+})();`
