@@ -73,6 +73,6 @@ registerActions({
     'team-step-back': () => teamDialogs.teamStepMove(-1),
     'team-tab-key': (el, event) => { const to = teamTabKey(event); if (to) { event.preventDefault(); if (to === 'members') teamDialogs._refreshTeamSummaries(); showTeamStep(to, { focus: true }); } },
     'team-template-pick': el => { const n = textOf(el.dataset.name, 200); if (n) window._loadTeamTemplateFromSelect(n); },
-    'team-template-filter': el => _renderTeamTemplateSelector(textOf(el.value, 200)),
+    'team-template-filter': el => _renderTeamTemplateSelector(textOf(el.value, 200) || ''), // textOf('') is null: an emptied search box lists every template again (#6411)
     'team-template-key': (el, event) => teamTemplateKey(event),
 });

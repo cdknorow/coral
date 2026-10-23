@@ -6,7 +6,9 @@
 //   positive     a tabindex above 0 (it jumps the reading order)
 // dialogCheck() does the same for a dialog: focus moves in when it opens, Tab and Shift+Tab stay inside it, Escape closes it and focus goes back to what opened it.
 // ALLOW_KEYBOARD below is the reviewed list of exceptions: [scene pattern, control pattern, kind, why]. Empty: a control a keyboard cannot reach or see is fixed, not listed.
-const ALLOW_KEYBOARD = [];
+const ALLOW_KEYBOARD = [
+    ['^launch: team', 'team-template-opt', 'unreachable', 'the options of the template combobox are chosen with the arrow keys and Enter from its search box (aria-activedescendant), not with Tab: launch_team_steps_browser pins that (#6411)'],
+];
 const allowedKb = (scene, kind, c) => ALLOW_KEYBOARD.some(([s, p, k]) => new RegExp(s).test(scene) && new RegExp(p).test(c) && new RegExp(k).test(kind));
 
 async function press(Input, key, { shift = false, ctrl = false } = {}) {
