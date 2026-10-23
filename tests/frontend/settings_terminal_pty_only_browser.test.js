@@ -24,6 +24,7 @@ const WITH_WARNING_BUDGET = 64; // 60, and the tools folder warning's label, lin
         await waitFor(`document.querySelectorAll('#settings-modal .settings-info-btn').length > 5`, 'the (i) buttons', 8000);
         await ev(`document.getElementById('settings-tab-terminal').click(); true`);
         await waitFor(`(() => { const p = document.querySelector('#settings-modal .settings-pane:not([hidden])'); return !!p && p.dataset.group === 'terminal' && !document.getElementById('settings-terminal-backend').hidden; })()`, 'the Terminal group, loaded', 8000);
+        await ev(`(() => { const r = document.getElementById('settings-tools-folder-row'); if (r) r.hidden = true; return true; })()`); // the normal state has no warning row: a Windows runner shows it for real (its tools folder is a temp folder), and the 64-word state with it is checked on its own
         const seen = await ev(`(() => { const pane = document.querySelector('#settings-modal .settings-pane:not([hidden])'); const out = [];
             const shown = e => { for (let p = e; p; p = p.parentElement) { const s = getComputedStyle(p); if (s.display === 'none' || s.visibility === 'hidden' || p.hidden) return false; } return true; };
             const w = document.createTreeWalker(pane, NodeFilter.SHOW_TEXT);
