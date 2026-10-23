@@ -28,7 +28,7 @@ const BASE = require('./test_base').BASE;
             await ev(`window.selectLiveSession('hq', 'claude', 'hq-id', 'local'); true`);
             await waitFor(`!!document.getElementById('composer-queued') && !!window.__qaState.liveSessions.find(s => s.session_id === 'hq-id')`, 'the composer and the agent', 8000);
             // a send as the composer makes it: remembered, waiting for its answer (awaitSocketAccept), then answered "held"
-            const send = async (id, text) => { await ev(`Promise.all([import(${S} + 'held_sends.js'), import(${S} + 'terminal_gone.js')]).then(([h, g]) => { h.rememberSend('hq-id', ${id}, ${JSON.stringify(text)}); g.awaitSocketAccept({ session_id: 'hq-id' }, [${id}]); return true; })`); await emit('coral:terminal-input-held', { sessionId: 'hq-id', id }); };
+            const send = async (id, text) => { await ev(`Promise.all([import(${S} + 'held_sends.js'), import(${S} + 'terminal_gone.js')]).then(([h, g]) => { h.rememberSend('hq-id', ${id}, ${JSON.stringify(text)}); g.awaitSocketAccept({ session_id: 'hq-id' }, [${id}]); return true; })`); await emit('coral:terminal-input-held', { sessionId: 'hq-id', id, heldId: 100 + id }); }; // the server's own id for the message is 100 + the composer's frame id here
             await ev(`document.getElementById('command-input').value = ''; true`);
 
             console.log(`${tag}: a held message is queued under the box`);
@@ -59,7 +59,7 @@ const BASE = require('./test_base').BASE;
             await sleep(200); // sleep-ok: nothing to wait for: an error that must NOT appear
             l = await line();
             const calls = await ev(`window.__calls`);
-            check(`${tag}: Cancel asks the server to drop it (DELETE .../held/9), the text comes back into the box, and the refusal that follows is not an error`, JSON.stringify(calls) === JSON.stringify([['DELETE', '/api/sessions/live/hq/held/9']]) && l.box === 'Please cancel me' && !l.shown && l.err === '', JSON.stringify([calls, l]));
+            check(`${tag}: Cancel asks the server to drop it (DELETE .../held/<the server's id>), the text comes back into the box, and the refusal that follows is not an error`, JSON.stringify(calls) === JSON.stringify([['DELETE', '/api/sessions/live/hq/held/109']]) && l.box === 'Please cancel me' && !l.shown && l.err === '', JSON.stringify([calls, l]));
 
             console.log(`${tag}: a cancel that fails, and the live row's own list`);
             await ev(`document.getElementById('command-input').value = ''; window.__cancelStatus = 500; true`);
@@ -73,6 +73,15 @@ const BASE = require('./test_base').BASE;
             await rowWith([{ id: 21, text: 'from the row' }]);
             l = await line();
             check(`${tag}: the live row's held_messages draw the same line (a reload or a second window)`, l.shown && l.texts.join() === 'Queued: “from the row”. Sends after you answer the question above.', JSON.stringify(l));
+            await ev(`window.__cancelStatus = 200; true`);
+            await rowWith([{ id: 21, text: 'from the row', sending: true }]);
+            const sending = await ev(`(() => { const b = document.getElementById('composer-queued'); return { text: b.textContent, cancels: b.querySelectorAll('button').length }; })()`);
+            check(`${tag}: a message the server is typing says so and has no Cancel`, /^Sending: “from the row”/.test(sending.text) && !/Sends after/.test(sending.text) && sending.cancels === 0, JSON.stringify(sending));
+            await rowWith([{ id: 22, text: 'gone already', sending: false }]);
+            await ev(`window.__cancelStatus = 404; document.getElementById('command-input').value = ''; document.querySelector('#composer-queued .composer-queued-cancel').click(); true`);
+            await waitFor(`document.getElementById('composer-queued').hidden`, 'the line to go after a 404', 4000);
+            l = await line();
+            check(`${tag}: a Cancel the server answers "not held" (typed already) drops the line and gives no text back`, !l.shown && l.box === '', JSON.stringify(l));
             await rowWith([]);
             l = await line();
             check(`${tag}: and an empty list from the row clears it`, !l.shown && l.texts.length === 0, JSON.stringify(l));

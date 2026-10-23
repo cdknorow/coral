@@ -202,8 +202,8 @@ export function refuseSocketSends(sessionId, id) {
 // A message held behind the agent's question (#6610): the server types it once no box is left, and answers by this id then. It waits as long as the server holds it (30 minutes), not the usual seconds.
 const HELD_ACK_TIMEOUT_MS = 31 * 60 * 1000;
 document.addEventListener('coral:terminal-input-held', e => {
-    const { sessionId, id, note } = e.detail || {};
-    noteHeld(sessionId, id); // the line under the composer, with Cancel (#6611)
+    const { sessionId, id, note, heldId } = e.detail || {};
+    noteHeld(sessionId, id, undefined, heldId); // the line under the composer, with Cancel (#6611)
     for (const p of [..._socketSends]) {
         if ((sessionId && p.sid !== sessionId) || !p.ids.has(id)) continue;
         clearTimeout(p.timer);

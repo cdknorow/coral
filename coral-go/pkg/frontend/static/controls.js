@@ -193,7 +193,7 @@ export async function sendCommand({ nudge = false } = {}) {
                 clearAttachments(targetSession);
                 const heldKey = sessionKey(targetSession);
                 if (heldKey) saveSessionDraft(heldKey, "");
-                if (result.held_id !== undefined && result.held_id !== null) noteHeld(sentSessionId, result.held_id, command); // the line under the box, with Cancel
+                if (result.held_id !== undefined && result.held_id !== null) noteHeld(sentSessionId, undefined, command, result.held_id); // the line under the box, with Cancel
                 showToast(result.note || "Held until the agent's question is answered.");
             } else if (result.error) {
                 notSent();
