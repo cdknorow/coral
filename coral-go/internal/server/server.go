@@ -310,6 +310,14 @@ func (s *Server) SetIndexer(idx routes.Indexer) {
 	if s.systemHandler != nil {
 		s.systemHandler.SetIndexer(idx)
 	}
+	if k, ok := idx.(routes.IndexKicker); ok {
+		if s.sessHandler != nil {
+			s.sessHandler.SetIndexKick(k.Kick)
+		}
+		if s.historyHandler != nil {
+			s.historyHandler.SetIndexKick(k.Kick)
+		}
+	}
 }
 
 // SetWorkflowRunner injects the workflow runner into the workflow handler for triggering/killing.

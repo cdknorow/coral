@@ -18,6 +18,15 @@ type Indexer interface {
 	RunOnce(ctx context.Context) error
 }
 
+// IndexKicker is an indexer that can be asked for a pass soon (background.SessionIndexer).
+type IndexKicker interface{ Kick() }
+
+// SetIndexKick sets what a finished turn asks of the indexer (#6198).
+func (h *SessionsHandler) SetIndexKick(f func()) { h.indexKick = f }
+
+// SetIndexKick sets what an empty History asks of the indexer (#6198).
+func (h *HistoryHandler) SetIndexKick(f func()) { h.indexKick = f }
+
 // SystemHandler handles settings, tags, and filesystem endpoints.
 type SystemHandler struct {
 	// models lists each agent CLI's models (#4065).

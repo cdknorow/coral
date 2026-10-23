@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/subgentic/coral/internal/agent"
@@ -22,7 +23,19 @@ type SessionIndexer struct {
 	interval     time.Duration
 	startupDelay time.Duration
 	logger       *slog.Logger
+
+	// runMu serializes passes: the timer's, a manual refresh's and a kicked one (they read and write the same rows).
+	runMu sync.Mutex
+	// kick asks for a pass soon (Kick); one pending request is enough.
+	kick chan struct{}
 }
+
+// kickDelay is how long a kicked pass waits for more to arrive (a reply and the file write behind it), and kickGap is the least time between the start of one kicked pass and the next, so a busy agent
+// never has the indexer walking the history folders more than every kickGap. Variables so a test can shorten them.
+var (
+	kickDelay = 3 * time.Second
+	kickGap   = 15 * time.Second
+)
 
 // NewSessionIndexer creates a new SessionIndexer.
 func NewSessionIndexer(sessionStore *store.SessionStore, scanners []agent.HistoryScanner, interval, startupDelay time.Duration) *SessionIndexer {
@@ -32,6 +45,16 @@ func NewSessionIndexer(sessionStore *store.SessionStore, scanners []agent.Histor
 		interval:     interval,
 		startupDelay: startupDelay,
 		logger:       slog.Default().With("service", "session_indexer"),
+		kick:         make(chan struct{}, 1),
+	}
+}
+
+// Kick asks for an index pass within a few seconds instead of at the next interval (#6198): a new conversation's transcript is written as it is replied to, and was listed in History only at the next
+// pass, up to the whole interval later. Calls are cheap and coalesce; a pass is never started more often than every kickGap.
+func (idx *SessionIndexer) Kick() {
+	select {
+	case idx.kick <- struct{}{}:
+	default: // one is already waiting
 	}
 }
 
@@ -58,6 +81,7 @@ func (idx *SessionIndexer) Run(ctx context.Context) error {
 	if err := idx.RunOnce(ctx); err != nil {
 		idx.logger.Error("indexer pass failed", "error", err)
 	}
+	lastPass := time.Now()
 
 	for {
 		select {
@@ -67,6 +91,25 @@ func (idx *SessionIndexer) Run(ctx context.Context) error {
 			if err := idx.RunOnce(ctx); err != nil {
 				idx.logger.Error("indexer pass failed", "error", err)
 			}
+			lastPass = time.Now()
+		case <-idx.kick:
+			wait := kickDelay
+			if left := kickGap - time.Since(lastPass); left > wait {
+				wait = left
+			}
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(wait):
+			}
+			select { // a kick that came while waiting is this pass's
+			case <-idx.kick:
+			default:
+			}
+			if err := idx.RunOnce(ctx); err != nil {
+				idx.logger.Error("indexer pass failed", "error", err)
+			}
+			lastPass = time.Now()
 		}
 	}
 }
@@ -76,6 +119,8 @@ const indexerFTSBatch = 100
 
 // RunOnce performs a single indexing pass over all registered scanners.
 func (idx *SessionIndexer) RunOnce(ctx context.Context) error {
+	idx.runMu.Lock()
+	defer idx.runMu.Unlock()
 	started := time.Now()
 	knownMtimes, err := idx.store.GetHistoryMtimes(ctx)
 	if err != nil {
