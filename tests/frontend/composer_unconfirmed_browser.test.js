@@ -4,7 +4,8 @@
 //   - now its bubble stays, labelled "Sent, but Coral can't confirm the agent received it: its hooks aren't running", the box stays
 //     empty, the saved draft is cleared, the reason is under the box, the live region says the note, and there is no "Sent" toast;
 //   - the same over the terminal socket (a composer_send refused with not_sent false), where a refusal with not_sent true still puts
-//     the text back, and an ack is still Sent.
+//     the text back, and an ack is still Sent;
+//   - an unconfirmed Coral panel request, a bubble of its own kind, carries the same note.
 // The agent and its send route are mocked in the page (agent_view_harness.js); the terminal socket is a fake one opened for the
 // agent on screen. Drives Chrome over CDP.
 const assert = require('node:assert/strict');
@@ -107,6 +108,15 @@ const HOLD = `(() => {
         await reply({ type: 'terminal_input_ack' });
         await waitFor(`document.querySelectorAll('#live-history-messages .pending-sent .chat-bubble').length === 1`, 'the Sent bubble');
         assert.deepEqual(await sentToasts(), ['Sent: all good']);
+
+        console.log('5. An unconfirmed Coral panel request (its own bubble kind) is labelled with the note too, never the label function');
+        await ev(`window.__frames.length = 0; true`);
+        await type('[Coral UI panel request] open the changes panel');
+        await ev(`window.sendCommand(); true`);
+        await waitFor(`window.__frames.some(f => JSON.parse(f).type === 'composer_send')`, 'the frame');
+        await reply({ type: 'terminal_input_failed', ...GONE });
+        await waitFor(`document.querySelectorAll('#live-history-messages .pending-unconfirmed .chat-system.pending').length === 1`, 'the unconfirmed Coral bubble');
+        assert.equal(await ev(`document.querySelector('#live-history-messages .pending-unconfirmed .chat-system.pending .pending-label').textContent`), NOTE);
         console.log('\nPASS composer unconfirmed: a message that may have arrived keeps its bubble and is not put back in the box');
     } finally { await client.close(); }
 })().catch(e => { console.error(e); process.exitCode = 1; });

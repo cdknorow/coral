@@ -373,9 +373,10 @@ function syncPendingGroup(container, cls, items, label) { // label: the group's 
         const coral = /^\[Coral UI panel request\b/i.test(normalizeNudgeText(p.text));
         const lead = splitSharedImages(unwrapPastedContent(p.text));
         const summary = coralNoticeSummary(normalizeNudgeText(p.text));
+        const labelHtml = escapeHtml(typeof label === "function" ? label(p) : label); // the group's words, or this message's (unconfirmed)
         const el = coral
-            ? makeBubble("chat-system chat-system-general pending", `<span class="material-icons" aria-hidden="true">notifications</span><span class="chat-system-label">Coral</span><span class="chat-system-text" title="${escapeHtml(summary)}">${escapeHtml(summary)}</span><span class="pending-label">${label}</span>`)
-            : makeBubble("chat-bubble human pending", `<div class="message-text">${renderMarkdown(lead.rest, CHAT_MARKDOWN, 'chat')}</div><div class="pending-images"></div><div class="pending-label">${escapeHtml(typeof label === "function" ? label(p) : label)}</div>`);
+            ? makeBubble("chat-system chat-system-general pending", `<span class="material-icons" aria-hidden="true">notifications</span><span class="chat-system-label">Coral</span><span class="chat-system-text" title="${escapeHtml(summary)}">${escapeHtml(summary)}</span><span class="pending-label">${labelHtml}</span>`)
+            : makeBubble("chat-bubble human pending", `<div class="message-text">${renderMarkdown(lead.rest, CHAT_MARKDOWN, 'chat')}</div><div class="pending-images"></div><div class="pending-label">${labelHtml}</div>`);
         el.dataset.pendingId = String(p.id);
         // Images pasted in the dashboard lead the text as links and a download hint for the agent (#5284): the person sees the same thumbnail chips the sent message will have, never the links (#6199).
         if (!coral && lead.images.length) {
