@@ -263,9 +263,10 @@ export function serverGroupHeaderHtml(e, count, collapsed, detailsOpen = false) 
         + ` title="${escHtml(`${e.label || e.id}: ${m.label}`)}"`
         + ` aria-label="${escHtml(`Server ${e.label || e.id}: ${m.label}, ${count} agents`)}">`
         + SERVER_ICON + `<span class="server-group-name">${escHtml(name)}</span>`
+        + `<span class="session-group-count">${count}</span>`
         + (off ? `<span class="server-group-state">${escHtml(m.label.toLowerCase())}</span>` : '')
         + ((n => n ? `<span class="server-update-marker server-update-${n.level}">${n.level === 'required' ? 'Update required' : 'Update'}</span>` : '')(normServer(e.id) === LOCAL_SERVER ? null : updateNotice(e)))
-        + `<span class="session-group-count">${count}</span></button>`
+        + `</button>`
         + `<details class="server-group-more sidebar-kebab-wrapper group-kebab" data-server-details="${escHtml(e.id)}"${detailsOpen ? ' open' : ''}>`
         + `<summary class="server-group-more-btn sidebar-kebab-btn group-kebab-btn" aria-label="${escHtml(`Details for ${e.label || e.id}`)}" title="${escHtml(serverHoverText(e.id))}">⋮</summary>`
         + `<div class="server-switcher-panel">${serverLaunchActionsHtml(e)}${serverDetailsHtml(e)}</div></details>`

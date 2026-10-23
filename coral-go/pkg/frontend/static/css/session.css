@@ -2104,15 +2104,15 @@
 }
 .server-group-toggle:hover { background: var(--bg-hover); }
 .server-group-icon { flex: none; color: var(--text-primary); }
-/* The name keeps room for 8 characters and shrinks last (flex-shrink .01 against the marker's 100); the Update marker is what shrinks first (at 200% text "workstation" was "w..." beside Update required, #4247). */
-.server-group-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: min(8ch, 100%); flex: 0 0.01 auto; }
-.server-group-toggle > .server-update-marker { flex: 0 100 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The name is only as wide as its text (no minimum width: min(8ch) padded "Local" and left a gap before the count, #6241) and shrinks last (flex-shrink 1 against the marker's 10000: the marker gives up all its room first, then the name takes the rest, so the count after it is never pushed out, #6241; a factor under 1 left a long name at full width); the Update marker is what shrinks first (at 200% text "workstation" was "w..." beside Update required, #4247). */
+.server-group-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 0 1 auto; }
+.server-group-toggle > .server-update-marker { flex: 0 10000 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .server-group-state { color: var(--text-secondary); font-weight: 400; font-style: italic; white-space: nowrap; }
 .server-group-header.is-down .server-group-icon,
 .server-group-header.is-down .server-group-name { opacity: 0.5; }
 /* A folder header is the button that collapses its group; a team header opens the team, and its chevron (#5989) is the one control that collapses. */
 .session-group-header[role="button"]:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: var(--radius-md); }
-.server-group-toggle .session-group-count { margin-left: auto; }
+.server-group-toggle .session-group-count { flex: none; } /* right after the name, as in the team row (the Update marker and the name shrink before it); the row's right edge keeps only the menu */
 .server-group-more > summary.sidebar-kebab-btn { display: block; } /* a <summary> sized and placed as the other headers' kebab buttons */
 /* The machine menu's launch row (#5487): Launch agent first, Launch team, Open folder on the hub's own machine, and Open in Servers as a text link so the row stays one line at about 380 px. */
 .server-launch-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-sm) var(--space-md); margin: 0 0 var(--space-sm); }
