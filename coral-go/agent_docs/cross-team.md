@@ -132,7 +132,7 @@ At the receiving Coral every refusal of a relayed message (no such team, its swi
 | 404 | The target board does not exist (check the name), the `--to` is not an Orchestrator there, or your board is unknown |
 | 409 | The target board has no active Orchestrator |
 | 429 `retry in Ns` | Rate limit: a burst of 3, then 10 per minute, per sender and target board |
-| 403 `artifacts_off` | `--attach` while "Share files with teams on other computers" is off on the named board(s): "Sharing files with other teams is off on "X". Ask the Operator to turn on Share files with teams on other computers in Team settings > Messaging on each (the setting also covers files between teams on this computer). Nothing was sent." |
+| 403 `artifacts_off` | `--attach` while "Share files with teams on other computers" is off on the named board(s): "Sharing files with other teams is off on "X". Ask the Operator to turn on Share files with teams on other computers in Team settings > Messaging (the setting also covers files between teams on this computer). Nothing was sent." |
 | 400 `not_yours` | The attached file is not one an agent of your team uploaded (or doesn't exist) |
 | 400 `attach_too_many` / `bad_attach` | More than 4 attachments, or a link that is not `coral://artifacts/<hex>` |
 | 413 `attach_too_large` / `attach_total_too_large` | Over 8 MiB for one file, or 16 MiB for the send |

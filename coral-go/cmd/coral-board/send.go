@@ -78,7 +78,7 @@ func runSend(args []string, id sendIdentity, out io.Writer) error {
 	var message string
 	if file != "" {
 		if len(msgParts) > 0 {
-			return fmt.Errorf("--file can't be combined with message text")
+			return usageError("--file can't be combined with message text")
 		}
 		text, err := readFileText(file, "message")
 		if err != nil {
@@ -99,25 +99,25 @@ func runSend(args []string, id sendIdentity, out io.Writer) error {
 	}
 	if address != "" {
 		if target != "" || to != "" {
-			return fmt.Errorf("--address can't be combined with --board or --to")
+			return usageError("--address can't be combined with --board or --to")
 		}
 		if len(attach) > 4 {
-			return fmt.Errorf("at most 4 --attach per send")
+			return usageError("at most 4 --attach per send")
 		}
 		return runRelaySend(id, address, replyTo, messageID, message, attach, out)
 	}
 	if replyTo != "" || messageID != "" {
-		return fmt.Errorf("--reply-to and --message-id go with --address")
+		return usageError("--reply-to and --message-id go with --address")
 	}
 	if target == "" || message == "" {
 		return usageError(`usage: coral-board send --board <target> [--to <orchestrator>] [--attach coral://artifacts/<id> ...] "<message>"` + missingMessageHint(target, message))
 	}
 	// (1) a target of another Coral ("<server>/<team>", from 'targets') is not a board of this one
-	if strings.Contains(target, "/") {
+	if strings.Count(target, "/") == 1 && !strings.HasPrefix(target, "/") && !strings.HasSuffix(target, "/") {
 		return usageError(fmt.Sprintf("%s looks like a team on another Coral. Use --address %s (see coral-board targets); --board takes a board on this Coral.", target, target))
 	}
 	if len(attach) > 4 {
-		return fmt.Errorf("at most 4 --attach per send")
+		return usageError("at most 4 --attach per send")
 	}
 	if id.Board == "" {
 		return fmt.Errorf("not subscribed to a board. Run: coral-board join <project> --as <role>")

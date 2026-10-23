@@ -40,7 +40,7 @@ func textCrossTeamOff(teams []string) string {
 
 // textFilesOff is the refusal of a send with files from or to a team that does not share files.
 func textFilesOff(teams []string) string {
-	return fmt.Sprintf("Sharing files with other teams is off on %s. Ask the Operator to turn on Share files with teams on other computers in %s on each (the setting also covers files between teams on this computer). Nothing was sent.", teamList(teams), teamSettingsMessaging)
+	return fmt.Sprintf("Sharing files with other teams is off on %s. Ask the Operator to turn on Share files with teams on other computers in %s%s (the setting also covers files between teams on this computer). Nothing was sent.", teamList(teams), teamSettingsMessaging, eachIfMany(teams))
 }
 
 // textFilesTurnedOffMidSend is the refusal when the switch went off while files were on their way.
@@ -156,4 +156,12 @@ func textHubSwitchNotice(hubUser string, files, on, changed bool) string {
 		return "Coral Hub's owner (" + hubUser + ") asked to turn " + what + " " + state + " for this team; it already was " + state + ". See " + teamSettingsMessaging + "."
 	}
 	return "Coral Hub's owner (" + hubUser + ") turned " + what + " " + state + " for this team. See " + teamSettingsMessaging + "."
+}
+
+// eachIfMany is " on each" when more than one team is named: the setting is per team.
+func eachIfMany(teams []string) string {
+	if len(teams) > 1 {
+		return " on each"
+	}
+	return ""
 }
