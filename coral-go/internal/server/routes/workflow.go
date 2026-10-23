@@ -494,6 +494,9 @@ func (h *WorkflowHandler) ListWorkflowRuns(w http.ResponseWriter, r *http.Reques
 		errInternalServer(w, err.Error())
 		return
 	}
+	for i := range runs {
+		runView(&runs[i])
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"runs": emptyIfNil(runs)})
 }
 
@@ -509,13 +512,20 @@ func (h *WorkflowHandler) ListRecentRuns(w http.ResponseWriter, r *http.Request)
 		errInternalServer(w, err.Error())
 		return
 	}
+	for i := range runs {
+		runView(&runs[i])
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"runs": emptyIfNil(runs)})
 }
 
 // GetWorkflowRun returns a single run with step results.
 // GET /api/workflows/runs/{runID}
 func (h *WorkflowHandler) GetWorkflowRun(w http.ResponseWriter, r *http.Request) {
-	getByID(w, r, "runID", "invalid run ID", "run not found", h.ws.GetWorkflowRun)
+	getByID(w, r, "runID", "invalid run ID", "run not found", func(ctx context.Context, id int64) (*store.WorkflowRun, error) {
+		run, err := h.ws.GetWorkflowRun(ctx, id)
+		runView(run)
+		return run, err
+	})
 }
 
 // KillWorkflowRun kills a running workflow.
