@@ -229,6 +229,9 @@ async function _checkTeamGitDir() {
         const data = await resp.json();
         if (server !== _effectiveServer(launch.server)) return;
         worktreeOpt.style.display = data.is_git ? '' : 'none';
+        // Base Branch starts as the repo's own current branch (the answer's `branch`), not a guess ("main" in a repo that has master, #6707), until the person types one.
+        const base = document.getElementById('launch-team-base-branch');
+        if (base && data.is_git && typeof data.branch === 'string' && data.branch && base.dataset.edited !== '1') base.value = data.branch;
     } catch { worktreeOpt.style.display = 'none'; }
 }
 
@@ -297,6 +300,7 @@ async function _initTeamForm() {
         dirInput.addEventListener('input', () => { clearTimeout(_gitCheckTimer); _gitCheckTimer = setTimeout(_checkTeamGitDir, 500); });
         dirInput.addEventListener('change', _checkTeamGitDir);
     }
+    document.getElementById('launch-team-base-branch')?.addEventListener('input', e => { e.target.dataset.edited = '1'; }); // a branch the person typed is kept when the folder changes
     _checkTeamGitDir(); // initial check
     const typeSelect = document.getElementById("team-agent-type");
     if (s.default_agent_type && typeSelect) typeSelect.value = s.default_agent_type;
@@ -592,7 +596,7 @@ async function launchTeam() {
     if (launchBtn) { launchBtn.disabled = true; launchBtn.textContent = 'Launching...'; }
 
     try {
-        const result = await _launchOn(server, "/api/sessions/launch-team", payload, undefined, { teamFailures: true });
+        const result = await _launchOn(server, "/api/sessions/launch-team", payload, undefined, { teamFailures: true, fields: { base_branch: document.getElementById('launch-team-base-branch') } });
         if (result) {
             if (result.ok !== false) recordRecentDir(workingDir, server); // not for a team in which nobody started (#122)
             // Check for per-agent errors in the launched array

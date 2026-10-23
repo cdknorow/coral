@@ -97,7 +97,7 @@ function _launchBlocked(server) {
  * on success, or null after showing the error. Never falls back to another
  * server.
  */
-export async function _launchOn(server, path, payload, agentType, { dirInput = null, teamFailures = false, retry = null } = {}) { // exported for board_ids_browser
+export async function _launchOn(server, path, payload, agentType, { dirInput = null, teamFailures = false, retry = null, fields = null } = {}) { // exported for board_ids_browser
     let res = await postLaunch(server, path, payload);
     // A board of that name exists (#3536): the person chooses to join it or start another.
     if (!res.ok && isBoardNameExists(res)) {
@@ -112,6 +112,9 @@ export async function _launchOn(server, path, payload, agentType, { dirInput = n
     // A team in which no member started (#122): the answer carries each member's error. A caller that shows them per member (the team dialog, the
     // template launcher) takes the answer as it is (data.ok is false) instead of one toast of the joined text.
     if (!res.ok && teamFailures && res.data && res.data.code === 'team_launch_failed' && Array.isArray(res.data.agents)) return res.data;
+    // A field the server names that the dialog has (base_branch): said under that field, as an alert, with its disclosure opened and the field focused, not in a toast that goes in five seconds (#6707).
+    const named = !res.ok && fields && res.data && typeof res.data.field === 'string' ? fields[res.data.field] : null;
+    if (named) { markFieldInvalid(named, res.error, { alert: true }); return null; }
     if (!res.ok) {
         if (agentType && res.error.includes('not found') && res.error.includes('CLI')) _showCLINotFoundModal(agentType, server, { retry }); // retry: the caller's own launch, run when Check again finds the CLI (none: the dialog says to press Launch again)
         else showToast(res.error, true);
@@ -164,12 +167,13 @@ function inlineProblem(input, message) {
  *  and as a line under the field (with what to do next, tied to it by aria-describedby), focused.
  *  The toast still says it; the line stays until it is fixed. Cleared by the next edit, typed or
  *  set by Browse ('change'), and when the dialog closes or its fields reset (#3152). */
- function markFieldInvalid(input, message) {
+ function markFieldInvalid(input, message, { alert = false } = {}) {
     clearFieldInvalid(input);
     const previousTitle = input.title;
     const previousDescribedBy = input.getAttribute('aria-describedby');
     const line = document.createElement('p');
     line.className = 'field-error';
+    if (alert) line.setAttribute('role', 'alert'); // a line that appears is said once, instead of the toast it replaces
     line.id = `${input.id || 'field'}-error`;
     line.textContent = inlineProblem(input, message);
     (input.closest('label') || input.closest('.dir-input-row') || input).insertAdjacentElement('afterend', line); // after the label, not inside it: inside, the words became part of the field's name
@@ -178,6 +182,7 @@ function inlineProblem(input, message) {
     input.classList.add('input-invalid');
     input.title = message;
     revealField(input); // a field in a section that is not open: its section opens first, so the focus lands
+    const disclosure = input.closest('details'); if (disclosure && !disclosure.open) disclosure.open = true; // a field behind a native disclosure (More options): it opens too
     input.focus();
     const clear = () => clearFieldInvalid(input);
     input._clearInvalid = () => {
@@ -210,7 +215,7 @@ function _refreshAfterLaunch(server, target) {
 
 export function hideLaunchModal() {
     document.getElementById("launch-modal").style.display = "none";
-    for (const id of ['launch-dir', 'launch-terminal-dir']) clearFieldInvalid(document.getElementById(id));
+    for (const id of ['launch-dir', 'launch-terminal-dir', 'launch-team-base-branch']) clearFieldInvalid(document.getElementById(id));
 }
 
 /** " on <server label>" for remotes, "" for local. */
