@@ -1,9 +1,10 @@
+// Only what the dashboard uses (cm_util.js, preview_pane.js, custom_views.js); an export nothing reads is dead weight in every binary (#6262: minimalSetup, EditorViewClass, MergeView, keymap, lineNumbers, searchKeymap were dropped, -8,562 bytes).
 export { EditorState, Text } from "@codemirror/state";
-export { EditorView, EditorView as EditorViewClass, keymap, lineNumbers } from "@codemirror/view";
-export { basicSetup, minimalSetup } from "codemirror";
-export { search, searchKeymap } from "@codemirror/search";
+export { EditorView } from "@codemirror/view";
+export { basicSetup } from "codemirror";
+export { search } from "@codemirror/search";
 export { oneDark } from "@codemirror/theme-one-dark";
-export { MergeView, unifiedMergeView } from "@codemirror/merge";
+export { unifiedMergeView } from "@codemirror/merge";
 export { javascript } from "@codemirror/lang-javascript";
 export { python } from "@codemirror/lang-python";
 export { html } from "@codemirror/lang-html";

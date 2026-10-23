@@ -57,7 +57,7 @@ export const ENTRIES = [
             + 'this file replaces: the two have the same size and differ in 8 bytes, all minified variable names (the lang-sql dialect tables and '
             + 'yaml-frontmatter); the earlier build\'s input was never recorded, so that difference is not traced to a package. '
             + '(codemirror by its latest tag: 6.65.7 is an old CodeMirror 5 publish.) esbuild was raised from 0.27.4 to 0.28.1 (#5545, the npm audit finding) '
-            + 'with the same output: the rebuild is byte for byte this file under both.',
+            + 'with the same output: the rebuild is byte for byte this file under both. entry.js exports only what the dashboard uses (#6262 dropped six exports nothing read: 984,293 to 975,731 bytes).',
         packages: [
             { pkg: 'codemirror', version: '6.0.2' }, { pkg: '@codemirror/state', version: '6.6.0' }, { pkg: '@codemirror/view', version: '6.40.0' },
             { pkg: '@codemirror/language', version: '6.12.2' }, { pkg: '@codemirror/commands', version: '6.10.3' },
