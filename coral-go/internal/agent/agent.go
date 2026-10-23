@@ -153,7 +153,7 @@ func clipFirstMessage(text string) string {
 	if len(text) > redactBound {
 		text = strings.ToValidUTF8(text[:redactBound], "")
 	}
-	out, err := redact.Rules.Text([]byte(text))
+	out, err := secrets.Redactor().Text([]byte(text))
 	if err != nil {
 		return ""
 	}
