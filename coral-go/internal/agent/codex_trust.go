@@ -30,11 +30,12 @@ import (
 
 // codexHookEventLabel is Codex's key label for each event Coral installs a hook for (hook_event_key_label).
 var codexHookEventLabel = map[string]string{
-	"SessionStart":     "session_start",
-	"UserPromptSubmit": "user_prompt_submit",
-	"PreToolUse":       "pre_tool_use",
-	"PostToolUse":      "post_tool_use",
-	"Stop":             "stop",
+	"SessionStart":      "session_start",
+	"UserPromptSubmit":  "user_prompt_submit",
+	"PreToolUse":        "pre_tool_use",
+	"PermissionRequest": "permission_request",
+	"PostToolUse":       "post_tool_use",
+	"Stop":              "stop",
 }
 
 // codexSessionFlagsSource is the key source Codex gives hooks set with -c: synthetic_layer_path("<session-flags>/config.toml"),
@@ -79,8 +80,13 @@ func codexHookTrustHash(event, command string) string {
 // (apply_toml_override) and the entries' keys hold one ("config.toml"); inside the value the TOML parser reads them as
 // literal ('...') keys, backslashes and all.
 func codexHookTrustArgs(goos, command string) []string {
-	entries := make([]string, 0, len(codexHookEvents))
-	for _, event := range codexHookEvents {
+	return codexHookTrustArgsFor(goos, command, codexHookEvents)
+}
+
+// codexHookTrustArgsFor is codexHookTrustArgs for the hooks (events) installed.
+func codexHookTrustArgsFor(goos, command string, events []string) []string {
+	entries := make([]string, 0, len(events))
+	for _, event := range events {
 		entries = append(entries, fmt.Sprintf("'%s'={trusted_hash=%s}", codexHookStateKey(goos, event), tomlString(codexHookTrustHash(event, command))))
 	}
 	return []string{"-c", "hooks.state={" + strings.Join(entries, ",") + "}"}
@@ -136,10 +142,10 @@ func CodexHookTrust() (trusted bool, why string) {
 }
 
 // codexHookTrustFor is the trust flags for command on this launch, or none with one log line saying why.
-func codexHookTrustFor(sessionID, command string) []string {
+func codexHookTrustFor(sessionID, command string, events []string) []string {
 	if ok, why := CodexHookTrust(); !ok {
 		slog.Info("codex asks the person to review Coral's hooks: Coral doesn't trust them for it", "session", sessionID, "why", why)
 		return nil
 	}
-	return codexHookTrustArgs(runtime.GOOS, command)
+	return codexHookTrustArgsFor(runtime.GOOS, command, events)
 }
