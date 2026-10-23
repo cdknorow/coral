@@ -21,12 +21,12 @@ const BASE = require('./test_base').BASE;
         await Input.dispatchTouchEvent({ type: 'touchStart', touchPoints: [{ x, y }] }); await Input.dispatchTouchEvent({ type: 'touchEnd', touchPoints: [] }); };
     const key = async (k, code, vk) => { for (const type of ['keyDown', 'keyUp']) await Input.dispatchKeyEvent({ type, key: k, code, windowsVirtualKeyCode: vk }); };
     const isFull = () => ev(`document.getElementById('preview-pane').classList.contains('preview-phone-full')`);
-    const setup = async (w, h, theme, mobile) => {
+    const setup = async (w, h, theme, mobile, savedHeight) => {
         await Emulation.setDeviceMetricsOverride({ width: w, height: h, deviceScaleFactor: 2, mobile });
         await Emulation.setTouchEmulationEnabled({ enabled: mobile });
         await Emulation.setEmulatedMedia({ features: [{ name: 'prefers-color-scheme', value: theme }] });
         await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired();
-        await ev(`localStorage.clear(); true`);
+        await ev(`localStorage.clear(); ${savedHeight ? `localStorage.setItem('coral-preview-pane-height', '${savedHeight}');` : ''} true`);
         await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired(); await install();
         await ev(`window.__coralReady.then(() => true)`);
         await installAudit(ev); await setTheme(ev, theme);
@@ -86,6 +86,22 @@ const BASE = require('./test_base').BASE;
             await ev(`history.back(); true`);
             await waitFor(`!document.getElementById('preview-pane').classList.contains('preview-phone-full')`, 'the browser Back closing it', 3000);
             check(`${at}: the browser's Back (the phone's back gesture) closes it and stays on the same page`, (await ev(`location.pathname`)) === before && (await rect('#preview-pane')).h < H * 0.6);
+        }
+
+        // A pane height a person saved (dragging the handle, or on the desktop) is set inline on the pane: full screen must still be the whole screen (#6237: it drew only that many px from the top)
+        for (const [W, H] of [[390, 844], [430, 932]]) for (const theme of ['dark', 'light']) {
+            await setup(W, H, theme, true, 300);
+            const small = await rect('#preview-pane');
+            check(`saved height, ${W}px, ${theme}: before, the pane is the saved 300 px (${small.h})`, small.h >= 295 && small.h <= 305);
+            await tap('#preview-max-btn');
+            await waitFor(`document.getElementById('preview-pane').classList.contains('preview-phone-full')`, 'full with a saved height', 3000);
+            await shot(`preview-phone-saved-height-${W}-${theme}`);
+            const full = await rect('#preview-pane'), body = await rect('#preview-body');
+            check(`saved height, ${W}px, ${theme}: expanded, the pane is the viewport (${full.h} of ${H} px) and its body fills it (${body.h} px)`, full.h >= H * 0.95 && full.t === 0 && body.h >= H * 0.8);
+            await key('Escape', 'Escape', 27);
+            await waitFor(`!document.getElementById('preview-pane').classList.contains('preview-phone-full')`, 'closing', 3000);
+            const back = await rect('#preview-pane');
+            check(`saved height, ${W}px, ${theme}: closed, the saved height is back (${back.h})`, back.h >= 295 && back.h <= 305);
         }
 
         // Safe-area insets: the layer stays inside them
