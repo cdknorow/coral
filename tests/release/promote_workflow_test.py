@@ -33,6 +33,33 @@ def steps(block):
     return parts
 
 
+def publish_problems(wf):
+    """What is wrong with the step that publishes the promotion (an empty list when it is right)."""
+    m = re.search(r"- name: Publish the promotion as its own release\n(.*?)(?=\n      - name: |\Z)", wf, re.S)
+    if not m:
+        return ["the publish step is missing"]
+    t = m.group(1)
+    out = []
+    view = t.find('if gh release view "$name"')
+    create = t.find('gh release create "$name"')
+    upload = t.find('gh release upload "$name" promote.json promote.json.sigstore.json')
+    edit = t.find('gh release edit "$name"')
+    if not (0 <= view < create < upload < edit):
+        out.append("the order is not: refuse an existing release, create, upload, publish")
+    for need in ("--draft", "--prerelease", "--latest=false", '--target "${GITHUB_SHA}"'):
+        if need not in t[create:upload if upload > create else len(t)]:
+            out.append("create lacks " + need)
+    if "--draft=false" not in t[edit:] or "--latest=false" not in t[edit:]:
+        out.append("publish must be --draft=false and keep --latest=false")
+    if 'name="promote-${PROMOTE_TAG}-${seq}"' not in t:
+        out.append("the release is not named promote-<tag>-<sequence>")
+    if "[[ \"$seq\" =~ ^[0-9]+$ ]]" not in t:
+        out.append("the sequence is not checked to be a number")
+    if 'gh release upload "${PROMOTE_TAG}"' in t or "--clobber" in t:
+        out.append("a file is added to the product release or clobbered")
+    return out
+
+
 def env(**kw):
     e = dict(PROMOTE_TAG="v1.4.160", PROMOTE_LIFETIME_DAYS="30", PROMOTE_REVOKE="", PROMOTE_PRERELEASE="false",
              PROMOTE_SOURCE_SHA=SHA, PROMOTE_SUMS_SHA256=SUMS, GITHUB_REPOSITORY="subgentic/coral")
@@ -147,9 +174,50 @@ class Workflow(unittest.TestCase):
         self.assertIn("Revoked versions in this manifest", up)
         self.assertIn(".revoked", up)
 
-    def test_an_existing_promotion_is_replaced_only_when_asked(self):
-        self.assertIn("--clobber", WF)
-        self.assertIn('"${PROMOTE_REPLACE}" != true', WF)
+    def test_a_promotion_is_never_replaced(self):
+        # This repository's releases are immutable (#6394): a second promotion is a new release with a higher sequence, so there is no replace input and no clobber.
+        self.assertNotIn("replace:", re.search(r"(?m)^on:\n(.*?)(?=^[a-z]+:)", WF, re.S).group(1))
+        self.assertNotIn("--clobber", WF)
+        self.assertNotIn("PROMOTE_REPLACE", WF)
+
+    def test_a_promotion_points_only_at_an_immutable_release(self):
+        v = job_block("validate")
+        self.assertIn('[ "$(jq -r .immutable <<<"$rel")" = true ]', v)
+        self.assertIn("the release is not immutable", v)
+
+    def test_a_promotion_is_its_own_draft_release_published_after_both_files(self):
+        self.assertEqual(publish_problems(WF), [])
+
+    def test_the_publish_check_notices_each_mistake(self):
+        mutants = {
+            "added to the product release": WF.replace('gh release upload "$name" promote.json', 'gh release upload "${PROMOTE_TAG}" promote.json', 1),
+            "not a draft first": WF.replace("--draft --prerelease", "--prerelease", 1),
+            "not a prerelease": WF.replace("--draft --prerelease", "--draft", 1),
+            "can become Latest": WF.replace("--prerelease --latest=false", "--prerelease", 1),
+            "published before the files": WF.replace('gh release edit "$name" --repo "${GITHUB_REPOSITORY}" --draft=false --latest=false\n', "", 1).replace(
+                'gh release upload "$name"', 'gh release edit "$name" --repo "${GITHUB_REPOSITORY}" --draft=false --latest=false\n          gh release upload "$name"', 1),
+            "a name without the tag": WF.replace('name="promote-${PROMOTE_TAG}-${seq}"', 'name="promote-${seq}"', 1),
+            "an existing release is not refused": WF.replace('if gh release view "$name"', 'if false && gh release view "$name"', 1),
+            "the sequence is not checked": WF.replace('[[ "$seq" =~ ^[0-9]+$ ]]', "true", 1),
+            "pinned to no commit": WF.replace('--target "${GITHUB_SHA}"', "", 1),
+        }
+        for name, text in mutants.items():
+            self.assertNotEqual(text, WF, name)
+            self.assertNotEqual(publish_problems(text), [], name)
+
+    def test_no_release_listing_can_pick_a_promote_release(self):
+        # A published promote-<tag>-<sequence> release is a pre-release that is newer than the product it promotes: any place that takes "the newest release"
+        # from a list must filter to product tags (v and a digit), or to non-pre-releases, or it would pick a release with no packages in it.
+        listing = re.compile(r"gh release list|releases\?per_page|releases\"\)")
+        offenders = []
+        for rel in subprocess.check_output(["git", "ls-files", ".github/workflows", "tools"], cwd=ROOT, text=True).split():
+            if rel.endswith("promote_workflow_test.py") or not rel.endswith((".yml", ".sh", ".py")):
+                continue
+            with open(os.path.join(ROOT, rel), encoding="utf-8") as f:
+                body = f.read()
+            if listing.search(body) and not re.search(r"\^v\[0-9\]|\^v\\d|prerelease==false|isPrerelease == false", body):
+                offenders.append(rel)
+        self.assertEqual(offenders, [], "these list releases without skipping promote releases")
 
 
 class Manifest(unittest.TestCase):

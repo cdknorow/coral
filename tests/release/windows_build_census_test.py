@@ -150,8 +150,10 @@ def check_dryrun(dry):
         errs.append("windows-runner-dryrun.yml lists releases without --exclude-drafts")
     if "'^[0-9]+\\.[0-9]+\\.[0-9]+(-[A-Za-z0-9.]+)?$'" not in dry or "-notmatch" not in dry:
         errs.append("windows-runner-dryrun.yml does not check the version is a plain release version before it reaches gh")
-    if "gh release list" not in dry or "--limit 1" not in dry:
-        errs.append("windows-runner-dryrun.yml does not resolve the latest published release (gh release list --limit 1)")
+    if "gh release list" not in dry or "--limit 30" not in dry:
+        errs.append("windows-runner-dryrun.yml does not resolve the latest published release (gh release list --limit 30, filtered to product tags)")
+    if 'select(.tagName | test("^v[0-9]"))' not in dry:
+        errs.append("windows-runner-dryrun.yml does not skip promote-<tag>-<sequence> releases when it picks the newest release (#6394)")
     if re.search(r"\bwix build\b", dry):
         errs.append("windows-runner-dryrun.yml builds an MSI: it must only download a published one (or be added to the -arch x64 census above)")
     return errs
@@ -219,6 +221,7 @@ def main():
         ("the dry run pins a push fallback release", dry.replace("${{ github.event.inputs.version }}", "${{ github.event.inputs.version || '1.4.153' }}", 1)),
         ("the dry run stops resolving the latest release", dry.replace("gh release list", "gh release view", 1)),
         ("the dry run lists drafts too", dry.replace("--exclude-drafts ", "", 1)),
+        ("the dry run would pick a promote release", dry.replace('select(.tagName | test("^v[0-9]"))', 'select(true)', 1)),
         ("the dry run stops validating the version", dry.replace("-notmatch", "-match", 1)),
         ("the dry run builds an MSI", dry + "\n          wix build tools\\coral.wxs -o x.msi\n"),
     ]
