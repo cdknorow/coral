@@ -980,4 +980,4 @@ body.hub-no-machine [data-on-click="launch-show"], body.hub-no-machine .sidebar-
 
 /* Through the Coral Hub, a launch the machine's access level refuses says so as the form opens (#4586). */
 .launch-access-note { margin: 0 0 12px; padding: 8px 10px; border-radius: var(--radius-md); border: 1px solid var(--warning, var(--fx-amber)); background: var(--bg-tertiary); color: var(--text-primary); font-size: 0.8125rem; line-height: 1.4; }
-.launch-access-note:empty { margin: 0; padding: 0; border: 0; height: 0; overflow: hidden; } /* in the page with nothing to say: no room, still a live region */
+.launch-access-note:empty { position: absolute; width: 1px; height: 1px; margin: 0; padding: 0; border: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; } /* in the page with nothing to say: out of the layout (no room, no flex gap), still a live region (#6679) */ /* in the page with nothing to say: no room, still a live region */

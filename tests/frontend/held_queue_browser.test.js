@@ -11,7 +11,7 @@ const BASE = require('./test_base').BASE;
     const results = [];
     const check = (label, cond, detail) => { results.push(!!cond); console.log(`[${cond ? 'PASS' : 'FAIL'}] ${label}${detail !== undefined ? ' - ' + detail : ''}`); };
     const line = () => ev(`(() => { const b = document.getElementById('composer-queued'); const items = [...b.querySelectorAll('.composer-queued-item')];
-        return { hiddenAttr: b.hasAttribute('hidden'), shown: items.length > 0 && b.getClientRects().length > 0, head: (b.querySelector('.composer-queued-head') || {}).textContent || '', note: (b.querySelector('.composer-queued-note') || {}).textContent || '', zero: b.getBoundingClientRect().height === 0, texts: items.map(i => i.querySelector('.composer-queued-text').textContent), cancels: items.map(i => i.querySelector('button').getAttribute('aria-label')), box: document.getElementById('command-input').value,
+        return { hiddenAttr: b.hasAttribute('hidden'), shown: items.length > 0 && b.getClientRects().length > 0, head: (b.querySelector('.composer-queued-head') || {}).textContent || '', note: (b.querySelector('.composer-queued-note') || {}).textContent || '', zero: b.getBoundingClientRect().height <= 1 && getComputedStyle(b).position === 'absolute', texts: items.map(i => i.querySelector('.composer-queued-text').textContent), cancels: items.map(i => i.querySelector('button').getAttribute('aria-label')), box: document.getElementById('command-input').value,
             usable: !document.getElementById('command-input').disabled, err: (() => { const e = document.getElementById('composer-error'); return e && !e.hidden ? e.querySelector('.composer-error-text').textContent : ''; })() }; })()`);
     const emit = (type, detail) => ev(`document.dispatchEvent(new CustomEvent(${JSON.stringify(type)}, { detail: ${JSON.stringify(detail)} })); true`);
     try {
@@ -33,7 +33,7 @@ const BASE = require('./test_base').BASE;
 
             console.log(`${tag}: a held message is queued under the box`);
             let l = await line();
-            check(`${tag}: the region is in the page from the start (never hidden: a status that appears with its words is often not read), empty and zero-sized`, !l.hiddenAttr && !l.shown && l.texts.length === 0 && l.zero, JSON.stringify(l));
+            check(`${tag}: the region is in the page from the start (never hidden: a status that appears with its words is often not read), empty and out of the layout (no room, no flex gap)`, !l.hiddenAttr && !l.shown && l.texts.length === 0 && l.zero, JSON.stringify(l));
             await send(7, 'Run the tests please');
             await waitFor(`document.querySelectorAll('#composer-queued .composer-queued-item').length > 0`, 'the queued line', 4000);
             l = await line();

@@ -93,7 +93,7 @@ const BASE = require('./test_base').BASE;
         assert.equal(await ev(`document.getElementById('team-undo').textContent`), 'Removed Warrior. Undo');
         await click('#team-undo button');
         assert.equal((await rows())[1], 'Warrior', 'Undo puts it back where it was');
-        assert.equal(await vis('#team-undo'), false);
+        assert.equal(await ev(`document.getElementById('team-undo').textContent`), '', 'the undo line says nothing again (it stays in the page, out of the layout)');
 
         console.log('A member added in the Add member dialog follows the team Mode (Default), not Auto (#6412)');
         await ev(`window.showTeamAgentModal(); true`);

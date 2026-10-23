@@ -2001,7 +2001,7 @@
     flex: 0 1 auto;
     cursor: help;
 }
-.hub-readonly-chip:empty { margin: 0; padding: 0; border: 0; width: 0; min-width: 0; height: 0; } /* in the page with nothing to say: no room, still a live region */
+.hub-readonly-chip:empty { position: absolute; width: 1px; height: 1px; margin: 0; padding: 0; border: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; } /* in the page with nothing to say: out of the layout (no room, no flex gap), still a live region (#6679) */ /* in the page with nothing to say: no room, still a live region */
 /* View only through Coral Hub (#3411): Send looks unavailable and the terminal doesn't offer typing. */
 /* A control the Hub's tier does not allow (hub_blocked_controls.js, #3769): dimmed, with the reason as its title. It stays
    clickable, so a click still says why. (Until #3645 the Send rule here named an inline onclick; it matched nothing after.) */
@@ -2202,6 +2202,6 @@
 .composer-queued-item { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; }
 .composer-queued-text { min-width: 0; overflow-wrap: anywhere; }
 .composer-queued-head { margin-bottom: 2px; }
-.composer-queued:empty { margin: 0; padding: 0; height: 0; min-height: 0; overflow: hidden; } /* always in the page, so what is put into it is read (#6611); nothing queued takes no room */
+.composer-queued:empty { position: absolute; width: 1px; height: 1px; margin: 0; padding: 0; border: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; } /* in the page with nothing to say: out of the layout (no room, no flex gap), still a live region (#6679) */ /* always in the page, so what is put into it is read (#6611); nothing queued takes no room */
 .composer-queued-note { color: var(--text-primary); }
 @media (pointer: coarse) { .composer-queued-cancel { min-height: 44px; min-width: 44px; display: inline-flex; align-items: center; } }

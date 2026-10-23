@@ -2142,7 +2142,7 @@ button.subscriber-history-link {
     margin-top: 2px;
 }
 .settings-hint[data-state="restart-required"] { color: var(--warning); }
-#settings-debug-input-log-status:empty { margin: 0; padding: 0; height: 0; overflow: hidden; } /* in the page with nothing to say: no room, still a live region */
+#settings-debug-input-log-status:empty { position: absolute; width: 1px; height: 1px; margin: 0; padding: 0; border: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; } /* in the page with nothing to say: out of the layout (no room, no flex gap), still a live region (#6679) */ /* in the page with nothing to say: no room, still a live region */
 /* A field that is off (the storage limits while they load, or when the load failed) reads as off, not as an empty box to fill in (#4469, UX). */
 #settings-modal input:disabled, #settings-modal select:disabled { opacity: .6; cursor: not-allowed; }
 .settings-hint[data-state="warn"], .settings-hint [data-state="warn"] { color: var(--warning); }
@@ -3995,7 +3995,7 @@ button.terminal-gone-header { margin: 0 4px 0 0; font-size: 0.6875rem; line-heig
 .tb-d { font-size: var(--fs-base); color: var(--text-secondary); line-height: 1.45; }
 .tb-note { font-size: var(--fs-sm); color: var(--text-muted); line-height: 1.45; margin: var(--space-xs) 0 0; }
 .tb-pending { font-size: var(--fs-base); color: var(--warning); margin: var(--space-sm) 0 0; }
-.tb-pending:empty { margin: 0; height: 0; overflow: hidden; } /* in the page with nothing to say: no room, still a live region */
+.tb-pending:empty { position: absolute; width: 1px; height: 1px; margin: 0; padding: 0; border: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; } /* in the page with nothing to say: out of the layout (no room, no flex gap), still a live region (#6679) */ /* in the page with nothing to say: no room, still a live region */
 .tb-fixed { font-size: var(--fs-base); color: var(--text-secondary); line-height: 1.45; margin: 0; }
 .leftover-tmux-banner { display: flex; align-items: center; gap: var(--space-lg); margin: var(--space-md) var(--space-xl) 0; padding: var(--space-md) var(--space-lg); border-radius: var(--radius-lg); border: 1px solid color-mix(in srgb, var(--warning) 50%, var(--border)); background: color-mix(in srgb, var(--warning) 12%, var(--bg-secondary)); color: var(--text-primary); font-size: var(--fs-md); }
 .leftover-tmux-banner[hidden] { display: none; }
@@ -4466,7 +4466,7 @@ a.ibx-open, a.ibx-open:visited { color: var(--link-text); }
 /* In the launch dialog the sectioned steps sit inside the dialog's own box: it has no padding then, the step's header and footer are full width, the fixed footer is always in view. */
 .modal-content.sd-modal-content:has(.launch-modal-step) { padding: 0; overflow: hidden; }
 .sd-modal-content > .launch-access-note, .sd-modal-content > .launch-server-row { margin: 0; padding: 12px 24px 0; }
-.sd-modal-content > .launch-access-note:empty { padding: 0; }
+.sd-modal-content > .launch-access-note:empty { position: absolute; width: 1px; height: 1px; margin: 0; padding: 0; border: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; } /* in the page with nothing to say: out of the layout (no room, no flex gap), still a live region (#6679) */
 .sd-modal-content .launch-modal-step { overflow: hidden; }
 .sd-step-header { flex: none; padding: 24px 24px 12px; border-bottom: 1px solid var(--border); }
 .sd-step-header h3 { margin: 0; }
@@ -4727,7 +4727,7 @@ dialog.reminder-dialog::backdrop { background: rgba(var(--black-rgb), 0.5); }
 .team-agent-actions-cell { width: 1%; }
 .team-agent-summary-actions .btn { padding-inline: 12px; flex: none; width: auto; min-width: max-content; }
 .team-undo { margin: 8px 0 0; color: var(--text-secondary); }
-.team-undo:empty { margin: 0; height: 0; overflow: hidden; } /* in the page with nothing to say: no room, still a live region */
+.team-undo:empty { position: absolute; width: 1px; height: 1px; margin: 0; padding: 0; border: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; } /* in the page with nothing to say: out of the layout (no room, no flex gap), still a live region (#6679) */ /* in the page with nothing to say: no room, still a live region */
 .team-undo .btn-link { background: none; border: 0; padding: 0 2px; font: inherit; color: var(--accent); text-decoration: underline; cursor: pointer; }
 .team-start-more { margin-top: 12px; }
 @media (max-width: 767px) {
