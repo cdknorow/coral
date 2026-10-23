@@ -53,6 +53,26 @@ func isGuardianStart(args []string, marker string) bool {
 	return len(args) == 2 && args[1] == guardianArg && marker == "1"
 }
 
+// runSampler calls sample(0) every `every` while count() says there is something guarded. A panic in it restarts the loop (safego.Restart) rather than ending the sampling for the life of the
+// guardian: a guardian that sampled no more would still end the trees it knew, but not the helpers that detach from now on.
+// It ends when done is closed (the guardian passes nil: it runs until the process ends).
+func runSampler(every time.Duration, done <-chan struct{}, count func() int, sample func(int)) {
+	safego.Restart("ptymanager/guardian-sample", func() {
+		tick := time.NewTicker(every)
+		defer tick.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-tick.C:
+				if count() > 0 {
+					sample(0)
+				}
+			}
+		}
+	})
+}
+
 type guarded struct {
 	root member
 	tag  string
@@ -98,17 +118,11 @@ func runGuardian(in io.Reader) {
 	}
 	// SIGTERM is not handled: it ends the guardian like any process, and ends no tree. The pipe reaching EOF is the one thing that makes it end terminals, so a stray "kill" or "pkill" that matches its
 	// name cannot end every agent; Coral finds a dead guardian on its next write and starts another, told every terminal.
-	go func() {
-		defer safego.Recover("ptymanager/guardian-sample")
-		for range time.Tick(guardianSample) {
-			mu.Lock()
-			n := len(guard)
-			mu.Unlock()
-			if n > 0 {
-				sample(0)
-			}
-		}
-	}()
+	runSampler(guardianSample, nil, func() int {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(guard)
+	}, sample)
 	sc := bufio.NewScanner(in)
 	for sc.Scan() {
 		f := strings.Fields(sc.Text())
@@ -138,19 +152,21 @@ func runGuardian(in io.Reader) {
 // and tells it every terminal, after a delay that grows if it keeps dying at once, so a guardian that cannot run cannot make Coral spin. Terminals are therefore guarded again within a moment of a guardian
 // being killed, not at the next terminal start or end. The goroutine lives for the process by design (testleak ignores it).
 type guardianClient struct {
-	mu       sync.Mutex
-	h        *guardianHandle
-	regs     map[int]guarded
-	off      bool
-	stopping bool
-	delay    time.Duration // the wait before the next restart: it doubles while guardians die within guardianLives of starting
+	mu        sync.Mutex
+	h         *guardianHandle
+	regs      map[int]guarded
+	off       bool
+	stopping  bool
+	delay     time.Duration // the wait before the next restart: it doubles while guardians die within guardianLives of starting
+	onReplace func()        // a test's hook, called as a replacement is about to be decided
 }
 
 type guardianHandle struct {
-	cmd     *exec.Cmd
-	in      io.WriteCloser
-	done    chan struct{} // closed when the process has exited and been waited for
-	started time.Time
+	cmd      *exec.Cmd
+	in       io.WriteCloser
+	done     chan struct{} // closed when the process has exited and been waited for
+	started  time.Time
+	deciding bool // its watcher has begun deciding on a replacement (g.mu held)
 }
 
 var guardian guardianClient
@@ -183,23 +199,38 @@ func (g *guardianClient) start() error {
 	return nil
 }
 
-// watch waits for the guardian to exit; if Coral did not stop it and terminals are registered, it starts the next one.
+// watch waits for the guardian to exit; if Coral did not stop it and terminals are registered, it starts the next one. The wait happens once; deciding on the replacement is
+// what a panic restarts (replace is safe to run again), so a panic cannot leave a dead guardian unreplaced.
 func (g *guardianClient) watch(h *guardianHandle) {
 	h.cmd.Wait()
 	close(h.done)
-	g.mu.Lock()
-	if g.h != h {
-		g.mu.Unlock()
+	safego.Restart("ptymanager/guardian-replace", func() { g.replace(h) })
+}
+
+// replace starts the guardian that follows h, if h was the current one and there is still something to guard. It leaves g.mu free if it panics, and running it again after that decides afresh.
+func (g *guardianClient) replace(h *guardianHandle) {
+	if g.onReplace != nil {
+		g.onReplace()
+	}
+	wait, ok := func() (time.Duration, bool) {
+		g.mu.Lock()
+		defer g.mu.Unlock()
+		if g.h != h && !h.deciding { // not the current guardian any more (a failed write retired it): its replacement is not ours to start
+			return 0, false
+		}
+		h.deciding = true // a run again after a panic goes on from here
+		if g.h == h {
+			g.h = nil
+		}
+		if g.stopping || g.off || len(g.regs) == 0 {
+			return 0, false
+		}
+		g.delay = nextRestartDelay(g.delay, time.Since(h.started))
+		return g.delay, true
+	}()
+	if !ok {
 		return
 	}
-	g.h = nil
-	if g.stopping || g.off || len(g.regs) == 0 {
-		g.mu.Unlock()
-		return
-	}
-	g.delay = nextRestartDelay(g.delay, time.Since(h.started))
-	wait := g.delay
-	g.mu.Unlock()
 	time.Sleep(wait)
 	g.mu.Lock()
 	defer g.mu.Unlock()

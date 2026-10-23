@@ -5,6 +5,7 @@ package ptymanager
 import (
 	"errors"
 	"github.com/shirou/gopsutil/v4/process"
+	"github.com/subgentic/coral/internal/safego"
 	"io"
 	"os"
 	"os/exec"
@@ -458,4 +459,69 @@ func TestRetiringAGuardianDoesNotHoldTheClientsLock(t *testing.T) {
 	default:
 		t.Fatal("the guardian that ignored SIGTERM was killed")
 	}
+}
+
+// A panic in the sampler restarts it rather than ending the sampling for the life of the guardian.
+func TestAPanicInTheGuardianSamplerRestartsIt(t *testing.T) {
+	var calls atomic.Int32
+	before := safego.Panics()
+	done := make(chan struct{})
+	defer close(done)
+	runSampler(5*time.Millisecond, done, func() int { return 1 }, func(int) {
+		if calls.Add(1) == 1 {
+			panic("a sample that fails once")
+		}
+	})
+	deadline := time.Now().Add(20 * time.Second) // safego.Restart waits its first backoff (5 s) before running the loop again
+	for calls.Load() < 5 && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if calls.Load() < 5 || safego.Panics() != before+1 {
+		t.Fatalf("the sampler should have recovered one panic and gone on sampling (%d samples, %d panics)", calls.Load(), safego.Panics()-before)
+	}
+}
+
+// A panic while Coral decides on the replacement of a guardian that died is recovered, and the decision is made again: the dead guardian is still replaced, and the client's lock is free.
+func TestAPanicInTheGuardianWatcherStillReplacesTheGuardian(t *testing.T) {
+	canFork(t)
+	var calls atomic.Int32
+	c := &guardianClient{onReplace: func() {
+		if calls.Add(1) == 1 {
+			panic("a replacement decision that fails once")
+		}
+	}}
+	holder := exec.Command("sleep", "600") // a terminal to guard: the guardian ends it when this client is stopped
+	if err := holder.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { holder.Process.Kill(); holder.Wait() })
+	hp, err := process.NewProcess(int32(holder.Process.Pid))
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := hp.CreateTime()
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.mu.Lock()
+	c.regs = map[int]guarded{holder.Process.Pid: {root: member{holder.Process.Pid, created}, tag: "6183-watcher-test"}}
+	err = c.start()
+	c.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.stop)
+	first, _ := c.pid()
+	if first <= 1 {
+		t.Fatal("a guardian should be running")
+	}
+	syscall.Kill(first, syscall.SIGKILL)
+	deadline := time.Now().Add(20 * time.Second) // the panic costs safego.Restart's first backoff (5 s)
+	for time.Now().Before(deadline) {
+		if p, _ := c.pid(); p > 1 && p != first {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatalf("no replacement for guardian %d after a panic in the decision (%d calls)", first, calls.Load())
 }
