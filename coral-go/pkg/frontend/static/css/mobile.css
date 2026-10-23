@@ -1409,7 +1409,7 @@
 
 /* The phone's terminal keys (#6676): two rows under the terminal, 44 px targets, all on the screen; a phone turned sideways (touch, short) has them too (the terminal's height is what a phone has least of). */
 .terminal-key-bar { display: none; }
-@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) {
+@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) and (max-width: 950px) {
     /* Two rows, every key on the screen (no hidden keys to find): Esc, Tab, Ctrl-C and the arrows, then | ~ / - . */
     .terminal-key-bar:not([hidden]) { display: grid; grid-template-columns: repeat(auto-fit, minmax(max(44px, 3.4em), 1fr)); gap: 3px; flex: 0 0 auto; padding: 4px 4px; background: var(--bg-secondary); border-top: 1px solid var(--border); }
     .terminal-key-bar .tkb-key { min-width: 0; min-height: var(--control-touch-height, 44px); padding: 0 2px; margin: 0; font: inherit; font-size: .8125rem; font-weight: 600; color: var(--text-primary); background: var(--bg-tertiary); border: 1px solid var(--control-border); border-radius: var(--radius-md); cursor: pointer; }

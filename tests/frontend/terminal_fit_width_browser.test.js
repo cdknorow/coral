@@ -410,8 +410,8 @@ function assertFits(v, what) {
         const lap = await openTab({ contextId: lctx, width: 1280, height: 400, mobile: true });
         tabs.push(lap);
         await show(lap, A, null);
-        const lay = await lap.ev(`({ phone: matchMedia('(max-width: 767px), (pointer: coarse) and (max-height: 500px) and (max-width: 950px)').matches, sidebar: getComputedStyle(document.querySelector('.sidebar')).display })`);
-        assert.deepEqual(lay, { phone: false, sidebar: 'flex' }, `a touch window of 1280x400 keeps the desktop layout (${JSON.stringify(lay)})`);
+        const lay = await lap.ev(`({ phone: matchMedia('(max-width: 767px), (pointer: coarse) and (max-height: 500px) and (max-width: 950px)').matches, sidebar: getComputedStyle(document.querySelector('.sidebar')).display, keyBar: getComputedStyle(document.getElementById('terminal-key-bar')).display })`);
+        assert.deepEqual(lay, { phone: false, sidebar: 'flex', keyBar: 'none' }, `a touch window of 1280x400 keeps the desktop layout (${JSON.stringify(lay)})`);
         await lap.close(); tabs.splice(tabs.indexOf(lap), 1);
         setPane(A.name, eighty.cols, eighty.rows);
         console.log(`   ✓ the pane stays 80x24 for a phone in landscape: ${JSON.stringify(landscape)}`);
