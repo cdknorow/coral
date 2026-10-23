@@ -216,12 +216,12 @@ func EULARequired() bool {
 func ResolveCoralDir(dataDir string) string {
 	switch {
 	case dataDir != "":
-		return dataDir
+		return ExtendedPath(dataDir)
 	case os.Getenv("CORAL_DATA_DIR") != "":
 		// CORAL_DATA_DIR takes precedence (matches Python), CORAL_DIR as fallback alias.
-		return os.Getenv("CORAL_DATA_DIR")
+		return ExtendedPath(os.Getenv("CORAL_DATA_DIR"))
 	case os.Getenv("CORAL_DIR") != "":
-		return os.Getenv("CORAL_DIR")
+		return ExtendedPath(os.Getenv("CORAL_DIR"))
 	}
 	homeDir, _ := os.UserHomeDir()
 	return filepath.Join(homeDir, ".coral")
