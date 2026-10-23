@@ -32,6 +32,13 @@ func TestLaunchDirErrorNamesATooLongFolder(t *testing.T) {
 		t.Skip("this volume has 8.3 short names: the folder starts through its short path")
 	}
 	assert.Contains(t, msg, "characters long")
-	assert.Contains(t, msg, "use a shorter path")
+	assert.Contains(t, msg, "shorter path")
+	assert.Equal(t, 1, strings.Count(msg, d), "the path is shown once, in the subst line")
+	assert.Contains(t, msg, `subst X: "`+d+`"`)
+	// The same folder in the extended-length form is too long as well: that is said, not "use the ordinary path".
+	ext := launchDirError(string([]byte{92, 92, 63, 92}) + d)
+	assert.Contains(t, ext, "characters long")
+	assert.NotContains(t, ext, "such as")
+	assert.Less(t, strings.Index(ext, "characters long"), strings.Index(ext, "extended-length"), "the length comes first")
 	assert.Empty(t, launchDirError(t.TempDir()))
 }

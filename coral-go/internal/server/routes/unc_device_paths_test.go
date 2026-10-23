@@ -78,3 +78,15 @@ func TestDeviceNamesRefusedForThemesAndWorkflows(t *testing.T) {
 	}
 	assert.Less(t, create("console").Code, 300, "a name that only starts like a device is fine")
 }
+
+// A local drive in the extended-length form is named for what it is, not called a network path (#278 row 14); a real device or UNC form still is one.
+func TestExtendedDrivePathIsNotCalledANetworkPath(t *testing.T) {
+	ext := string([]byte{92, 92, 63, 92}) + `D:\project\x`
+	msg := launchDirError(ext)
+	assert.Contains(t, msg, "extended-length path")
+	assert.NotContains(t, msg, "network")
+	assert.Contains(t, msg, `such as D:\project\x`)
+	for _, p := range uncForms {
+		assert.Contains(t, launchDirError(p), "a network path can't be a working folder", p)
+	}
+}
