@@ -104,9 +104,7 @@ func (s *ScheduleStore) CreateScheduledJob(ctx context.Context, job *ScheduledJo
 	if job.AgentType == "" {
 		job.AgentType = at.Claude
 	}
-	if job.BaseBranch == "" {
-		job.BaseBranch = "main"
-	}
+	// An empty base branch stays empty: the repository's current branch, found when the job runs (#6701).
 	if job.MaxDurationS == 0 {
 		job.MaxDurationS = 3600
 	}

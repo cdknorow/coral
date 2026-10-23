@@ -274,3 +274,26 @@ func TestRunWorktreeWithUnsavedWorkIsKept(t *testing.T) {
 	require.NoError(t, err, string(out))
 	assert.Contains(t, string(out), "coral/job-run-", "its branch stays too")
 }
+
+// A run whose base branch is missing fails with one plain sentence and the fixed word a row and the Runs table show (#6701): no raw git text.
+func TestRunWithAMissingBaseBranchSaysSoPlainly(t *testing.T) {
+	e := newExitEnv(t, "exit-missing-base")
+	repo := exitGitRepo(t)
+	launched := false
+	e.launch(t, func(context.Context) error { launched = true; return nil })
+	e.s.launchAndWatch(e.runID, store.ScheduledJob{AgentType: "claude"}, runConfig{repoPath: repo, createWorktree: true, baseBranch: "release"})
+	r := e.run(t)
+	assert.Equal(t, "failed", r.Status)
+	require.NotNil(t, r.ErrorMsg)
+	assert.Equal(t, "The base branch release does not exist in "+repo+". Its branches: main.", *r.ErrorMsg)
+	require.NotNil(t, r.ErrorCode)
+	assert.Equal(t, "base_branch_missing", *r.ErrorCode)
+	assert.False(t, launched)
+
+	e2 := newExitEnv(t, "exit-bad-repo")
+	e2.launch(t, func(context.Context) error { return nil })
+	e2.s.launchAndWatch(e2.runID, store.ScheduledJob{AgentType: "claude"}, runConfig{repoPath: filepath.Join(t.TempDir(), "not-a-repo"), createWorktree: true})
+	r = e2.run(t)
+	require.NotNil(t, r.ErrorCode)
+	assert.Equal(t, "worktree_failed", *r.ErrorCode)
+}

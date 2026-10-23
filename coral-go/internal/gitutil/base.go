@@ -87,3 +87,12 @@ func branchMissing(ctx context.Context, repoDir, name string) error {
 	}
 	return e
 }
+
+// CurrentBranch is the branch the repository at dir is on, "" when it has no commit yet or HEAD is detached (the dashboard prefills Base Branch with it, #6701).
+func CurrentBranch(ctx context.Context, dir string) string {
+	if !refExists(ctx, dir, "HEAD") {
+		return ""
+	}
+	branch, _ := git(ctx, dir, "symbolic-ref", "--short", "-q", "HEAD")
+	return branchText(branch)
+}
