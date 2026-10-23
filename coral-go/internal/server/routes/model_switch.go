@@ -16,6 +16,7 @@ import (
 	"github.com/subgentic/coral/internal/jsonl"
 	"github.com/subgentic/coral/internal/proxy"
 	"github.com/subgentic/coral/internal/safego"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // The live switch of an agent's model and thinking level (#4969): the operator picks a model or level in the chat bar and Coral
@@ -313,6 +314,11 @@ func (h *SessionsHandler) runModelSwitch(ctx context.Context, seq int64, name, a
 			return
 		}
 		_ = h.ss.SetSessionThinking(ctx, sessionID, level)
+		if level == "" { // Default is a choice too: the --effort the agent was launched with must not come back on a wake (#6219)
+			if ls, err := h.ss.GetLiveSession(ctx, sessionID); err == nil && ls != nil {
+				_ = h.ss.SetSessionFlags(ctx, sessionID, agentmodels.StripThinkingFlags(store.UnmarshalFlags(ls.Flags)))
+			}
+		}
 	}
 	h.modelSwitches.update(sessionID, seq, func(s *modelSwitch) { s.State = switchDone })
 	h.kickWS() // the feed shows the result now, not on the next tick

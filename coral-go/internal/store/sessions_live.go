@@ -686,6 +686,12 @@ func (s *SessionStore) CleanupOrphanedSleeping(ctx context.Context) (int, error)
 }
 
 // SetSessionThinking records the thinking level a live session now runs with: "" is the CLI's own default (#4969).
+// SetSessionFlags replaces the CLI flags an agent is started with again (a wake, a restart): none when flags is empty.
+func (s *SessionStore) SetSessionFlags(ctx context.Context, sessionID string, flags []string) error {
+	_, err := s.db.ExecContext(ctx, "UPDATE live_sessions SET flags = ? WHERE session_id = ?", MarshalFlags(flags), sessionID)
+	return err
+}
+
 func (s *SessionStore) SetSessionThinking(ctx context.Context, sessionID, level string) error {
 	_, err := s.db.ExecContext(ctx, "UPDATE live_sessions SET thinking = ? WHERE session_id = ?", level, sessionID)
 	return err
