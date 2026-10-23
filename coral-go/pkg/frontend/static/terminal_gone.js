@@ -215,7 +215,7 @@ document.addEventListener('coral:terminal-input-held', e => {
 // The server delivered frame `id`.
 document.addEventListener('coral:terminal-input-ack', e => {
     const { sessionId, id } = e.detail || {};
-    noteDone(sessionId, id);
+    noteDone(sessionId, id, 'sent');
     for (const p of [..._socketSends]) {
         if ((sessionId && p.sid !== sessionId) || !p.ids.delete(id)) continue;
         if (p.ids.size === 0) _settle(p, true);

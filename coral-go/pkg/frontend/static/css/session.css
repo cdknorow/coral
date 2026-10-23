@@ -2202,4 +2202,6 @@
 .composer-queued-item { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; }
 .composer-queued-text { min-width: 0; overflow-wrap: anywhere; }
 .composer-queued-head { margin-bottom: 2px; }
+.composer-queued:empty { margin: 0; padding: 0; height: 0; min-height: 0; overflow: hidden; } /* always in the page, so what is put into it is read (#6611); nothing queued takes no room */
+.composer-queued-note { color: var(--text-primary); }
 @media (pointer: coarse) { .composer-queued-cancel { min-height: 44px; min-width: 44px; display: inline-flex; align-items: center; } }

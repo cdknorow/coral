@@ -11,7 +11,7 @@ const BASE = require('./test_base').BASE;
     const results = [];
     const check = (label, cond, detail) => { results.push(!!cond); console.log(`[${cond ? 'PASS' : 'FAIL'}] ${label}${detail !== undefined ? ' - ' + detail : ''}`); };
     const line = () => ev(`(() => { const b = document.getElementById('composer-queued'); const items = [...b.querySelectorAll('.composer-queued-item')];
-        return { shown: !b.hidden && b.getClientRects().length > 0, texts: items.map(i => i.querySelector('.composer-queued-text').textContent), cancels: items.map(i => i.querySelector('button').getAttribute('aria-label')), box: document.getElementById('command-input').value,
+        return { hiddenAttr: b.hasAttribute('hidden'), shown: items.length > 0 && b.getClientRects().length > 0, head: (b.querySelector('.composer-queued-head') || {}).textContent || '', note: (b.querySelector('.composer-queued-note') || {}).textContent || '', zero: b.getBoundingClientRect().height === 0, texts: items.map(i => i.querySelector('.composer-queued-text').textContent), cancels: items.map(i => i.querySelector('button').getAttribute('aria-label')), box: document.getElementById('command-input').value,
             usable: !document.getElementById('command-input').disabled, err: (() => { const e = document.getElementById('composer-error'); return e && !e.hidden ? e.querySelector('.composer-error-text').textContent : ''; })() }; })()`);
     const emit = (type, detail) => ev(`document.dispatchEvent(new CustomEvent(${JSON.stringify(type)}, { detail: ${JSON.stringify(detail)} })); true`);
     try {
@@ -33,20 +33,22 @@ const BASE = require('./test_base').BASE;
 
             console.log(`${tag}: a held message is queued under the box`);
             let l = await line();
-            check(`${tag}: nothing is queued at first`, !l.shown && l.texts.length === 0, JSON.stringify(l));
+            check(`${tag}: the region is in the page from the start (never hidden: a status that appears with its words is often not read), empty and zero-sized`, !l.hiddenAttr && !l.shown && l.texts.length === 0 && l.zero, JSON.stringify(l));
             await send(7, 'Run the tests please');
-            await waitFor(`!document.getElementById('composer-queued').hidden`, 'the queued line', 4000);
+            await waitFor(`document.querySelectorAll('#composer-queued .composer-queued-item').length > 0`, 'the queued line', 4000);
             l = await line();
-            check(`${tag}: the line says what is queued and when it sends, with a named Cancel, and the box is usable`, l.shown && l.texts.join() === 'Queued: “Run the tests please”. Sends after you answer the question above.' && l.cancels.join() === 'Cancel the queued message: Run the tests please' && l.usable, JSON.stringify(l));
+            check(`${tag}: a head line says when queued messages send and each line says what is queued, with a named Cancel, and the box is usable`, l.shown && !l.hiddenAttr && l.head === 'Queued. Sends after you answer the question above:' && l.texts.join() === '“Run the tests please”' && l.cancels.join() === 'Cancel the queued message: Run the tests please' && l.usable, JSON.stringify(l));
+            await ev(`document.querySelector('#composer-queued .composer-queued-item').dataset.mark = 'first'; true`);
             await send(8, 'x'.repeat(100));
             l = await line();
+            check(`${tag}: a second message is added as a line, the first line is not redrawn (a reader hears only what is new)`, await ev(`document.querySelector('#composer-queued .composer-queued-item').dataset.mark === 'first' && document.querySelectorAll('#composer-queued .composer-queued-head').length === 1`));
             const g = await ev(`(() => { const b = document.getElementById('composer-queued'); return { head: (b.querySelector('.composer-queued-head') || {}).textContent, words: b.textContent.split('Sends after you answer').length - 1, rows: [...b.querySelectorAll('.composer-queued-item')].map(r => ({ text: r.querySelector('.composer-queued-text').textContent, oneLine: r.getBoundingClientRect().height < 50, cancelLast: r.lastElementChild.tagName === 'BUTTON' })) }; })()`);
             check(`${tag}: several held messages say when they send once, above them, and a long one is cut to about 40 characters on one line with its Cancel at the end`, g.head === 'Queued. Sends after you answer the question above:' && g.words === 1 && g.rows.length === 2 && g.rows[1].text.includes('…') && g.rows[1].text.length < 50 && g.rows.every(r => r.oneLine && r.cancelLast), JSON.stringify(g));
 
             console.log(`${tag}: typed, refused, cancelled`);
             await emit('coral:terminal-input-ack', { sessionId: 'hq-id', id: 8 });
             l = await line();
-            check(`${tag}: the message that is typed (ack) leaves the list, the other stays and says it all on its own line`, l.texts.length === 1 && /Run the tests/.test(l.texts[0]) && /Sends after you answer the question above/.test(l.texts[0]), JSON.stringify(l.texts));
+            check(`${tag}: the message that is typed (ack) leaves the list and the region says "Sent."; the other stays`, l.texts.length === 1 && /Run the tests/.test(l.texts[0]) && l.note === 'Sent.' && !l.hiddenAttr, JSON.stringify(l));
             await emit('coral:terminal-input-refused', { sessionId: 'hq-id', id: 7, error: 'The agent session ended, so your message was not sent.' });
             l = await line();
             check(`${tag}: a refusal takes the line away and its reason shows under the box`, !l.shown && /session ended/.test(l.err), JSON.stringify(l));
@@ -54,12 +56,12 @@ const BASE = require('./test_base').BASE;
 
             await send(9, 'Please cancel me');
             await ev(`document.querySelector('#composer-queued .composer-queued-cancel').click(); true`);
-            await waitFor(`document.getElementById('composer-queued').hidden`, 'the line to go after Cancel', 4000);
+            await waitFor(`document.querySelectorAll('#composer-queued .composer-queued-item').length === 0`, 'the line to go after Cancel', 4000);
             await emit('coral:terminal-input-refused', { sessionId: 'hq-id', id: 9, error: 'Cancelled: your message was not sent.' }); // what the server answers its own waiter
             await sleep(200); // sleep-ok: nothing to wait for: an error that must NOT appear
             l = await line();
             const calls = await ev(`window.__calls`);
-            check(`${tag}: Cancel asks the server to drop it (DELETE .../held/<the server's id>), the text comes back into the box, and the refusal that follows is not an error`, JSON.stringify(calls) === JSON.stringify([['DELETE', '/api/sessions/live/hq/held/109']]) && l.box === 'Please cancel me' && !l.shown && l.err === '', JSON.stringify([calls, l]));
+            check(`${tag}: Cancel asks the server to drop it (DELETE .../held/<the server's id>), the text comes back into the box, the region says so, and the refusal that follows is not an error`, JSON.stringify(calls) === JSON.stringify([['DELETE', '/api/sessions/live/hq/held/109']]) && l.box === 'Please cancel me' && !l.shown && l.err === '' && l.note === 'Cancelled. The message is back in the box.' && !l.hiddenAttr, JSON.stringify([calls, l]));
 
             console.log(`${tag}: a cancel that fails, and the live row's own list`);
             await ev(`document.getElementById('command-input').value = ''; window.__cancelStatus = 500; true`);
@@ -72,16 +74,16 @@ const BASE = require('./test_base').BASE;
             const rowWith = list => ev(`import(${S} + 'session_header_updates.js').then(m => { const row = { ...(window.__qaState.liveSessions.find(s => s.session_id === 'hq-id')), held_messages: ${JSON.stringify(list)} }; m.updateWaitingIndicator(row); return true; })`);
             await rowWith([{ id: 21, text: 'from the row' }]);
             l = await line();
-            check(`${tag}: the live row's held_messages draw the same line (a reload or a second window)`, l.shown && l.texts.join() === 'Queued: “from the row”. Sends after you answer the question above.', JSON.stringify(l));
+            check(`${tag}: the live row's held_messages draw the same line (a reload or a second window)`, l.shown && l.texts.join() === '“from the row”' && l.head === 'Queued. Sends after you answer the question above:', JSON.stringify(l));
             await ev(`window.__cancelStatus = 200; true`);
             await rowWith([{ id: 21, text: 'from the row', sending: true }]);
             const sending = await ev(`(() => { const b = document.getElementById('composer-queued'); return { text: b.textContent, cancels: b.querySelectorAll('button').length }; })()`);
-            check(`${tag}: a message the server is typing says so and has no Cancel`, /^Sending: “from the row”/.test(sending.text) && !/Sends after/.test(sending.text) && sending.cancels === 0, JSON.stringify(sending));
+            check(`${tag}: a message the server is typing says so and has no Cancel`, /Sending: “from the row”/.test(sending.text) && !/Sends after/.test(sending.text) && sending.cancels === 0, JSON.stringify(sending));
             await rowWith([{ id: 22, text: 'gone already', sending: false }]);
             await ev(`window.__cancelStatus = 404; document.getElementById('command-input').value = ''; document.querySelector('#composer-queued .composer-queued-cancel').click(); true`);
-            await waitFor(`document.getElementById('composer-queued').hidden`, 'the line to go after a 404', 4000);
+            await waitFor(`document.querySelectorAll('#composer-queued .composer-queued-item').length === 0`, 'the line to go after a 404', 4000);
             l = await line();
-            check(`${tag}: a Cancel the server answers "not held" (typed already) drops the line and gives no text back`, !l.shown && l.box === '', JSON.stringify(l));
+            check(`${tag}: a Cancel the server answers "not held" (typed already) drops the line, says so, and gives no text back`, !l.shown && l.box === '' && /sent already/.test(l.note), JSON.stringify(l));
             await rowWith([]);
             l = await line();
             check(`${tag}: and an empty list from the row clears it`, !l.shown && l.texts.length === 0, JSON.stringify(l));

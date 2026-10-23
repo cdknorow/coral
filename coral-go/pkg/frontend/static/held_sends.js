@@ -38,13 +38,26 @@ export function noteHeld(sid, id, text, heldId) {
 }
 
 /** The message was typed, refused or cancelled (named by the composer's frame id): it is not held any more. */
-export function noteDone(sid, id) {
+export function noteDone(sid, id, how) {
     const k = key(sid, id);
     sent.delete(k);
     const heldId = byComposer.has(k) ? byComposer.get(k) : id;
     byComposer.delete(k);
     const m = queued.get(sid);
-    if (m && m.delete(heldId)) { if (!m.size) queued.delete(sid); paint(); }
+    if (m && m.delete(heldId)) {
+        if (!m.size) queued.delete(sid);
+        if (how === 'sent') say('Sent.'); // the message that waited was typed: the line going is not left unsaid
+        else paint();
+    }
+}
+
+let said = '', saidTimer = 0;
+/** Said in the queued region (a status): what happened to a message that left the list. It stays for a few seconds, then goes. */
+function say(text) {
+    said = text;
+    clearTimeout(saidTimer);
+    saidTimer = setTimeout(() => { said = ''; paint(); }, 8000);
+    paint();
 }
 
 /** Was this message's cancel the person's own (so its refusal is not an error)? */
@@ -78,7 +91,8 @@ export async function cancelQueued(sid, heldId) {
         const text = e ? e.text : '';
         if (e && e.composerId !== undefined) noteDone(sid, e.composerId); else { const m = queued.get(sid); if (m) { m.delete(heldId); if (!m.size) queued.delete(sid); } paint(); }
         setTimeout(() => cancelling.delete(own), 10000); // the refusal that follows is read as the person's own; the mark is not kept
-        if (r.ok) giveBack(sid, text); // cancelled: its text comes back; a 404 says it is gone already (typed or refused), so nothing comes back
+        if (r.ok) { giveBack(sid, text); say('Cancelled. The message is back in the box.'); } // its text comes back
+        else say('It was sent already, so it could not be cancelled.'); // a 404 says it is gone already (typed or refused): nothing comes back
     } catch (err) { cancelling.delete(own); showToast('Could not cancel the queued message. Check the connection.', true); }
 }
 
@@ -89,31 +103,48 @@ function giveBack(sid, text) {
 }
 
 let lastShown = '';
-/** Draw the open agent's queued lines (written only when they change: a feed message that changes nothing drawn writes nothing to the page, #5010). */
+/** Draw the open agent's queued lines in the region that is always in the page (#6611): one head line, a line per message, and what was last said. The region is never hidden (a region that
+ *  appears with its words in the same moment is often not read): it is empty and zero-sized when nothing is queued. Lines are added and taken away one by one, not redrawn, so a reader hears
+ *  what is new. Written only on a change (#5010's budget). */
 export function paint() {
     const box = document.getElementById('composer-queued');
     if (!box) return;
     const sid = state.currentSession && state.currentSession.session_id;
     const items = sid && queued.get(sid) ? [...queued.get(sid).values()] : [];
-    const sig = sid + '|' + items.map(i => `${i.id}:${i.sending ? 1 : 0}:${i.text}`).join('\u0001');
+    const sig = sid + '|' + said + '|' + items.map(i => `${i.id}:${i.sending ? 1 : 0}:${i.text}`).join('\u0001');
     if (sig === lastShown) return;
     lastShown = sig;
-    if (box.hidden === !!items.length) box.hidden = !items.length;
-    const many = items.length > 1;
-    const row = (i, text) => {
-        const li = document.createElement('div'); li.className = 'composer-queued-item';
-        const t = document.createElement('span'); t.className = 'composer-queued-text'; t.textContent = i.sending ? text.replace(/^Queued: /, 'Sending: ').replace(/\. Sends after.*$/, '.') : text;
-        li.append(t);
-        if (!i.sending) { // once it is being typed there is nothing left to cancel
+    const kids = [...box.children];
+    const head = kids.find(k => k.classList.contains('composer-queued-head'));
+    const rows = new Map(kids.filter(k => k.classList.contains('composer-queued-item')).map(k => [k.dataset.key, k]));
+    const noteEl = kids.find(k => k.classList.contains('composer-queued-note'));
+    const waiting = items.some(i => !i.sending); // the head says when they send: not needed once every one is being typed
+    if (waiting && !head) { const h = document.createElement('div'); h.className = 'composer-queued-head'; h.textContent = 'Queued. Sends after you answer the question above:'; box.prepend(h); }
+    if (!waiting && head) head.remove();
+    const want = new Set(items.map(i => String(i.id)));
+    for (const [k, el] of rows) if (!want.has(k)) el.remove();
+    let after = box.querySelector('.composer-queued-head');
+    for (const i of items) {
+        let el = rows.get(String(i.id));
+        const text = `${i.sending ? 'Sending: ' : ''}“${firstWords(i.text)}”`;
+        if (!el) {
+            el = document.createElement('div'); el.className = 'composer-queued-item'; el.dataset.key = String(i.id);
+            const t = document.createElement('span'); t.className = 'composer-queued-text'; el.append(t);
+            (after ? after.after(el) : box.prepend(el));
+        }
+        const t = el.querySelector('.composer-queued-text');
+        if (t.textContent !== text) t.textContent = text;
+        const cancel = el.querySelector('.composer-queued-cancel');
+        if (i.sending && cancel) cancel.remove(); // once it is being typed there is nothing left to cancel
+        if (!i.sending && !cancel) {
             const b = document.createElement('button'); b.type = 'button'; b.className = 'cni-link composer-queued-cancel'; b.textContent = 'Cancel';
             b.setAttribute('aria-label', `Cancel the queued message: ${firstWords(i.text)}`);
             b.addEventListener('click', () => cancelQueued(sid, i.id));
-            li.append(b);
+            el.append(b);
         }
-        return li;
-    };
-    // One message says it all on its line; several say when they send once, above them.
-    const out = many ? [Object.assign(document.createElement('div'), { className: 'composer-queued-head', textContent: 'Queued. Sends after you answer the question above:' }), ...items.map(i => row(i, `“${firstWords(i.text)}”`))]
-        : items.map(i => row(i, `Queued: “${firstWords(i.text)}”. Sends after you answer the question above.`));
-    box.replaceChildren(...out);
+        after = el;
+    }
+    if (said && !noteEl) { const n = document.createElement('div'); n.className = 'composer-queued-note'; n.textContent = said; box.append(n); }
+    else if (said && noteEl && noteEl.textContent !== said) noteEl.textContent = said;
+    else if (!said && noteEl) noteEl.remove();
 }
