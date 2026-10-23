@@ -871,10 +871,14 @@ body.hub-no-machine .welcome-launch-list, body.hub-no-machine .welcome-header p,
 .welcome-connect-copy p + p { margin-top: 4px; }
 .welcome-connect-copy p { margin: 0; font-size: 0.8125rem; line-height: 1.45; color: var(--text-secondary); }
 .welcome-connect-another { display: none; justify-self: start; font-size: 0.8125rem; color: var(--link-text, var(--accent)); text-decoration: underline; }
-body.cloud-mode:not(.hub-no-machine) .welcome-connect-another { display: inline-block; margin-top: 6px; }
-@media (pointer: coarse), (max-width: 767px) { body.cloud-mode:not(.hub-no-machine) .welcome-connect-another { display: inline-flex; align-items: center; min-height: var(--control-touch-height, 44px); } }
+body.cloud-mode:not(.hub-no-machine) .welcome-connect-another { display: block; width: max-content; margin-top: 16px; } /* its own line, after the three cards */
+@media (pointer: coarse), (max-width: 767px) { body.cloud-mode:not(.hub-no-machine) .welcome-connect-another { display: flex; align-items: center; min-height: var(--control-touch-height, 44px); } }
 .welcome-connect-btn, .hub-connect-empty a.btn { text-decoration: none; }
 .hub-connect-empty, .hub-connect-empty * { font-style: normal; }
+/* With no computer connected nothing can be launched (#6351): no New Agent buttons, and on a wide screen the agent list says one line, the home's panel being the one place that explains; the phone, which has no home, keeps the panel in the list. */
+body.hub-no-machine [data-on-click="launch-show"], body.hub-no-machine .sidebar-footer { display: none; }
+.hub-connect-short { display: none; }
+@media (min-width: 768px) { .hub-connect-none > :not(.hub-connect-short) { display: none; } .hub-connect-none > .hub-connect-short { display: block; color: var(--text-secondary); } }
 .hub-connect-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 16px 12px; font-style: normal; }
 .hub-connect-empty strong { color: var(--text-primary); font-size: 0.8125rem; }
 .session-list li.hub-connect-empty { font-style: normal; }

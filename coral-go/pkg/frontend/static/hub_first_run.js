@@ -16,7 +16,7 @@ export function syncHubFirstRun() {
 /** The empty agent list for a machine state (the same list is the phone's Agents page), or '' when the ordinary empty line applies. Fixed text only. */
 export function hubEmptyListHtml(m) {
     if (m === 'none') {
-        return '<li class="empty-state hub-connect-empty"><strong>Connect your computers</strong> <span>Install Coral on each computer. In Coral, go to Settings &gt; Network and Hub &gt; Connect to Coral Hub, and the computer appears here.</span> '
+        return '<li class="empty-state hub-connect-empty hub-connect-none"><span class="hub-connect-short">No computers connected yet</span><strong>Connect your computers</strong> <span>Install Coral on each computer. In Coral, go to Settings &gt; Network and Hub &gt; Connect to Coral Hub, and the computer appears here.</span> '
             + '<a class="btn btn-primary btn-small" href="/machines/add">Add a computer</a></li>';
     }
     if (m === 'offline') return '<li class="empty-state hub-connect-empty"><strong>Your computers are offline</strong> <span>Keep Coral running on a connected computer to see its agents here.</span></li>';

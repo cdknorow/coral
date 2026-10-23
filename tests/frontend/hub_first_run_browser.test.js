@@ -61,7 +61,8 @@ const { settle } = require('./helpers/wait');
         assert.deepEqual(await ev(`[...document.querySelectorAll('.welcome-first-run p')].map(p => p.textContent)`), ['Install Coral on each computer. In Coral, go to Settings > Network and Hub > Connect to Coral Hub, and the computer appears here.']);
         assert.equal(await ev(shown('.welcome-offline')), false);
         const side = await ev(`({ text: document.getElementById('live-sessions-list').innerText.replace(/\\s+/g, ' ').trim(), open: !document.querySelector('[data-section="live-sessions"]').classList.contains('collapsed') })`);
-        assert.deepEqual(side, { text: 'Connect your computers Install Coral on each computer. In Coral, go to Settings > Network and Hub > Connect to Coral Hub, and the computer appears here. Add a computer', open: true }, 'the empty list carries the action and stays open');
+        assert.deepEqual(side, { text: 'No computers connected yet', open: true }, 'on a wide screen the empty list says one line (the home carries the panel) and stays open');
+        assert.equal(await ev(`[...document.querySelectorAll('[data-on-click="launch-show"]')].some(b => b.getClientRects().length > 0)`), false, 'no New Agent button while nothing can be launched');
         await shot('hub-first-run-desktop');
 
         console.log('2. Add a computer goes to the hub\'s /machines/add, in this tab, from the panel and from the empty list');
@@ -69,7 +70,8 @@ const { settle } = require('./helpers/wait');
         await waitFor(`location.pathname === '/machines/add'`, 'the add page', { timeout: 8000 });
         assert.equal(enrollHit, 1);
         await open(1280, 756);
-        await ev(`document.querySelector('#live-sessions-list .hub-connect-empty a.btn').click(); true`);
+        await open(390, 756); // the phone's Agents page is the list: the panel is there
+        await ev(`document.querySelector('#mobile-agent-list .hub-connect-empty a.btn, #live-sessions-list .hub-connect-empty a.btn').click(); true`);
         await waitFor(`location.pathname === '/machines/add'`, 'the add page from the empty list', { timeout: 8000 });
         assert.equal(enrollHit, 2);
         await open(1280, 756);
@@ -87,6 +89,7 @@ const { settle } = require('./helpers/wait');
         const phone = await ev(`(() => { const b = document.querySelector('#mobile-agent-list .hub-connect-empty a.btn, #live-sessions-list .hub-connect-empty a.btn'); const r = b && b.getBoundingClientRect();
             return { has: !!b, h: r ? Math.round(r.height) : 0, inside: r ? r.right <= innerWidth && r.left >= 0 : false, page: document.documentElement.scrollWidth - document.documentElement.clientWidth }; })()`);
         assert.ok(phone.has && phone.h >= 44 && phone.inside && phone.page <= 0, JSON.stringify(phone));
+        assert.equal(await ev(`[...document.querySelectorAll('[data-on-click="launch-show"]')].some(b => b.getClientRects().length > 0)`), false, 'no + New on the phone while nothing can be launched');
         await shot('hub-first-run-phone');
 
         console.log('5. Machines that are all offline: "Your machines are offline", not a first run; a usable machine with no agents: "No agents yet"; a list that failed is not a first run');
