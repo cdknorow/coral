@@ -270,7 +270,11 @@ function _syncDirNote() {
     if (!input || !note) return;
     const v = input.value.trim().replace(/[\\/]+$/, '');
     const root = (input.dataset.coralRoot || '').replace(/[\\/]+$/, '');
-    note.hidden = !(v && (v === '~' || (!input.dataset.dirServer && root && v === root)));
+    const on = !!(v && (v === '~' || (!input.dataset.dirServer && root && v === root)));
+    // A note read when the person is at the Folder field, not a live region (#6656): it describes the field while it applies, so it is read with it and not announced from nowhere.
+    if (note.hidden === on) note.hidden = !on;
+    if (on) { if (input.getAttribute('aria-describedby') !== 'launch-dir-note') input.setAttribute('aria-describedby', 'launch-dir-note'); }
+    else if (input.hasAttribute('aria-describedby')) input.removeAttribute('aria-describedby');
 }
 function _wireDirNote() {
     const input = document.getElementById('launch-dir');
