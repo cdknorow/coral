@@ -140,7 +140,10 @@ function Click([hashtable]$extraHeaders = @{}, [string]$body = '', $websession =
     $args2 = @{ Uri = "$base/api/system/update/install"; Method = 'POST'; Headers = $h; SkipHttpErrorCheck = $true; UseBasicParsing = $true }
     if ($websession) { $args2.WebSession = $websession }
     if ($body -ne '') { $args2.Body = $body; $args2.ContentType = 'application/json' }
-    return (Invoke-WebRequest @args2)
+    $resp = Invoke-WebRequest @args2
+    # -Headers are kept in the web session for its later calls: a header of this call (an agent's token) must not stay on the person's session
+    if ($websession) { foreach ($k in $h.Keys) { $null = $websession.Headers.Remove($k) } }
+    return $resp
 }
 function Wait-Result([int]$minutes = 8) {
     $end = (Get-Date).AddMinutes($minutes)
