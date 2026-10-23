@@ -31,6 +31,8 @@ jobs:
           cache-dependency-path: coral-go/go.sum
 
       - name: Rehearse the update chain
+        env:
+          RHS_TAMPER_REPEAT: "20" # TRIAL ONLY (#6297): a sample of the tampered check for the flake; not for main
         run: bash tests/release/update_rehearsal.sh
 
       # The in-process half needs no runner of its own kind, but it is cheap here and proves the rig on Linux too.
