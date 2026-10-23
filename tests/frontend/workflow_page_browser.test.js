@@ -11,7 +11,8 @@ const BASE = require('./test_base').BASE;
         steps: [{ name: 'Install', type: 'shell', command: 'npm ci' }, { name: 'Test', type: 'shell', command: 'npm test -- --ci' }], last_run: { status: 'failed', started_at: iso(3600000) } };
     const RUNS = [
         { id: 2, workflow_id: 1, status: 'failed', trigger_type: 'schedule', started_at: iso(3700000), finished_at: iso(3600000), duration_seconds: 100, failed_step: { number: 2, name: 'Test' }, failure_reason: 'exit code 3' },
-        { id: 1, workflow_id: 1, status: 'completed', trigger_type: 'manual', started_at: iso(90000000), finished_at: iso(89990000), duration_seconds: 10 }];
+        { id: 1, workflow_id: 1, status: 'completed', trigger_type: 'manual', started_at: iso(90000000), finished_at: iso(89990000), duration_seconds: 10 },
+        { id: 0, workflow_id: 1, status: 'completed', trigger_type: 'api', started_at: iso(170000000), finished_at: iso(169999950), duration_seconds: 0.05 }];
     const STUB = `(() => { const real = window.fetch; const J = (b) => Promise.resolve(new Response(JSON.stringify(b), { status: 200, headers: { 'Content-Type': 'application/json' } }));
         window.fetch = (u, o) => { const s = String(u); const get = !(o && o.method && o.method !== 'GET');
             if (get && /\\/api\\/workflows\\/1\\/runs/.test(s)) return J({ runs: ${JSON.stringify(RUNS)} });
@@ -27,7 +28,7 @@ const BASE = require('./test_base').BASE;
             await ev(`window.switchNavTab('workflows'); true`);
             await waitFor(`document.querySelectorAll('#wf-list .wf-card').length === 1`, 'the workflow card', 8000).catch(async e => { throw new Error(e.message + ' at ' + w + ': ' + await ev(`JSON.stringify([document.getElementById('workflows-view')?.style.display, document.getElementById('workflows-view')?.innerText.slice(0, 200), location.hash])`)); });
             await ev(`document.querySelector('#wf-list .wf-card').click(); true`);
-            await waitFor(`document.querySelectorAll('#wf-detail .wf-runs-table tbody tr').length === 2`, 'the runs', 8000);
+            await waitFor(`document.querySelectorAll('#wf-detail .wf-runs-table tbody tr').length === 3`, 'the runs', 8000);
             const at = `at ${w}px: `;
             const page = await ev(`(() => { const t = document.getElementById('workflows-view').innerText; return { text: t, count: t.split('nightly-build').length - 1, badge: getComputedStyle(document.getElementById('wf-count-badge')).display,
                 steps: [...document.querySelectorAll('.wf-step-item')].map(e => [e.querySelector('.wf-step-index').textContent, e.querySelector('.wf-step-what')?.textContent]),
@@ -39,7 +40,8 @@ const BASE = require('./test_base').BASE;
             assert.deepEqual(page.head, ['When', 'Result', 'Took', 'Started by'], at);
             assert.match(page.rows[0], /Failed: step 2 \(Test\).*exit code 3.*1m 40s/, at + page.rows[0]);
             assert.match(page.rows[1], /Passed.*10s?.*manual/, at + page.rows[1]);
-            assert.match(page.last, /The last run failed.*step 2 \(Test\).*exit code 3\. Open the failed run/, at + page.last);
+            assert.match(page.rows[2], /Passed.*under 1s.*api/, at + 'a run under a second says so, not 0s: ' + page.rows[2]);
+            assert.match(page.last, /The last run failed.*step 2 \(Test\): exit code 3\. Open the failed run/, at + page.last);
             assert.ok(page.last.includes(page.rows[0].split(' ').slice(0, 2).join(' ')), at + 'the line and the first row give the same time: ' + page.last + ' | ' + page.rows[0]);
             assert.equal(page.wide, false, at + 'no sideways scroll');
             for (const theme of ['dark', 'light']) {

@@ -291,7 +291,7 @@ function renderWorkflowDetail(wf, runs) {
 
     const last = runs[0];
     const lastHtml = last && (last.status === 'failed' || last.status === 'killed') ? `<p class="wf-last-failed" role="status">
-            The last run ${last.status === 'killed' ? 'was stopped' : 'failed'}${last.started_at ? ' ' + esc(whenWords(last.started_at)) : ''}${last.failed_step ? `: step ${Number(last.failed_step.number)} (${esc(last.failed_step.name)})${last.failure_reason ? ' ' + esc(last.failure_reason) : ''}` : ''}.
+            The last run ${last.status === 'killed' ? 'was stopped' : 'failed'}${last.started_at ? ' ' + esc(whenWords(last.started_at)) : ''}${last.failed_step ? `: step ${Number(last.failed_step.number)} (${esc(last.failed_step.name)})${last.failure_reason ? ': ' + esc(last.failure_reason) : ''}` : ''}.
             <button class="btn-link" data-on-click="wf-run" data-run-id="${Number(last.id)}">Open the failed run</button></p>` : '';
 
     let runsHtml = '';
@@ -299,7 +299,7 @@ function renderWorkflowDetail(wf, runs) {
         const rowsHtml = runs.map(r => `<tr data-on-click="wf-run" data-run-id="${Number(r.id)}">
                 <td>${r.started_at ? esc(whenWords(r.started_at)) : '—'}</td>
                 <td>${statusIconHtml(r.status)} ${runResult(r)}</td>
-                <td>${r.duration_seconds != null ? esc(formatDuration(Math.round(r.duration_seconds))) : '—'}</td>
+                <td>${r.duration_seconds != null ? (r.duration_seconds < 1 ? 'under 1s' : esc(formatDuration(Math.round(r.duration_seconds)))) : '—'}</td>
                 <td>${esc(r.trigger_type || '')}</td>
             </tr>`).join('');
         runsHtml = `<table class="wf-runs-table">
