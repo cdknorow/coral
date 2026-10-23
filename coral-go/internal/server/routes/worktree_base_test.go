@@ -94,6 +94,11 @@ func launchWorktreeTeam(t *testing.T, serverURL string, cfg *config.Config, boar
 
 // teamServer serves launch, stop and resurrect of a team over a repository's worktree, backed by a team store.
 func teamServer(t *testing.T) (url string, cfg *config.Config) {
+	url, cfg, _ = teamServerH(t)
+	return url, cfg
+}
+
+func teamServerH(t *testing.T) (url string, cfg *config.Config, h *SessionsHandler) {
 	t.Helper()
 	cfg = config.Load(t.TempDir())
 	_, h, _, ss := setupSessionsTestServerWithConfig(t, cfg)
@@ -107,7 +112,7 @@ func teamServer(t *testing.T) (url string, cfg *config.Config) {
 	r.Post("/api/teams/detail/{name}/resurrect", h.ResurrectTeam)
 	srv := httptest.NewServer(r)
 	t.Cleanup(srv.Close)
-	return srv.URL, cfg
+	return srv.URL, cfg, h
 }
 
 func apiPost(t *testing.T, url string) (int, string) {
@@ -296,4 +301,19 @@ func TestKillSessionKeepsADirtyWorktreeAndRemovesAClean(t *testing.T) {
 			assert.NoDirExists(t, wt)
 		}
 	}
+}
+
+// A resurrect recreates a worktree only inside Coral's own worktrees folder: a stored working dir elsewhere is refused, not handed to git (#6701, Security's #6708 E).
+func TestResurrectTeamRefusesAWorktreeOutsideTheWorktreesFolder(t *testing.T) {
+	url, cfg, h := teamServerH(t)
+	_, id, _ := launchWorktreeTeam(t, url, cfg, "outside")
+	stopTeam(t, url, id)
+	elsewhere := filepath.Join(t.TempDir(), id)
+	_, err := h.db.ExecContext(t.Context(), "UPDATE teams SET working_dir = ?", elsewhere)
+	require.NoError(t, err)
+
+	status, body := apiPost(t, url+"/api/teams/detail/"+id+"/resurrect")
+	assert.Equal(t, http.StatusBadRequest, status, body)
+	assert.Contains(t, body, "worktrees folder")
+	assert.NoDirExists(t, elsewhere)
 }

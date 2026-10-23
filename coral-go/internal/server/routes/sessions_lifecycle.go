@@ -1338,6 +1338,10 @@ func (h *SessionsHandler) ResurrectTeam(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 
+		if filepath.Clean(filepath.Dir(team.WorkingDir)) != filepath.Join(h.cfg.CoralDir(), "worktrees") { // a stored folder is checked again: only Coral's own worktrees folder
+			errBadRequest(w, "failed to recreate worktree: the team's folder is not in Coral's worktrees folder")
+			return
+		}
 		// On the team's own branch (coral-team/<board slug>, as the launch made it), not on the base branch itself: that one is checked out in the repository (#6701).
 		if _, err := gitutil.AddTeamWorktree(ctx, repoDir, team.WorkingDir, gitutil.TeamBranch(filepath.Base(team.WorkingDir)), branch); err != nil {
 			errBadRequest(w, "failed to recreate worktree: "+err.Error())
