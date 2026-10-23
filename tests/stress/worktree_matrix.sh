@@ -308,7 +308,7 @@ for SEGS in 3 6; do
             R=$(newrepo "data-long-$SEGS$FORM")
             launch_team "data-dir-long-$SEGS-$FORM" "data folder $LEN characters, given to --home and CORAL_DATA_DIR as \"$GIVEN_START...\" (${FORM} form)" "$R" main "wm-dl$SEGS$FORM-$$"; kill_launch
         else
-            row "data-dir-long-$SEGS-$FORM" "data folder $LEN characters, given as \"$GIVEN_START...\" (${FORM} form)" "-" "SERVER DID NOT START: $(grep -a 'Failed to start' "$TMPROOT/server.log" | tail -2 | clean x 500)" "-"
+            row "data-dir-long-$SEGS-$FORM" "data folder $LEN characters, given as \"$GIVEN_START...\" (${FORM} form)" "-" "SERVER DID NOT START: $(grep -a 'Failed to start\|\[startup\] data folder\|made its data folder' "$TMPROOT/server.log" | tail -3 | sed -e 's#a-long-data-folder-segment-[0-9]*-for-the-path#seg#g' | clean x 900)" "-"
         fi
     done
 done
