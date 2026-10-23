@@ -26,7 +26,7 @@ export function syncHooksComposer(session) {
     const hint = document.getElementById('composer-hooks-hint');
     if (hint) {
         if (open) { if (hint.textContent !== HOOKS_PLACEHOLDER) hint.textContent = HOOKS_PLACEHOLDER; } else if (hint.textContent) hint.textContent = '';
-        hint.hidden = !open;
+        if (hint.hidden === open) hint.hidden = !open; // only on a change, as the held notice
         const ids = (input.getAttribute('aria-describedby') || '').split(/\s+/).filter(x => x && x !== hint.id);
         if (open) ids.push(hint.id);
         if (ids.length) input.setAttribute('aria-describedby', ids.join(' ')); else input.removeAttribute('aria-describedby');

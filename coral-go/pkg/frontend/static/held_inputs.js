@@ -29,7 +29,7 @@ export function syncHeldNotice(row) {
     const el = document.getElementById('composer-held-notice');
     if (!el) return;
     const note = heldNotice(row);
-    el.hidden = !note;
+    if (el.hidden === !!note) el.hidden = !note; // written only on a change: a feed message that changes nothing drawn writes nothing to the page (#5010's budget, perf_budgets check 7)
     const t = document.getElementById('composer-held-text');
     if (t && t.textContent !== (note ? note.text : '')) t.textContent = note ? note.text : '';
 }
