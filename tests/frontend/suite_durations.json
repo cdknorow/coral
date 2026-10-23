@@ -1,6 +1,8 @@
 {
  "terminal_switch_browser.test.js": 113.3,
  "phone_targets_census_browser.test.js": 78.3,
+ "contrast_census_desktop_browser.test.js": 68.4,
+ "contrast_census_desktop_b_browser.test.js": 63.5,
  "agent_ui_local_navigation_browser.test.js": 63.4,
  "update_ui_browser.test.js": 58,
  "phone_targets_census_b_browser.test.js": 52.6,
