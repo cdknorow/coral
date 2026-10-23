@@ -73,6 +73,20 @@ func runSampler(every time.Duration, done <-chan struct{}, count func() int, sam
 	})
 }
 
+// parseGuardianAdd reads an "add <pid> <start time> <tag>" line (already split into fields): the terminal's shell, and the tag its tree carries. A pid that is not a number, 0, 1 or negative is refused (the guardian
+// ends registered trees when Coral is gone: pid 1 is init, 0 and a negative pid are process groups), and so are a start time that is not a number and an empty tag; nothing is registered for them.
+func parseGuardianAdd(f []string) (root member, tag string, ok bool) {
+	if len(f) != 4 || f[0] != "add" {
+		return member{}, "", false
+	}
+	pid, e1 := strconv.Atoi(f[1])
+	created, e2 := strconv.ParseInt(f[2], 10, 64)
+	if e1 != nil || e2 != nil || pid <= 1 || f[3] == "" {
+		return member{}, "", false
+	}
+	return member{pid, created}, f[3], true
+}
+
 type guarded struct {
 	root member
 	tag  string
@@ -128,15 +142,14 @@ func runGuardian(in io.Reader) {
 		f := strings.Fields(sc.Text())
 		switch {
 		case len(f) == 4 && f[0] == "add":
-			pid, e1 := strconv.Atoi(f[1])
-			created, e2 := strconv.ParseInt(f[2], 10, 64)
-			if e1 != nil || e2 != nil || pid <= 1 || f[3] == "" {
+			root, tag, ok := parseGuardianAdd(f)
+			if !ok {
 				continue
 			}
 			mu.Lock()
-			guard[pid] = &guarded{root: member{pid, created}, tag: f[3]}
+			guard[root.pid] = &guarded{root: root, tag: tag}
 			mu.Unlock()
-			sample(pid)
+			sample(root.pid)
 		case len(f) == 2 && f[0] == "del":
 			if pid, err := strconv.Atoi(f[1]); err == nil {
 				mu.Lock()
