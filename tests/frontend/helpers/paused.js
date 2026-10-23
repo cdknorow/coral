@@ -10,10 +10,10 @@
 // Register every requestPaused handler through this helper -- raf_hygiene's sibling, requestpaused_hygiene, enforces it.
 'use strict';
 
-/** A connection-gone error from fulfill/continue/getResponseBody after the client started closing. */
+/** A connection-gone error from fulfill/continue/getResponseBody after the client started closing, or because the paused request no longer exists. */
 function isClosedErr(err) {
     const m = String((err && err.message) || err || '');
-    return /WebSocket is not open|WebSocket connection closed|readyState [23]|not opened|Target closed|Session closed|Connection closed|already closed/i.test(m);
+    return /WebSocket is not open|WebSocket connection closed|readyState [23]|not opened|Target closed|Session closed|Connection closed|already closed|Invalid InterceptionId/i.test(m); // the last: the paused request is gone (the page navigated away or cancelled it) before the handler answered (#6506)
 }
 
 /**
