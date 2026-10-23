@@ -26,12 +26,15 @@ const { watch, clear, log, said } = require('./helpers/announce_census');
             const status = () => ({ ...UPDATE_STAGED, staged: { ...UPDATE_STAGED.staged, version: `1.4.${++version}` } }); // the notice is said once per version
 
             // the notice
+            // the region is in the page, empty, before its words come (a status that appears with its words in one go is often not read, #6656)
+            const before = await ev(`(() => { const b = document.getElementById('update-ready-notice'), r = b && b.querySelector('[role=status]'); return { region: !!r, empty: !!r && r.textContent === '', hiddenAttr: !!b && (b.hasAttribute('hidden') || r.closest('[hidden]') !== null) }; })()`);
+            assert.deepEqual(before, { region: true, empty: true, hiddenAttr: false }, `${tag}: the notice's status is in the page, empty and not hidden, before its words (${JSON.stringify(before)})`);
             await watch(ev); await clear(ev);
             await showUpdateReady(ev, waitFor, status());
             await new Promise(r => setTimeout(r, 1200)); // sleep-ok: an announcement is timed; there is no event to wait for
-            const said1 = said(await log(ev), /update/i);
+            const said1 = said(await log(ev), /is ready/i); // the words themselves: the notice's icon (system_update) is not part of its status any more
             assert.equal(said1.length, 1, `${tag}: the notice is said once (${JSON.stringify(said1.map(e => e.text))})`);
-            const n = await ev(`(() => { const b = document.getElementById('update-ready-notice'); return { role: b.getAttribute('role'), buttons: [...b.querySelectorAll('button')].map(x => (x.getAttribute('aria-label') || x.textContent).trim()), text: b.textContent.replace(/\\s+/g, ' ').trim() }; })()`);
+            const n = await ev(`(() => { const b = document.getElementById('update-ready-notice'); return { role: (b.querySelector('[role=status]') || b).getAttribute('role'), buttons: [...b.querySelectorAll('button')].map(x => (x.getAttribute('aria-label') || x.textContent).trim()), text: b.textContent.replace(/\\s+/g, ' ').trim() }; })()`);
             assert.equal(n.role, 'status', `${tag}: the notice is a status`);
             assert.ok(n.buttons.every(b => b.length > 0) && /Review/.test(n.buttons[0]), `${tag}: its buttons are named (${JSON.stringify(n.buttons)})`);
             assert.ok(/Nothing is installed/.test(n.text), `${tag}: the notice says nothing is installed yet (${n.text})`);

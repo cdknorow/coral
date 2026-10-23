@@ -193,10 +193,10 @@
             </div>
 
             <!-- #6292: a verified update is ready, said once per version; Review opens the confirmation, Later closes this and changes nothing (update_ui.js) -->
-            <div id="update-ready-notice" class="leftover-tmux-banner update-ready" role="status" hidden>
+            <div id="update-ready-notice" class="leftover-tmux-banner update-ready">
                 <span class="material-icons" aria-hidden="true">system_update</span>
-                <div class="leftover-tmux-text"><b class="update-ready-lead"></b><span class="update-ready-rest"></span></div>
-                <div class="update-ready-acts">
+                <div class="leftover-tmux-text" role="status"><b class="update-ready-lead"></b><span class="update-ready-rest"></span></div><!-- always in the page: update_ui.js sets its words, so they are read; empty, the notice takes no room -->
+                <div class="update-ready-acts" hidden>
                     <button class="btn btn-primary update-ready-review" type="button">Review</button>
                     <button class="btn update-ready-later" type="button">Later</button>
                 </div>
