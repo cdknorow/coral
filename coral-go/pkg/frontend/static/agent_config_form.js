@@ -7,7 +7,7 @@ const { _checkAgentCLI } = await importOnce('./cli_check.js');
 const { _classifyLoadedACFModel } = await importOnce('./acf_models.js');
 const { modelPickerHtml, loadModelPicker, wireModelPicker, syncModelPicker, thinkingPickerHtml, thinkingValue, setThinking, setThinkingActual, wireThinking } = await importOnce('./model_picker.js');
 const { _renderPresetButtons } = await importOnce('./persona_store.js');
-const { presetEnforcement } = await importOnce('./preset_enforcement.js');
+const { presetEnforcement, codexEnforced, agyEnforced } = await importOnce('./preset_enforcement.js');
 const { initSectionDialog } = await importOnce('./section_dialog.js');
 import { escapeHtml, escapeAttr } from './utils.js';
 
@@ -90,7 +90,17 @@ function _syncEnforcement(container) {
     const agentType = container.querySelector('.acf-agent-type')?.value || 'claude';
     const permMode = container.querySelector('.acf-permission-mode')?.value
         || defaultPermissionMode(_settingsFor(_acfServer(container)), agentType);
-    const e = presetEnforcement(agentType, _getPermissions(`${uid}-perms`) || {}, permMode);
+    const caps = _getPermissions(`${uid}-perms`) || {};
+    const e = presetEnforcement(agentType, caps, permMode);
+    // Codex and Antigravity take their sandbox or mode from the capabilities: when those mean no sandbox, the Mode beside them is not what launches, and the line says so (#6412).
+    const override = container.querySelector('.acf-mode-override');
+    if (override) {
+        const noSandbox = agentType === 'codex' && codexEnforced(caps)?.sandbox === 'none';
+        const skips = (agentType === 'agy' || agentType === 'antigravity' || agentType === 'gemini') && (caps.allow?.length || caps.deny?.length) && agyEnforced(caps) === 'skip-permissions';
+        override.textContent = noSandbox ? 'Runs without a sandbox: Shell, Read Files, Write Files and Git Write are on, so they decide the sandbox, not this Mode.'
+            : skips ? 'Skips permission prompts: Shell and Write Files are on, so they decide the mode, not this one.' : '';
+        override.hidden = !override.textContent;
+    }
     // The form's own line, and any line elsewhere that mirrors it (the Launch dialog shows it under the
     // persona, while this form is folded away).
     const lines = [container.querySelector('.acf-perms-enforced'),
@@ -229,6 +239,7 @@ export function renderAgentConfigForm(containerId, opts = {}) {
                     <option value="dontAsk"${permModeVal === 'dontAsk' ? ' selected' : ''}>Don't Ask</option>
                 </select>
                 <span class="settings-hint perm-mode-desc">${escapeHtml(permModeDesc)}</span>
+                <span class="settings-hint acf-mode-override" role="status" hidden></span>
             </label>`;
     }
 
