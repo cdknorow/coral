@@ -30,13 +30,14 @@ const CSP = ["default-src 'self'", "script-src 'self'", "style-src 'self'", "sty
         });
   await Page.addScriptToEvaluateOnNewDocument({source:`(() => {
    window.__cspViolations=[];document.addEventListener('securitypolicyviolation',e=>window.__cspViolations.push(e.violatedDirective));
+   try{localStorage.setItem('coral-group-by-server','true');}catch(e){} // the sidebar groups agents under their computer (#6241)
    const original=window.fetch; window.__remoteRequests=[];
    const computers=[{id:'m1',label:'Laptop',status:'online',online:true,access_mode:'view',local_mode:'launch',effective_mode:'view'},{id:'m2',label:'Desktop',status:'online',online:true,access_mode:'interact',local_mode:'launch',effective_mode:'interact'}];
    const json=x=>Promise.resolve(new Response(JSON.stringify(x),{headers:{'content-type':'application/json'}}));
    window.fetch=(u,o={})=>{
     const p=new URL(String(u),location.href); const m=(o.method||'GET').toUpperCase();
     if(p.pathname==='/auth/session')return json({authenticated:true,email:'tester@example.com',csrf:'test'});
-    if(p.pathname==='/api/sessions/live')return json({sessions:[],servers:window.__noComputers?[]:computers});
+    if(p.pathname==='/api/sessions/live')return json({sessions:window.__noComputers?[]:[['m1','Review agent'],['m1','Docs agent'],['m2','Build agent']].map(([server,name],i)=>({session_id:'hub-agent-'+i,name:'hub-agent-'+i,display_name:name,agent_type:'claude',working_directory:'/tmp/hub-agent-'+i,server,sleeping:false,archived:false,status:'idle'})),servers:window.__noComputers?[]:computers});
     if(p.pathname==='/api/servers')return json({servers:computers});
     if(p.pathname==='/api/account')return json({artifacts_tab:true,artifacts_frame:true});
     if(p.pathname==='/api/settings'&&m==='GET')return json({settings:{}});
@@ -64,7 +65,7 @@ const CSP = ["default-src 'self'", "script-src 'self'", "style-src 'self'", "sty
         await waitFor(`typeof window.switchNavTab==='function' && !!window.__coralReady`, 'dashboard'); await ev(`window.__coralReady.startup('liveList','settings')`);
         const menu = async () => { await ev(`document.getElementById('nav-select').click();true`); await waitFor(`!document.getElementById('nav-more-menu').hidden`, 'phone nav'); };
         const pick = async arg => { await menu(); await ev(`document.querySelector('#nav-more-menu [data-arg="${arg}"]').click();true`); };
-        await sc('hub: home', async () => { await waitFor(`document.querySelectorAll('button, a[href]').length > 5`, 'home'); }, { min: 4 });
+        await sc('hub: home', async () => { await waitFor(`document.querySelectorAll('button, a[href]').length > 5`, 'home'); }, { min: 4, expect: `document.querySelectorAll('li.server-group-header[data-server-group] .session-group-count').length >= 2` }); // the agents under their computers, each with its count after the name (#6241)
         await sc('hub: nav menu', async () => { await menu(); }, { min: 10, expect: `!document.getElementById('nav-more-menu').hidden && document.querySelectorAll('#nav-more-menu .nav-more-item').length >= 5` });
         await sc('hub: chats list', async () => { await ev(`document.querySelector('#nav-more-menu [data-arg="history"]').click();true`); await waitFor(`document.getElementById('history-sessions-list').textContent.includes('Laptop conversation')`, 'history'); }, { min: 4, expect: `document.getElementById('nav-select').textContent.includes('Chats')` });
         await sc('hub: chat transcript', async () => { await ev(`document.querySelector('#history-sessions-list [data-on-click="history-open"]').click();true`); await waitFor(`document.getElementById('history-messages').textContent.includes('needle from m1')`, 'transcript'); }, { min: 10, expect: `document.getElementById('history-messages').getClientRects().length > 0` });

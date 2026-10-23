@@ -21,6 +21,7 @@ async function setupHubWorld({ client, Page, Emulation, width, height, mobile })
         });
   await Page.addScriptToEvaluateOnNewDocument({source:`(() => {
    window.__cspViolations=[];document.addEventListener('securitypolicyviolation',e=>window.__cspViolations.push(e.violatedDirective));
+   try{localStorage.setItem('coral-group-by-server','true');}catch(e){} // the sidebar groups agents under their computer (#6241)
    const original=window.fetch; window.__remoteRequests=[];
    const computers=window.__computers=[{id:'m1',label:'Laptop',status:'online',online:true,access_mode:'view',local_mode:'launch',effective_mode:'view'},{id:'m2',label:'Desktop',status:'online',online:true,access_mode:'interact',local_mode:'launch',effective_mode:'interact'}];
    const json=x=>Promise.resolve(new Response(JSON.stringify(x),{headers:{'content-type':'application/json'}}));
@@ -28,7 +29,7 @@ async function setupHubWorld({ client, Page, Emulation, width, height, mobile })
     const p=new URL(String(u),location.href); const m=(o.method||'GET').toUpperCase();
     if(p.pathname==='/auth/session')return json({authenticated:true,email:'tester@example.com',csrf:'test'});
     if(p.pathname==='/api/account')return json({artifacts_tab:true,artifacts_frame:true});
-    if(p.pathname==='/api/sessions/live')return json({sessions:[],servers:window.__noComputers?[]:computers});
+    if(p.pathname==='/api/sessions/live')return json({sessions:window.__noComputers?[]:[['m1','Review agent'],['m1','Docs agent'],['m2','Build agent']].map(([server,name],i)=>({session_id:'hub-agent-'+i,name:'hub-agent-'+i,display_name:name,agent_type:'claude',working_directory:'/tmp/hub-agent-'+i,server,sleeping:false,archived:false,status:'idle'})),servers:window.__noComputers?[]:computers});
     if(p.pathname==='/api/servers')return json({servers:computers});
     if(p.pathname==='/api/settings'&&m==='GET')return json({settings:{}});
     const match=p.pathname.match(/^\\/api\\/remote\\/([^/]+)(\\/api\\/.*)$/);
