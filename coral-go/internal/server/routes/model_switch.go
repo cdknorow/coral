@@ -332,6 +332,7 @@ func (h *SessionsHandler) runModelSwitch(ctx context.Context, seq int64, name, a
 func (h *SessionsHandler) confirmModel(ctx context.Context, sessionID, workDir, model string, since time.Time) string {
 	tm := switchTiming.Load()
 	deadline := time.Now().Add(tm.modelConfirm)
+	other := ""
 	for {
 		var cmds []jsonl.LocalCommand
 		if h.jsonl != nil {
@@ -342,7 +343,9 @@ func (h *SessionsHandler) confirmModel(ctx context.Context, sessionID, workDir, 
 				continue
 			}
 			if !strings.EqualFold(strings.TrimSpace(c.Args), model) {
-				return "Claude Code ran /model for " + shownArgs(c.Args) + ", not " + model + ": " + c.Output
+				// Another command's answer (a replaced switch's late output, a picker choice, the operator's own): keep waiting for ours; the deadline names it if ours never comes.
+				other = "Claude Code ran /model for " + shownArgs(c.Args) + ", not " + model + ": " + c.Output
+				continue
 			}
 			if errorOutputR.MatchString(c.Output) || !setOutputR.MatchString(c.Output) {
 				return "Claude Code did not take the model: " + c.Output
@@ -353,6 +356,9 @@ func (h *SessionsHandler) confirmModel(ctx context.Context, sessionID, workDir, 
 			return msg
 		}
 		if time.Now().After(deadline) {
+			if other != "" {
+				return other
+			}
 			return "Claude Code did not confirm the model change."
 		}
 		if sleepCtx(ctx, tm.poll) != nil {
