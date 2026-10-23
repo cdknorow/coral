@@ -472,6 +472,7 @@ func (h *SessionsHandler) agentRow(trace *phaseTrace, agent AgentInfo, lv liveIn
 		"waiting_reason":        nilIf(!state.NeedsInput, state.WaitingReason),
 		"waiting_summary":       waitingLineIf(state.NeedsInput, waitingSource(state.WaitingWants, state.WaitingSummary)),
 		"waiting_kind":          nilIf(!state.NeedsInput || state.WaitingKind == "", state.WaitingKind),
+		"held_messages":         h.heldMessagesOf(agent.SessionID, naming.SessionName(agent.AgentType, agent.SessionID)), // a person's chat messages queued behind the agent's question (#6627)
 		"live_permission_mode":  h.liveMode(sid),
 		"working":               state.Working,
 		"stuck":                 state.Stuck,

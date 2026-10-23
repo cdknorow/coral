@@ -320,6 +320,7 @@ var routeTable = cat(
 	rules(http.MethodDelete, TierInteract,
 		"/api/sessions/live/{name}/notes/{id}",
 		"/api/sessions/live/{name}/tasks/{id}",
+		"/api/sessions/live/{name}/held/{id}", // a person's queued chat message, cancelled before it is typed (#6627): who may send may cancel
 		"/api/board/{project}/reminder",
 		"/api/board/{project}/tasks/{id}/reminder",
 	),
