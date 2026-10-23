@@ -1,4 +1,4 @@
-// #6583: "Remind agents to use Coral artifacts" (nudge_claude_artifacts) is on by default. Both Settings loaders
+// #6583: "Coral artifact reminders" (nudge_claude_artifacts) is on by default. Both Settings loaders
 // (modals.js and settings_core.js) show it checked when unset and as saved otherwise (the server
 // stores "true"/"false"; older Corals stored a JSON false as "False"); Apply saves a boolean; the
 // real Settings dialog has it; the server refuses anything but a boolean.
@@ -72,7 +72,7 @@ const BASE = require('./test_base').BASE;
       const label = document.querySelector('label[for="settings-nudge-claude-artifacts"]');
       return box ? { checked: box.checked, label: label && label.textContent.trim() } : 'missing';
     })()`);
-    assert.deepEqual(row, { checked: true, label: "Remind agents to use Coral artifacts" }, 'the Settings dialog');
+    assert.deepEqual(row, { checked: true, label: "Coral artifact reminders" }, 'the Settings dialog');
 
     console.log('PASS nudge-claude-artifacts setting: on by default, shown as saved, saved as a boolean, validated');
   } finally {
