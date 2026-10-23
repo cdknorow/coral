@@ -51,7 +51,7 @@ const BASE = require('./test_base').BASE;
         // does not hold (yet, or again: the cached answer is dropped and asked for anew) as "not blocked", so each can flicker off for a moment on a slow host.
         // So they are waited for together, in one evaluation, and nothing is read again afterwards (#4992: read a moment later, the button was undimmed).
         await ev(`window._selectLaunchType('agent'); true`);
-        await waitFor(`(() => { const n = document.getElementById('launch-access-note'); return !n.hidden && /Box B needs Launch/.test(n.textContent) && document.querySelector('#launch-step-agent [data-on-click="m-launch-session"]').classList.contains('hub-blocked'); })()`, 'the note says Box B needs Launch and the launch button is dimmed', { timeout: 30000 });
+        await waitFor(`(() => { const n = document.getElementById('launch-access-note'); return n.textContent !== '' && /Box B needs Launch/.test(n.textContent) && document.querySelector('#launch-step-agent [data-on-click="m-launch-session"]').classList.contains('hub-blocked'); })()`, 'the note says Box B needs Launch and the launch button is dimmed', { timeout: 30000 });
         assert.equal(await ev(`document.querySelectorAll('.toast').length`), 0, 'nothing was toasted yet');
 
         console.log('1b. The controls scanner leaves the dialog\'s dimming alone (it cleared every hub-blocked class it did not set, which un-dimmed the buttons within 120 ms)');
@@ -72,16 +72,16 @@ const BASE = require('./test_base').BASE;
         let release; hold = new Promise(r => { release = r; });
         await ev(`(async () => { (await import((window.__coralStatic || '/static/') + 'cloud_servers.js')).invalidateServerAccess(); document.dispatchEvent(new CustomEvent('coral:server-access-loaded')); return true; })()`);
         await new Promise(r => setTimeout(r, 400)); // sleep-ok: the stale answer must still be showing after the held request has had time to go out; there is nothing to wait on for a change that must not happen
-        assert.equal(await ev(`document.getElementById('launch-access-note').hidden`), true === false, 'the note is still up while the answer is asked again');
+        assert.equal(await ev(`document.getElementById('launch-access-note').textContent !== ''`), true, 'the note is still up while the answer is asked again');
         assert.equal(await ev(`document.querySelector('#launch-step-agent [data-on-click="m-launch-session"]').classList.contains('hub-blocked')`), true, 'the launch button is still dimmed');
         mode = 'launch'; release(); hold = null;
-        await waitFor(`document.getElementById('launch-access-note').hidden && !document.querySelector('#launch-step-agent [data-on-click="m-launch-session"]').classList.contains('hub-blocked')`, 'the new answer (Launch) un-dims the dialog', { timeout: 8000 });
+        await waitFor(`document.getElementById('launch-access-note').textContent === '' && !document.querySelector('#launch-step-agent [data-on-click="m-launch-session"]').classList.contains('hub-blocked')`, 'the new answer (Launch) un-dims the dialog', { timeout: 8000 });
 
         console.log('3. A machine at Launch: no note, no dimming');
         mode = 'launch';
         await open(); await openLaunch();
         await waitFor(`document.getElementById('launch-server').value === 'box-b'`, 'the server picked', { timeout: 6000 });
-        assert.equal(await ev(`document.getElementById('launch-access-note').hidden`), true);
+        assert.equal(await ev(`document.getElementById('launch-access-note').textContent === '' && !document.getElementById('launch-access-note').hasAttribute('hidden')`), true);
         assert.equal(await ev(`document.querySelectorAll('#launch-modal .hub-blocked').length`), 0);
 
         console.log('3b. The hub refuses a launch the dialog did not know to be blocked: one toast, not two');

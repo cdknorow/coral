@@ -4449,6 +4449,7 @@ a.ibx-open, a.ibx-open:visited { color: var(--link-text); }
 /* In the launch dialog the sectioned steps sit inside the dialog's own box: it has no padding then, the step's header and footer are full width, the fixed footer is always in view. */
 .modal-content.sd-modal-content:has(.launch-modal-step) { padding: 0; overflow: hidden; }
 .sd-modal-content > .launch-access-note, .sd-modal-content > .launch-server-row { margin: 0; padding: 12px 24px 0; }
+.sd-modal-content > .launch-access-note:empty { padding: 0; }
 .sd-modal-content .launch-modal-step { overflow: hidden; }
 .sd-step-header { flex: none; padding: 24px 24px 12px; border-bottom: 1px solid var(--border); }
 .sd-step-header h3 { margin: 0; }

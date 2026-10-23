@@ -214,7 +214,7 @@ function _syncLaunchAccess() {
     if (!modal) return;
     const why = isHub() ? blockedReason(_effectiveServer(launch.server), 'launch') : '';
     const note = document.getElementById('launch-access-note');
-    if (note) { note.hidden = !why; note.textContent = why; }
+    if (note) note.textContent = why; // always in the page, only its text changes (a status that appears with its words is often not read)
     for (const b of modal.querySelectorAll('[data-on-click="m-launch-session"], [data-on-click="m-launch-team"]')) {
         b.classList.toggle('hub-blocked', !!why);
         if (why) { b.setAttribute('aria-disabled', 'true'); b.title = why; } else { b.removeAttribute('aria-disabled'); b.removeAttribute('title'); }
