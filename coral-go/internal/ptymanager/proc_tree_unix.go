@@ -264,15 +264,25 @@ type seen struct {
 
 // add remembers ms (up to the cap) and returns everything remembered.
 func (s *seen) add(ms []member) []member {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	var dropped bool
-	s.ms, dropped = mergeCapped(s.ms, ms, maxRemembered)
-	if dropped && !s.capped {
-		s.capped = true
-		slog.Debug("[ptymanager] a terminal's process tree is past the remembered-set cap: the rest is found when it is killed", "cap", maxRemembered)
+	pruned := false
+	for {
+		s.mu.Lock()
+		merged, dropped := mergeCapped(s.ms, ms, maxRemembered)
+		if dropped && !pruned {
+			// Members that have ended count against the cap until they are forgotten: a build that started and finished 512 processes between two looks must not push out a helper that is alive now (Security's SHOULD on #6183).
+			s.mu.Unlock()
+			s.prune()
+			pruned = true
+			continue
+		}
+		defer s.mu.Unlock()
+		s.ms = merged
+		if dropped && !s.capped {
+			s.capped = true
+			slog.Debug("[ptymanager] a terminal's process tree is past the remembered-set cap: the rest is found when it is killed", "cap", maxRemembered)
+		}
+		return append([]member(nil), s.ms...)
 	}
-	return append([]member(nil), s.ms...)
 }
 
 // prune forgets members that have ended (or whose pid now belongs to another process).

@@ -198,3 +198,86 @@ func TestTheSamplerEndsWithTheLastTerminal(t *testing.T) {
 		t.Fatal("it ends with the last terminal")
 	}
 }
+
+// 512 members that have ended must not push out a helper that is alive now: the set is pruned before the cap decides what is dropped (Security's SHOULD on #6183).
+func TestEndedMembersDoNotCountAgainstTheCap(t *testing.T) {
+	c := exec.Command("sleep", "600")
+	if err := c.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { c.Process.Kill(); c.Wait() })
+	p, err := process.NewProcess(int32(c.Process.Pid))
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := p.CreateTime()
+	if err != nil {
+		t.Fatal(err)
+	}
+	live := member{c.Process.Pid, created}
+	var s seen
+	var ended []member
+	for i := 0; i < maxRemembered; i++ {
+		ended = append(ended, member{pid: 99000000 + i, created: 1}) // no such process
+	}
+	s.add(ended)
+	got := s.add([]member{live})
+	found := false
+	for _, m := range got {
+		if m == live {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("the live helper was dropped from a set full of ended members (%d remembered)", len(got))
+	}
+	if len(got) != 1 {
+		t.Fatalf("the ended members are forgotten: %d remembered", len(got))
+	}
+}
+
+// A tmux Kill, sleep or Restart asks the sampler for the pane's set (rememberedPane): it never waits for a tick that is slow, because the trees are computed without the lock and it is taken only to swap them in.
+func TestAKillDuringASlowTickDoesNotWait(t *testing.T) {
+	needPerl(t)
+	b := newTestTmuxBackend(t)
+	term := NewTmuxSessionTerminal(b.client)
+	const name = "claude-00006183-0002-4000-8000-000000000000"
+	spawnTmuxSession(t, term, name, t.TempDir())
+	pid, err := b.client.GetPanePID(context.Background(), name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := process.NewProcess(int32(pid))
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := p.CreateTime()
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := &descendantSampler{pty: map[member]*seen{}, clients: map[*tmux.Client]struct{}{b.client: {}}, panes: map[member]*seen{}}
+	entered, release := make(chan struct{}), make(chan struct{})
+	d.inPaneLoop = func() {
+		select {
+		case entered <- struct{}{}:
+		default:
+		}
+		<-release
+	}
+	done := make(chan struct{})
+	go func() { defer close(done); d.sample() }()
+	select {
+	case <-entered:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the tick never reached a pane")
+	}
+	got := make(chan struct{})
+	go func() { d.rememberedPane(member{pid, created}); close(got) }()
+	select {
+	case <-got:
+	case <-time.After(time.Second):
+		t.Fatal("a Kill's request for a pane's set waited for a slow tick")
+	}
+	close(release)
+	<-done
+}

@@ -31,6 +31,8 @@ type descendantSampler struct {
 	clients map[*tmux.Client]struct{} // open tmux backends
 	panes   map[member]*seen          // tmux agents' panes by their shell, rebuilt from each tick's list
 	stop    chan struct{}             // non-nil while the loop runs; closed to end it
+
+	inPaneLoop func() // a test's hook, called for each pane while its tree is computed (d.mu is not held)
 }
 
 var sampler = &descendantSampler{pty: map[member]*seen{}, clients: map[*tmux.Client]struct{}{}, panes: map[member]*seen{}}
@@ -139,12 +141,16 @@ func (d *descendantSampler) sample() {
 	}
 	snap := takeSnap()
 	for root, set := range pty {
+		set.prune()                  // what has ended first, so it does not count against the cap
 		set.add(snap.tree(root, "")) // descent only: the tag is read at the kill, never here
-		set.prune()
 	}
 	d.mu.Lock()
-	defer d.mu.Unlock()
-	next := make(map[member]*seen, len(paneShells))
+	known := make(map[member]*seen, len(d.panes))
+	for root, set := range d.panes {
+		known[root] = set
+	}
+	d.mu.Unlock()
+	next := make(map[member]*seen, len(paneShells)) // computed without d.mu: a Kill asking for a pane's set (rememberedPane) never waits for the trees
 	for _, pid := range paneShells {
 		p := snap.byPID[pid]
 		if p == nil {
@@ -155,13 +161,18 @@ func (d *descendantSampler) sample() {
 			continue
 		}
 		root := member{pid, created}
-		set := d.panes[root]
+		if d.inPaneLoop != nil {
+			d.inPaneLoop()
+		}
+		set := known[root]
 		if set == nil {
 			set = &seen{}
 		}
-		set.add(snap.tree(root, ""))
 		set.prune()
+		set.add(snap.tree(root, ""))
 		next[root] = set
 	}
+	d.mu.Lock()
 	d.panes = next // a pane whose session ended, or whose shell changed, is not remembered any more
+	d.mu.Unlock()
 }
