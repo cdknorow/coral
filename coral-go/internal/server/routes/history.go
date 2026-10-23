@@ -71,7 +71,7 @@ func (h *HistoryHandler) ListSessions(w http.ResponseWriter, r *http.Request) {
 		// match Python's file-scan fallback response shape (page_size=0).
 		if result.Total == 0 && !historyFiltered(params) && chatType != "group" {
 			if h.indexKick != nil {
-				h.indexKick() // an empty History on a machine with agents: the first conversation may only not be indexed yet (#6198)
+				h.indexKick() // an empty, unfiltered History: a first conversation may just not be indexed yet. On a machine with no history at all each opening of Chats kicks, at most one pass per kickGap (#6198)
 			}
 			writeJSON(w, http.StatusOK, map[string]any{
 				"sessions":  agentSessions,
