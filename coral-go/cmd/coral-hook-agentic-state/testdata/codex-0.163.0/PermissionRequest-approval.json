@@ -1,0 +1,14 @@
+{
+  "session_id": "<CODEX_SESSION_ID>",
+  "turn_id": "<TURN_ID>",
+  "transcript_path": "<CODEX_TRANSCRIPT_PATH>",
+  "cwd": "<TEST_WORKDIR>",
+  "hook_event_name": "PermissionRequest",
+  "model": "gpt-6.1-sol",
+  "permission_mode": "default",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "python3 -c \"print('[FAKE_GITHUB_TOKEN_REDACTED]', '~/APPROVE6621.txt')\"",
+    "description": "Permission fixture APPROVE6621"
+  }
+}
