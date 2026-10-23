@@ -5,7 +5,7 @@ import { TRAILING_CHROME } from './chat_content.js';
 import { showToast } from './utils.js';
 import { serverFetch, sessionServer } from './server_base.js';
 import { responseError } from './server_status.js';
-import { reportSendError } from './terminal_gone.js';
+import { reportSendError, noteHooksAnswered } from './terminal_gone.js';
 import { announcePrompt, promptOptionsBySession, syncNeedsInputCard } from './needs_input_card.js';
 
 // The first seconds of a new agent (#6058): its CLI has written nothing yet (the list has no output age for it), and it was started less than STARTING_MS ago by the list's created_at AND this page first saw it less than STARTING_MS ago (the second bounds a server clock that runs ahead of this one). "No messages yet" there reads as ready; it says the CLI is coming up.
@@ -96,6 +96,7 @@ export async function sendPromptAnswer(card, n, label, action, text) {
         // The card refreshes from the terminal: the next question, the review
         // step, or gone once the tool runs.
         promptOptionsBySession.delete(session.session_id);
+        noteHooksAnswered();
         if (action === "submit") announcePrompt("Answer sent");
         if (action !== "chat") giveFocusBack(document.getElementById("command-input")); // the card goes with its answer: focus goes to the message box
         if (action === "chat") {

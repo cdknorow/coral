@@ -10,7 +10,7 @@
 
 import { state } from './state.js';
 import { sessionServer } from './server_base.js';
-import { escapeAttr } from './utils.js';
+import { escapeAttr, showToast } from './utils.js';
 import { scheduleLiveSessionsRender } from './render.js';
 import { TERMINAL_GONE_MESSAGE } from './server_status.js';
 import { isPopout } from './popout.js';
@@ -95,12 +95,14 @@ const _dismissed = new Set();
 
 export const TERMINAL_GONE_TEXT = TERMINAL_GONE_MESSAGE;
 let _composerGone = false;
+let _hooksReview = false; // the error under the composer is Codex's hooks question: answering it clears the error and says to send again (#6200)
 
 /** Say a send error under the composer. restart: offer Restart (the terminal is gone). */
 export function showComposerError(message, { restart = false } = {}) {
     const box = document.getElementById('composer-error');
     if (!box) return;
     box.querySelector('.composer-error-text').textContent = message;
+    _hooksReview = false; // reportSendError sets it again for the hooks question
     box.querySelector('.composer-error-restart').hidden = !restart || isPopout(); // no destructive actions in the popout
     box.hidden = false;
     _composerGone = restart;
@@ -110,6 +112,14 @@ export function clearComposerError() {
     const box = document.getElementById('composer-error');
     if (box) box.hidden = true;
     _composerGone = false;
+    _hooksReview = false;
+}
+
+/** The agent's prompt was answered: if the message was held back by Codex's hooks question, the error under the composer goes and a line says the message is still there to send. */
+export function noteHooksAnswered() {
+    if (!_hooksReview) return;
+    clearComposerError();
+    showToast('Answered. Your message is still in the box: send it again.');
 }
 
 /** A failed send for `session`: inline under the composer; a gone terminal also marks the agent. */
@@ -127,6 +137,7 @@ export function reportSendError(session, message, code, exited = false) {
         return;
     }
     showComposerError(message);
+    _hooksReview = code === 'codex_hooks_review_pending'; // set after the error is shown (showing it keeps the flag as it was)
 }
 
 document.addEventListener('click', e => {

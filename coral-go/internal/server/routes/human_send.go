@@ -160,7 +160,7 @@ var (
 	errSendNotConfirmed = &errHumanSend{"not_confirmed", "The agent didn't confirm your message: it may not have been sent. Check its terminal before sending it again."}
 	// An agent whose hook programs are gone (the app it started from was replaced) takes the message but cannot say so: said plainly, not as "may not have been sent" (#6089).
 	errSendHooksGone   = &errHumanSend{"hooks_unreachable", "Coral can't reach this agent's hooks, so it can't tell whether your message arrived. Check the agent's terminal. To fix this, reopen Coral or restart the agent."}
-	errSendHooksReview = &errHumanSend{"codex_hooks_review_pending", "Codex is asking you to review Coral's hooks before it starts. Trusting them lets those hooks run outside Codex's sandbox, so only you can answer: pick Review hooks, Trust all and continue, or Continue without trusting (Coral then gets no hook events from this agent) in its terminal or the prompt above. Your message was not sent."}
+	errSendHooksReview = &errHumanSend{"codex_hooks_review_pending", "Answer Codex's question about Coral's hooks above first: your message was not sent. Trusting hooks lets them run outside Codex's sandbox."}
 	errSendBusy        = &errHumanSend{"agent_busy", "Other messages to this agent are still being sent: yours was not sent. Try again in a moment."}
 	errSendLeftover    = &errHumanSend{"box_not_empty", "An earlier message is still in the agent's input box, not submitted: yours was not sent. Send that one again, or clear it in its terminal."}
 )

@@ -583,6 +583,11 @@ func TestHumanSendIsSubmittedOrSaysSo(t *testing.T) {
 				assert.Equal(t, http.StatusConflict, rec.Code, rec.Body.String())
 				assert.Equal(t, "codex_hooks_review_pending", code(rec))
 				assert.Contains(t, rec.Body.String(), "outside Codex's sandbox")
+				var body struct {
+					Error string `json:"error"`
+				}
+				require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+				assert.LessOrEqual(t, len(strings.Fields(body.Error)), 28, "one short sentence pair: the permission card above has the choices and the details (#6200): "+body.Error)
 				typed, enters := h.term.counts()
 				assert.Empty(t, typed, "SendInput is never called")
 				assert.Zero(t, enters)
