@@ -406,7 +406,7 @@ tag_commit() {
 TAG_COMMIT="$(tag_commit)"
 # The dashboard ships minified (#6208): a coral binary holding the marker (a comment line of a static source file) was built without the strip-static overlay.
 # Fail closed: without the marker every binary would be judged stripped, so a missing or empty file stops the run.
-STRIP_MARKER="$(head -n1 "$(dirname "$0")/../tests/release/strip_marker.txt" 2>/dev/null || true)"
+STRIP_MARKER="$(head -n1 "$here/../tests/release/strip_marker.txt" 2>/dev/null || true)"
 [ -n "$STRIP_MARKER" ] || { echo "verify-release.sh: tests/release/strip_marker.txt is missing or empty" >&2; exit 2; }
 unstripped() { # file -> 0 when the binary carries the source comment
   grep -aFq -- "$STRIP_MARKER" "$1"
