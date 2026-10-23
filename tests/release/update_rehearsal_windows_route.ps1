@@ -195,12 +195,28 @@ try {
     if (-not (Wait-Health 10)) { Fail 'the refusal stopped the server' }
     Pass 'a Coral with no registered per-machine install: 409 install_not_supported, the server kept running'
 
-    # Rows 1, 3, 4, 5: the click that installs, and the ones that must not install.
+    # Row 7's foreign signature: a copy of N+1's package signed by a self-signed code-signing certificate made here. It stays in the user's own store (never a trusted root or
+    # publisher store), is removed at the end, and nothing signed with it leaves the runner.
+    $script:cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject 'CN=Coral rehearsal foreign signer' -CertStoreLocation Cert:\CurrentUser\My
+    $script:signedMsi = Join-Path $Work 'foreign-signed.msi'
+    Copy-Item -LiteralPath $script:newMsi -Destination $script:signedMsi
+    $null = Set-AuthenticodeSignature -FilePath $script:signedMsi -Certificate $script:cert
+    $sig = Get-AuthenticodeSignature -FilePath $script:signedMsi
+    if (-not $sig.SignerCertificate -or $sig.SignerCertificate.Thumbprint -ne $script:cert.Thumbprint) { Fail 'the foreign-signed copy of the package carries no signature of the rehearsal certificate' }
+    Pass "a copy of the package signed by a foreign certificate was made ($($sig.Status): not trusted, as it must be)"
+
+    # Rows 1, 3, 4, 5, 6, 7: the click that installs, and the ones that must not install.
     $scenarios = @(
         @{ name = 'update';      plan = @{};                           result = 'relaunched';  version = $N1 },
         @{ name = 'tampered';    plan = @{ tamper = $true };           result = 'failed';      version = $N  },
         @{ name = 'stale-click'; plan = @{ stale_click = $true };      result = 'refused';     version = $N  },
-        @{ name = 'unhealthy';   plan = @{ unhealthy = $true };        result = 'failed_rolled_back'; version = $N  }
+        @{ name = 'unhealthy';   plan = @{ unhealthy = $true };        result = 'failed_rolled_back'; version = $N  },
+        # Row 6: the apply dies; the next apply (run in the same process, which holds the rig's keys) finds the journal it left and decides by what Windows Installer reports.
+        @{ name = 'crash-before-install'; plan = @{ crash_at = 'before_install' }; result = 'relaunched'; version = $N1 },
+        @{ name = 'crash-after-install';  plan = @{ crash_at = 'after_install'; unhealthy_new = $true }; result = 'failed_rolled_back'; version = $N },
+        # Row 7: the REAL Authenticode check (WinVerifyTrust and the pinned chain), with signing required: an unsigned package, and one signed by a certificate that is not the pinned one.
+        @{ name = 'unsigned-required'; plan = @{ require_signed = $true }; result = 'refused'; stage = 'authenticode'; version = $N },
+        @{ name = 'foreign-signature'; plan = @{ require_signed = $true; new_msi = $script:signedMsi }; result = 'refused'; stage = 'authenticode'; version = $N }
     )
     foreach ($s in $scenarios) {
         New-Scenario $s.name $s.plan
@@ -210,6 +226,8 @@ try {
         $res = Read-Result $s.name
         Keep-Logs $s.name
         if ($res.result -ne $s.result) { Fail "$($s.name): expected $($s.result), got $($res | ConvertTo-Json -Compress)" }
+        if ($s.stage -and $res.failed_stage -ne $s.stage) { Fail "$($s.name): expected the refusal at stage $($s.stage), got $($res | ConvertTo-Json -Compress)" }
+        if ($s.name -like 'crash-*' -and -not $res.crashed) { Fail "$($s.name): the apply was to die first, and did not" }
         if ((Installed-Version) -ne $s.version) { Fail "$($s.name): expected version $($s.version) installed, got $(Installed-Version)" }
         if (-not (Wait-Health 120)) { Fail "$($s.name): no Coral answered after the update" }
         Pass "$($s.name): the click gave '$($res.result)', version $($s.version) installed, a Coral running"
@@ -217,6 +235,7 @@ try {
 } finally {
     Stop-Coral
     Remove-Coral
+    if ($script:cert) { Remove-Item -LiteralPath (Join-Path 'Cert:\CurrentUser\My' $script:cert.Thumbprint) -ErrorAction SilentlyContinue }
     Remove-Item Env:CORAL_DATA_DIR, Env:CORAL_TELEMETRY_DISABLED -ErrorAction SilentlyContinue
     if (Test-Path -LiteralPath $Work) { Remove-Item -Recurse -Force -LiteralPath $Work -ErrorAction SilentlyContinue }
 }
