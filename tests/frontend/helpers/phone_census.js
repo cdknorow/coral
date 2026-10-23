@@ -19,6 +19,7 @@ const S = `(window.__coralStatic || '/static/')`;
 const { INBOX_WORLD } = require('./inbox_world');
 const { DATA_WORLD, httpJson, UPDATE_STAGED, CLOUD_LINKED } = require('./census_world');
 
+const VERSIONS = require('./artifact_versions_stub');
 module.exports = part => (async () => {
     const { client, Page, Emulation, ev, waitFor, PRELOAD, install } = await connect();
     if (process.env.SCALE_SHOT_DIR) useScaleShot(async name => require('node:fs').writeFileSync(`${process.env.SCALE_SHOT_DIR}/${name.replace(/[^a-z0-9]+/gi, '-')}.png`, Buffer.from((await Page.captureScreenshot({ format: 'png' })).data, 'base64'))); // SCALE_SHOT_DIR=<dir>: a picture of each scene with 200% findings
@@ -92,6 +93,20 @@ module.exports = part => (async () => {
                 await waitFor(`document.querySelectorAll('.ac-ask .ac-ask-agent').length >= 3`, 'the agents', 10000);
             }, { min: 6, expect: `document.querySelectorAll('.ac-ask input[aria-disabled="true"]').length === 2` });
             await load();
+            // the artifact viewer's version bar at 390 px, with the open list and the compare view (#6480)
+            await sc('artifact versions: list', async () => {
+                await ev(VERSIONS.STUB);
+                await ev(`import(${S} + 'artifact_viewer.js').then(v => v.openArtifactViewer(${JSON.stringify(VERSIONS.H3)}, { filename: 'release-plan.md' })).then(() => true)`);
+                await waitFor(`!!document.querySelector('#artifact-viewer .av-current') && document.querySelector('#artifact-viewer .artifact-viewer-body').textContent.includes('Release plan')`, 'the version bar', 10000);
+                await tap('#artifact-viewer .av-current');
+            }, { min: 5, expect: `getComputedStyle(document.querySelector('#artifact-viewer .av-list')).display !== 'none'` });
+            await sc('artifact versions: compare', async () => {
+                await ev(`document.querySelector('#artifact-viewer .av-list .av-option[aria-selected=true]').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); true`);
+                await tap('#artifact-viewer .av-compare');
+                await waitFor(`!!document.querySelector('#artifact-viewer .av-heading')`, 'the compare view', 10000);
+            }, { min: 5, expect: `!!document.querySelector('#artifact-viewer .av-heading')` });
+            await ev(`document.querySelector('#artifact-viewer .artifact-viewer-close').click(); true`);
+            await load();
             await sc('team settings: workflow', async () => { await ev(`import(${S} + 'team_working_mode.js').then(m => m.showTeamWorkingMode(${JSON.stringify(TEAM)}, { workspace: false })).then(() => true)`); await waitFor(`!!document.querySelector('dialog[open] [data-settings-tab=workflow]')`, 'team settings', 10000); }, { min: 8, expect: `!!document.querySelector('dialog[open] form.working-mode-form') && document.querySelector('dialog[open] [data-settings-tab=workflow]').getAttribute('aria-selected') !== 'false'` });
             for (const t of ['health', 'prompts']) await sc(`team settings: ${t}`, async () => { await tap(`dialog[open] [data-settings-tab=${t}]`); }, { min: 6, expect: `!!document.getElementById('team-settings-${t}') && !document.getElementById('team-settings-${t}').hidden` });
             await ev(`document.querySelectorAll('dialog[open]').forEach(d => d.close()); true`);
@@ -136,6 +151,12 @@ module.exports = part => (async () => {
             await sc('jobs list', async () => { await ev(`window.switchNavTab('jobs'); true`); await waitFor(`!!document.querySelector('#scheduled-jobs-list [data-on-click="job-select"]') && document.querySelector('#scheduled-jobs-list [data-on-click="job-select"]').getClientRects().length > 0`, 'jobs', 10000); }, { min: 5, expect: `!!document.querySelector('#mobile-jobs-list [data-on-click="job-select"]') && /Hourly job/.test(document.getElementById('mobile-jobs-list').textContent)` });
             await sc('job detail', async () => { await tap('#scheduled-jobs-list [data-on-click="job-select"]'); await waitFor(`!!document.querySelector('#scheduler-detail [data-on-click="job-edit"]')`, 'detail', 10000); }, { min: 10, expect: `/Hourly job/.test(document.getElementById('scheduler-detail').textContent) && document.querySelector('#scheduler-detail [data-on-click="job-edit"]').getClientRects().length > 0` });
             await sc('job edit', async () => { await tap('#scheduler-detail [data-on-click="job-edit"]'); }, { min: 10, expect: `[...document.querySelectorAll('.modal, dialog')].some(m => m.getClientRects().length > 0 && /cron|schedule/i.test(m.textContent))` });
+            await sc('job new', async () => { await ev(`window.showJobModal(); true`); await waitFor(`/Runs every hour/.test(document.getElementById('cron-preview').textContent)`, 'the schedule sentence', 10000); }, { min: 10, expect: `document.getElementById('job-modal').getClientRects().length > 0 && /Runs every hour/.test(document.getElementById('cron-preview').textContent)` });
+            await sc('job new, custom schedule and more options', async () => { await ev(`document.querySelector('.sched-preset[data-cron=""]').click(); document.querySelector('#job-modal-more > summary').click(); true`); }, { min: 8, expect: `document.getElementById('job-modal-more').open && document.getElementById('job-modal-cron').getClientRects().length > 0 && document.getElementById('job-modal-timeout').getClientRects().length > 0` });
+            await ev(`window.hideJobModal(); window.showWorkflowCreateModal(); true`);
+            await sc('workflow new', async () => { await waitFor(`document.getElementById('wf-create-modal').getClientRects().length > 0 && !!document.querySelector('#wf-steps-editor .wf-step-editor-item')`, 'the new workflow form', 10000); }, { min: 10, expect: `document.getElementById('wf-create-modal').getClientRects().length > 0 && document.querySelectorAll('#wf-steps-editor .wf-step-editor-item').length === 1` });
+            await sc('workflow new, more options', async () => { await ev(`document.querySelector('#wf-more > summary').click(); true`); }, { min: 8, expect: `document.getElementById('wf-more').open && document.getElementById('wf-input-max-dur').getClientRects().length > 0` });
+            await ev(`document.querySelector('#wf-create-modal .modal-close-btn').click(); true`);
             await ev(`document.querySelectorAll('.modal.show, dialog[open]').forEach(m => { m.classList.remove('show'); if (m.close) m.close(); }); true`);
         }
         if (part === 'b') {

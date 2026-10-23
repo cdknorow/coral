@@ -6,6 +6,7 @@ const { connect } = require('./agent_view_harness');
 const { launchStandIn } = require('./helpers/stand_in_agent');
 const { guardSettings } = require('./helpers/settings_guard');
 const { tap: tapSel, required, openBoardComposer, BOARD_COMPOSER_UP, showUpdateReady, UPDATE_NOTICE_UP, UPDATE_DIALOG_UP } = require('./helpers/phone_targets');
+const VERSIONS = require('./helpers/artifact_versions_stub');
 const { requiredScenes } = require('./helpers/census_required'); // the scenes the suite must visit: one file each, so commits that add scenes do not conflict
 const { STUB, HEX } = require('./helpers/comments_scale');
 const kb = require('./helpers/keyboard_census');
@@ -98,6 +99,12 @@ const BUBBLES = [{ type: 'user', content: 'Is the build green?', key: 'c1', time
         await sc('jobs list', async () => { await ev(`window.switchNavTab('jobs'); true`); await waitFor(`!!document.querySelector('#scheduled-jobs-list [data-on-click="job-select"]') && document.querySelector('#scheduled-jobs-list [data-on-click="job-select"]').getClientRects().length > 0`, 'jobs', 10000); }, { min: 4 });
         await sc('job detail', async () => { await tap('#scheduled-jobs-list [data-on-click="job-select"]'); await waitFor(`!!document.querySelector('#scheduler-detail [data-on-click="job-edit"]')`, 'detail', 10000); }, { min: 5 });
         await sc('job edit', async () => { await tap('#scheduler-detail [data-on-click="job-edit"]'); }, { min: 5, expect: `[...document.querySelectorAll('.modal, dialog')].some(m => m.getClientRects().length > 0 && /cron|schedule/i.test(m.textContent))` });
+        await sc('job new', async () => { await ev(`window.showJobModal(); true`); await waitFor(`/Runs every hour/.test(document.getElementById('cron-preview').textContent)`, 'the schedule sentence', 10000); }, { min: 5, expect: `document.getElementById('job-modal').getClientRects().length > 0 && /Runs every hour/.test(document.getElementById('cron-preview').textContent)` });
+        await sc('job new, custom schedule and more options', async () => { await ev(`document.querySelector('.sched-preset[data-cron=""]').click(); document.querySelector('#job-modal-more > summary').click(); true`); }, { min: 5, expect: `document.getElementById('job-modal-more').open && document.getElementById('job-modal-cron').getClientRects().length > 0 && document.getElementById('job-modal-timeout').getClientRects().length > 0` });
+        await ev(`window.hideJobModal(); window.showWorkflowCreateModal(); true`);
+        await sc('workflow new', async () => { await waitFor(`document.getElementById('wf-create-modal').getClientRects().length > 0 && !!document.querySelector('#wf-steps-editor .wf-step-editor-item')`, 'the new workflow form', 10000); }, { min: 5, expect: `document.getElementById('wf-create-modal').getClientRects().length > 0 && document.querySelectorAll('#wf-steps-editor .wf-step-editor-item').length === 1` });
+        await sc('workflow new, more options', async () => { await ev(`document.querySelector('#wf-more > summary').click(); true`); }, { min: 5, expect: `document.getElementById('wf-more').open && document.getElementById('wf-input-max-dur').getClientRects().length > 0` });
+        await ev(`document.querySelector('#wf-create-modal .modal-close-btn').click(); true`);
         await ev(`document.querySelectorAll('.modal.show, dialog[open]').forEach(m => { m.classList.remove('show'); if (m.close) m.close(); }); true`);
         await load();
         for (const [n, tab, label] of [['analytics', 'tokens', 'Analytics'], ['docs', 'docs', 'Docs'], ['inbox', 'hub-inbox', 'Inbox']]) await sc(n, async () => { await ev(`window.switchNavTab('${tab}'); true`); }, { min: 3 });
@@ -174,6 +181,21 @@ const BUBBLES = [{ type: 'user', content: 'Is the build green?', key: 'c1', time
         await sc('artifact dialog', async () => { await ev(`import(${S} + 'artifact_viewer.js').then(m => m.openArtifactViewer('${HEX}', { filename: 'release-notes.md' })).then(() => true)`); await waitFor(`!document.getElementById('artifact-viewer').hidden && /Release notes/.test(document.querySelector('#artifact-viewer .artifact-viewer-body').textContent)`, 'the artifact', 15000); }, { expect: `!document.getElementById('artifact-viewer').hidden` });
         await sc('artifact dialog: comments', async () => { await tap('#artifact-viewer .ac-toggle'); }, { expect: `!!document.querySelector('#artifact-viewer .ac-panel') && /Please check/.test(document.querySelector('#artifact-viewer .ac-panel').textContent)` });
         await keyEsc();
+        // the artifact viewer's version bar: the open list (its options are reached with the arrow keys, ALLOW_KEYBOARD says so) and the compare view (#6480)
+        await load();
+        await sc('artifact versions: list open', async () => {
+            await ev(VERSIONS.STUB);
+            await ev(`import(${S} + 'artifact_viewer.js').then(v => v.openArtifactViewer(${JSON.stringify(VERSIONS.H3)}, { filename: 'release-plan.md' })).then(() => true)`);
+            await waitFor(`!!document.querySelector('#artifact-viewer .av-current') && document.querySelector('#artifact-viewer .artifact-viewer-body').textContent.includes('Release plan')`, 'the version bar', 10000);
+            await tap('#artifact-viewer .av-current');
+        }, { expect: `getComputedStyle(document.querySelector('#artifact-viewer .av-list')).display !== 'none'` });
+        await sc('artifact versions: compare', async () => {
+            await ev(`document.querySelector('#artifact-viewer .av-list .av-option[aria-selected=true]').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); true`);
+            await tap('#artifact-viewer .av-compare');
+            await waitFor(`!!document.querySelector('#artifact-viewer .av-heading')`, 'the compare view', 10000);
+        }, { expect: `!!document.querySelector('#artifact-viewer .av-heading')` });
+        await ev(`document.querySelector('#artifact-viewer .artifact-viewer-close').click(); true`);
+        await load();
         // dialogs: focus goes in, Tab and Shift+Tab stay in, Escape closes, focus goes back to what opened it
         const tagVisibleModal = () => ev(`(() => { document.querySelectorAll('[data-census-box]').forEach(e => e.removeAttribute('data-census-box')); const m = [...document.querySelectorAll('dialog[open], .modal')].filter(e => e.getClientRects().length && getComputedStyle(e).display !== 'none').pop(); if (m) m.setAttribute('data-census-box', ''); return !!m; })()`);
         const dlg = async (name, { opener, open }) => { try { const bad = await kb.dialogCheck(ev, client.Input, { opener, box: '[data-census-box]', open: async () => { await open(); for (let i = 0; i < 30 && !(await tagVisibleModal()); i++) await new Promise(r => setTimeout(r, 100)); } }); results.push({ name, stops: 0, path: '' }); found.push(...bad.map(b => `${name}: ${b}`)); } catch (e) { results.push({ name, error: String(e && e.message || e).replace(/.*description":"/, '').slice(0, 400) }); } };
