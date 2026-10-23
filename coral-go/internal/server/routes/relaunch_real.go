@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/subgentic/coral/internal/config"
 	"github.com/subgentic/coral/internal/safefs"
 	"github.com/subgentic/coral/internal/safego"
 	"github.com/subgentic/coral/internal/updater/runrecord"
@@ -125,6 +127,10 @@ func (u *realUpdater) Record(ctx context.Context) (UpdaterRecord, error) {
 
 func (u *realUpdater) read(ctx context.Context) (UpdaterRecord, error) {
 	raw, err := u.prog.Status(ctx)
+	if errors.Is(err, fs.ErrNotExist) {
+		// No updater program beside this Coral (a build from source, a copy of the program alone): there is no updater here, which is the feature off for this Coral, not a failure to report (#6290).
+		return UpdaterRecord{Enabled: false, State: updNone, Installed: config.Version}, nil
+	}
 	if err != nil {
 		return UpdaterRecord{}, fmt.Errorf("the updater did not answer: %w", err)
 	}

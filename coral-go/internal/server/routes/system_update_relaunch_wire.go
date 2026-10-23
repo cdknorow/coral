@@ -11,8 +11,9 @@ import (
 	"github.com/subgentic/coral/internal/updater/runrecord"
 )
 
-// updateRelaunchFeature (relaunch_feature_off.go) is the off flag: until coral-hub's half ships and the updater exists, both routes answer 404. It is a constant on
-// purpose: nothing a request, a setting or the environment says can turn it on. Only a build made with the relaunchfixture tag (relaunch_feature_fixture.go, #5452) has it on.
+// updateRelaunchFeature (relaunch_feature_real.go) is the flag the routes read: a constant on purpose, so nothing a request, a setting or the environment says can change it. It is true in
+// every shipping build (#6290) and the routes' limits are elsewhere (a person's yes, the Hub's switch, coral-update's apply switch). A build made with the relaunchfixture tag
+// (relaunch_feature_fixture.go, #5452) has it on with a fake updater.
 
 // NewUpdateRelaunchHandler wires the handler to the settings and enrolment stores and the live sessions. updater is the updater's
 // interface (nil until it exists: the routes then answer 404 whatever the flag says). backend is the terminal backend in use: only pty

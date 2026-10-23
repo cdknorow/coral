@@ -539,3 +539,21 @@ func TestTheUpdaterProgramIsRunForACheckWithTheArgvCheckOnly(t *testing.T) {
 	b, _ := os.ReadFile(argsFile)
 	assert.Equal(t, "check\n", string(b))
 }
+
+// #6290: a Coral with no updater program beside it says the updater is off, and does not report an error: the status answers, nothing can be relaunched.
+func TestACoralWithoutAnUpdaterProgramSaysTheUpdaterIsOff(t *testing.T) {
+	u := &realUpdater{dir: updatesDir{filepath.Join(t.TempDir(), "updates")}, prog: execProgram{path: filepath.Join(t.TempDir(), "no-such-coral-update")}, now: time.Now}
+	rec, err := u.Record(t.Context())
+	require.NoError(t, err)
+	assert.False(t, rec.Enabled)
+	assert.Nil(t, rec.Staged)
+	_, err = u.Apply(t.Context(), "local")
+	assert.Error(t, err, "and an install from it is refused")
+
+	// a program that is there but fails is still an error, not "off"
+	bad := filepath.Join(t.TempDir(), "bad")
+	require.NoError(t, os.WriteFile(bad, []byte("#!/bin/sh\nexit 1\n"), 0o700))
+	u2 := &realUpdater{dir: u.dir, prog: execProgram{path: bad}, now: time.Now}
+	_, err = u2.Record(t.Context())
+	assert.Error(t, err)
+}
