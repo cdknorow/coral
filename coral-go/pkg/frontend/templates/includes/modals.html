@@ -638,12 +638,6 @@
                 </dd>
                 </div>
                 <div class="settings-row">
-                <dt id="settings-renderer-select-label">Default render engine</dt>
-                <dd>
-                    <select aria-labelledby="settings-renderer-select-label" id="settings-renderer-select" class="settings-select"></select>
-                </dd>
-                </div>
-                <div class="settings-row">
                 <dt id="settings-agent-type-label">Default agent type</dt>
                 <dd>
                     <select aria-labelledby="settings-agent-type-label" id="settings-agent-type" class="settings-select">
@@ -659,6 +653,17 @@
                 {{ template "includes/toggle_row" (toggle "settings-show-scrollbars" "Show scrollbars" "Terminal and chat views." "checked") }}
                 {{ template "includes/toggle_row" (toggle "settings-check-updates" "Check for updates" "") }}
                         </dl>
+                        <details class="disclosure settings-engine-more">
+                            <summary>Render engine</summary>
+                            <dl class="info-grid settings-grid">
+                                <div class="settings-row">
+                                <dt id="settings-renderer-select-label">Default render engine</dt>
+                                <dd>
+                                    <select aria-labelledby="settings-renderer-select-label" id="settings-renderer-select" class="settings-select"></select>
+                                </dd>
+                                </div>
+                            </dl>
+                        </details>
                         <button class="btn settings-theme-btn" data-on-click="m-hide-settings-modal-then-show-theme-configurator">
                             <span class="material-icons icon-inline" aria-hidden="true">palette</span>
                             Customize Theme

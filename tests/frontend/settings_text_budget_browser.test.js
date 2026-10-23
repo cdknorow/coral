@@ -22,6 +22,15 @@ const BUDGET = { 'Network and Hub': 80, 'Agents': 61, 'Storage and cleanup': 65,
         await waitFor(`getComputedStyle(document.getElementById('settings-modal')).display !== 'none'`, 'the dialog open', 8000);
         await waitFor(`!!document.getElementById('settings-tab-network')`, 'the Settings dialog', 8000);
         await waitFor(`document.querySelectorAll('#settings-modal .settings-info-btn').length > 5`, 'the (i) buttons', 8000);
+        // General opens on what people change first: Theme, then the default agent. The render engine is engine jargon (#6383 rank 12): it is behind a disclosure of its own.
+        await ev(`document.getElementById('settings-tab-general').click(); true`);
+        await waitFor(`!!document.querySelector('#settings-pane-general:not([hidden])')`, 'General open', 6000);
+        const seen = id => ev(`(() => { const e = document.getElementById(${JSON.stringify(id)}); return !!e && e.checkVisibility({ checkVisibilityCSS: true }); })()`);
+        assert.deepEqual(await ev(`[...document.querySelectorAll('#settings-pane-general select')].filter(e => e.checkVisibility({ checkVisibilityCSS: true })).slice(0, 2).map(e => e.id)`), ['settings-theme', 'settings-agent-type'], 'Theme, then Default agent type');
+        assert.equal(await seen('settings-renderer-select'), false, 'the render engine is not shown until its disclosure opens');
+        await ev(`document.querySelector('#settings-pane-general .settings-engine-more > summary').click(); true`);
+        assert.equal(await seen('settings-renderer-select'), true, 'and is there when it does');
+        await ev(`document.querySelector('#settings-pane-general .settings-engine-more').open = false; true`);
         const groups = await ev(`[...document.querySelectorAll('#settings-tabs [role=tab]')].map(b => ({ id: b.id, name: b.querySelector('.settings-tab-name').textContent.trim() }))`);
         for (const g of groups) {
             await ev(`document.getElementById(${JSON.stringify(g.id)}).click(); true`);
