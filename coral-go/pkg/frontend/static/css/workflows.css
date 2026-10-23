@@ -116,11 +116,6 @@
     font-weight: 500;
 }
 
-.wf-badge-enabled {
-    background: rgba(var(--fx-green-deep-rgb), 0.15);
-    color: var(--success-text); /* green as text on its own tint (#6171) */
-}
-
 .wf-badge-disabled {
     background: rgba(var(--fx-slate-rgb), 0.15);
     color: var(--text-secondary);

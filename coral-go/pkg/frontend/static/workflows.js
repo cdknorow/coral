@@ -199,9 +199,8 @@ function renderWorkflowList() {
     empty.style.display = 'none';
 
     list.innerHTML = workflows.map(wf => {
-        const enabledBadge = wf.enabled
-            ? '<span class="wf-badge wf-badge-enabled">enabled</span>'
-            : '<span class="wf-badge wf-badge-disabled">disabled</span>';
+        // only a workflow that is off says so (#6515): "enabled" on every card was noise
+        const enabledBadge = wf.enabled ? '' : '<span class="wf-badge wf-badge-disabled">disabled</span>';
         const stepCount = wf.step_count || (wf.steps ? wf.steps.length : 0);
 
         let lastRunHtml = '';

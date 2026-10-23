@@ -55,7 +55,7 @@
     /* Chips and badges that are only a coloured pill (the Inbox count in the top bar, tab and section counts, state and kind pills, the job badges): the
        background goes, so a border keeps the shape and the number or word stays a label of its own (#5735). They all carry their meaning as text. */
     :is(.nav-tab-badge, .agentic-tab-count, .section-count-badge, .wf-count-badge, .session-group-count, .saved-count, .live-job-badge, .badge, .session-state-pill,
-        .terminal-state-pill, .wf-status-badge, .wf-badge-enabled, .wf-badge-disabled, .wf-badge-steps, .availability-badge, .display-badge, .hf-active-badge,
+        .terminal-state-pill, .wf-status-badge, .wf-badge-disabled, .wf-badge-steps, .availability-badge, .display-badge, .hf-active-badge,
         .hf-tag-pill, .dep-tag, .session-ctx-pill, .team-distill-chip, .chat-system-count, .selection-pause-badge, .xterm-disconnected-badge, .session-status-chip,
         .session-mobile-meta-pill) { border: 1px solid CanvasText; }
 
