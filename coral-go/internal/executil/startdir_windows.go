@@ -27,7 +27,7 @@ func StartDir(dir string) (string, error) {
 	if short := shortPath(dir); short != "" && len(utf16.Encode([]rune(short))) <= maxStartDirUnits {
 		return short, nil
 	}
-	return "", fmt.Errorf("the folder %s is %d characters long, and Windows can't start a program in a folder whose path is longer than %d (long-path support does not lift this limit): use a shorter path", dir, n, maxStartDirUnits)
+	return "", fmt.Errorf("This folder's path is %d characters long. Windows can't start a program in a folder whose path is longer than %d characters, even with long paths turned on. Use a folder with a shorter path, or map this one to a drive letter (subst X: \"%s\") and use that.", n, maxStartDirUnits, dir)
 }
 
 // shortPath is p's 8.3 short form, or "" when there is none (a volume with 8.3 names off gives the long path back).
