@@ -708,32 +708,30 @@
 1	workflows.js	formatTime(run.finished_at)
 1	workflows.js	formatTime(run.started_at)
 1	workflows.js	formatTime(wf.created_at)
-1	workflows.js	i
+2	workflows.js	i + 1
 1	workflows.js	icon
 2	workflows.js	iconClass
 1	workflows.js	killBtn
+1	workflows.js	lastHtml
 1	workflows.js	lastRunHtml
+1	workflows.js	limitWords(wf.max_duration_s || 3600)
 1	workflows.js	lr.started_at ? '&middot; ' + formatTime(lr.started_at) : ''
 1	workflows.js	outputHtml
 1	workflows.js	progressBarHtml
 1	workflows.js	progressPct
-1	workflows.js	r.finished_at ? formatTime(r.finished_at) : '—'
-1	workflows.js	r.id
-1	workflows.js	r.started_at ? formatTime(r.started_at) : '—'
 1	workflows.js	retriggerBtn
 1	workflows.js	rowsHtml
 1	workflows.js	run.finished_at ? `<span><span class="material-icons" aria-hidden="true">check_circle</span> ${formatTime(run.
 1	workflows.js	run.id
 1	workflows.js	run.started_at ? `<span><span class="material-icons" aria-hidden="true">schedule</span> ${formatTime(run.start
 1	workflows.js	runFailureTag(lr)
-1	workflows.js	runFailureTag(r)
+1	workflows.js	runResult(r)
 1	workflows.js	runsHtml
 1	workflows.js	s.exit_code
 1	workflows.js	signInFailure
 1	workflows.js	signInFailure ? `<span class="wf-run-error" style="color:var(--error-text)"><span class="material-icons" aria-
-1	workflows.js	statusIcon
+1	workflows.js	statusIconHtml(r.status)
 1	workflows.js	stepCount
 2	workflows.js	stepsHtml
 1	workflows.js	timingHtml
 1	workflows.js	totalSteps
-1	workflows.js	wf.max_duration_s || 3600

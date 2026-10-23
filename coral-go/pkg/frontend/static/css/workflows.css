@@ -177,12 +177,6 @@
 
 .wf-detail-header > div:first-child { flex: 1 1 240px; min-width: 0; overflow-wrap: anywhere; }
 
-.wf-detail-title {
-    font-size: var(--fs-xl);
-    font-weight: 600;
-    margin: 0;
-}
-
 .wf-detail-actions {
     display: flex;
     flex-wrap: wrap;
@@ -258,6 +252,14 @@
     font-weight: 500;
     color: var(--text-primary);
 }
+
+.wf-step-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.wf-step-what { font-size: 0.75rem; color: var(--text-secondary); white-space: pre-wrap; overflow-wrap: anywhere; background: none; padding: 0; }
+.wf-step-item { align-items: flex-start; }
+.wf-run-reason { font-size: 0.75rem; color: var(--text-secondary); overflow-wrap: anywhere; }
+.wf-last-failed { margin: 6px 0 0; font-size: 0.8125rem; color: var(--error-text); overflow-wrap: anywhere; }
+.wf-last-failed button { background: none; border: 0; padding: 0; font: inherit; color: var(--accent); text-decoration: underline; cursor: pointer; }
+@media (max-width: 768px) { .wf-last-failed button { min-height: var(--control-touch-height, 44px); } }
 
 .wf-step-type {
     font-size: 0.6875rem;

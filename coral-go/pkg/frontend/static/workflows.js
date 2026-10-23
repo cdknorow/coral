@@ -251,9 +251,45 @@ export async function selectWorkflow(id) {
     document.getElementById('wf-create-btn').style.display = 'none';
     document.getElementById('wf-build-agent-btn').style.display = 'none';
     document.getElementById('wf-title').textContent = wf.name;
+    document.getElementById('wf-count-badge').hidden = true;
 
     const runs = await fetchWorkflowRuns(id, 10);
     renderWorkflowDetail(wf, runs);
+}
+
+
+const pad2 = (n) => String(n).padStart(2, '0');
+
+/** A moment as "today 06:36", "yesterday 02:00", "Oct 21 23:44", in the viewer's own time. */
+function whenWords(iso, now = new Date()) {
+    const t = new Date(iso);
+    if (!iso || isNaN(t)) return '';
+    const hm = `${pad2(t.getHours())}:${pad2(t.getMinutes())}`;
+    const day = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    const dd = Math.round((day(now) - day(t)) / 86400000);
+    return dd === 0 ? `today ${hm}` : dd === 1 ? `yesterday ${hm}` : `${t.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${hm}`;
+}
+
+/** A time limit in seconds as "1 hour", "10 minutes", "90 seconds". */
+function limitWords(s) {
+    const n = Number(s);
+    if (n % 3600 === 0) return `${n / 3600} hour${n === 3600 ? '' : 's'}`;
+    if (n % 60 === 0) return `${n / 60} minute${n === 60 ? '' : 's'}`;
+    return `${n} seconds`;
+}
+
+const RESULT = { completed: 'Passed', running: 'Running', pending: 'Waiting to start', killed: 'Stopped', failed: 'Failed' };
+const resultWords = (r) => RESULT[r.status] || r.status || '';
+
+/** A run's result for the runs table and the last-run line: "Passed", "Failed: step 2 (Test)", with the one-line reason from the server underneath. Step numbers come from 1 (#6530). */
+function runResult(r) {
+    const tag = runFailureTag(r);
+    if (r.status === 'failed' || r.status === 'killed') {
+        const fs = r.failed_step;
+        const head = r.status === 'killed' ? 'Stopped' : fs ? `Failed: step ${Number(fs.number)} (${esc(fs.name)})` : 'Failed';
+        return `${head}${tag}${r.failure_reason ? `<div class="wf-run-reason">${esc(r.failure_reason)}</div>` : ''}`;
+    }
+    return esc(resultWords(r)) + tag;
 }
 
 function renderWorkflowDetail(wf, runs) {
@@ -263,27 +299,32 @@ function renderWorkflowDetail(wf, runs) {
     const steps = wf.steps || [];
     const stepsHtml = steps.map((s, i) => {
         const stepType = s.type || 'shell';
+        const what = stepType === 'shell' ? s.command : s.prompt;
         return `<div class="wf-step-item">
-            <span class="wf-step-index">${i}</span>
-            <span class="wf-step-name">${esc(s.name)}</span>
+            <span class="wf-step-index" aria-hidden="true">${i + 1}</span>
+            <div class="wf-step-text">
+                <span class="wf-step-name"><span class="sr-only">Step ${i + 1}: </span>${esc(s.name)}</span>
+                ${what ? `<code class="wf-step-what">${esc(String(what).slice(0, 300))}</code>` : ''}
+            </div>
             <span class="wf-step-type">${esc(stepType)}</span>
         </div>`;
     }).join('');
 
+    const last = runs[0];
+    const lastHtml = last && (last.status === 'failed' || last.status === 'killed') ? `<p class="wf-last-failed" role="status">
+            The last run ${last.status === 'killed' ? 'was stopped' : 'failed'}${last.finished_at ? ' ' + esc(whenWords(last.finished_at)) : ''}${last.failed_step ? `: step ${Number(last.failed_step.number)} (${esc(last.failed_step.name)})${last.failure_reason ? ' ' + esc(last.failure_reason) : ''}` : ''}.
+            <button class="btn-link" data-on-click="wf-run" data-run-id="${Number(last.id)}">Open the run</button></p>` : '';
+
     let runsHtml = '';
     if (runs.length) {
-        const rowsHtml = runs.map(r => {
-            const statusIcon = statusIconHtml(r.status);
-            return `<tr data-on-click="wf-run" data-run-id="${Number(r.id)}">
-                <td>#${r.id}</td>
-                <td>${statusIcon} ${esc(r.status)}${runFailureTag(r)}</td>
+        const rowsHtml = runs.map(r => `<tr data-on-click="wf-run" data-run-id="${Number(r.id)}">
+                <td>${r.started_at ? esc(whenWords(r.started_at)) : '—'}</td>
+                <td>${statusIconHtml(r.status)} ${runResult(r)}</td>
+                <td>${r.duration_seconds != null ? esc(formatDuration(Math.round(r.duration_seconds))) : '—'}</td>
                 <td>${esc(r.trigger_type || '')}</td>
-                <td>${r.started_at ? formatTime(r.started_at) : '—'}</td>
-                <td>${r.finished_at ? formatTime(r.finished_at) : '—'}</td>
-            </tr>`;
-        }).join('');
+            </tr>`).join('');
         runsHtml = `<table class="wf-runs-table">
-            <thead><tr><th>Run</th><th>Status</th><th>Trigger</th><th>Started</th><th>Finished</th></tr></thead>
+            <thead><tr><th>When</th><th>Result</th><th>Took</th><th>Started by</th></tr></thead>
             <tbody>${rowsHtml}</tbody>
         </table>`;
     } else {
@@ -293,8 +334,8 @@ function renderWorkflowDetail(wf, runs) {
     container.innerHTML = `
         <div class="wf-detail-header">
             <div>
-                <h3 class="wf-detail-title">${esc(wf.name)}</h3>
-                ${wf.description ? `<div style="color:var(--text-secondary);font-size:0.8125rem;margin-top:2px">${esc(wf.description)}</div>` : ''}
+                ${wf.description ? `<div style="color:var(--text-secondary);font-size:0.8125rem">${esc(wf.description)}</div>` : ''}
+                ${lastHtml}
             </div>
             <div class="wf-detail-actions">
                 <button class="btn btn-sm btn-primary" data-on-click="wf-trigger" data-workflow-id="${Number(wf.id)}">
@@ -309,7 +350,7 @@ function renderWorkflowDetail(wf, runs) {
         </div>
         <div class="wf-detail-meta">
             <span><span class="material-icons" aria-hidden="true">folder</span> ${esc(wf.repo_path || 'Not set')}</span>
-            <span><span class="material-icons" aria-hidden="true">timer</span> Max ${wf.max_duration_s || 3600}s</span>
+            <span><span class="material-icons" aria-hidden="true">timer</span> Time limit ${limitWords(wf.max_duration_s || 3600)}</span>
             <span><span class="material-icons" aria-hidden="true">schedule</span> Created ${formatTime(wf.created_at)}</span>
             ${wf.enabled ? '' : '<span style="color:var(--warning)"><span class="material-icons" aria-hidden="true">pause_circle</span> Disabled</span>'}
         </div>
@@ -318,7 +359,7 @@ function renderWorkflowDetail(wf, runs) {
             <div class="wf-step-list">${stepsHtml}</div>
         </div>
         <div class="wf-runs-section">
-            <h3>Recent Runs</h3>
+            <h3>Runs</h3>
             ${runsHtml}
         </div>
     `;
@@ -719,6 +760,7 @@ export function workflowsBackToList() {
     document.getElementById('wf-create-btn').style.display = '';
     document.getElementById('wf-build-agent-btn').style.display = '';
     document.getElementById('wf-title').textContent = 'Workflows';
+    document.getElementById('wf-count-badge').hidden = false;
     fetchWorkflows();
 }
 
