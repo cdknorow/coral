@@ -533,7 +533,7 @@ func (h *SessionsHandler) WSTerminal(w http.ResponseWriter, r *http.Request) {
 
 	defer h.backend.Unsubscribe(name, subID)
 
-	t := &terminalStream{h: h, ctx: ctx, conn: conn, name: name, agentType: agentType, sessionID: sessionID, subID: subID,
+	t := &terminalStream{h: h, ctx: ctx, conn: conn, name: name, agentType: agentType, sessionID: sessionID, viaHub: cloud.Tunneled(r), subID: subID,
 		sizeCheck: make(chan int64, 1)}
 	t.sizer, _ = h.backend.(ptymanager.PaneSizer)
 	t.sendReplay()
@@ -594,6 +594,7 @@ type terminalStream struct {
 	ctx                        context.Context
 	conn                       *websocket.Conn
 	name, agentType, sessionID string
+	viaHub                     bool // the socket came through Coral Hub
 	subID                      string
 	sizer                      ptymanager.PaneSizer
 	// sizeCheck carries a resize's seq to the writer, which answers it with the pane's size.
@@ -768,7 +769,7 @@ func (t *terminalStream) composerSend(msg terminalFrame) {
 		defer t.composing.Add(-1)
 		// A message held behind the agent's box (#6610) is answered held now, and acked or refused by this id when it is typed.
 		reply := func(err error) { t.composerAnswer(id, err) }
-		held, err := t.h.deliverPersonSend(t.ctx, t.name, t.agentType, t.sessionID, msg.Data, reply)
+		held, err := t.h.deliverPersonSend(t.ctx, t.name, t.agentType, t.sessionID, msg.Data, t.viaHub, reply)
 		if held {
 			wsWriteJSON(t.ctx, t.conn, map[string]any{"type": "terminal_input_held", "id": id, "note": heldNote})
 			return
