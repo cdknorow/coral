@@ -19,6 +19,7 @@ import { updateServersTabVisibility } from './servers_tab.js';
 import { updateInboxTab } from './inbox_tab.js';
 import { markReady } from './ready.js';
 import { isSignedOut } from './overload.js';
+import { recheckSignedOut } from './signed_out.js';
 import { syncUnreachableBanner } from './hub_access.js';
 import { applyMachineHealth } from './machine_health.js';
 import { syncAutoAcceptHeader, noteAutoAcceptPauses } from './auto_accept.js';
@@ -34,7 +35,13 @@ let _feedFailures = 0;
 let _lastSidebarRenderAt = 0;
 
 function scheduleFeedReconnect() {
-    if (isSignedOut()) return; // the sign-in panel is up (#3939): the page reloads once signed in
+    if (isSignedOut()) {
+        if (_feedFailures < 4) { // a false 401 must not end the feed: re-check sign-in (#6233)
+            _feedFailures++;
+            feedHooks.schedule(() => { if (isSignedOut()) recheckSignedOut(); }, feedRetryDelay(_feedFailures));
+        }
+        return;
+    }
     _feedFailures++;
     feedHooks.schedule(connectCoralWs, feedRetryDelay(_feedFailures));
 }
@@ -75,7 +82,10 @@ export function connectCoralWs() {
     // A second call must not stack sockets (#5367): the old one is detached and closed first, so its late close neither redraws the feed state nor schedules a second reconnect.
     const old = state.coralWs;
     if (old) { old.onmessage = old.onclose = old.onerror = null; try { old.close(); } catch { /* already closed */ } }
-    const ws = state.coralWs = new WebSocket(url);
+    let ws;
+    try {
+        ws = state.coralWs = new WebSocket(url);
+    } catch (e) { dbg('coralWs new', e); state.coralWs = null; scheduleFeedReconnect(); return; }
     const current = () => state.coralWs === ws;
     ws.addEventListener('open', () => { if (current()) markReady('feed'); }); // window.__coralReady (#3118)
     // The machine-health card shows unknown while the feed is down (#3446).
