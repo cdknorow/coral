@@ -667,7 +667,6 @@ func sessionIDsJSON(sessionIDs []string) (string, error) {
 	return string(b), err
 }
 
-// GetLatestEventTypes returns the latest (event_type, summary) per session (excluding status/goal/confidence).
 // SessionsWithAnyEvent is the sessions among sessionIDs that have recorded any event at all, a status or a goal too: the agent's CLI has reported, so it is no longer "starting" (#6745: a scheduled run
 // whose events are all of the kinds GetLatestEventTypes leaves out never cleared it).
 func (s *TaskStore) SessionsWithAnyEvent(ctx context.Context, sessionIDs []string) (map[string]bool, error) {
@@ -690,6 +689,7 @@ func (s *TaskStore) SessionsWithAnyEvent(ctx context.Context, sessionIDs []strin
 	return out, nil
 }
 
+// GetLatestEventTypes returns the latest (event_type, summary) per session (excluding status/goal/confidence).
 func (s *TaskStore) GetLatestEventTypes(ctx context.Context, sessionIDs []string) (map[string][2]string, error) {
 	if len(sessionIDs) == 0 {
 		return map[string][2]string{}, nil
