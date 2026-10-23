@@ -137,7 +137,7 @@ func TestReplayedRevokedAndDowngradedPromotionsAreRefused(t *testing.T) {
 	hidden.cfg.Verifier, hidden.cfg.DataDir, hidden.cfg.Installed = r.cfg.Verifier, r.cfg.DataDir, "1.4.131"
 	hidden.gh.Publish(old, true)
 	res = hidden.check()
-	assert.Equal(t, stage.ResultFailed, res.Result, "%+v", res)
+	assert.Equal(t, stage.ResultNotPromoted, res.Result, "%+v", res) // the newer names are missing, and nothing at or above the accepted sequence is there
 	stillOnly(t, r.cfg.DataDir, "1.4.131")
 
 	r2 := newRig(t)

@@ -787,6 +787,9 @@ jobs:
   # ── Create GitHub Release with all assets ──────────────────────
   release:
     if: always() && !failure() && !cancelled()
+    # The job that signs (id-token) waits for the same approval as the builds, even when they were skipped (#143, Security): a sums file signed
+    # by release.yml is the second leg of every promotion, so nothing signs one without the operator.
+    environment: release
     permissions:
       contents: write
       id-token: write      # Sigstore keyless signing: this job's GitHub OIDC identity

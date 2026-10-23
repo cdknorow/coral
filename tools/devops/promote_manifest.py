@@ -9,8 +9,10 @@ Nothing is read from the command line. The inputs are environment variables, eac
   SOURCE_SHA     the tag's commit, 40 lowercase hex: the verify job resolves the tag (an annotated one peeled) and the
                  release's verified sums bundle must carry the same commit
   SUMS_FILE      the path of the verified SHA256SUMS.txt; its sha256 goes into the manifest
-  PREV_MANIFEST  the path of the highest promote-<n>'s promote.json, its signature and n == its sequence already verified;
-                 empty when there is no promotion yet
+  PREV_MANIFEST  the path of the highest REAL promotion's promote.json: the highest promote-<n> whose manifest's signature
+                 verifies and whose sequence is n (the verify job walks down past junk); empty when there is none yet
+  HIGHEST_TAG    the highest n of any promote-<n> tag, real or not (0 for none): the new sequence is HIGHEST_TAG + 1, so it
+                 never takes a name a junk release already holds (a published release and its tag can't be reused)
   REVOKE         versions to revoke, space separated plain X.Y.Z (mode revoke only)
   NOW            optional, an RFC 3339 UTC time (the tests); default: the clock
   LIFETIME_DAYS  optional, default 30 (the updater allows at most 60)
@@ -21,8 +23,8 @@ The rules mirror the updater (coral-go/internal/updater/verify: ParseManifest, C
   - every field is present, tag == "v" + version, the hex fields are lowercase, and sequence >= 1;
   - the times are RFC 3339 UTC with a Z, expires_at is after promoted_at, and the lifetime is at most 60 days;
   - revoked holds plain versions (at most 512), and the promoted version is never in it;
-  - sequence == the previous manifest's + 1, exactly: the updater finds promote-<sequence> releases by probing the names
-    upward, so the sequence has no gaps (coral-go/internal/updater/stage/promotion.go).
+  - sequence == HIGHEST_TAG + 1, above every promote-<n> name that exists: the updater finds promote-<sequence> releases by
+    probing the names upward and skips what isn't a real promotion (coral-go/internal/updater/stage/promotion.go).
 And the promotion rules of the workflow:
   - promote:  the version is strictly newer than the previous manifest's;
   - refresh:  the same tag as the previous manifest (a new expiry, a new sequence);
@@ -124,10 +126,16 @@ def main():
         die(f"{version} is revoked and can never be promoted")
     if len(revoked) > MAX_REVOKED:
         die("too many revoked versions")
+    highest = env("HIGHEST_TAG", "")
+    if not re.match(r"^(0|[1-9][0-9]{0,15})$", highest):
+        die("HIGHEST_TAG is not a number")
+    highest = int(highest)
+    if prev and highest < prev["sequence"]:
+        die("HIGHEST_TAG is below the previous promotion's sequence")
     if mode == "backfill":
         seq = prev["sequence"] if prev else 1
     else:
-        seq = (prev["sequence"] + 1) if prev else 1
+        seq = highest + 1
 
     m = {
         "schema": 1, "repo": REPO, "tag": tag, "version": version, "prerelease": False, "source_sha": sha,

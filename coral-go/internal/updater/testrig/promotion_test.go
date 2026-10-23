@@ -46,11 +46,46 @@ func TestJunkUnderAPromoteTagIsSkippedAndNeverInstalled(t *testing.T) {
 	}
 }
 
-// More junk than a check looks at delays the update and never installs anything: the check fails closed.
-func TestAFloodOfJunkPromotionsInstallsNothing(t *testing.T) {
+// Junk doesn't block the channel (Security on #143): forty junk names right above the real promotion and one far above it are passed over and the
+// real one is found; the workflow's next promotion, numbered above the junk, is found too.
+func TestJunkAboveTheRealPromotionDoesNotBlockIt(t *testing.T) {
+	const real = int64(5)
+	junk := func(r *rig) {
+		for n := real + 1; n <= real+40; n++ {
+			r.gh.PublishPromotion(n, []byte(`{"schema":1}`), nil)
+		}
+		r.gh.PublishPromotion(real+1_000_000, []byte(`{"schema":1}`), nil)
+	}
+	r := newRig(t)
+	r.publish(Spec{Version: "1.4.131", Sequence: real})
+	junk(r)
+	res := r.check()
+	require.Equal(t, stage.ResultStaged, res.Result, "%+v", res)
+	assert.Equal(t, "1.4.131", res.Version, "the real promotion below the junk")
+	assert.Zero(t, r.gh.Hits[FakeRepo+"/releases/download/promote-1000005/"+stage.ManifestFile], "a name far above isn't looked at")
+
+	// The next promotion takes the name above the junk (the highest promote-<n> + 1), and is found by the next check.
+	r.publish(Spec{Version: "1.4.132", Sequence: real + 41})
+	res = r.check()
+	require.Equal(t, stage.ResultStaged, res.Result, "%+v", res)
+	assert.Equal(t, "1.4.132", res.Version)
+
+	// A client that has seen nothing finds it the same way.
+	fresh := newRig(t)
+	fresh.s, fresh.cfg.Verifier = r.s, r.cfg.Verifier
+	fresh.gh.Close()
+	fresh.gh = r.gh
+	fresh.gh.Config(&fresh.cfg)
+	res = fresh.check()
+	require.Equal(t, stage.ResultStaged, res.Result, "%+v", res)
+	assert.Equal(t, "1.4.132", res.Version)
+}
+
+// More junk than a check passes over delays the update and never installs anything: the check fails closed.
+func TestMoreJunkThanTheAllowanceInstallsNothing(t *testing.T) {
 	r := newRig(t)
 	r.publish(Spec{Version: "1.4.131", Sequence: 1})
-	for n := int64(2); n <= 9; n++ {
+	for n := int64(2); n <= 80; n++ {
 		r.gh.PublishPromotion(n, []byte(`{"schema":1}`), nil)
 	}
 	res := r.check()

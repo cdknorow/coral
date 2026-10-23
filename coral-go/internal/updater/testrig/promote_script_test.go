@@ -72,15 +72,27 @@ func newScriptRelease(t *testing.T, s *Signer, version string) scriptRelease {
 	return scriptRelease{tag: "v" + version, sha: sha, sumsPath: p, msi: d, sums: sums, sumsBundle: b}
 }
 
-// runScript runs the builder as the workflow's build step does; prev is the previous promotion's manifest (nil for none).
+// runScript runs the builder as the workflow's build step does; prev is the previous real promotion's manifest (nil for none), and the highest
+// promote-<n> tag is its sequence (no junk above it).
 func runScript(t *testing.T, py, mode string, r scriptRelease, prev []byte, revoke string, now time.Time) ([]byte, error) {
+	highest := int64(0)
+	if prev != nil {
+		m, err := verify.ParseManifest(prev)
+		require.NoError(t, err)
+		highest = m.Sequence
+	}
+	return runScriptAbove(t, py, mode, r, prev, highest, revoke, now)
+}
+
+// runScriptAbove is runScript with the highest promote-<n> tag given (junk can sit above the previous real promotion).
+func runScriptAbove(t *testing.T, py, mode string, r scriptRelease, prev []byte, highest int64, revoke string, now time.Time) ([]byte, error) {
 	prevPath := ""
 	if prev != nil {
 		prevPath = filepath.Join(t.TempDir(), "promote.json")
 		require.NoError(t, os.WriteFile(prevPath, prev, 0o600))
 	}
 	env := []string{"MODE=" + mode, "TAG=" + r.tag, "SOURCE_SHA=" + r.sha, "SUMS_FILE=" + r.sumsPath, "REVOKE=" + revoke,
-		"NOW=" + now.UTC().Format(time.RFC3339), "PREV_MANIFEST=" + prevPath}
+		"NOW=" + now.UTC().Format(time.RFC3339), "PREV_MANIFEST=" + prevPath, fmt.Sprintf("HIGHEST_TAG=%d", highest)}
 	for _, k := range []string{"SYSTEMROOT", "SYSTEMDRIVE", "WINDIR", "PROGRAMDATA"} { // what Python on Windows needs to start, and nothing else
 		if v := os.Getenv(k); v != "" {
 			env = append(env, k+"="+v)
@@ -156,6 +168,16 @@ func TestThePromoteScriptsManifestsVerifyUnderThisUpdater(t *testing.T) {
 	assert.Equal(t, int64(4), m.Sequence, "a backfill keeps the current sequence")
 	_, err = verify.ReleaseOf(v, pins, scriptCandidate(t, s, m5, r150), msiAsset, "1.4.150", verify.State{}, now.Add(40*24*time.Hour))
 	require.NoError(t, err, "a backfilled manifest verifies as the rollback package's, expired or not")
+
+	// Junk names above the real promotion: the new sequence goes above them all, and still verifies.
+	m6, err := runScriptAbove(t, py, "refresh", r157, m4, 44, "", now.Add(23*24*time.Hour))
+	require.NoError(t, err)
+	m, _ = verify.ParseManifest(m6)
+	assert.Equal(t, int64(45), m.Sequence, "the highest promote-<n> tag + 1, never a name junk already holds")
+	_, err = verify.Release(v, pins, scriptCandidate(t, s, m6, r157), msiAsset, verify.State{Sequence: 4}, "1.4.150", now.Add(23*24*time.Hour))
+	require.NoError(t, err)
+	_, err = runScriptAbove(t, py, "refresh", r157, m4, 2, "", now)
+	assert.Error(t, err, "a highest tag below the previous promotion's sequence is refused")
 
 	// What the script refuses.
 	r159 := newScriptRelease(t, s, "1.4.159")

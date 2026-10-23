@@ -12,8 +12,10 @@
 #   release   TAG is an approved product release (published, immutable, not a pre-release, never revoked; the latest, except for backfill);
 #             for revoke, each version revoked carries approve-release's "Revoked:" line
 #   sums      SHA256SUMS.txt of TAG, verified against release.yml's identity for exactly that tag and the tag's commit (an annotated tag peeled)
-#   previous  the highest promote-<n>, its signature verified and n equal to its sequence (none on the first promotion)
-#   check     the built promote.json is for TAG and takes the next sequence (in the job that signs, before it signs)
+#   previous  the highest REAL promotion: walking down from the highest promote-<n> tag, the first whose manifest verifies and whose sequence
+#             is n (anyone who can create releases could publish a junk promote-<n>, and a published release can't be removed); the new
+#             sequence is the highest TAG + 1, so it never collides with a junk name
+#   check     the built promote.json is for TAG and takes the next sequence, and no promote-<n> tag appeared since (before it signs)
 #   publish   promote-<sequence> (and promote-v<version> the first time), then Latest read back unchanged and the manifest read back
 # TAG and REVOKE are data from workflow inputs: they are matched here before any use and never go through a shell as text.
 # Needs gh, jq and cosign. Env: GH_TOKEN, GITHUB_REPOSITORY, MODE, TAG, REVOKE.
@@ -98,24 +100,37 @@ case "$cmd" in
 
   previous)
     mkdir -p work/previous
-    n="$(highest_promotion)"
-    echo "$n" > work/previous/sequence
-    if [ "$n" = 0 ]; then echo "no promotion yet"; exit 0; fi
-    gh release download "promote-$n" --repo "$REPO" --pattern promote.json --pattern promote.json.sigstore.json --dir work/previous --clobber
-    verify_promote work/previous/promote.json work/previous/promote.json.sigstore.json || die "promote-$n's signature does not verify"
-    [ "$(jq -r .sequence work/previous/promote.json)" = "$n" ] || die "promote-$n carries another sequence"
-    rm work/previous/promote.json.sigstore.json
-    echo "previous: promote-$n $(jq -c '{tag, expires_at, revoked}' work/previous/promote.json)"
+    top="$(highest_promotion)"
+    echo "$top" > work/previous/highest_tag
+    echo 0 > work/previous/sequence
+    if [ "$top" = 0 ]; then echo "no promotion yet"; exit 0; fi
+    # Walk down past junk to the highest real promotion, at most 50 names.
+    n="$top"; found=0
+    while [ "$n" -ge 1 ] && [ "$n" -gt $(( top - 50 )) ]; do
+      rm -rf work/candidate && mkdir work/candidate
+      if gh release download "promote-$n" --repo "$REPO" --pattern promote.json --pattern promote.json.sigstore.json --dir work/candidate 2>/dev/null \
+        && verify_promote work/candidate/promote.json work/candidate/promote.json.sigstore.json 2>/dev/null \
+        && [ "$(jq -r .sequence work/candidate/promote.json 2>/dev/null)" = "$n" ]; then
+        found="$n"; break
+      fi
+      echo "::warning::promote-$n is not a real promotion (no verified manifest of sequence $n): skipped"
+      n=$(( n - 1 ))
+    done
+    [ "$found" != 0 ] || die "no real promotion among the 50 highest promote-<n> names (the highest is promote-$top): look at what was published"
+    cp work/candidate/promote.json work/previous/promote.json
+    rm -rf work/candidate
+    echo "$found" > work/previous/sequence
+    echo "previous: promote-$found (highest tag promote-$top) $(jq -c '{tag, expires_at, revoked}' work/previous/promote.json)"
     ;;
 
   check)
     valid_mode "${MODE:-}" && valid_tag "${TAG:-}" || die "bad inputs"
     [ "$(jq -r .tag promote.json)" = "$TAG" ] || die "the manifest is not for $TAG"
     [ "$(jq -r .source_sha promote.json)" = "$(cat work/source_sha)" ] || die "the manifest's commit is not the verified one"
-    prev="$(cat work/previous/sequence)"; seq="$(jq -r .sequence promote.json)"
-    if [ "$MODE" = backfill ]; then want=$(( prev > 0 ? prev : 1 )); else want=$(( prev + 1 )); fi
+    prev="$(cat work/previous/sequence)"; top="$(cat work/previous/highest_tag)"; seq="$(jq -r .sequence promote.json)"
+    if [ "$MODE" = backfill ]; then want=$(( prev > 0 ? prev : 1 )); else want=$(( top + 1 )); fi
     [ "$seq" = "$want" ] || die "the manifest's sequence $seq is not $want"
-    [ "$(highest_promotion)" = "$prev" ] || die "a promotion was published since the build: run it again"
+    [ "$(highest_promotion)" = "$top" ] || die "a promote-<n> tag was published since the build: run it again"
     echo "ok: promote.json is for $TAG, sequence $seq"
     ;;
 

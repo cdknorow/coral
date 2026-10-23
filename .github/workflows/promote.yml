@@ -134,7 +134,7 @@ jobs:
           prev=""; [ -f work/previous/promote.json ] && prev=work/previous/promote.json
           # NOW and LIFETIME_DAYS are for the tests only: never taken from the runner's environment here.
           env -u NOW -u LIFETIME_DAYS SOURCE_SHA="$(cat work/source_sha)" SUMS_FILE=work/SHA256SUMS.txt PREV_MANIFEST="$prev" \
-            python3 -I tools/devops/promote_manifest.py > promote.json
+            HIGHEST_TAG="$(cat work/previous/highest_tag)" python3 -I tools/devops/promote_manifest.py > promote.json
           cat promote.json; echo
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

@@ -20,6 +20,7 @@ type FakeGitHub struct {
 	mu         sync.Mutex
 	releases   map[string]*Release  // product releases, by tag
 	promotions map[int64]promotion  // promote-<sequence>
+	real       map[int64]bool       // the sequences Publish promoted (PublishPromotion's are anyone's)
 	firsts     map[string]promotion // promote-v<version>
 	latest     string
 	// Mutate may change a file's bytes on its way out (the path is "<tag>/<file>" or "latest/<file>"); nil leaves them.
@@ -39,7 +40,7 @@ type promotion struct{ manifest, bundle []byte }
 
 // NewFakeGitHub starts the server; Close stops it.
 func NewFakeGitHub() *FakeGitHub {
-	g := &FakeGitHub{releases: map[string]*Release{}, promotions: map[int64]promotion{}, firsts: map[string]promotion{}, Status: map[string]int{},
+	g := &FakeGitHub{releases: map[string]*Release{}, promotions: map[int64]promotion{}, real: map[int64]bool{}, firsts: map[string]promotion{}, Status: map[string]int{},
 		RedirectTo: map[string]string{}, Hits: map[string]int{}}
 	g.srv = httptest.NewServer(http.HandlerFunc(g.serve))
 	g.cdn = httptest.NewServer(http.HandlerFunc(g.serve))
@@ -61,6 +62,7 @@ func (g *FakeGitHub) Publish(r *Release, latest bool) {
 	if latest {
 		g.latest = r.Tag
 		g.promotions[r.Sequence] = promotion{r.Manifest, r.ManifestBundle}
+		g.real[r.Sequence] = true
 	}
 }
 
@@ -119,10 +121,11 @@ func (g *FakeGitHub) promotionFor(tag string) (promotion, bool) {
 		if p, ok := g.promotions[seq]; ok {
 			return p, true
 		}
-		// The workflow numbers promotions without gaps, so every promote-<n> below the highest exists; a test that publishes only sequence 7
-		// gets 1 to 6 as well, each carrying the next published promotion's files (a sequence that isn't its own: the updater skips them).
+		// The workflow numbers each promotion above every promote-<n> that exists, so below the highest real promotion every name exists; a test
+		// that publishes only sequence 7 gets 1 to 6 as well, each carrying the next real promotion's files (a sequence that isn't its own: the
+		// updater skips them). Junk published far above leaves a gap, as it would on GitHub.
 		var next int64
-		for s := range g.promotions {
+		for s := range g.real {
 			if s > seq && (next == 0 || s < next) {
 				next = s
 			}
