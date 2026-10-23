@@ -1,3 +1,4 @@
+import { historyLabel } from './history_label.js';
 import { showTerminalStatusbar } from './terminal_statusbar.js';
 import { setCommandPlaceholder } from './composer_placeholder.js';
 import { updateModelChip } from './model_chip.js';
@@ -422,8 +423,11 @@ export async function selectHistorySession(sessionId, locator = null) {
 
     showView("history-session-view");
 
-    document.getElementById("history-session-title").textContent = `Session: ${sessionId}`;
+    const openedEntry = state.historySessionsList.find(x => x.session_id === sessionId);
+    document.getElementById("history-session-title").textContent = historyLabel(openedEntry); // the chat's title; its id is behind Details (#6200)
     document.getElementById("history-session-id").textContent = sessionId;
+    const idEl = document.getElementById("history-session-id"), detailsBtn = document.getElementById("history-session-details");
+    idEl.hidden = true; if (detailsBtn) { detailsBtn.setAttribute("aria-expanded", "false"); detailsBtn.textContent = "Details"; }
     const computer = (state.servers || []).find(s => s.id === source);
     const sourceLabel = document.getElementById('history-session-source');
     if (sourceLabel) {

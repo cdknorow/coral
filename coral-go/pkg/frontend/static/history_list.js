@@ -9,6 +9,8 @@ import { updateSectionVisibility } from './sidebar.js';
 import { getCachedAgentAvailability } from './team_availability.js';
 import { _repoBranch, formatShortTime } from './session_state.js';
 import { renderTranscript } from './live_chat.js';
+import { historyLabel } from './history_label.js';
+
 
 export function renderHistorySessions(sessions, total, page, pageSize) {
     const list = document.getElementById("history-sessions-list");
@@ -40,7 +42,7 @@ export function renderHistorySessions(sessions, total, page, pageSize) {
                 ${meta ? `<div class="session-row-bottom"><span class="session-meta">${escapeHtml(meta)}</span></div>` : ""}
             </li>`;
         }
-        const label = s.summary_title || s.summary || s.session_id;
+        const label = historyLabel(s);
         const truncated = label.length > 40 ? label.substring(0, 40) + "..." : label;
         const isActive = state.currentSession && state.currentSession.type === "history" && state.currentSession.name === s.session_id;
         const typeTag = (s.source_type === "gemini" || s.source_type === "agy" || s.source_type === "antigravity")
