@@ -76,7 +76,7 @@ func TestReviewVerbsExitCodes(t *testing.T) {
 	for _, verb := range []string{"approve", "reject"} {
 		res := runBoard(t, srv.URL, dir, "task", verb, "999", "--note", "x")
 		assert.Equal(t, 6, res.code, "%s: %q", verb, res.stderr)
-		assert.Contains(t, res.stderr, "Coral answered HTTP 404: Task not found", verb)
+		assert.Contains(t, res.stderr, "Coral says: Task not found (HTTP 404)", verb)
 		assert.NotContains(t, res.stderr, "<nil>", verb)
 	}
 	status = 403
@@ -88,4 +88,52 @@ func TestReviewVerbsExitCodes(t *testing.T) {
 	assert.Equal(t, 2, res.code, "a missing --note is a usage error: %q", res.stderr)
 	res = runBoard(t, srv.URL, dir, "task", "send-back", "999")
 	assert.Equal(t, 2, res.code, res.stderr)
+}
+
+// A failed request never prints the server's raw JSON body: it reads "<words> (HTTP N)" (#296: status --board printed {"code":"identity_mismatch",...}).
+func TestNoCommandPrintsARawErrorBody(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte(`{"code":"identity_mismatch","detail":{"a":1},"message":"you are not on that board"}`))
+	}))
+	defer srv.Close()
+	dir := subscribedDataDir(t, srv.URL)
+	for _, args := range [][]string{
+		{"status", "--board", "other"},
+		{"task", "list"},
+		{"task", "add", "x"},
+		{"task", "claim", "3"},
+		{"task", "complete", "3"},
+		{"queue"},
+		{"working-mode"},
+	} {
+		res := runBoard(t, srv.URL, dir, args...)
+		assert.NotEqual(t, 0, res.code, "%v", args)
+		assert.NotContains(t, res.stderr, `{"code"`, "%v prints the words, not the JSON: %q", args, res.stderr)
+		assert.Contains(t, res.stderr, "HTTP 403)", "%v: %q", args, res.stderr)
+	}
+}
+
+// An option a command does not have is `unknown option "--x"` with the usage, exit 2, never Go's "flag provided but not defined" and its dump of every flag (#298).
+func TestUnknownOptionOfATaskCommandIsOurs(t *testing.T) {
+	srv := newRecordingServer(t)
+	dir := subscribedDataDir(t, srv.URL)
+	for _, c := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"task", "amend", "3", "--title", "x"}, `unknown option "--title"`},
+		{[]string{"task", "amend", "3", "--reson", "x"}, "Did you mean --reason?"},
+		{[]string{"task", "complete", "3", "--mesage", "x"}, "Did you mean --message?"},
+		{[]string{"task", "add", "t", "--nope", "x"}, `unknown option "--nope"`},
+		{[]string{"task", "cancel", "3", "--bogus"}, `unknown option "--bogus"`},
+	} {
+		res := runBoard(t, srv.URL, dir, c.args...)
+		assert.Equal(t, 2, res.code, "%v: %q", c.args, res.stderr)
+		assert.Contains(t, res.stderr, c.want, "%v", c.args)
+		assert.Contains(t, res.stderr, "Usage:", "%v", c.args)
+		assert.NotContains(t, res.stderr, "flag provided but not defined", "%v", c.args)
+		assert.Empty(t, res.stdout, "%v", c.args)
+	}
 }

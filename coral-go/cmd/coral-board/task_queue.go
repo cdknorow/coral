@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/subgentic/coral/internal/clierr"
+	"github.com/subgentic/coral/internal/clihelp"
 	"net/http"
 	"net/url"
 	"os"
@@ -32,13 +33,13 @@ func cmdTaskQueueVerb(st *boardState, args []string, action string) {
 		fmt.Fprintln(os.Stderr, "Invalid task ID")
 		clierr.Exit1()
 	}
-	fs := flag.NewFlagSet(action, flag.ExitOnError)
+	fs := flag.NewFlagSet(action, flag.ContinueOnError)
 	manifest := fs.String("artifacts", "", "Manifest of the patch rows to add (attach)")
 	note := fs.String("note", "", "Why (send-back)")
 	var digests, commits listFlag
 	fs.Var(&digests, "digest", "Digest of a patch that landed: 64 hex characters, with or without the sha256: prefix (mark-landed; repeat)")
 	fs.Var(&commits, "commit", "A commit that landed it: the full 40-hex SHA, or SHA:subject (mark-landed; repeat)")
-	fs.Parse(args[1:])
+	clihelp.ParseFlags(fs, args[1:], func() string { return commandUsage(os.Args[1], os.Args[2:]) })
 	*note = flagText(*note, "note")
 	body := map[string]any{"subscriber_id": resolveSubscriberID()}
 	switch action {

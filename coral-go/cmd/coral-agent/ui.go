@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/base64"
+	"errors"
 	"flag"
 	"fmt"
 	"github.com/subgentic/coral/internal/clierr"
@@ -27,6 +28,10 @@ See agent_docs/agent-ui.md for the full handoff rule.`
 
 func cmdUI(args []string) {
 	if err := runUI(args); err != nil {
+		var ue usageError
+		if errors.As(err, &ue) {
+			failUsage(ue.msg, "ui", args)
+		}
 		fmt.Fprintln(os.Stderr, err)
 		clierr.Exit1()
 	}
@@ -38,7 +43,7 @@ func runUI(args []string) error {
 	}
 	sub := args[0]
 	if sub != "publish" && sub != "list" && sub != "events" && sub != "remove" {
-		return fmt.Errorf("unknown ui command %q", sub)
+		return usageError{fmt.Sprintf("unknown ui command %q", sub)}
 	}
 	f := flag.NewFlagSet("ui "+sub, flag.ContinueOnError)
 	id := f.String("id", "", "Stable panel ID")
@@ -46,13 +51,13 @@ func runUI(args []string) error {
 	title := f.String("title", "", "Panel title")
 	after := f.Int64("after", 0, "Event cursor")
 	if err := f.Parse(args[1:]); err != nil {
-		return err
+		return usageError{err.Error()}
 	}
 	if f.NArg() != 0 {
-		return fmt.Errorf("unexpected arguments")
+		return usageError{"unexpected arguments"}
 	}
 	if sub != "list" && *id == "" {
-		return fmt.Errorf("--id is required")
+		return usageError{"--id is required"}
 	}
 	path := "/ui"
 	if sub != "list" {

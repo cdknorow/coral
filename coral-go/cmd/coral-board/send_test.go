@@ -56,7 +56,7 @@ func TestRunSend(t *testing.T) {
 	// Server refusals are errors carrying the reason.
 	status, reply = http.StatusForbidden, `{"error":"cross-team messaging is disabled on board \"beta\""}`
 	err := runSend([]string{"--board", "beta", "hi"}, id, &out)
-	if err == nil || !strings.Contains(err.Error(), "(403)") || !strings.Contains(err.Error(), `disabled on board "beta"`) {
+	if err == nil || !strings.Contains(err.Error(), "(HTTP 403)") || !strings.Contains(err.Error(), `disabled on board "beta"`) {
 		t.Fatalf("err = %v", err)
 	}
 	status, reply = http.StatusTooManyRequests, `{"error":"too many messages to \"beta\"; retry in 6s"}`
@@ -190,7 +190,7 @@ func TestRunSendAddressAttach(t *testing.T) {
 	// A hub 429 reaches the caller with its code and the retry hint.
 	status, reply = http.StatusTooManyRequests, `{"ok":false,"error":"artifact_quota","message":"attachment 1 of 1: Coral Hub's limit on files is used up; retry in 7 s"}`
 	err := runSend([]string{"--address", "homelab/qa", "--message-id", "m-2", "--attach", "coral://artifacts/aa", "hi"}, id, &out)
-	if err == nil || !strings.Contains(err.Error(), "(429)") || !strings.Contains(err.Error(), "artifact_quota") || !strings.Contains(err.Error(), "--message-id m-2") {
+	if err == nil || !strings.Contains(err.Error(), "(HTTP 429)") || !strings.Contains(err.Error(), "artifact_quota") || !strings.Contains(err.Error(), "--message-id m-2") {
 		t.Fatalf("429: %v", err)
 	}
 	// A local refusal (the switch is off) is an error with its code.

@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -110,10 +111,10 @@ func TestTimeout(t *testing.T) {
 }
 
 func TestDescribe(t *testing.T) {
-	assert.Equal(t, "Coral answered HTTP 404: task not found", Describe(nil, 404, []byte(`{"error":"task not found"}`)))
-	assert.Equal(t, "Coral answered HTTP 403: not yours", Describe(nil, 403, []byte(`{"message":"not yours","error":"x"}`)))
-	assert.Equal(t, "Coral answered HTTP 502: bad gateway", Describe(nil, 502, []byte("  bad gateway  ")))
-	assert.Equal(t, "Coral answered HTTP 500", Describe(nil, 500, nil))
+	assert.Equal(t, "Coral says: task not found (HTTP 404)", Describe(nil, 404, []byte(`{"error":"task not found"}`)))
+	assert.Equal(t, "Coral says: not yours (x, HTTP 403)", Describe(nil, 403, []byte(`{"message":"not yours","error":"x"}`)), "words in message, a plain code in error")
+	assert.Equal(t, "Coral says: bad gateway (HTTP 502)", Describe(nil, 502, []byte("  bad gateway  ")))
+	assert.Equal(t, "Coral returned an error (HTTP 500)", Describe(nil, 500, nil))
 	assert.Equal(t, "boom", Describe(errors.New("boom"), 0, nil))
 	assert.NotContains(t, Describe(nil, 404, []byte(`{}`)), "nil")
 }
@@ -139,4 +140,39 @@ func TestAProofRefusalIsRefusedNotCannotReach(t *testing.T) {
 			assert.NotContains(t, e.Error(), "cannot reach")
 		})
 	}
+}
+
+// A reply is printed in a terminal, so what answered at CORAL_URL cannot drive it: control sequences go, newlines become spaces, tabs stay (Security's note on #101).
+func TestDescribeStripsTerminalControl(t *testing.T) {
+	esc := string([]byte{27})
+	body := []byte(`{"error":"bad` + `\u001b]0;pwned\u0007` + `\u001b[31m red\u001b[0m` + `\nline two` + `\ttabbed"}`)
+	got := Describe(nil, 400, body)
+	assert.NotContains(t, got, esc)
+	assert.NotContains(t, got, "pwned\u0007")
+	assert.NotContains(t, got, "\n")
+	assert.Contains(t, got, "line two")
+	assert.Contains(t, got, "\ttabbed")
+	assert.True(t, strings.HasSuffix(got, "(HTTP 400)"), got)
+}
+
+// A long reply is cut at a character, not in the middle of one.
+func TestDescribeCutsAtACharacterBoundary(t *testing.T) {
+	for pad := 0; pad < 4; pad++ {
+		got := Describe(nil, 500, []byte(strings.Repeat("a", 298+pad)+strings.Repeat("é", 20)))
+		assert.True(t, utf8.ValidString(got), "pad %d: %q", pad, got)
+		assert.Contains(t, got, "...")
+	}
+}
+
+// The server's machine-readable code stays in the words, so a script or an agent that matches on it still can (#126: agent_task_cli wants session_token_required).
+func TestDescribeKeepsTheServersCode(t *testing.T) {
+	assert.Equal(t, "Coral says: Unknown session (session_token_required, HTTP 401)", Describe(nil, 401, []byte(`{"error":"Unknown session","code":"session_token_required"}`)))
+	assert.Equal(t, "Coral says: not on that board (identity_mismatch, HTTP 403)", Describe(nil, 403, []byte(`{"code":"identity_mismatch","detail":{"a":1},"message":"not on that board"}`)))
+	assert.Equal(t, "Coral returned an error (not_linked, HTTP 503)", Describe(nil, 503, []byte(`{"code":"not_linked"}`)))
+	assert.Equal(t, "Coral says: no (HTTP 400)", Describe(nil, 400, []byte(`{"error":"no","code":"has space and \u001b[31mcontrol"}`)), "a code that is not plain is dropped")
+	assert.Equal(t, "Coral says: no (HTTP 400)", Describe(nil, 400, []byte(`{"error":"no"}`)), "no code: as before")
+	// the 401 an agent without a session token gets: the code is in "error", the words in "message"
+	assert.Equal(t, "Coral says: This comes from the agent's own Coral tools. (session_token_required, HTTP 401)", Describe(nil, 401, []byte(`{"error":"session_token_required","message":"This comes from the agent's own Coral tools."}`)))
+	assert.Equal(t, "Coral says: Task not found (HTTP 404)", Describe(nil, 404, []byte(`{"error":"Task not found"}`)), "words in error, no message: no code")
+	assert.Equal(t, "Coral says: not yours (HTTP 403)", Describe(nil, 403, []byte(`{"message":"not yours","error":"not yours"}`)), "the same words twice: no code")
 }

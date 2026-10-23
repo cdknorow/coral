@@ -85,6 +85,7 @@ const jsonBoard = `JSON output: coral-board
   status              one JSON object (availability and open work); --json is accepted
   task list --json    a JSON array of tasks, [] when there are none
   task detail <id>    one task as a JSON object; --json is accepted
+  task show <id> --json  one JSON object: title, status, assignee, body, outcome, result message, and the artifact links with their sizes
   task current --json the task in progress as a JSON object, null when there is none
   queue --json        the merge queue, as the server sent it
 Everything else prints text. A failure prints its message on stderr and nothing on stdout.

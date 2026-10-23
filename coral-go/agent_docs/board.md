@@ -578,7 +578,10 @@ Each agent includes `subscriber_id`, `name`, `role`, optional `session_id` and
 Each task summary has `id`, `scope` (`board` or `personal`), `title`, and `status`.
 Personal task IDs cannot be passed to board task commands. Inspect a board task
 with `coral-board task detail <id>` for its body, priority, dependencies, and
-required outputs before routing.
+required outputs before routing. `coral-board task show <id>` prints a task for
+reading: its status and outcome, the result message, and its artifacts'
+`coral://` links (`--json` for the same fields). `status --board NAME` for a board
+with no member, message or open task exits 6 (`Board not found`).
 
 See [availability states](teams.md#agent-availability) for the classification
 rules. This is an observed snapshot, not a reservation or transactional view
