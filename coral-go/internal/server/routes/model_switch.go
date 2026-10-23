@@ -42,13 +42,23 @@ type modelSwitch struct {
 	AfterReply bool    `json:"after_reply,omitempty"`
 	Message    string  `json:"message,omitempty"`
 	updated    time.Time
+	seq        int64              // which switch this is: a switch that was replaced no longer changes the state (#6219)
+	cancel     context.CancelFunc // ends this switch's goroutine when a newer choice replaces it
 }
 
 // modelSwitchTracker holds the newest switch of each session. A finished one is kept for switchKeep so every open dashboard sees
 // its result, then forgotten.
 type modelSwitchTracker struct {
-	mu sync.Mutex
-	m  map[string]*modelSwitch
+	mu   sync.Mutex
+	m    map[string]*modelSwitch
+	seq  int64
+	runs sync.Map // session id -> *sync.Mutex: one switch types at a time, a replaced one finishes before the next starts
+}
+
+// runLock is the session's lock for typing a switch's commands: a new choice waits for the one it replaced to stop, so two are never typed at once.
+func (t *modelSwitchTracker) runLock(sessionID string) *sync.Mutex {
+	m, _ := t.runs.LoadOrStore(sessionID, &sync.Mutex{})
+	return m.(*sync.Mutex)
 }
 
 const switchKeep = 2 * time.Minute
@@ -68,28 +78,50 @@ func (t *modelSwitchTracker) get(sessionID string) *modelSwitch {
 	return &cp
 }
 
-// begin records a new pending switch, or reports false when one is already pending for the session.
-func (t *modelSwitchTracker) begin(sessionID string, sw *modelSwitch) bool {
+// begin records a new pending switch. A switch that is still pending is replaced by it, not refused: the newest choice is what the person wants, and the one before is told to stop (#6219).
+func (t *modelSwitchTracker) begin(sessionID string, sw *modelSwitch) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if t.m == nil {
 		t.m = map[string]*modelSwitch{}
 	}
-	if cur := t.m[sessionID]; cur != nil && cur.State == switchPending {
-		return false
+	if cur := t.m[sessionID]; cur != nil && cur.State == switchPending && cur.cancel != nil {
+		cur.cancel()
 	}
+	t.seq++
+	sw.seq = t.seq
 	sw.updated = time.Now()
 	t.m[sessionID] = sw
-	return true
 }
 
-func (t *modelSwitchTracker) update(sessionID string, f func(*modelSwitch)) {
+// update changes switch seq's state; it does nothing when that switch has been replaced by a newer one.
+func (t *modelSwitchTracker) update(sessionID string, seq int64, f func(*modelSwitch)) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	if sw := t.m[sessionID]; sw != nil {
+	if sw := t.m[sessionID]; sw != nil && sw.seq == seq {
 		f(sw)
 		sw.updated = time.Now()
 	}
+}
+
+// end stops the session's pending switch, if any, and says why in its state (the agent was put to sleep, killed or restarted before Claude confirmed it): never left pending (#6219).
+func (t *modelSwitchTracker) end(sessionID, message string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if sw := t.m[sessionID]; sw != nil && sw.State == switchPending {
+		if sw.cancel != nil {
+			sw.cancel()
+		}
+		sw.State, sw.Message, sw.updated = switchFailed, message, time.Now()
+	}
+}
+
+// current reports whether switch seq is still the session's newest.
+func (t *modelSwitchTracker) current(sessionID string, seq int64) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	sw := t.m[sessionID]
+	return sw != nil && sw.seq == seq
 }
 
 // switchTimings are the waits of a switch; tests shorten them. A switch runs in a goroutine that can outlive the test that started it
@@ -102,7 +134,7 @@ type switchTimings struct {
 var switchTiming atomic.Pointer[switchTimings]
 
 func init() {
-	switchTiming.Store(&switchTimings{poll: 500 * time.Millisecond, idleWait: 10 * time.Minute, modelConfirm: 30 * time.Second, levelConfirm: 30 * time.Minute})
+	switchTiming.Store(&switchTimings{poll: 500 * time.Millisecond, idleWait: 10 * time.Minute, modelConfirm: 30 * time.Second, levelConfirm: 30 * time.Second})
 }
 
 // modelSwitchRequest is the switch's body: a model, a thinking level, or both. "thinking": "" asks for the CLI's own default
@@ -172,35 +204,59 @@ func (h *SessionsHandler) SwitchModel(w http.ResponseWriter, r *http.Request) {
 	if body.Thinking != nil {
 		sw.Thinking = &level
 	}
-	if !h.modelSwitches.begin(ls.SessionID, sw) {
-		writeError(w, http.StatusConflict, "switch_in_progress", "a switch is already in progress for this agent")
-		return
-	}
+	tm := switchTiming.Load()
+	ctx, cancel := context.WithTimeout(context.Background(), tm.idleWait+tm.modelConfirm+tm.levelConfirm+time.Minute)
+	sw.cancel = cancel
+	h.modelSwitches.begin(ls.SessionID, sw) // a choice made while another is pending replaces it
+	seq := sw.seq
 	_, busy := h.latestEvent(r.Context(), ls.SessionID)
 	if busy {
-		h.modelSwitches.update(ls.SessionID, func(s *modelSwitch) { s.AfterReply = true })
+		h.modelSwitches.update(ls.SessionID, seq, func(s *modelSwitch) { s.AfterReply = true })
 	}
 	started := *sw
 	started.AfterReply = busy
 	workDir := ls.WorkingDir
 	safego.Go("server/routes/model_switch", func() {
-		h.runModelSwitch(name, agentType, ls.SessionID, workDir, body.Model != nil, model, body.Thinking != nil, level)
+		defer cancel()
+		h.runModelSwitch(ctx, seq, name, agentType, ls.SessionID, workDir, body.Model != nil, model, body.Thinking != nil, level)
 	})
 	writeJSON(w, http.StatusAccepted, map[string]any{"ok": true, "switch": started})
 }
 
 // switchFail ends a switch as failed, with a message the operator can read.
-func (h *SessionsHandler) switchFail(sessionID, message string) {
-	h.modelSwitches.update(sessionID, func(s *modelSwitch) { s.State, s.Message = switchFailed, message })
+func (h *SessionsHandler) switchFail(sessionID string, seq int64, message string) {
+	h.modelSwitches.update(sessionID, seq, func(s *modelSwitch) {
+		if s.State == switchPending { // a switch ended with its own reason (Sleep, Kill, Restart) keeps it
+			s.State, s.Message = switchFailed, message
+		}
+	})
 }
 
 var errorOutputR = regexp.MustCompile(`(?i)\b(unknown|invalid|not found|not available|unsupported|error|failed|cannot|can't|unable)\b`)
 
+// switchGone says why a switch can no longer finish: its agent was killed (no row), or put to sleep (no terminal). "" while the agent is there. Read at each wait, so Sleep, Sleep all, Kill and a
+// restart that replaced the agent end the switch within a poll, whichever route did it.
+func (h *SessionsHandler) switchGone(ctx context.Context, sessionID string) string {
+	ls, err := h.ss.GetLiveSession(ctx, sessionID)
+	switch {
+	case err != nil || ls == nil:
+		return "The agent was ended or restarted before the change was confirmed."
+	case ls.IsSleeping == 1:
+		return "The agent was put to sleep before the change was confirmed."
+	}
+	return ""
+}
+
 // runModelSwitch waits for the agent to be between turns, types the commands and watches the transcript for their result.
-func (h *SessionsHandler) runModelSwitch(name, agentType, sessionID, workDir string, setModel bool, model string, setLevel bool, level string) {
+func (h *SessionsHandler) runModelSwitch(ctx context.Context, seq int64, name, agentType, sessionID, workDir string, setModel bool, model string, setLevel bool, level string) {
 	tm := switchTiming.Load()
-	ctx, cancel := context.WithTimeout(context.Background(), tm.idleWait+tm.modelConfirm+tm.levelConfirm+time.Minute)
-	defer cancel()
+	// One switch types at a time: a newer choice cancelled the one before it, which stops at its next wait, and this one starts when it has.
+	lock := h.modelSwitches.runLock(sessionID)
+	lock.Lock()
+	defer lock.Unlock()
+	if !h.modelSwitches.current(sessionID, seq) {
+		return // replaced before it started: nothing was typed for it
+	}
 
 	// A turn in progress: the change applies after the reply, never in the middle of it.
 	idleBy := time.Now().Add(tm.idleWait)
@@ -208,24 +264,32 @@ func (h *SessionsHandler) runModelSwitch(name, agentType, sessionID, workDir str
 		if _, busy := h.latestEvent(ctx, sessionID); !busy {
 			break
 		}
+		if msg := h.switchGone(ctx, sessionID); msg != "" {
+			h.switchFail(sessionID, seq, msg)
+			return
+		}
 		if time.Now().After(idleBy) {
-			h.switchFail(sessionID, "The agent kept working, so the change was not made.")
+			h.switchFail(sessionID, seq, "The agent kept working, so the change was not made.")
 			return
 		}
 		if sleepCtx(ctx, tm.poll) != nil {
-			h.switchFail(sessionID, "The change was cancelled.")
+			h.switchFail(sessionID, seq, "The change was cancelled.")
 			return
 		}
 	}
 
+	if ctx.Err() != nil { // replaced while it waited (the check above reads a cancelled context as "not busy"): nothing is typed for it
+		h.switchFail(sessionID, seq, "The change was cancelled.")
+		return
+	}
 	sent := time.Now().Add(-time.Second) // the transcript's own clock may differ a little
 	if setModel {
 		if err := h.deliverHumanSend(ctx, name, agentType, sessionID, "/model "+model); err != nil {
-			h.switchFail(sessionID, "Could not type /model into the agent: "+err.Error())
+			h.switchFail(sessionID, seq, "Could not type /model into the agent: "+err.Error())
 			return
 		}
 		if msg := h.confirmModel(ctx, sessionID, workDir, model, sent); msg != "" {
-			h.switchFail(sessionID, msg)
+			h.switchFail(sessionID, seq, msg)
 			return
 		}
 		_ = h.ss.UpdateContextWindow(ctx, sessionID, proxy.LookupContextWindow(model), model)
@@ -235,18 +299,22 @@ func (h *SessionsHandler) runModelSwitch(name, agentType, sessionID, workDir str
 		if level == "" {
 			cmd = "/effort auto"
 		}
+		if ctx.Err() != nil {
+			h.switchFail(sessionID, seq, "The change was cancelled.")
+			return
+		}
 		sent = time.Now().Add(-time.Second)
 		if err := h.deliverHumanSend(ctx, name, agentType, sessionID, cmd); err != nil {
-			h.switchFail(sessionID, "Could not type /effort into the agent: "+err.Error())
+			h.switchFail(sessionID, seq, "Could not type /effort into the agent: "+err.Error())
 			return
 		}
 		if msg := h.confirmLevel(ctx, sessionID, workDir, level, sent); msg != "" {
-			h.switchFail(sessionID, msg)
+			h.switchFail(sessionID, seq, msg)
 			return
 		}
 		_ = h.ss.SetSessionThinking(ctx, sessionID, level)
 	}
-	h.modelSwitches.update(sessionID, func(s *modelSwitch) { s.State = switchDone })
+	h.modelSwitches.update(sessionID, seq, func(s *modelSwitch) { s.State = switchDone })
 	h.kickWS() // the feed shows the result now, not on the next tick
 }
 
@@ -275,6 +343,9 @@ func (h *SessionsHandler) confirmModel(ctx context.Context, sessionID, workDir, 
 			}
 			return ""
 		}
+		if msg := h.switchGone(ctx, sessionID); msg != "" {
+			return msg
+		}
 		if time.Now().After(deadline) {
 			return "Claude Code did not confirm the model change."
 		}
@@ -294,9 +365,14 @@ func shownArgs(args string) string {
 	return args
 }
 
-// confirmLevel waits for the transcript to show the new level: Claude Code records the level a turn ran at on that turn's assistant
-// entry, so a level is confirmed by the next reply (the "confirms after the next reply" the chip says). A refusal Claude Code
-// prints for /effort ends it at once. "" (the CLI's own default) has no level to compare, so it is confirmed by the /effort entry.
+// effortSetR is what Claude Code prints when it took a level: "Set effort level to low (saved as your default for new sessions)", or "Effort level set to auto" for the default.
+var effortSetR = regexp.MustCompile(`(?i)(?:set effort level to|effort level set to)\s+([a-z]+)`)
+
+// confirmLevel waits for Claude Code's own entry for /effort, the way confirmModel waits for /model (#6219): its output says "Set effort level to <level>" when it took
+// the level, so the switch is done as soon as the CLI says so, not at the next reply (which may be minutes away and held every other choice meanwhile). A refusal ends it
+// at once, and a level other than the one asked for is a failure with what Claude Code did. The next reply's recorded level still confirms it, for a transcript that has
+// no /effort entry. "" (the CLI's own default) has no level to compare, so any /effort entry that is no refusal confirms it. With neither after levelConfirm the switch fails
+// with a message, instead of staying pending.
 func (h *SessionsHandler) confirmLevel(ctx context.Context, sessionID, workDir, level string, since time.Time) string {
 	tm := switchTiming.Load()
 	deadline := time.Now().Add(tm.levelConfirm)
@@ -305,6 +381,12 @@ func (h *SessionsHandler) confirmLevel(ctx context.Context, sessionID, workDir, 
 			for _, c := range h.jsonl.ReadClaudeLocalCommands(sessionID, workDir, since) {
 				if c.Name != "/effort" || c.Output == "" {
 					continue
+				}
+				if m := effortSetR.FindStringSubmatch(c.Output); m != nil { // before the refusal words: the level's own description ("on supported models") is not an error
+					if level == "" || strings.EqualFold(m[1], level) {
+						return ""
+					}
+					return "Claude Code set the level to " + m[1] + ", not " + level + "."
 				}
 				if errorOutputR.MatchString(c.Output) {
 					return "Claude Code did not take the level: " + c.Output
@@ -318,8 +400,11 @@ func (h *SessionsHandler) confirmLevel(ctx context.Context, sessionID, workDir, 
 				return ""
 			}
 		}
+		if msg := h.switchGone(ctx, sessionID); msg != "" {
+			return msg
+		}
 		if time.Now().After(deadline) {
-			return "The agent has not replied since, so the level is not confirmed yet."
+			return "Claude Code did not confirm the level change."
 		}
 		if sleepCtx(ctx, tm.poll) != nil {
 			return "The change was cancelled."

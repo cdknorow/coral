@@ -8,11 +8,13 @@ import (
 	"log"
 	"net/http"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/subgentic/coral/internal/agent"
+	"github.com/subgentic/coral/internal/agentmodels"
 	at "github.com/subgentic/coral/internal/agenttypes"
 	"github.com/subgentic/coral/internal/naming"
 	"github.com/subgentic/coral/internal/ptr"
@@ -171,6 +173,33 @@ var codexSessionSaved = agent.CodexSessionSaved
 
 // wakeExistingSession recreates the tmux/pty session for a sleeping agent
 // using the EXISTING session ID. Preserves display name, board subscriptions, and history.
+// wakeFlags is the agent's stored flags with the model and thinking level it runs now: a live switch (#4969) changes the stored model and level, not the flags the agent was started with, so a wake that
+// used the stored flags as they were started the agent again at the old level (#6219). The model's and the level's own flags are replaced, never doubled.
+func wakeFlags(ls *store.LiveSession) []string {
+	flags := store.UnmarshalFlags(ls.Flags)
+	if m := strings.TrimSpace(ptr.Value(ls.Model)); m != "" {
+		if modelArgs, err := agentmodels.ModelArgs(m); err == nil {
+			var kept []string
+			for i := 0; i < len(flags); i++ {
+				f := flags[i]
+				if f == "--model" || f == "-m" {
+					i++ // its value
+					continue
+				}
+				if strings.HasPrefix(f, "--model=") || strings.HasPrefix(f, "-m=") {
+					continue
+				}
+				kept = append(kept, f)
+			}
+			flags = append(kept, modelArgs...)
+		}
+	}
+	if level := ptr.Value(ls.Thinking); level != "" && agentmodels.ValidThinking(ls.AgentType, level) {
+		flags = append(agentmodels.StripThinkingFlags(flags), agentmodels.ThinkingArgs(ls.AgentType, level)...)
+	}
+	return flags
+}
+
 func (h *SessionsHandler) wakeExistingSession(ctx context.Context, ls *store.LiveSession) (err error) {
 	launched := false // the agent CLI was started again: it loaded the current hook set
 	defer func() {
@@ -178,7 +207,7 @@ func (h *SessionsHandler) wakeExistingSession(ctx context.Context, ls *store.Liv
 			h.noteLaunchedHooks(ctx, ls.SessionID, ls.AgentType)
 		}
 	}()
-	flags := store.UnmarshalFlags(ls.Flags)
+	flags := wakeFlags(ls)
 	prompt := ptr.Value(ls.Prompt)
 	boardName := ptr.Value(ls.BoardName)
 
@@ -390,6 +419,7 @@ func (h *SessionsHandler) SleepSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.modelSwitches.end(sessionID, "The agent was put to sleep before the change was confirmed.") // #6219
 	h.ss.SetSessionSleeping(ctx, sessionID, true)
 
 	// Kill tmux session to free resources
