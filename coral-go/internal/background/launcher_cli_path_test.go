@@ -110,3 +110,36 @@ func TestScheduledAgentsAreLaunchedWithThisServersEnvironment(t *testing.T) {
 		}
 	}
 }
+
+// taggingRecorder is a spawnRecorder on a runtime that tags its agents' runs, as the tmux one does.
+type taggingRecorder struct{ spawnRecorder }
+
+func (*taggingRecorder) TagsRuns() bool { return true }
+
+// #6770 (#6767 point 4): a scheduled agent on tmux carries the run tag a dashboard launch does, and it is recorded on its live row, where a Kill finds it by session id; the built-in terminal tags its own
+// processes, so nothing is exported there.
+func TestScheduledAgentsCarryARunTagOnTmuxOnly(t *testing.T) {
+	ctx := context.Background()
+	db := setupTestDB(t)
+	ss := store.NewSessionStore(db)
+
+	tagged := &taggingRecorder{}
+	res, err := NewAgentLauncher(tagged, ss, 8450).LaunchAgent(ctx, t.TempDir(), at.Claude, "job", "", nil, true, "p", "", "")
+	require.NoError(t, err)
+	tagged.mu.Lock()
+	cmd := tagged.commands[0]
+	tagged.mu.Unlock()
+	tag := ss.RunTagOf(ctx, res.SessionID)
+	require.Len(t, tag, 32, "a tag is recorded on the live row")
+	assert.Contains(t, cmd, "CORAL_PTY_RUN", "exported to the agent and everything it starts")
+	assert.Contains(t, cmd, tag, "the same tag the row holds")
+
+	plain := &spawnRecorder{}
+	res2, err := NewAgentLauncher(plain, ss, 8450).LaunchAgent(ctx, t.TempDir(), at.Claude, "job", "", nil, true, "p", "", "")
+	require.NoError(t, err)
+	plain.mu.Lock()
+	cmd2 := plain.commands[0]
+	plain.mu.Unlock()
+	assert.NotContains(t, cmd2, "CORAL_PTY_RUN", "the built-in terminal tags its own")
+	assert.Empty(t, ss.RunTagOf(ctx, res2.SessionID))
+}
