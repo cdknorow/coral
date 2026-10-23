@@ -115,3 +115,24 @@ func TestAddTeamWorktree(t *testing.T) {
 	assert.Contains(t, err.Error(), "is not empty")
 	assert.FileExists(t, filepath.Join(full, "s.txt"))
 }
+
+// #6701 (Security's #6708 C1): coral-team/<board> was an invalid branch for a board named with a space, "..", "~", "^", "?", "*", "[", "@{" or a trailing ".", and every worktree launch for that team failed.
+func TestTeamBranchIsAlwaysAValidBranchName(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	plain := []string{"b-noxgu2afvg", "my_team", "team.v2", "équipe", "a-b"}
+	for _, name := range plain {
+		assert.Equal(t, "coral-team/"+name, TeamBranch(name), "a valid name is used as it is")
+	}
+	seen := map[string]string{}
+	for _, name := range []string{"my team", "a..b", "x~1", "x^", "x?", "x*", "x[0]", "x@{y}", "trailing.", ".leading", "-dash", "a:b", `a\b`, "x.lock", "..", " ", "", "a b", "a_b ", "tab\there", "new\nline", "a//b", "@"} {
+		branch := TeamBranch(name)
+		out, err := exec.Command("git", "check-ref-format", "--branch", branch).CombinedOutput()
+		assert.NoError(t, err, "%q -> %q: %s", name, branch, out)
+		assert.NotContains(t, seen, branch, "%q and %q share a branch", name, seen[branch])
+		seen[branch] = name
+		assert.Equal(t, branch, TeamBranch(name), "the same name, the same branch")
+	}
+	assert.NotEqual(t, TeamBranch("a b"), TeamBranch("a_b"), "names that differ only where it was replaced get their own")
+}
