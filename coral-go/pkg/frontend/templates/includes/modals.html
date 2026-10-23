@@ -1215,10 +1215,10 @@
             <div class="modal-body">
                 <!-- Job type toggle -->
                 <div class="job-type-toggle" id="job-type-toggle">
-                    <button class="job-type-btn active" data-type="workflow" data-on-click="m-switch-job-type" data-arg="workflow">
+                    <button class="job-type-btn active" aria-pressed="true" data-type="workflow" data-on-click="m-switch-job-type" data-arg="workflow">
                         <span class="material-icons" style="font-size:1rem" aria-hidden="true">account_tree</span> Workflow
                     </button>
-                    <button class="job-type-btn" data-type="prompt" data-on-click="m-switch-job-type" data-arg="prompt">
+                    <button class="job-type-btn" aria-pressed="false" data-type="prompt" data-on-click="m-switch-job-type" data-arg="prompt">
                         <span class="material-icons" style="font-size:1rem" aria-hidden="true">smart_toy</span> Agent Prompt
                     </button>
                 </div>
@@ -1230,20 +1230,20 @@
                     <input type="text" id="job-modal-description" placeholder="e.g. Runs the full test suite">
                 </label>
                 <!-- Schedule picker -->
-                <label>Schedule:</label>
-                <div class="sched-picker" id="sched-picker">
+                <label id="sched-label">Schedule:</label>
+                <div class="sched-picker" id="sched-picker" role="group" aria-labelledby="sched-label">
                     <div class="sched-presets">
-                        <button type="button" class="sched-preset active" data-cron="0 * * * *" data-on-click="m-pick-schedule-preset">Every hour</button>
-                        <button type="button" class="sched-preset" data-cron="0 */6 * * *" data-on-click="m-pick-schedule-preset">Every 6 hours</button>
-                        <button type="button" class="sched-preset" data-cron="0 2 * * *" data-on-click="m-pick-schedule-preset">Daily at 2am</button>
-                        <button type="button" class="sched-preset" data-cron="0 9 * * 1" data-on-click="m-pick-schedule-preset">Weekly Mon 9am</button>
-                        <button type="button" class="sched-preset" data-cron="" data-on-click="m-pick-schedule-preset">Custom</button>
+                        <button type="button" class="sched-preset active" aria-pressed="true" data-cron="0 * * * *" data-on-click="m-pick-schedule-preset">Every hour</button>
+                        <button type="button" class="sched-preset" aria-pressed="false" data-cron="0 */6 * * *" data-on-click="m-pick-schedule-preset">Every 6 hours</button>
+                        <button type="button" class="sched-preset" aria-pressed="false" data-cron="0 2 * * *" data-on-click="m-pick-schedule-preset">Daily at 2am</button>
+                        <button type="button" class="sched-preset" aria-pressed="false" data-cron="0 9 * * 1" data-on-click="m-pick-schedule-preset">Weekly Mon 9am</button>
+                        <button type="button" class="sched-preset" aria-pressed="false" data-cron="" data-on-click="m-pick-schedule-preset">Custom</button>
                     </div>
                     <div class="sched-custom-row" id="sched-custom-row" style="display:none">
-                        <input type="text" id="job-modal-cron" class="sched-cron-input" placeholder="0 2 * * *" value="0 * * * *" data-on-input="m-validate-cron-preview">
+                        <input type="text" id="job-modal-cron" class="sched-cron-input" aria-label="Cron expression" placeholder="0 2 * * *" value="0 * * * *" aria-describedby="cron-preview" data-on-input="m-validate-cron-preview">
                     </div>
                     <div class="sched-picker-meta">
-                        <div id="cron-preview" class="sched-preview"></div>
+                        <div id="cron-preview" class="sched-preview" role="status"></div>
                         <label class="sched-tz-label">Timezone:
                             <input type="text" id="job-modal-timezone" class="sched-tz-input" placeholder="UTC" value="UTC" data-on-input="m-validate-cron-preview">
                         </label>

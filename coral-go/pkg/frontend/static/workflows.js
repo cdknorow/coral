@@ -665,8 +665,8 @@ export async function saveWorkflow() {
         const type = item.querySelector('.wf-step-type-select').value;
         const stepName = item.querySelector('.wf-step-name-input').value.trim();
         const content = item.querySelector('.wf-step-content').value.trim();
-        if (!stepName) { showError(errEl, 'All steps need a name'); return; }
-        if (!content) { showError(errEl, `Step "${stepName}" needs a ${type === 'shell' ? 'command' : 'prompt'}`); return; }
+        if (!stepName) { showError(errEl, 'All steps need a name', item.querySelector('.wf-step-name-input')); return; }
+        if (!content) { showError(errEl, `Step "${stepName}" needs a ${type === 'shell' ? 'command' : 'prompt'}`, item.querySelector('.wf-step-content')); return; }
 
         // What the step had, with what the editor shows written over it (a step whose type changed drops the other type's text).
         const step = { ...(loadedSteps.get(item) || {}), name: stepName, type };
@@ -675,7 +675,7 @@ export async function saveWorkflow() {
         steps.push(step);
     }
 
-    if (!name) { showError(errEl, 'Name is required'); return; }
+    if (!name) { showError(errEl, 'Name is required', document.getElementById('wf-input-name')); return; }
     if (!steps.length) { showError(errEl, 'At least one step is required'); return; }
 
     const body = { name, description: desc, steps, max_duration_s: maxDur };
@@ -755,9 +755,15 @@ function statusIconChar(status) {
 
 const formatDuration = sec => fmtDuration(sec, { unit: 's', dropZeroSeconds: true });
 
-function showError(el, msg) {
+// An editor error is said (the message is an alert), the field it is about is marked and described by it, and focus goes there; typing in the field clears the mark (#6348).
+function showError(el, msg, field) {
     el.textContent = msg;
     el.style.display = '';
+    if (!field) return;
+    field.setAttribute('aria-invalid', 'true');
+    field.setAttribute('aria-describedby', el.id);
+    field.addEventListener('input', () => { field.removeAttribute('aria-invalid'); field.removeAttribute('aria-describedby'); }, { once: true });
+    field.focus();
 }
 
 // The Workflows view's generated markup (#3645): data-on-* names, never code. The view's own

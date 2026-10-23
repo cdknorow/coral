@@ -267,9 +267,11 @@ export function deleteScheduledJob(jobId) {
 
 // ── Job create/edit modal ────────────────────────────────────────────────
 
+// A choice button's on state: the look (active) and what a screen reader hears (aria-pressed), set together (#6348).
+const press = (b, on) => { b.classList.toggle('active', on); b.setAttribute('aria-pressed', String(!!on)); };
+
 export function pickSchedulePreset(btn) {
-    document.querySelectorAll('.sched-preset').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
+    document.querySelectorAll('.sched-preset').forEach(b => press(b, b === btn));
     const cron = btn.dataset.cron;
     const cronInput = document.getElementById('job-modal-cron');
     const customRow = document.getElementById('sched-custom-row');
@@ -287,7 +289,7 @@ export function pickSchedulePreset(btn) {
 export function switchJobType(type) {
     currentJobType = type;
     document.querySelectorAll('.job-type-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.type === type);
+        press(btn, btn.dataset.type === type);
     });
     const wfFields = document.getElementById('job-modal-workflow-fields');
     const promptFields = document.getElementById('job-modal-prompt-fields');
@@ -321,7 +323,7 @@ export function showJobModal() {
     document.getElementById('job-modal-cron').value = '0 * * * *';
     document.getElementById('job-modal-timezone').value = 'UTC';
     // Reset schedule picker to first preset
-    document.querySelectorAll('.sched-preset').forEach((b, i) => b.classList.toggle('active', i === 0));
+    document.querySelectorAll('.sched-preset').forEach((b, i) => press(b, i === 0));
     const customRow = document.getElementById('sched-custom-row');
     if (customRow) customRow.style.display = 'none';
     document.getElementById('job-modal-repo').value = document.getElementById('job-modal-repo').dataset.coralRoot || '';
@@ -419,6 +421,7 @@ export async function validateCronPreview() {
             body: JSON.stringify({ cron_expr: expr, timezone: tz }),
         });
         const data = await resp.json();
+        document.getElementById('job-modal-cron').toggleAttribute('aria-invalid', !data.valid);
         if (data.valid) {
             preview.innerHTML = '<span style="color:var(--green)">Valid</span> — Next: ' +
                 data.next_fire_times.slice(0, 3).map(t => new Date(t).toLocaleString()).join(', ');
@@ -436,6 +439,13 @@ export async function saveScheduledJob() {
 
     if (!name || !cron) {
         showToast('Name and cron expression are required', true);
+        // the field that is missing is marked and has focus; typing clears the mark (#6348)
+        const field = document.getElementById(!name ? 'job-modal-name' : 'job-modal-cron');
+        const custom = document.querySelector('.sched-preset[data-cron=""]');
+        if (name && custom) pickSchedulePreset(custom); // the cron field is behind the Custom choice: choose it, which shows the field
+        field.setAttribute('aria-invalid', 'true');
+        field.addEventListener('input', () => field.removeAttribute('aria-invalid'), { once: true });
+        field.focus();
         return;
     }
 

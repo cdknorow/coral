@@ -198,6 +198,7 @@ export function switchJobsSubtab(tab) {
     // Update subtab buttons
     document.querySelectorAll('.sidebar-subtab').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.subtab === tab);
+        btn.setAttribute('aria-pressed', String(btn.dataset.subtab === tab)); // which one is on is said, not only drawn (#6348)
     });
 
     // Show/hide content
