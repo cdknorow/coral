@@ -1,15 +1,18 @@
 package verify
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 )
 
 // The verifier is linked only into cmd/coral-update: the server holds the API key and never links the Sigstore code (#5245 section 12), and
@@ -105,7 +108,75 @@ func TestOnlyNamedWorkflowsRequestAnIDTokenWithWriteAccess(t *testing.T) {
 	}
 	// if promote.yml is present with write access it is the real one on the promote branch; the stub on main has none (it only exists so a dispatch can find the file)
 	if b, err := os.ReadFile(filepath.Join(dir, "promote.yml")); err == nil && idToken.Match(b) {
-		assert.Contains(t, string(b), "workflow_dispatch", "promote.yml runs by hand only")
-		assert.NotRegexp(t, `(?m)^\s*(push|pull_request|schedule|pull_request_target):`, string(b), "promote.yml has no other trigger")
+		triggers, err := workflowTriggers(b)
+		require.NoError(t, err, "promote.yml's on: key is read as YAML, in whichever form it is written")
+		assert.Equal(t, []string{"workflow_dispatch"}, triggers, "promote.yml runs by hand only, in any form of on: (a string, a list, a map)")
+	}
+}
+
+// workflowTriggers is the events a workflow's on: key names, sorted, whichever form it is written in: a string (on: push), a list (on: [push, workflow_dispatch]) or a map (on: {push: ..., workflow_dispatch: ...}), flow or
+// block style. The key itself can read as the boolean true under YAML 1.1 (on), so both spellings are looked for.
+func workflowTriggers(doc []byte) ([]string, error) {
+	var top map[string]any
+	if err := yaml.Unmarshal(doc, &top); err != nil {
+		return nil, err
+	}
+	on, found := top["on"]
+	if !found {
+		on, found = top["true"]
+	}
+	if !found {
+		return nil, fmt.Errorf("no on: key")
+	}
+	var out []string
+	switch v := on.(type) {
+	case string:
+		out = []string{v}
+	case []any:
+		for _, e := range v {
+			s, ok := e.(string)
+			if !ok {
+				return nil, fmt.Errorf("an on: list entry is not a string: %v", e)
+			}
+			out = append(out, s)
+		}
+	case map[string]any:
+		for k := range v {
+			out = append(out, k)
+		}
+	default:
+		return nil, fmt.Errorf("on: is a %T", on)
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+// The dispatch-only check reads the on: key as YAML: the inline list that a line-based match missed ([push, workflow_dispatch]) fails it, as do the map and string forms with another event, and the right forms pass.
+func TestWorkflowTriggersReadsEveryFormOfOn(t *testing.T) {
+	for name, c := range map[string]struct {
+		doc  string
+		want []string
+	}{
+		"block map, dispatch only":    {"name: x\non:\n  workflow_dispatch:\n    inputs: {}\njobs: {}\n", []string{"workflow_dispatch"}},
+		"string, dispatch only":       {"on: workflow_dispatch\njobs: {}\n", []string{"workflow_dispatch"}},
+		"inline list, dispatch only":  {"on: [workflow_dispatch]\n", []string{"workflow_dispatch"}},
+		"inline list with push":       {"on: [push, workflow_dispatch]\n", []string{"push", "workflow_dispatch"}},
+		"block list with a schedule":  {"on:\n  - workflow_dispatch\n  - schedule\n", []string{"schedule", "workflow_dispatch"}},
+		"flow map with push":          {"on: {push: {branches: [main]}, workflow_dispatch: {}}\n", []string{"push", "workflow_dispatch"}},
+		"block map with pull_request": {"on:\n  workflow_dispatch:\n  pull_request:\n", []string{"pull_request", "workflow_dispatch"}},
+		"a quoted key":                {"\"on\":\n  workflow_dispatch:\n", []string{"workflow_dispatch"}},
+		"push alone":                  {"on: push\n", []string{"push"}},
+	} {
+		got, err := workflowTriggers([]byte(c.doc))
+		require.NoError(t, err, name)
+		assert.Equal(t, c.want, got, name)
+	}
+	_, err := workflowTriggers([]byte("name: x\njobs: {}\n"))
+	assert.Error(t, err, "no on: key is an error, not an empty list that passes")
+	// the way the check judges it: only [workflow_dispatch] passes
+	for _, doc := range []string{"on: [push, workflow_dispatch]\n", "on: {push: {}, workflow_dispatch: {}}\n", "on: push\n", "on:\n  workflow_dispatch:\n  schedule:\n"} {
+		got, err := workflowTriggers([]byte(doc))
+		require.NoError(t, err)
+		assert.NotEqual(t, []string{"workflow_dispatch"}, got, "%q is not dispatch-only", doc)
 	}
 }
