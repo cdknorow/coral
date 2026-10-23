@@ -204,11 +204,11 @@ func parseCodexSessionWithOpen(fpath string, mtime float64, open func(string) (*
 			msgCount++
 			fts.Add(text)
 		}
-		if role == "user" && !injectedUserText(text) {
+		if t, ok := typedText(text); role == "user" && ok {
 			if kind == "event_msg" && firstTyped == "" {
-				firstTyped = clipFirstMessage(text)
+				firstTyped = clipFirstMessage(t)
 			} else if firstItem == "" {
-				firstItem = clipFirstMessage(text)
+				firstItem = clipFirstMessage(t)
 			}
 		}
 		if summary == "" && role == "assistant" {

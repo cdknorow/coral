@@ -160,6 +160,25 @@ func clipFirstMessage(text string) string {
 	return redactedCut(strings.Join(strings.Fields(string(out)), " "), firstMessageLimit)
 }
 
+// ideContextR is one IDE context block the editor extension puts in front of what the person typed (<ide_opened_file>The user opened ...</ide_opened_file>, <ide_selection>...</ide_selection>), at the start of the text.
+var ideContextR = regexp.MustCompile(`(?s)^\s*<(ide_[a-z_]+)>.*?</(ide_[a-z_]+)>`)
+
+// typedText is what the person typed in a user entry's text, and whether there is any: the IDE context blocks in front of it are dropped and the rest is kept (#6268: a message that opened with an
+// <ide_opened_file> tag was skipped whole, so the title fell to a later message), and an entry that is only context, or the CLI's own text, has none.
+func typedText(text string) (string, bool) {
+	for {
+		m := ideContextR.FindStringSubmatch(text)
+		if m == nil || m[1] != m[2] {
+			break
+		}
+		text = text[len(m[0]):]
+	}
+	if injectedUserText(text) {
+		return "", false
+	}
+	return text, true
+}
+
 // injectedUserText reports whether a user entry's text is the CLI's own and not something the person typed: a slash command's tags, the output of one, or a system reminder or environment block.
 func injectedUserText(text string) bool {
 	t := strings.TrimSpace(text)
