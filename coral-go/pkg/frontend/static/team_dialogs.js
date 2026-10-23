@@ -15,33 +15,21 @@ const { markFieldInvalid, _launchBlocked, _launchOn, _onServerSuffix, _refreshAf
 const { _syncFlagButtons } = await importOnce('./flag_shortcuts.js');
 const { showSettingsModal } = await importOnce('./settings_dialog.js');
 const { modelName, levelName } = await importOnce('./model_labels.js');
-const { codexEnforced, agyEnforced } = await importOnce('./preset_enforcement.js');
+const { launchedMode } = await importOnce('./preset_enforcement.js');
 const { BUILTIN_TEAM_TEMPLATES, _renderTeamTemplateSelector, markTeamTemplate, resetTeamTemplatePicker } = await importOnce('./team_templates_ui.js');
 const { showTeamStep, currentTeamStep, TEAM_STEPS } = await importOnce('./team_steps.js');
 
-const _TEAM_MODE_FLAG = /--permission-mode\s+(\S+)|--mode\s+(\S+)/;
 
-// The Mode column: the member's own mode when its flags carry one, else the team's (Start step).
-function _memberModeLabel(flags) {
-    const select = document.getElementById('team-permission-mode');
-    const label = v => [...(select?.options || [])].find(o => o.value === v)?.textContent || v;
-    const m = (flags || '').match(_TEAM_MODE_FLAG);
-    if (m) return label((m[1] || m[2]).replace(/-([a-z])/g, (_, c) => c.toUpperCase()));
-    return (flags || '').trim() ? 'Custom' : label(select?.value || 'default');
-}
+const _modeLabel = v => [...(document.getElementById('team-permission-mode')?.options || [])].find(o => o.value === v)?.textContent || v;
 
-function _modeFromCapabilities(type, caps) {
-    if (type === 'codex') {
-        const m = codexEnforced(caps);
-        if (!m) return null;
-        if (m.sandbox === 'none') return { text: 'Runs without a sandbox', warn: true };
-        return { text: m.sandbox === 'read-only' ? 'Read-only sandbox' : 'Sandboxed' };
+// A member follows the team's provider unless it was given one (a template's own, or one picked in the dialog): the form's select is set from the team's, so the launch sends it.
+function _followTeamType() {
+    const type = document.getElementById('team-agent-type')?.value;
+    if (!type) return;
+    for (const row of document.querySelectorAll('#team-agents-list .team-agent-row[data-follows-team-type="1"]')) {
+        const sel = document.getElementById(row.dataset.acfId)?.querySelector('.acf-agent-type');
+        if (sel && sel.value !== type) { sel.value = type; sel.dispatchEvent(new Event('change', { bubbles: true })); }
     }
-    if (type === 'agy' || type === 'antigravity' || type === 'gemini') {
-        if (!caps?.allow?.length && !caps?.deny?.length) return null;
-        return agyEnforced(caps) === 'skip-permissions' ? { text: 'Skips permission prompts', warn: true } : null;
-    }
-    return null;
 }
 
 function _updateTeamAgentSummary(row) {
@@ -63,12 +51,15 @@ function _updateTeamAgentSummary(row) {
     const modelId = config.model || '';
     set('.team-agent-model', modelId ? modelName(type, modelId, _effectiveServer(launch.server)) : 'CLI default', modelId && modelId === _settingsFor(_effectiveServer(launch.server))['default_model_' + type] ? 'default' : '');
     set('.team-agent-thinking', config.thinking ? levelName(config.thinking) : 'CLI default');
-    // What launches: Codex and Antigravity take their sandbox or mode from the member's capabilities, so a member that has them shows that, in plain words, not the Mode beside it.
-    const byCaps = _modeFromCapabilities(type, config.capabilities);
-    const own = /--permission-mode|--mode/.test(config.flags || '');
-    if (byCaps) set('.team-agent-mode', byCaps.text);
-    else set('.team-agent-mode', _memberModeLabel(config.flags), own ? '' : 'team');
-    row.querySelector('.team-agent-mode')?.classList.toggle('team-mode-warn', !!byCaps?.warn);
+    // What launches (#6425): the member's own Mode, else the team's, is applied; for Codex and Antigravity the capabilities may only narrow it, and with no Mode they decide.
+    const acf = acfId ? document.getElementById(acfId) : null;
+    const ownMode = acf?.querySelector('.acf-permission-mode')?.value || 'default';
+    const teamMode = document.getElementById('team-permission-mode')?.value || 'default';
+    const mode = ownMode !== 'default' ? ownMode : teamMode;
+    const lm = launchedMode(type, mode, config.capabilities);
+    if (lm.narrowed) set('.team-agent-mode', lm.text);
+    else set('.team-agent-mode', _modeLabel(mode), ownMode === 'default' ? 'team' : '');
+    row.querySelector('.team-agent-mode')?.classList.toggle('team-mode-warn', !!lm.warn);
     const prompt = row.querySelector('.team-agent-prompt');
     if (prompt) prompt.textContent = config.prompt || 'No behavior prompt yet.';
     const nameBtn = row.querySelector('.team-agent-role-name');
@@ -139,6 +130,8 @@ function teamStepMove(dir) {
     showTeamStep(to, { focus: true });
 }
 
+const _teamModeFlags = agentType => _getPermissionFlagsForAgentMode(agentType || document.getElementById('team-agent-type')?.value || 'claude', document.getElementById('team-permission-mode')?.value || 'default');
+
 function _defaultTeamAgentModalConfig() {
     const agentType = document.getElementById('team-agent-type')?.value || '';
     return {
@@ -147,7 +140,7 @@ function _defaultTeamAgentModalConfig() {
         agentType,
         model: '',
         capabilities: null,
-        flags: _getPermissionFlagsForAgentMode(agentType || 'claude', document.getElementById('team-permission-mode')?.value || 'default'), // a new member starts at the team's Mode, not Auto (#6412)
+        flags: _teamModeFlags(agentType), // a new member starts at the team's Mode, not Auto (#6412)
     };
 }
 
@@ -162,6 +155,8 @@ function showTeamAgentModal(row = null) {
     subtitle.textContent = ''; // no sub-title (#6012): the title and the form say it
 
     const acfValue = row?.dataset.acfId ? getAgentConfig(row.dataset.acfId) : _defaultTeamAgentModalConfig();
+    // A member with no Mode of its own launches with the team's: the dialog shows that Mode (saving it unchanged keeps the member following the team, see saveTeamAgentFromModal).
+    if (row && !/--permission-mode|--mode|--sandbox|--full-auto|--dangerously/.test(acfValue.flags || '')) acfValue.flags = [acfValue.flags, _teamModeFlags(acfValue.agentType)].filter(Boolean).join(' ');
     renderAgentConfigForm('team-agent-modal-acf', { showPreset: true, showName: true, showAutoPermissions: true, sections: true, value: acfValue });
     modal.style.display = 'flex';
 }
@@ -182,11 +177,16 @@ function saveTeamAgentFromModal() {
         return;
     }
 
+    // The Mode left at the team's is not the member's own: it keeps following the team, which the launch needs (an own Mode beats the team's, #6440).
+    const modalMode = document.querySelector('#team-agent-modal-acf .acf-permission-mode')?.value;
+    if (modalMode && modalMode === (document.getElementById('team-permission-mode')?.value || 'default')) config.flags = _normalizePermFlagsForAgent(config.flags, config.agentType, 'default');
+    const followsType = config.agentType === document.getElementById('team-agent-type')?.value; // a provider left at the team's keeps following it
     if (launch.teamAgentModalRow?.dataset.acfId) {
+        launch.teamAgentModalRow.dataset.followsTeamType = followsType ? '1' : '';
         setAgentConfig(launch.teamAgentModalRow.dataset.acfId, config);
         _updateTeamAgentSummary(launch.teamAgentModalRow);
     } else {
-        _addTeamAgent(config.name, config.prompt, config.capabilities, config.agentType, config.model, config.flags, { reveal: true });
+        _addTeamAgent(config.name, config.prompt, config.capabilities, followsType ? '' : config.agentType, config.model, config.flags, { reveal: true });
     }
 
     hideTeamAgentModal();
@@ -303,11 +303,12 @@ async function _initTeamForm() {
     if (s.default_agent_type && typeSelect) typeSelect.value = s.default_agent_type;
     if (typeSelect) {
         typeSelect.onchange = () => {
+            _followTeamType(); // the members with no provider of their own take the team's (#6440)
+            _applyTeamDefaultMode(); // still the default: it follows the saved setting (#5836)
+            _refreshTeamSummaries();
             const tfEl = document.getElementById("team-flags");
             if (tfEl) {
                 const modeEl = document.getElementById("team-permission-mode");
-                _applyTeamDefaultMode(); // still the default: it follows the saved setting (#5836)
-                _refreshTeamSummaries();
                 const mode = modeEl?.value || 'default';
                 tfEl.value = _normalizePermFlagsForAgent(tfEl.value, typeSelect.value, mode);
             }
@@ -366,6 +367,7 @@ function _addTeamAgent(defaultName, defaultPrompt, defaultCapabilities, defaultA
     row.draggable = true;
     row.dataset.idx = idx;
     row.dataset.acfId = acfId;
+    if (!defaultAgentType) row.dataset.followsTeamType = '1';
 
     row.innerHTML = `
         <td class="team-agent-role" data-label="Role">
@@ -401,7 +403,7 @@ function _addTeamAgent(defaultName, defaultPrompt, defaultCapabilities, defaultA
     const acfValue = {
         name: defaultName || '',
         prompt: defaultPrompt || '',
-        agentType: defaultAgentType || '',
+        agentType: defaultAgentType || document.getElementById('team-agent-type')?.value || '',
         model: defaultModel || '',
         capabilities: caps,
     };

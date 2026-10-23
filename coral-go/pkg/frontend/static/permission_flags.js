@@ -18,7 +18,7 @@ const PERM_FLAGS = {
 export { defaultPermissionMode, syncDefaultPermissionMode, trackPermissionPick }; // pure, in preset_enforcement.js (node-tested)
 
 export const PERMISSION_MODE_DESCRIPTIONS = {
-    default: 'Reads only — best for getting started and sensitive work',
+    default: "Asks before acting (each CLI's normal mode)",
     acceptEdits: 'Reads, file edits, and common filesystem commands (mkdir, touch, mv, cp, etc.) — best for iterating on code you\'re reviewing',
     plan: 'Reads only — best for exploring a codebase before changing it',
     auto: 'Everything, with safety checks.',
