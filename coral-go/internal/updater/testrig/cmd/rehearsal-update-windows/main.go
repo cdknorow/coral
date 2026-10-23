@@ -117,7 +117,7 @@ type world struct {
 }
 
 // newWorld publishes the new release (and the installed one, whose MSI is the rollback package) to a fake GitHub.
-func newWorld(dataDir string, p plan) (*world, error) {
+func newWorld(dataDir string, p plan, tamper bool) (*world, error) {
 	signer, err := testrig.NewSigner()
 	if err != nil {
 		return nil, err
@@ -145,7 +145,7 @@ func newWorld(dataDir string, p plan) (*world, error) {
 		gh.Close()
 		return nil, err
 	}
-	if p.Tamper {
+	if tamper {
 		gh.Mutate = func(path string, b []byte) []byte {
 			if strings.HasSuffix(path, "-x64.msi") && strings.Contains(path, p.NewVersion) && len(b) > 0 {
 				b[len(b)/2] ^= 1
@@ -162,7 +162,7 @@ func newWorld(dataDir string, p plan) (*world, error) {
 
 // checkRun stages the new release for the dashboard to offer.
 func checkRun(ctx context.Context, dataDir string, p plan) int {
-	w, err := newWorld(dataDir, p)
+	w, err := newWorld(dataDir, p, false)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "world:", err)
 		return 2
@@ -217,15 +217,18 @@ func (r *rehearsalMSI) Healthy(ctx context.Context, install string) error {
 func applyRun(ctx context.Context, dataDir string, p plan, m trigger.Marker) int {
 	_ = os.RemoveAll(filepath.Join(dataDir, stage.UpdatesDir, "staging"))
 	_ = os.Remove(filepath.Join(dataDir, stage.UpdatesDir, verify.StateFile))
-	w, err := newWorld(dataDir, p)
+	w, err := newWorld(dataDir, p, p.Tamper)
 	if err != nil {
 		return result(dataDir, map[string]any{"result": "rehearsal_error", "error": err.Error()})
 	}
 	defer w.gh.Close()
-	if res := stage.Check(ctx, w.cfg); res.Result != stage.ResultStaged {
-		return result(dataDir, map[string]any{"step": "check", "result": res.Result, "failed_stage": res.FailedStage})
-	}
 	msi := &rehearsalMSI{WindowsMSI: &apply.WindowsMSI{DataDir: dataDir}, unhealthy: p.Unhealthy, serverArgs: p.ServerArgs}
+	if res := stage.Check(ctx, w.cfg); res.Result != stage.ResultStaged {
+		// What the real updater does with an answer that installed nothing: Coral is started again from the click's folder.
+		sctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+		return result(dataDir, map[string]any{"step": "check", "result": res.Result, "failed_stage": res.FailedStage, "restarted": msi.Start(sctx, m.InstallDir) == nil})
+	}
 	clicked := m.Version
 	if p.StaleClick {
 		clicked = "0.0.1"

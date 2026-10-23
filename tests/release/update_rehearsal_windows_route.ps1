@@ -198,7 +198,7 @@ try {
     # Rows 1, 3, 4, 5: the click that installs, and the ones that must not install.
     $scenarios = @(
         @{ name = 'update';      plan = @{};                           result = 'relaunched';  version = $N1 },
-        @{ name = 'tampered';    plan = @{ tamper = $true };           result = 'refused';     version = $N  },
+        @{ name = 'tampered';    plan = @{ tamper = $true };           result = 'failed';      version = $N  },
         @{ name = 'stale-click'; plan = @{ stale_click = $true };      result = 'refused';     version = $N  },
         @{ name = 'unhealthy';   plan = @{ unhealthy = $true };        result = 'rolled_back'; version = $N  }
     )
