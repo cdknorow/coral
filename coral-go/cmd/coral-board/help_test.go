@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"github.com/stretchr/testify/assert"
 	"github.com/subgentic/coral/internal/testguard"
 	"io"
 	"net/http"
@@ -186,7 +187,7 @@ func TestHelpShowsTheCommandsOwnUsage(t *testing.T) {
 						t.Errorf("post help exceeds 80 columns (%d): %q", len(line), line)
 					}
 				}
-				for _, guidance := range []string{"one-line summary", "one per line; answer by number", "@Name", "SHAs, branches and paths", "coral-agent artifact upload <file>", "coral://artifacts/<digest>", "Multi-line posts and anything with backticks"} {
+				for _, guidance := range []string{"one-line summary", "answer by number", "@Name", "SHAs, branches and paths", "coral-agent artifact upload <file>", "coral://artifacts/<digest>", "Multi-line posts and anything with backticks"} {
 					if !strings.Contains(res.stdout, guidance) {
 						t.Errorf("%s: usage missing posting guidance %q", args, guidance)
 					}
@@ -260,4 +261,28 @@ func TestCheckFreeTextAllowsOrdinaryText(t *testing.T) {
 			t.Errorf("%v: %v", args, err)
 		}
 	}
+}
+
+// The copy review's help rows (#282 rows 4-10): the topic index is near the top, post --file comes before the Bash heredoc, the long rules live
+// in post's, send's and wait's own help, and wait's help says what its options do.
+func TestHelpIsOrganisedForAnAgent(t *testing.T) {
+	srv := newRecordingServer(t)
+	dataDir := subscribedDataDir(t, srv.URL)
+	main := runBoard(t, srv.URL, dataDir, "--help").stdout
+	assert.Less(t, strings.Index(main, "Help topics:"), strings.Index(main, "Commands:"), "the topics come before the commands")
+	assert.Less(t, strings.Index(main, "post --file <path>"), strings.Index(main, "<<'EOF'"), "post --file first")
+	assert.Contains(t, main, "Bash heredoc")
+	assert.NotContains(t, main, "cross_team_artifacts", "the attach rules are in send's own help")
+	assert.Contains(t, main, "(Orchestrators and the Operator only)", "targets says who may use it")
+	assert.Contains(t, main, "List this board's tasks")
+
+	send := runBoard(t, srv.URL, dataDir, "help", "send").stdout
+	assert.Contains(t, send, "cross_team_artifacts")
+	wait := runBoard(t, srv.URL, dataDir, "help", "wait").stdout
+	for _, want := range []string{"2 hours", "--timeout", "--status", "--cancel", "--block", "replaces your old"} {
+		assert.Contains(t, wait, want)
+	}
+	topic := runBoard(t, srv.URL, dataDir, "help", "timeouts").stdout
+	assert.NotContains(t, topic, "task complete", "an example that changes a task is not copied")
+	assert.Contains(t, topic, "check the result")
 }
