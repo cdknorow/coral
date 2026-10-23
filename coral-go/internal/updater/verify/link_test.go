@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -59,6 +60,52 @@ func TestThePinsNameTheWorkflowsOfThisRepository(t *testing.T) {
 	assert.Regexp(t, `(?m)^\s*-\s*['"]?v\*`, string(b), "release.yml runs on v* tags, which is what the pinned SAN's ref names")
 	assert.Equal(t, "https://github.com/subgentic/coral/.github/workflows/release.yml@refs/tags/v1.4.120", releaseSAN(Repo, "v1.4.120"))
 	p := DefaultPins()
-	assert.Equal(t, "https://github.com/subgentic/coral-promote/.github/workflows/promote.yml@refs/heads/main", promoteIdentity(p).SAN)
+	assert.Equal(t, "https://github.com/subgentic/coral/.github/workflows/promote.yml@refs/heads/promote", promoteIdentity(p).SAN)
 	assert.Equal(t, "https://token.actions.githubusercontent.com", p.Issuer)
+}
+
+// A workflow that can ask for an OIDC token can get a Sigstore certificate for its own path, so which workflows may is a list the verifier's pins are only as good as (#6274). The two the updater trusts, release.yml
+// and promote.yml, are the signers; nothing else may request an id-token with write access unless it is named here with the reason, so a new one fails this test until it is read and added on purpose.
+// (A certificate from any other workflow is refused by the verifier all the same: its SAN is another path. This keeps the list of such workflows short and known.)
+func TestOnlyNamedWorkflowsRequestAnIDTokenWithWriteAccess(t *testing.T) {
+	signers := map[string]string{
+		"release.yml": "signs SHA256SUMS.txt for the tag it runs on (the certificate the updater trusts for a release)",
+		"promote.yml": "signs the promote manifest, on the protected promote branch, run by hand (the certificate the updater trusts for a promotion)",
+	}
+	others := map[string]string{
+		"docs.yml":                "deploys GitHub Pages: the Pages action asks for the token to authenticate the deployment",
+		"release-cache-warm.yml":  "the build provenance attestation of the cache payload manifest",
+		"sigstore-cert-probe.yml": "manual, read-only, signs a dummy file to check that certificates are issued as expected",
+	}
+	dir := filepath.Join("..", "..", "..", "..", ".github", "workflows")
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	idToken := regexp.MustCompile(`(?m)^\s*id-token:\s*write\b`)
+	var found []string
+	for _, e := range entries {
+		if e.IsDir() || !(strings.HasSuffix(e.Name(), ".yml") || strings.HasSuffix(e.Name(), ".yaml")) {
+			continue
+		}
+		b, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		require.NoError(t, err)
+		if !idToken.Match(b) {
+			continue
+		}
+		found = append(found, e.Name())
+		_, isSigner := signers[e.Name()]
+		_, isOther := others[e.Name()]
+		assert.True(t, isSigner || isOther, "%s requests id-token: write and is not named in this test: a workflow that can mint certificates is a signer; read it, and add it here with its reason only on purpose", e.Name())
+	}
+	assert.Contains(t, found, "release.yml", "the release workflow signs: the census finds it")
+	// the signers are the paths the pins name, and only those
+	assert.Equal(t, filepath.Base(ReleaseWorkflow), "release.yml")
+	assert.Equal(t, filepath.Base(DefaultPins().PromoteWorkflow), "promote.yml")
+	for name := range signers {
+		assert.Contains(t, []string{filepath.Base(ReleaseWorkflow), filepath.Base(DefaultPins().PromoteWorkflow)}, name)
+	}
+	// if promote.yml is present with write access it is the real one on the promote branch; the stub on main has none (it only exists so a dispatch can find the file)
+	if b, err := os.ReadFile(filepath.Join(dir, "promote.yml")); err == nil && idToken.Match(b) {
+		assert.Contains(t, string(b), "workflow_dispatch", "promote.yml runs by hand only")
+		assert.NotRegexp(t, `(?m)^\s*(push|pull_request|schedule|pull_request_target):`, string(b), "promote.yml has no other trigger")
+	}
 }
