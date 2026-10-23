@@ -48,7 +48,7 @@ export const FILTER_CTX = {
 /** Called by every render of the list: the bars exist where their host does, offer the boards and machines there are now, and show the filters and the count.
  *  sessions: every agent the list has before any search or filter; matched: how many pass them. */
 // The bars are built when the Display panel is open (or was left open), not at load: they are two selects and a row of fields in a panel nobody has opened yet, and drawing
-// them cost 17 ms of the first render at a 4x slowdown (#4995). The summary line and the count dot do not need them.
+// them cost 17 ms of the first render at a 4x slowdown (#4995). The count dot does not need them.
 let lastArgs = null;
 document.addEventListener(DISPLAY_PANEL_OPEN, () => { if (lastArgs) { sigs.clear(); syncAgentListBars(...lastArgs); } });
 
@@ -63,27 +63,12 @@ export function syncAgentListBars(sessions, matched) {
     const narrowed = !!(f.state || f.board || f.machine || getAgentFilter());
     const n = sessions.length;
     const text = narrowed ? `${matched} of ${n} agent${n === 1 ? '' : 's'}` : `${n} agent${n === 1 ? '' : 's'}`;
-    // The summary line and the Display button's count tell, with the panel shut, which filters and which sort are on (the sort counts when it is not the list's own order).
-    const sortOn = f.sort && f.sort !== EMPTY.sort;
-    // Only the filters and the sort are told here, and only they are cleared by Clear: a display preference (which agent line parts, branches) is the person's own setting, kept in the Display panel and never listed over the agent list (#6232).
-    const parts = [...MODEL.chips(f).map(c => c.label), ...(sortOn ? [`Sort: ${SORT_LABEL[f.sort]}`] : [])];
-    const summary = parts.length ? `${parts.join(' · ')}${narrowed ? ` (${text})` : ''}` : '';
-    for (const el of inListHeaders('[data-agent-list-summary]')) {
-        if (el.dataset.text !== summary) {
-            el.dataset.text = summary;
-            el.replaceChildren();
-            if (summary) {
-                const t = document.createElement('span'); t.className = 'agent-list-summary-text'; t.textContent = summary;
-                const clear = document.createElement('button'); clear.type = 'button'; clear.className = 'agent-list-summary-clear'; clear.textContent = 'Clear';
-                clear.setAttribute('aria-label', 'Clear filters and sort');
-                clear.addEventListener('click', () => onChange({ ...EMPTY }));
-                el.append(t, clear);
-            }
-        }
-    }
+    // The dot on the Display button tells that a real filter (State, Board, Machine) narrows the list, and only that: not a sort, not a display preference (which agent line parts, branches), which
+    // are the person's own settings kept in the Display panel (the operator, #6597). The filters themselves are listed in the panel when it is open.
+    const filters = MODEL.chips(f).length;
     for (const b of inListHeaders('[data-display-badge]')) {
-        setData(b, 'count', parts.length ? String(parts.length) : ''); setHidden(b, !parts.length); // a dot: the count is data (and in the button's name), not text a contrast check would measure
-        const btn = b.closest('[data-display-button]'); if (btn) setAttr(btn, 'aria-label', parts.length ? `Display options, ${parts.length} on` : 'Display options');
+        setData(b, 'count', filters ? String(filters) : ''); setHidden(b, !filters); // a dot: the count is data (and in the button's name), not text a contrast check would measure
+        const btn = b.closest('[data-display-button]'); if (btn) setAttr(btn, 'aria-label', filters ? `Display options, ${filters} filter${filters === 1 ? '' : 's'} on` : 'Display options');
     }
     syncDisplayPanels();
     for (const [id, idp] of HOSTS) {

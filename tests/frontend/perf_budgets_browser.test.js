@@ -48,7 +48,7 @@ const { framesJs } = require('./helpers/wait');
         await ev(`(async () => { const T = window.T; for (let i = 0; i < 10; i++) { const e = window.__m.entry(window.__m.agents['perf-a-id']); e.summary = 'step ' + i; T.ws.handleCoralMessage({ type: 'coral_diff', changed: [e], removed: [] }); await new Promise(r => setTimeout(r, 30)); } return true; })()`);
         await waitFor(`true`, 'a frame');
         const rendered = await taken();
-        assert.ok(!rendered.some(s => /data-(display-(input|row|button|panel)|agent-list-summary|display-badge|group-toggle)|session-group-header/.test(s)), 'a render looks up the Display menu, its summary line and the group toggle inside the headers and the list, never over the whole document: ' + [...new Set(rendered)].join(' | '));
+        assert.ok(!rendered.some(s => /data-(display-(input|row|button|panel)|display-badge|group-toggle)|session-group-header/.test(s)), 'a render looks up the Display menu, its summary line and the group toggle inside the headers and the list, never over the whole document: ' + [...new Set(rendered)].join(' | '));
 
         console.log('4. Markdown: a coloured block is not walked span by span by the sanitizer');
         const m = await ev(`(async () => {

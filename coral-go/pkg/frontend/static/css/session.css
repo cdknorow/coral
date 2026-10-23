@@ -2050,11 +2050,6 @@
 .display-badge { position: absolute; top: -0.125rem; right: -0.125rem; width: 0.5rem; height: 0.5rem; padding: 0; overflow: hidden; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--bg-secondary, var(--bg-primary)); }
 .display-badge[hidden] { display: none; }
 .sidebar-collapse-btn[data-display-button] { position: relative; }
-.agent-list-summary { flex: 1 1 100%; display: flex; align-items: center; gap: var(--space-sm); min-width: 0; font-size: 0.75rem; color: var(--text-secondary); }
-.agent-list-summary[hidden] { display: none; }
-.agent-list-summary-text { flex: 1; min-width: 0; white-space: normal; overflow-wrap: anywhere; } /* wraps at large text: what is on is the line's whole job */
-.agent-list-summary-clear { flex: none; border: 0; background: none; color: var(--text-primary); /* 4.5:1 on the light panel; the accent blue was 4.44 */ font: inherit; cursor: pointer; padding: 4px; text-decoration: underline; }
-.agent-list-summary-clear:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 /* The header's one Collapse / Expand toggle: its icon is the next action. */
 .group-toggle-btn[hidden] { display: none; }
 .group-toggle-btn[data-next="collapse"] .group-toggle-expand, .group-toggle-btn[data-next="expand"] .group-toggle-collapse { display: none; }
@@ -2102,8 +2097,7 @@
 /* Phone width and touch screens: the header's controls are the touch size, all of them (mobile.css gives every .btn that minimum at this width). */
 @media (max-width: 767px), (pointer: coarse) {
     .sidebar-header.sidebar-header, .mobile-list-header.mobile-list-header { --ctl-h: var(--control-touch-height, 44px); }
-    .list-display-option, .agent-list-summary-clear { min-height: var(--control-touch-height, 44px); }
-    .agent-list-summary-clear { min-width: var(--control-touch-height, 44px); }
+    .list-display-option { min-height: var(--control-touch-height, 44px); }
     .server-details-update .server-update-badge { display: inline-flex; align-items: center; justify-content: center; min-height: var(--control-touch-height, 44px); min-width: var(--control-touch-height, 44px); } /* the one Update control of a machine's menu (#5487) */
 }
 @media (pointer: coarse) {

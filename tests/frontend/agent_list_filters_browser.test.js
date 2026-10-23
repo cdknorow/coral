@@ -1,6 +1,6 @@
 // The agent list's filters and sort (#4744 stage 3, Search everywhere): on the shared list bar under the list's search box (sidebar and phone), from the feed the page already holds.
 // State (needs input, working, idle, asleep), Board, Machine (a hub), a Sort (list order, name, recent activity, cost), the count ("N agents", "M of N agents"), and clearing.
-// #4947: the fields and the sort are rows of the Display expander (the ☰ button opens it in place); shut, a summary line under the search and a count on the button say what is on.
+// #4947: the fields and the sort are rows of the Display expander (the ☰ button opens it in place); shut, a dot on the button says a filter is on (no summary line, #6597).
 // 30 agents: five teams, standalone folders and a second machine. Drives Chrome over CDP through agent_view_harness.js against the isolated dev server.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -48,13 +48,13 @@ const stateOf = s => s.waiting_for_input ? 'needs_input' : s.sleeping ? 'asleep'
         const bar = which => which === 'phone' ? '#mobile-agent-list-bar' : '#agent-list-bar';
         const set = (sel, value, which = 'desktop') => ev(`(() => { const e = document.querySelector('${bar(which)} ${sel}'); e.value = ${JSON.stringify(value)}; e.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
         const header = which => which === 'phone' ? '.mobile-list-header' : '.sidebar-header';
-        // The filters the summary line names (what is on, without the sort and the count in brackets).
-        const chips = async (which = 'desktop') => (await ev(`document.querySelector('${header(which)} [data-agent-list-summary]').dataset.text`)).replace(/ \(.*\)$/, '').split(' · ').filter(x => x && !x.startsWith('Sort: '));
-        const summaryText = (which = 'desktop') => ev(`document.querySelector('${header(which)} [data-agent-list-summary]').dataset.text`);
+        // The filters that are on (the list's own model of them; the sort is not one). There is no summary line under the search (#6597): the dot on the Display button says that one narrows the list.
+        const chips = async () => ev(`(async () => { const st = window.__coralStatic || '/static/'; const f = (await import(st + 'agent_filter.js')).getListFilters(); const m = await import(st + 'agent_list_filters.js'); const sb = await import(st + 'server_base.js'); const ls = await import(st + 'launch_server.js'); const { state } = await import(st + 'state.js');
+            return m.makeModel({ boardLabel: sb.keyLabel, machineLabel: v => ls.serverLabel(v, state.servers) }).chips(f).map(c => c.label); })()`);
+        const noSummary = (which = 'desktop') => ev(`document.querySelector('${header(which)} [data-agent-list-summary]') === null && document.querySelector('${header(which)} .agent-list-summary-clear') === null`);
         const badge = (which = 'desktop') => ev(`(() => { const b = document.querySelector('${header(which)} [data-display-badge]'); return b.hidden ? '' : b.dataset.count; })()`);
         const panelOpen = (which = 'desktop') => ev(`document.querySelector('${header(which)} [data-display-button]').getAttribute('aria-expanded') === 'true' && !document.querySelector('${header(which)} [data-display-panel]').hidden`);
         const toggleBtn = (which = 'desktop') => ev(`document.querySelector('${header(which)} [data-display-button]').click(); true`);
-        const summaryShown = (which = 'desktop') => ev(`(() => { const e = document.querySelector('${header(which)} [data-agent-list-summary]'); return !e.hidden && e.getClientRects().length > 0; })()`);
         const settle = () => waitFor(`true`, 'a frame'); // the list redraws synchronously on a change; the next read sees it
         const expectIds = (got, wantSessions, what) => assert.deepEqual([...got].sort(), wantSessions.map(s => s.session_id).sort(), what);
         const byState = st => SESSIONS.filter(s => stateOf(s) === st);
@@ -65,7 +65,7 @@ const stateOf = s => s.waiting_for_input ? 'needs_input' : s.sleeping ? 'asleep'
         await ev(`for (const [k, v] of Object.entries(${JSON.stringify(sleepKeys)})) localStorage.setItem(k, v); window.__T.render.flushLiveSessionsRender(); window.__T.render.renderLiveSessions(window.__T.state.liveSessions); true`);
         await waitFor(`document.querySelectorAll('#live-sessions-list .session-group-item').length === 30`, 'the list with its 30 agents', { timeout: 8000 });
         assert.equal(await ev(`document.getElementById('agent-list-bar').childElementCount`), 0, 'the filter bar is not drawn while the Display panel stays shut (#4995)');
-        assert.equal(await badge(), ''); assert.deepEqual(await chips(), []); assert.equal(await summaryShown(), false, 'nothing on: no summary line');
+        assert.equal(await badge(), ''); assert.deepEqual(await chips(), []); assert.equal(await noSummary(), true, 'no summary line under the search, ever');
         assert.equal(await panelOpen(), false, 'the Display expander is shut');
         assert.equal(await ev(`document.querySelector('.sidebar-header [data-display-button]').getAttribute('aria-controls') === document.querySelector('.sidebar-header [data-display-panel]').id`), true, 'the button names its panel');
         assert.equal(await ev(`document.querySelector('.sidebar-header .list-bar-filter-btn')`), null, 'no Filters button any more: the fields are rows of the panel');
@@ -97,8 +97,8 @@ const stateOf = s => s.waiting_for_input ? 'needs_input' : s.sleeping ? 'asleep'
         await settle();
         assert.equal(await ev(`window.__live`), 0, 'a redraw of the list without a change by the person is not announced again');
         await shot('agent-list-filters-open-desktop');
-        await toggleBtn(); assert.equal(await summaryShown(), true, 'shut with a filter on: the summary line says so');
-        assert.equal(await summaryText(), `State: Asleep (${byState('asleep').length} of 30 agents)`); await shot('agent-list-filters-closed-desktop');
+        await toggleBtn(); assert.equal(await noSummary(), true, 'shut with a filter on: no summary line'); assert.equal(await badge(), '1', 'the dot says a filter is on');
+        await shot('agent-list-filters-closed-desktop');
         await toggleBtn();
         console.log('3. A board, and a board with a state');
         await set('#al-state', '');
@@ -134,7 +134,7 @@ const stateOf = s => s.waiting_for_input ? 'needs_input' : s.sleeping ? 'asleep'
         await set('#al-sort', 'cost');
         await eachPart(x => -x.token_cost_usd, 'dearest first');
         assert.equal(await count(), '30 agents', 'a sort does not change the count'); assert.deepEqual(await chips(), [], 'and is not a filter');
-        assert.equal(await summaryText(), 'Sort: Cost', 'but a sort that is not the list order is in the summary line'); assert.equal(await badge(), '1', 'and counted on the button');
+        assert.equal(await badge(), '', 'a sort does not narrow the list: no dot');
         await set('#al-sort', 'default');
         const defaultOrder = await ids();
         await set('#al-sort', 'cost'); assert.notDeepEqual(await ids(), defaultOrder, 'the sort changed the order');
@@ -151,11 +151,11 @@ const stateOf = s => s.waiting_for_input ? 'needs_input' : s.sleeping ? 'asleep'
         assert.equal(await ev(`document.querySelector('#agent-list-bar #al-sort').value`), 'cost', 'Clear filters keeps the sort (it is not a filter)');
         assert.equal(await ev(`getComputedStyle(document.querySelector('#agent-list-bar .list-bar-clear-all')).display`), 'none', 'and goes away with nothing to clear');
         await set('#al-state', 'asleep'); await toggleBtn();
-        assert.equal(await summaryText(), `State: Asleep · Sort: Cost (${byState('asleep').length} of 30 agents)`); assert.equal(await badge(), '2');
-        await ev(`document.querySelector('.sidebar-header .agent-list-summary-clear').click(); true`);
-        assert.deepEqual(await chips(), []); assert.equal(await summaryShown(), false, 'cleared: the line is gone');
-        assert.equal(await ev(`document.querySelector('#agent-list-bar #al-sort').value`), 'default', 'the summary\'s Clear resets the sort too'); assert.equal(await count(), '30 agents'); assert.equal(await badge(), '');
+        assert.equal(await badge(), '1', 'shut: the dot counts the filter, not the sort'); assert.equal(await noSummary(), true);
         await toggleBtn();
+        await ev(`document.querySelector('#agent-list-bar .list-bar-clear-all').click(); true`);
+        assert.deepEqual(await chips(), []); assert.equal(await count(), '30 agents'); assert.equal(await badge(), '', 'cleared: no dot');
+        await set('#al-sort', 'default');
 
         console.log('7. With Collapse all: a filter shows its matches in collapsed groups, and clearing it folds them again');
         const groupToggle = `document.querySelector('.sidebar-header [data-group-toggle]')`;
@@ -206,27 +206,25 @@ const stateOf = s => s.waiting_for_input ? 'needs_input' : s.sleeping ? 'asleep'
         await set('#alm-state', 'needs_input', 'phone');
         assert.equal(await count(), `${byState('needs_input').length} of 30 agents`); assert.deepEqual(await chips('phone'), ['State: Needs input']);
         await shot('agent-list-filters-open-phone');
-        await toggleBtn('phone'); assert.equal(await summaryShown('phone'), true, 'shut: the summary line'); await shot('agent-list-filters-closed-phone');
+        await toggleBtn('phone'); assert.equal(await noSummary('phone'), true, 'shut: no summary line'); assert.equal(await badge('phone'), '1', 'the dot says a filter is on'); await shot('agent-list-filters-closed-phone');
         assert.equal(await ev(`document.documentElement.scrollWidth - document.documentElement.clientWidth`) <= 0, true, 'nothing scrolls sideways on the phone');
-        const clearBox = await ev(`(() => { const r = document.querySelector('.mobile-list-header .agent-list-summary-clear').getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; })()`);
-        assert.ok(clearBox[0] >= 44 && clearBox[1] >= 44, 'the summary line\'s Clear is a 44 x 44 target on the phone: ' + clearBox);
-        await ev(`document.querySelector('.mobile-list-header .agent-list-summary-clear').click(); true`);
-        assert.equal(await count(), '30 agents'); assert.equal(await summaryShown('phone'), false);
-        console.log('11. Large text (200%) in the sidebar: the count dot stays off the icon, the summary wraps, each select sits under its label');
+        await toggleBtn('phone');
+        await ev(`document.querySelector('#mobile-agent-list-bar .list-bar-clear-all').click(); true`);
+        assert.equal(await count(), '30 agents');
+        console.log('11. Large text (200%) in the sidebar: the count dot stays off the icon, each select sits under its label');
         await open(1440, false, false);
         await ev(`(() => { const st = document.createElement('style'); st.textContent = 'html{font-size:200% !important}'; document.head.appendChild(st); })()`);
         await ev(`for (const [k, v] of Object.entries(${JSON.stringify(sleepKeys)})) localStorage.setItem(k, v); window.__T.render.flushLiveSessionsRender(); window.__T.render.renderLiveSessions(window.__T.state.liveSessions); true`);
         await toggleBtn(); // the bar is drawn as the panel opens (#4995)
         await waitFor(`!!document.querySelector('#agent-list-bar #al-state')`, 'the bar at 200%', { timeout: 8000 });
         await set('#al-state', 'needs_input'); await set('#al-board', 'team-a');
-        await toggleBtn(); // shut: the dot and the summary line are what is measured first
+        await toggleBtn(); // shut: the dot is what is measured first (there is no summary line, #6597)
         const big = await ev(`(() => { const r = e => { const b = e.getBoundingClientRect(); return { l: b.left, t: b.top, r: b.right, b: b.bottom }; };
             const btn = document.querySelector('.sidebar-header [data-display-button]'); const icon = btn.querySelector('.material-icons'); const dot = btn.querySelector('[data-display-badge]');
             const a = r(icon), d = r(dot); const ow = Math.max(0, Math.min(a.r, d.r) - Math.max(a.l, d.l)), oh = Math.max(0, Math.min(a.b, d.b) - Math.max(a.t, d.t));
-            const sum = document.querySelector('.sidebar-header .agent-list-summary-text');
-            return { dotShown: !dot.hidden && d.r > d.l, overlap: Math.round(ow * oh) / Math.round((a.r - a.l) * (a.b - a.t)), sumCut: sum.scrollWidth > sum.clientWidth + 1, sumText: sum.textContent, sumLines: Math.round(sum.getBoundingClientRect().height / parseFloat(getComputedStyle(sum).lineHeight || 16)) }; })()`);
+            return { dotShown: !dot.hidden && d.r > d.l, overlap: Math.round(ow * oh) / Math.round((a.r - a.l) * (a.b - a.t)), name: btn.getAttribute('aria-label') }; })()`);
         assert.ok(big.dotShown, 'the count dot is shown'); assert.ok(big.overlap < 0.15, 'and does not cover the icon: ' + big.overlap);
-        assert.equal(big.sumCut, false, 'the summary is not cut off: ' + big.sumText); assert.ok(big.sumText.includes('Needs input') && big.sumText.includes('Board: team-a'), 'it names every filter: ' + big.sumText);
+        assert.equal(big.name, 'Display options, 2 filters on', 'the button names how many filters are on');
         await toggleBtn();
         const stacked = await ev(`(() => [...document.querySelectorAll('#agent-list-bar .list-bar-field')].filter(f => f.getClientRects().length).map(f => { const l = f.querySelector('.list-bar-field-label').getBoundingClientRect(), s = f.querySelector('select').getBoundingClientRect(), p = document.querySelector('.sidebar-header [data-display-panel]').getBoundingClientRect();
             return { under: s.top >= l.bottom - 1, wide: s.width, inside: s.left >= p.left - 1 && s.right <= p.right + 1 }; }))()`);

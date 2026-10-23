@@ -1,9 +1,8 @@
 /* The agent list's Display expander (#4947): the ☰ button opens a panel in place, under the search (VS Code style, not a popover), holding the list's filters and sort and the display
- * options. Closed, a filter or sort that is on is told by the summary line under the search and a count on the button. The same markup is in the sidebar and on the phone's Agents page, so
+ * options. Closed, a filter that is on is told by a dot on the button. The same markup is in the sidebar and on the phone's Agents page, so
  * everything here finds its parts by data attributes:
  *   [data-display-button]   the ☰ toggle (aria-expanded, aria-controls the panel)
  *   [data-display-panel]    the panel
- *   [data-agent-list-summary]  the read-only line
  * The open or shut state is the person's, kept in this browser. */
 import { browserLocal } from './safe_storage.js';
 import { setHidden, setAttr } from './dom_write.js';
@@ -23,19 +22,12 @@ export function inListHeaders(selector) {
 
 export function isDisplayPanelOpen() { return browserLocal.get(KEY) === '1'; }
 
-/** Shows the summary line only while the panel is shut and there is something to say. */
-export function syncDisplaySummary() {
-    const open = isDisplayPanelOpen();
-    for (const el of inListHeaders('[data-agent-list-summary]')) setHidden(el, open || !el.dataset.text);
-}
-
 /** Applies the stored state to every copy of the expander (called after the phone's header is built and after every list render). Each copy is
  *  looked for inside its own header (the sidebar's and the phone's), never over the whole page: this runs on every list render (#4985's budget). */
 export function syncDisplayPanels() {
     const open = isDisplayPanelOpen();
     for (const b of inListHeaders('[data-display-button]')) setAttr(b, 'aria-expanded', open);
     for (const p of inListHeaders('[data-display-panel]')) setHidden(p, !open);
-    syncDisplaySummary();
 }
 
 export function toggleDisplayPanel(button) {

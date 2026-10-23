@@ -124,11 +124,10 @@ const { setTheme, installAudit, auditRegion } = require('./helpers/contrast');
             assert.equal(await ev(`!!document.activeElement.closest('${hdr} [data-display-panel]')`), true, 'and moves the keyboard into it');
             const panel = await ax(`${hdr} [data-display-panel]`); assert.equal(panel.role, 'group'); assert.ok(panel.name, 'the panel is named');
             await ev(`(() => { const s = document.querySelector('${hdr} [data-display-panel] select'); const o = [...s.options].find(x => x.value); s.value = o.value; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
-            d = await ax(btn); assert.match(d.name, /Display options, \d+ on/, 'the button says how many things are on: ' + d.name);
+            d = await ax(btn); assert.match(d.name, /Display options, 1 filter on/, 'the button says a filter is on: ' + d.name);
             await key('Escape');
             assert.equal((await ax(btn)).props.expanded, false, 'Escape closes it'); assert.equal(await ev(`!!document.activeElement.closest('${btn}') || document.activeElement.matches('${btn}')`), true, 'and focus is back on the Display button');
-            const sum = await ax(`${hdr} [data-agent-list-summary]`); assert.equal(sum.role, 'status', 'the summary line is a status region');
-            assert.ok(await ev(`!!document.querySelector('${hdr} [data-agent-list-summary]').textContent.trim()`), 'with the filters it names');
+            assert.equal(await ev(`document.querySelector('${hdr} [data-agent-list-summary]') === null`), true, 'no summary line under the search (#6597): the button names what is on');
 
             console.log(`${L}: 6. a chat chip's thumbnail`);
             await ev(`import(${MOD} + 'live_chat.js').then(m => { document.getElementById('a11y-box')?.remove(); const box = document.createElement('div'); box.id = 'a11y-box'; box.className = 'chat-messages chat-prose';
@@ -226,9 +225,9 @@ const { setTheme, installAudit, auditRegion } = require('./helpers/contrast');
             let r = await auditRegion(ev, ['.sidebar-header'], { focus: ['.sidebar-header [data-display-button]', '.sidebar-header [data-display-panel] select'] });
             assert.deepEqual(r.fails, [], `${theme}: the Display panel open reaches contrast: ` + JSON.stringify(r.fails));
             await ev(`document.querySelector('.sidebar-header [data-display-button]').click(); true`);
-            await waitFor(`!document.querySelector('.sidebar-header [data-agent-list-summary]').hidden`, 'the summary line', 4000);
-            r = await auditRegion(ev, ['.sidebar-header'], { focus: ['.sidebar-header [data-agent-list-summary] button'] });
-            assert.deepEqual(r.fails, [], `${theme}: the summary line reaches contrast: ` + JSON.stringify(r.fails));
+            await waitFor(`!document.querySelector('.sidebar-header [data-display-badge]').hidden`, 'the filter dot', 4000);
+            r = await auditRegion(ev, ['.sidebar-header'], { focus: ['.sidebar-header [data-display-button]'] });
+            assert.deepEqual(r.fails, [], `${theme}: the closed header with the filter dot reaches contrast: ` + JSON.stringify(r.fails));
             await ev(`(() => { const s = document.querySelector('.sidebar-header [data-display-panel] select'); s.value = ''; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
         }
         await ev(`import(${MOD} + 'live_chat.js').then(m => { document.getElementById('a11y-box')?.remove(); const box = document.createElement('div'); box.id = 'a11y-box'; box.className = 'chat-messages chat-prose';

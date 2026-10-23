@@ -130,9 +130,9 @@ const agentsPanel = (key, openPanel) => ({
         await ctx.ev(`(() => { const b = document.querySelector('${head} [data-display-button]'); if (b.getAttribute('aria-expanded') !== 'true') b.click(); return true; })()`);
         await ctx.settle(`!!document.querySelector('${bar} select[id$="state"]')`, 'the bar');
         await pick(ctx, `${bar} #al-state, ${bar} select[id$="state"]`, 'working');
-        await ctx.settle(`!!document.querySelector('${head} [data-agent-list-summary]').dataset.text`, 'the summary');
+        await ctx.settle(`!document.querySelector('${head} [data-display-badge]').hidden`, 'the filter dot');
         await ctx.ev(`(() => { const b = document.querySelector('${head} [data-display-button]'); if ((b.getAttribute('aria-expanded') === 'true') !== ${openPanel}) b.click(); return true; })()`);
-        return { roots: [phone ? '#mobile-agent-list' : '.sidebar'], focus: [phone ? '.mobile-search-input' : '#agent-search-input', openPanel ? `${bar} select[id$="state"]` : `${head} .agent-list-summary-clear`, `${head} [data-display-button]`] };
+        return { roots: [phone ? '#mobile-agent-list' : '.sidebar'], focus: [phone ? '.mobile-search-input' : '#agent-search-input', ...(openPanel ? [`${bar} select[id$="state"]`] : []), `${head} [data-display-button]`] };
     },
 });
 PANELS.push(agentsPanel('agents', true), agentsPanel('agents-closed', false));
