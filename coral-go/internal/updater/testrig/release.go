@@ -61,7 +61,8 @@ func Asset(version string) string { return "coral-linux-amd64-" + version + ".ta
 // Release is a fake release: the package, the sums file, the promote manifest and the two signatures.
 type Release struct {
 	Version, Tag   string
-	Sequence       int64 // the promotion's sequence: the number in the promotion release's name, and in the manifest
+	Sequence       int64  // the promotion's sequence: the number in the promotion release's name, and in the manifest
+	AssetName      string // the package's file name in the release (Asset(version) when the spec names none)
 	Package        []byte
 	Sums           []byte
 	Manifest       []byte
@@ -77,6 +78,8 @@ type Spec struct {
 	// Files is not used.
 	Files   map[string][]byte
 	Package []byte
+	// AssetName is the package's file name in the release and in SHA256SUMS.txt; empty is the Linux tarball's (Asset). The Windows rehearsal's is the MSI's.
+	AssetName string
 	// Manifest fields, changed to make the manifest wrong (zero values are the good ones).
 	ManifestRepo string
 	Prerelease   bool
@@ -143,14 +146,20 @@ func (s *Signer) NewRelease(sp Spec) (*Release, error) {
 	if files == nil {
 		files = map[string][]byte{"coral": []byte("coral " + sp.Version + "\n")}
 	}
-	r := &Release{Version: sp.Version, Tag: tag, Package: sp.Package}
+	r := &Release{Version: sp.Version, Tag: tag, Package: sp.Package, AssetName: sp.AssetName}
+	if r.AssetName == "" {
+		r.AssetName = Asset(sp.Version)
+	}
 	if r.Package == nil {
 		r.Package = tarGz(files)
 	}
 	digest := sum(r.Package)
 	var sums bytes.Buffer
 	if !sp.NoAssetInSums {
-		fmt.Fprintf(&sums, "%s  %s\n%s  %s\n", digest, Asset(sp.Version), digest, "coral-linux-amd64.tar.gz")
+		fmt.Fprintf(&sums, "%s  %s\n", digest, r.AssetName)
+		if sp.AssetName == "" {
+			fmt.Fprintf(&sums, "%s  %s\n", digest, "coral-linux-amd64.tar.gz")
+		}
 	}
 	fmt.Fprintf(&sums, "%s  Coral.v%s.dmg\n", sum([]byte("a dmg")), sp.Version)
 	sums.WriteString(sp.SumsExtra)
