@@ -232,6 +232,9 @@ func (s *SessionStore) DeleteArtifactComments(ctx context.Context, artifactID st
 	if _, err := s.db.ExecContext(ctx, "DELETE FROM artifact_comment_locks WHERE scope = 'artifact' AND key = ?", artifactID); err != nil {
 		return 0, err
 	}
+	if err := s.DeleteAsksOfArtifact(ctx, artifactID); err != nil {
+		return 0, err
+	}
 	n, _ := res.RowsAffected()
 	return n, nil
 }

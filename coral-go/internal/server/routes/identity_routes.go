@@ -130,6 +130,7 @@ var operatorOnlyRoutes = map[string]string{
 	"PATCH /api/artifacts/{id}/comments/{cid}":        "edit a comment on an artifact",
 	"DELETE /api/artifacts/{id}/comments/{cid}":       "delete a comment on an artifact",
 	"POST /api/artifacts/{id}/comments/{cid}/resolve": "resolve a comment thread",
+	"POST /api/artifacts/{id}/comments/{cid}/send":    "send a comment to agents",
 	"POST /api/artifacts/{id}/comments/{cid}/reopen":  "reopen a comment thread",
 	"PUT /api/artifacts/{id}/comments/lock":           "lock the comments on an artifact",
 	"DELETE /api/artifacts/{id}/comments/lock":        "unlock the comments on an artifact",

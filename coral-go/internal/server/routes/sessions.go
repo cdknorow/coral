@@ -67,6 +67,7 @@ type SessionsHandler struct {
 	// commentOwner names the owner on new artifact comments (nil: this computer's user, #5176); commentLimit is the per-author write rate limit.
 	commentOwner commentOwnerIdentity
 	commentLimit commentLimiter
+	sendLimit    sendLimiter // Send to agent: asks per owner per hour (#6443)
 	// wsHeartbeat overrides wsHeartbeatInterval when set (nanoseconds; tests).
 	wsHeartbeat  atomic.Int64
 	remoteAgents background.RemoteAgentSource
