@@ -23,6 +23,41 @@ export function codexEnforced(caps) {
     return out('workspace-write', 'on-request');
 }
 
+/**
+ * What a team member launches with, for the Mode column and its dialog (#6425): an explicit mode (the member's own, else the team's) is always applied, and for the CLIs that keep only a sandbox and an
+ * approval mode (Codex, Antigravity) capabilities may only NARROW it; with no explicit mode ("default" or none) the capabilities decide. Mirrors internal/agent/permission_narrow.go.
+ * @returns {{ narrowed: boolean, text?: string, warn?: boolean }} narrowed: the capabilities made it narrower than the mode (or decided it), and `text` says what it is in plain words; otherwise the mode's own name is the
+ *   answer. warn: nothing is sandboxed or asked (Bypass Permissions, or Antigravity skipping prompts).
+ */
+const CODEX_MODE = { plan: ['read-only', 'on-request'], acceptEdits: ['workspace-write', 'on-request'], auto: ['workspace-write', 'never'], dontAsk: ['workspace-write', 'never'], bypassPermissions: ['none', 'never'] };
+const CODEX_SANDBOX_RANK = { 'read-only': 1, 'workspace-write': 2, none: 3 };
+const AGY_MODE_RANK = { plan: 1, dontAsk: 1, acceptEdits: 2, auto: 3, bypassPermissions: 3 };
+const AGY_CAPS_RANK = { default: 0, plan: 1, 'accept-edits': 2, 'skip-permissions': 3 };
+const AGY_RANK_TEXT = ['Asks first', 'Plan', 'Accepts edits', 'Skips permission prompts'];
+export function launchedMode(agentType, mode, caps) {
+    const family = _agentFamily(agentType);
+    const hasCaps = !!(caps?.allow?.length || caps?.deny?.length);
+    if (family === 'codex') {
+        const m = codexEnforced(caps), mp = CODEX_MODE[mode];
+        const sandboxText = sb => sb === 'read-only' ? 'Read-only sandbox' : 'Sandboxed';
+        if (!mp) return m ? { narrowed: true, text: sandboxText(m.sandbox) } : { narrowed: false };
+        // no capabilities, or Shell with no deny (Codex's full auto: it restricts nothing against an explicit mode, so the mode stands as chosen)
+        if (!m || (m.sandbox === 'workspace-write' && m.approval === 'never')) return mp[0] === 'none' ? { narrowed: false, warn: true } : { narrowed: false };
+        const narrowerSandbox = CODEX_SANDBOX_RANK[m.sandbox] < CODEX_SANDBOX_RANK[mp[0]];
+        const asksMore = m.approval !== 'never' && mp[1] === 'never';
+        if (!narrowerSandbox && !asksMore) return mp[0] === 'none' ? { narrowed: false, warn: true } : { narrowed: false };
+        const sb = narrowerSandbox ? m.sandbox : mp[0];
+        return { narrowed: true, text: sb === 'read-only' ? 'Read-only sandbox' : asksMore ? 'Sandboxed, asks first' : 'Sandboxed' };
+    }
+    if (family === 'agy') {
+        const mr = AGY_MODE_RANK[mode], cr = AGY_CAPS_RANK[agyEnforced(caps)];
+        if (mr === undefined) return hasCaps && cr > 0 ? { narrowed: true, text: AGY_RANK_TEXT[cr], ...(cr === 3 ? { warn: true } : {}) } : { narrowed: false };
+        if (hasCaps && cr < mr) return { narrowed: true, text: AGY_RANK_TEXT[cr] };
+        return mr === 3 ? { narrowed: false, warn: true } : { narrowed: false };
+    }
+    return { narrowed: false };
+}
+
 /** Antigravity's mode for caps, as agy.go emits it. */
 export function agyEnforced(caps) {
     const allow = _set(caps?.allow);
