@@ -3,6 +3,7 @@ package routes
 import (
 	"context"
 	"fmt"
+	"github.com/subgentic/coral/internal/cloud"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -57,7 +58,7 @@ func (h *SessionsHandler) Send(w http.ResponseWriter, r *http.Request) {
 		if held := h.sendAutomatedHTTP(w, r, name, body.AgentType, body.SessionID, body.Command, "/send", send); held {
 			return
 		}
-	} else if held, err := h.deliverPersonSend(r.Context(), name, body.AgentType, body.SessionID, body.Command, nil); held {
+	} else if held, err := h.deliverPersonSend(r.Context(), name, body.AgentType, body.SessionID, body.Command, cloud.Tunneled(r), nil); held {
 		// The agent waits on a box that asks the person (#6610): the message is held and typed once none is left. Said plainly, so it is not sent again.
 		writeJSON(w, http.StatusAccepted, map[string]any{"ok": true, "held": true, "command": body.Command, "note": heldNote})
 		return
