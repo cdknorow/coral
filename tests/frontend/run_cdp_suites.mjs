@@ -92,6 +92,7 @@ import { classifySuites, problems } from './suites.mjs';
 import { loadDurations, orderLongestFirst, partsByDuration } from './suite_order.mjs';
 import { failingOutput } from './failing_output.mjs';
 import { sqliteAvailable, sqliteExec } from './helpers/sqlite.js';
+import { redactEvidence as redactEvidenceText } from './helpers/redact_evidence.mjs';
 import { snapshot as serverSnapshot, diff as serverDiff, rowLeaks, restoreSettings, leftovers, cleanup as cleanupLeftovers } from './helpers/server_state.mjs';
 
 // Linux: the run goes in a private network namespace with only loopback (#3466). Chrome cancels
@@ -485,6 +486,10 @@ async function startShard(n, gen = 0, strict = false, backend = MAIN_BACKEND) {
   const serverEnv = { ...testEnv, CORAL_TEST_HOOKS: '1', CORAL_DATA_DIR: data, HOME: hostHome, CORAL_INITIAL_PASSWORD_FILE: pwFile,
     PATH: stubBin + path.delimiter + (testEnv.PATH || process.env.PATH || '') };  // #4354: this shard's stub CLI first on PATH
   for (const k of HOST_DATA_VARS) delete serverEnv[k];
+  // CDP_EVIDENCE_DIR (a Windows CI run sets it): at a suite's timeout the runner captures what was stuck before it kills it (captureTimeoutEvidence), including the test
+  // Coral's goroutines, which needs its profiler (CORAL_PPROF_ADDR, loopback only, this shard's server alone).
+  let pprofPort = 0;
+  if (process.env.CDP_EVIDENCE_DIR) { pprofPort = await freePort(); serverEnv.CORAL_PPROF_ADDR = `127.0.0.1:${pprofPort}`; }
   // #4354: seed cli_path_<type> at the mock-agent BEFORE the server starts, so the server resolves the
   // mock from its very first request -- no window (not even for an async model-list/version probe that
   // resolves in the instant before the post-health PUT would land) in which a CLI resolution falls to the
@@ -577,7 +582,7 @@ async function startShard(n, gen = 0, strict = false, backend = MAIN_BACKEND) {
   // CORAL_TEST_TMUX_SOCKET: this shard's own tmux socket (<data>/tmux.sock), for suites that compare
   // the pane with the dashboard (#3422). CORAL_TEST_LOG: this shard's Coral log, which a suite reads
   // only to explain its own failure (helpers/stand_in_agent.js, #3502).
-  return { n, gen, log, coral, chrome, throttler, strict, backend, data, tmuxSock, serverEnv, env: { ...testEnv, CORAL_TEST_URL: `http://127.0.0.1:${port}`, CDP_PORT: String(cdp), CORAL_CDP_PORT: String(cdp),
+  return { n, gen, log, coral, chrome, throttler, strict, backend, data, tmuxSock, serverEnv, pprofPort, env: { ...testEnv, CORAL_TEST_URL: `http://127.0.0.1:${port}`, CDP_PORT: String(cdp), CORAL_CDP_PORT: String(cdp),
     CORAL_TEST_TMUX_SOCKET: path.join(data, 'tmux.sock'), CORAL_TEST_LOG: log, CORAL_TEST_DATA_DIR: data, CORAL_TEST_BIN: bin /* the built coral, for a suite that starts a server of its own (first_run_browser) */, /* helpers/settings_guard.js restores the shard's settings exactly through this */ ...(strict ? { CORAL_TEST_STRICT: '1' } : {}) } };
 }
 
@@ -686,6 +691,52 @@ async function signIn(shard) {
   }
 }
 
+// What a suite that hit its timeout had in front of it, written to CDP_EVIDENCE_DIR/<suite>-shard<n> before the runner kills it (a hang that comes once in a few hundred suites and
+// passes at once on the retry leaves nothing else to look at): a screenshot of every page, the pages' addresses, Chrome's and the test Coral's processes with their CPU, the last
+// 200 lines of coral.log, and the test Coral's goroutines. Every part is best effort and bounded; the whole capture takes at most about 30 s. Redacted: the sign-in token in an
+// address, and this machine's user name.
+const redactEvidence = s => redactEvidenceText(s, [process.env.USERNAME, process.env.USER, os.userInfo().username, process.env.COMPUTERNAME]);
+async function captureTimeoutEvidence(shard, suite) {
+  const root = process.env.CDP_EVIDENCE_DIR;
+  if (!root) return;
+  const dir = path.join(root, `${suite.replace(/[^A-Za-z0-9_.-]/g, '_')}-shard${shard.n}`);
+  const within = (ms, p) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error(`no answer within ${ms} ms`)), ms))]);
+  const note = (file, text) => fs.writeFileSync(path.join(dir, file), redactEvidence(text));
+  try { fs.mkdirSync(dir, { recursive: true }); } catch { return; }
+  const when = new Date().toISOString();
+  note('about.txt', `suite ${suite}, shard ${shard.n}, timeout after ${timeoutS} s, captured ${when}\n`);
+  // Pages: their addresses and a screenshot each.
+  try {
+    const targets = await (await fetch(`http://127.0.0.1:${shard.env.CDP_PORT}/json`, { signal: AbortSignal.timeout(5000) })).json();
+    note('pages.txt', targets.map(x => `${x.type}\t${x.title}\t${x.url}`).join('\n') + '\n');
+    let i = 0;
+    for (const x of targets.filter(y => y.type === 'page')) {
+      try {
+        const c = await within(5000, CDP({ port: Number(shard.env.CDP_PORT), target: x.id }));
+        try { const shot = await within(8000, c.Page.captureScreenshot({ format: 'png' })); fs.writeFileSync(path.join(dir, `page-${i}.png`), Buffer.from(shot.data, 'base64')); }
+        finally { await c.close().catch(() => {}); }
+      } catch (e) { note(`page-${i}.error.txt`, `${e.message}\n`); }
+      i++;
+    }
+  } catch (e) { note('pages.error.txt', `${e.message}\n`); }
+  // Processes and CPU (the whole machine's busiest, with the shard's Chrome and Coral named).
+  try {
+    const mine = `chrome pid ${shard.chrome && shard.chrome.pid}, coral pid ${shard.coral && shard.coral.pid}\n`;
+    const list = process.platform === 'win32'
+      ? execFileSync('powershell', ['-NoProfile', '-Command', 'Get-Process | Sort-Object CPU -Descending | Select-Object -First 40 Id,ProcessName,CPU,@{n="WorkingSetMB";e={[int]($_.WorkingSet64/1MB)}} | Format-Table -AutoSize | Out-String -Width 200; (Get-CimInstance Win32_Processor | Select-Object -ExpandProperty LoadPercentage) -join ","'], { encoding: 'utf8', timeout: 20000 })
+      : execFileSync('ps', ['-eo', 'pid,pcpu,rss,comm', '-r'], { encoding: 'utf8', timeout: 20000 }).split('\n').slice(0, 41).join('\n');
+    note('processes.txt', mine + list);
+  } catch (e) { note('processes.error.txt', `${e.message}\n`); }
+  // The test Coral's own log and its goroutines.
+  try { note('coral-log-tail.txt', fs.readFileSync(shard.log, 'utf8').split('\n').slice(-200).join('\n')); } catch (e) { note('coral-log-tail.error.txt', `${e.message}\n`); }
+  if (shard.pprofPort) {
+    try {
+      const r = await fetch(`http://127.0.0.1:${shard.pprofPort}/debug/pprof/goroutine?debug=2`, { signal: AbortSignal.timeout(10000) });
+      note('goroutines.txt', (await r.text()).slice(0, 2 * 1024 * 1024));
+    } catch (e) { note('goroutines.error.txt', `${e.message}\n`); }
+  }
+}
+
 async function runAttempt(t, shard) {
   await clearOrigin(shard);
   if (shard.strict) {
@@ -702,7 +753,7 @@ async function runAttempt(t, shard) {
     track(p);
     let out = ''; p.stdout.on('data', d => out += d); p.stderr.on('data', d => out += d);
     let timedOut = false;
-    const timer = setTimeout(() => { timedOut = true; killTree(p); }, timeoutS * 1000);
+    const timer = setTimeout(async () => { timedOut = true; try { await captureTimeoutEvidence(shard, t); } catch { /* the capture never keeps the kill from happening */ } killTree(p); }, timeoutS * 1000);
     let closed = false;
     p.on('close', () => { closed = true; });
     p.on('error', e => { clearTimeout(timer); untrack(p); resolve({ status: 'fail', code: 'spawn', secs: '0.0', shard: shard.n, log: shard.log, out: `[runner] could not start the suite: ${e.message}` }); });
