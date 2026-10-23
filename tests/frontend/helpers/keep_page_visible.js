@@ -7,10 +7,33 @@
 // waits on it times out (#3703, #3705). Linux never hides the page, so such a suite passed on epoch and
 // failed on the Mac. Page.bringToFront restores it only until the next key; Emulation.setFocusEmulationEnabled
 // keeps it visible and focused for as long as the connection lasts, so this wraps chrome-remote-interface
-// to switch it on right after each connect. CDP_KEEP_VISIBLE=0 turns it off (to see a suite without it).
+// to switch it on right after each connect (and, #6195, to keep a page load that came before loadEventFired() was asked for). CDP_KEEP_VISIBLE=0 turns it off (to see a suite without it).
 'use strict';
 
 const Module = require('node:module');
+
+// A suite writes `await Page.navigate(...); await Page.loadEventFired();`: the load event is delivered once, to whoever is listening, and a page that loads between the two calls is never heard, so the suite hangs to the
+// runner's timeout with a loaded, idle page and an idle server (#6195: update_channel, hub_pages_theme, phone_pass_130 and list_bars_themes on Windows). The client remembers a main-frame load that came after a navigate
+// and gives it to the next loadEventFired(); a reload that is not a navigate (a new load cycle started since) is still waited for. cdp_navigation_race_browser.test.js is the proof.
+// A load heard this long ago is the one the suite meant to wait for (the gap between two awaited calls is a few milliseconds); an older one was not asked for, and a later wait is for another load.
+const LATE_MS = 1000;
+
+function rememberLoads(client) {
+    const Page = client.Page;
+    if (!Page || typeof Page.navigate !== 'function' || typeof Page.loadEventFired !== 'function') return;
+    let loads = 0;    // main-frame load events seen
+    let loadAt = 0;   // when the last one came
+    let mark = null;  // loads when the last navigate was made; null once its load was handed out or a newer load cycle started
+    client.on('Page.loadEventFired', () => { loads++; loadAt = Date.now(); });
+    client.on('Page.frameStartedLoading', () => { if (mark !== null && loads > mark) mark = null; }); // the navigate's load came and nobody asked: this is another load, and that is the one to wait for
+    const navigate = Page.navigate, load = Page.loadEventFired;
+    Page.navigate = function (...args) { mark = loads; return navigate.apply(this, args); };
+    Page.loadEventFired = function (...args) {
+        if (args.length === 0 && mark !== null && loads > mark && Date.now() - loadAt <= LATE_MS) { mark = null; return Promise.resolve({ timestamp: Date.now() / 1000 }); }
+        if (args.length === 0) mark = null;
+        return load.apply(this, args);
+    };
+}
 
 if (process.env.CDP_KEEP_VISIBLE !== '0') {
     const load = Module._load;
@@ -24,6 +47,7 @@ if (process.env.CDP_KEEP_VISIBLE !== '0') {
                 if (typeof options === 'function' || typeof callback === 'function') return real(options, callback);
                 return real(options).then(async client => {
                     try { await client.Emulation.setFocusEmulationEnabled({ enabled: true }); } catch { /* not a page target: nothing to keep visible */ }
+                    rememberLoads(client);
                     return client;
                 });
             };
