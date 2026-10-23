@@ -1,13 +1,17 @@
 package routes
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -176,4 +180,59 @@ func TestAJobsOwnCheckoutIsNeverListedOrRemoved(t *testing.T) {
 	assert.DirExists(t, own)
 	assert.DirExists(t, stray)
 	assert.Contains(t, git("worktree", "list"), "feature", "the person's checkout is still registered")
+}
+
+// Security's #6736 LOW (#6754): the list checks its entries with git a few at a time, inside one time limit; an entry git has not answered for is "not checked", never reported clean.
+func TestWorktreeListProbesInParallelAndWithinABudget(t *testing.T) {
+	url, cfg, h := teamServerH(t)
+	teams := store.NewTeamStore(h.db)
+	root := filepath.Join(cfg.CoralDir(), "worktrees")
+	for i := 0; i < 12; i++ {
+		dir := filepath.Join(root, "b-fake"+strconv.Itoa(i))
+		require.NoError(t, os.MkdirAll(dir, 0o755))
+		_, err := teams.CreateTeam(t.Context(), &store.Team{Name: "t" + strconv.Itoa(i), Status: "stopped", WorkingDir: dir, IsWorktree: 1, ConfigJSON: "{}"})
+		require.NoError(t, err)
+	}
+	defer func(w int, b time.Duration, p func(context.Context, worktreeEntry) worktreeEntry) {
+		worktreeProbeWorkers, worktreeListBudget, worktreeProbe = w, b, p
+	}(worktreeProbeWorkers, worktreeListBudget, worktreeProbe)
+
+	// A slow fake git: each check takes 250 ms. Twelve entries one after another would be 3 s; four at a time, under 1.2 s, and never more than four at once.
+	var running, peak atomic.Int32
+	worktreeProbe = func(ctx context.Context, e worktreeEntry) worktreeEntry {
+		n := running.Add(1)
+		defer running.Add(-1)
+		for {
+			old := peak.Load()
+			if n <= old || peak.CompareAndSwap(old, n) {
+				break
+			}
+		}
+		time.Sleep(250 * time.Millisecond)
+		e.Checked = true
+		return e
+	}
+	start := time.Now()
+	list := listWorktrees(t, url)
+	took := time.Since(start)
+	require.Len(t, list, 12)
+	assert.Less(t, took, 2*time.Second, "not one after another")
+	assert.EqualValues(t, 4, peak.Load(), "four at a time, no more")
+	for _, e := range list {
+		assert.Equal(t, true, e["checked"])
+	}
+
+	// A git that never answers: the list returns at its budget, and the entries it did not reach say "not checked".
+	worktreeListBudget = 400 * time.Millisecond
+	worktreeProbe = func(ctx context.Context, e worktreeEntry) worktreeEntry {
+		<-ctx.Done()
+		return e
+	}
+	start = time.Now()
+	list = listWorktrees(t, url)
+	assert.Less(t, time.Since(start), 2*time.Second, "bounded as a whole")
+	require.Len(t, list, 12)
+	for _, e := range list {
+		assert.Equal(t, false, e["checked"], "not answered in time is not checked, never clean")
+	}
 }
