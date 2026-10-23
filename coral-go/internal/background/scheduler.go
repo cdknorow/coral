@@ -505,10 +505,7 @@ func (s *JobScheduler) FireOneshot(ctx context.Context, config map[string]interf
 	}
 
 	repoPath, _ := config["repo_path"].(string)
-	baseBranch, _ := config["base_branch"].(string)
-	if baseBranch == "" {
-		baseBranch = "main"
-	}
+	baseBranch, _ := config["base_branch"].(string) // empty: the repository's current branch, chosen when the run's worktree is made (#6701)
 	maxDur, _ := config["max_duration_s"].(float64)
 	if maxDur == 0 {
 		maxDur = 3600
@@ -741,13 +738,13 @@ func (s *JobScheduler) prepareRunWorktree(ctx, watchCtx context.Context, runID i
 	}
 	wt.worktreeDir = s.runWorktreeDir(rc.repoPath, runID)
 	wt.baseBranch = rc.baseBranch
-	if wt.baseBranch == "" {
-		wt.baseBranch = "main"
-	}
 	wt.runBranch = fmt.Sprintf("coral/job-run-%d", runID)
-	err := gitutil.ValidRef(wt.baseBranch)
+	// The base branch the job names, else the repository's current branch: a job stored with the old default "main" runs in a repository on master too (#6701).
+	var err error
 	errMsg := ""
-	if err != nil {
+	if wt.baseBranch, err = gitutil.ResolveBase(watchCtx, rc.repoPath, wt.baseBranch); err != nil {
+		errMsg = fmt.Sprintf("git worktree add failed: %v", err)
+	} else if err = gitutil.ValidRef(wt.baseBranch); err != nil {
 		errMsg = fmt.Sprintf("base_branch refused: %v", err)
 	} else if err = runGitCmd(watchCtx, rc.repoPath, "worktree", "add", "-b", wt.runBranch, "--", wt.worktreeDir, wt.baseBranch); err != nil {
 		errMsg = fmt.Sprintf("git worktree add failed: %v", err)

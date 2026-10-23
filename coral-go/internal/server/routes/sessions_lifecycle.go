@@ -1324,17 +1324,18 @@ func (h *SessionsHandler) ResurrectTeam(w http.ResponseWriter, r *http.Request) 
 			WorkingDir string `json:"working_dir"`
 		}
 		json.Unmarshal([]byte(team.ConfigJSON), &cfg)
-		branch := cfg.BaseBranch
-		if branch == "" {
-			branch = "main"
+		repoDir := cfg.WorkingDir
+		if repoDir == "" {
+			repoDir = filepath.Dir(team.WorkingDir)
+		}
+		branch, err := gitutil.ResolveBase(ctx, repoDir, cfg.BaseBranch) // the stored base, else the repository's current branch (#6701)
+		if err != nil {
+			errBadRequest(w, "failed to recreate worktree: "+err.Error())
+			return
 		}
 		if err := gitutil.ValidRef(branch); err != nil { // a stored config is checked again (#3601, W24)
 			errBadRequest(w, "the team's base_branch: "+err.Error())
 			return
-		}
-		repoDir := cfg.WorkingDir
-		if repoDir == "" {
-			repoDir = filepath.Dir(team.WorkingDir)
 		}
 
 		cmd := gitutil.Command(ctx, repoDir, "worktree", "add", "--", team.WorkingDir, branch)
