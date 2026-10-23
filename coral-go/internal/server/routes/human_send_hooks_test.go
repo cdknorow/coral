@@ -35,6 +35,12 @@ type hookHarness struct {
 
 func setupHooksGone(t *testing.T, hookDir string) hookHarness {
 	t.Helper()
+	return setupHooksAgent(t, hookDir, true)
+}
+
+// setupHooksAgent is setupHooksGone for an agent that has sent an event (started) or none yet.
+func setupHooksAgent(t *testing.T, hookDir string, started bool) hookHarness {
+	t.Helper()
 	_, handler, mock, ss := setupSessionsTestServer(t)
 	sid := "eeeeeeee-6089-4000-8000-000000000001"
 	name := naming.SessionName("codex", sid)
@@ -42,8 +48,10 @@ func setupHooksGone(t *testing.T, hookDir string) hookHarness {
 	ctx := context.Background()
 	require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: sid, AgentType: "codex", AgentName: "chat", WorkingDir: "/tmp/project"}))
 	require.NoError(t, ss.SetHookDir(ctx, sid, hookDir))
-	_, err := handler.ts.InsertAgentEvent(ctx, &store.AgentEvent{AgentName: name, SessionID: &sid, EventType: "stop", Summary: "stop"}) // it has started: the hooks worked once
-	require.NoError(t, err)
+	if started {
+		_, err := handler.ts.InsertAgentEvent(ctx, &store.AgentEvent{AgentName: name, SessionID: &sid, EventType: "stop", Summary: "stop"}) // it has started: the hooks worked once
+		require.NoError(t, err)
+	}
 	term := &agentTerm{mockSessionTerminal: mock}
 	handler.terminal = term
 	old := []time.Duration{humanSendReadyWait, humanSendPollEvery, humanSendEnterWait, humanSendConfirmWait}
@@ -115,6 +123,19 @@ func TestHumanSendWithGoneHooks(t *testing.T) {
 		assert.Contains(t, msg, "reopen Coral or restart the agent")
 		assert.NotContains(t, msg, "may not have been sent")
 		assert.Equal(t, false, res.body["not_sent"], "it may well have arrived: the composer does not take it back")
+		typed, _ := h.term.counts()
+		assert.Equal(t, []string{"ship it"}, typed, "typed once: an empty box is no evidence the first copy was lost (#318)")
+	})
+	t.Run("an agent that has sent no event yet, with its hooks gone: still typed once", func(t *testing.T) {
+		h := setupHooksAgent(t, goneDir(t), false)
+		require.True(t, h.h.agentHasNoEvents(context.Background(), h.sid))
+		h.term.show(codexReady(t, ""))
+		h.term.onType = func(text string) { h.term.show(codexReady(t, "")) }
+		code, res := run(h, "ship it")
+		assert.Equal(t, http.StatusConflict, code)
+		assert.Equal(t, "hooks_unreachable", res.code)
+		typed, _ := h.term.counts()
+		assert.Equal(t, []string{"ship it"}, typed, "a starting agent whose hooks are gone is not typed to twice either")
 	})
 	t.Run("the screen echo confirms it", func(t *testing.T) {
 		h := setupHooksGone(t, goneDir(t))

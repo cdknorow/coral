@@ -366,7 +366,7 @@
 1	notifications.js	detailHtml
 2	notifications.js	icon
 1	notifications.js	linkHtml
-2	pending_messages.js	label
+1	pending_messages.js	label
 1	pending_messages.js	renderMarkdown(lead.rest, CHAT_MARKDOWN, 'chat')
 1	preview_pane.js	_fileIcon(tab)
 1	preview_pane.js	active
