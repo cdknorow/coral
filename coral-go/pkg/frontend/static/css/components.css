@@ -4513,7 +4513,12 @@ a.ibx-open, a.ibx-open:visited { color: var(--link-text); }
 #launch-agent-more .settings-pane-title { display: none; } /* the section's name is on the tab (or the phone's select) beside it: said twice (#6316); the pane keeps its name from it */
 /* New Agent is two steps (#6333; the stage is data-stage on the step, set by launch_core.js setLaunchMore): the folder with Next, then everything else with Back and Launch; the folder shows as one line with Change in the second. */
 #launch-step-agent[data-stage="folder"] :is(#launch-agent-pick, #launch-agent-more, #launch-agent-back, #launch-agent-go, #launch-dir-summary) { display: none; }
-#launch-step-agent[data-stage="details"] :is(.launch-dir-field, #launch-dir-note, #dir-browser, #launch-agent-cancel, #launch-agent-next) { display: none; }
+#launch-step-agent[data-stage="details"] :is(.launch-dir-field, #launch-dir-note, #dir-browser, #launch-agent-cancel, #launch-agent-next, #launch-dir-recents, #launch-dir-hint) { display: none; }
+.launch-dir-recents { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
+.launch-dir-recents:empty { display: none; }
+.launch-dir-recent { margin: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.launch-dir-hint { margin: 0 0 8px; }
+@media (pointer: coarse), (max-width: 767px) { .launch-dir-recent { min-height: var(--control-touch-height, 44px); } }
 .launch-dir-summary { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .launch-dir-summary-label { color: var(--text-secondary); flex: none; }
 .launch-dir-summary code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

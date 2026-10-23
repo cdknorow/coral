@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
 const BASE = require('./test_base').BASE;
 
-const BUDGET = { chooser: 17, agent: 12, more: 40 }; // the phone's select shows one section name, so it is under these
+const BUDGET = { chooser: 17, agent: 16, more: 40 }; // agent: 12 + the new-account line under the folder ("Pick your project folder.", #6370 item 3: gone once a folder was used) // the phone's select shows one section name, so it is under these
 
 (async () => {
     const { client, Page, Emulation, ev, waitFor, PRELOAD, install } = await connect();

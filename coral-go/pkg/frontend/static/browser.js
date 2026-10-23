@@ -25,7 +25,7 @@ let _activePathId = "browser-current-path";
 
 const MAX_RECENT_DIRS = 6;
 
-function getRecentDirs(server = LOCAL_SERVER) {
+export function getRecentDirs(server = LOCAL_SERVER) {
     try {
         const dirs = JSON.parse(browserLocal.get(recentDirsKey(server)) || "[]");
         return Array.isArray(dirs) ? dirs.filter(d => typeof d === "string") : [];
@@ -187,6 +187,7 @@ export function browserNavigateUp() {
 
 // The folder browser's recent folders and its entries (#3645).
 registerActions({
+    'launch-dir-recent': el => { const d = textOf(el.dataset.dir, 4096), i = document.getElementById('launch-dir'); if (d && i) { i.value = d; i.dispatchEvent(new Event('input', { bubbles: true })); document.getElementById('launch-agent-next')?.focus(); } },
     'browser-recent': el => { const d = textOf(el.dataset.dir, 4096); if (d) window.browserSelectRecent(d); },
     'browser-nav': el => { const n = textOf(el.dataset.name, 1024); if (n) window.browserNavigateTo(n); },
 });

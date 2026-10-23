@@ -4,7 +4,7 @@ import { state } from './state.js';
 import { showToast, escapeHtml, escapeAttr, boardNameProblem } from './utils.js';
 import { blockedReason } from './hub_access.js';
 import { loadLiveSessions } from './api.js';
-import { recordRecentDir, setDirServerResolver } from './browser.js';
+import { recordRecentDir, setDirServerResolver, getRecentDirs } from './browser.js';
 import { defaultAgentName } from './session_state.js';
 import { serverFetch, identityKey, isHub, normServer, LOCAL_SERVER, keyLabel, noteBoardLabels } from './server_base.js';
 import { pickerVisible, pickerOptions, serverLabel, coerceSelection, bareBoardName } from './launch_server.js';
@@ -58,7 +58,7 @@ function _selectLaunchType(type) {
         });
         // The agent is chosen in this step, not only under More options (#6199): a radio group that follows the form's own select, the installed agents first.
         importOnce('./launch_agent_pick.js').then(m => m.buildAgentPick({ group: document.getElementById('launch-agent-pick'), form: document.getElementById('launch-agent-acf'), server: _effectiveServer(launch.server), implicitDefault: !_settingsFor(_effectiveServer(launch.server)).default_agent_type })).catch(() => {});
-        _wireDirNote(); _syncDirNote(); _syncLaunchBlock();
+        _wireDirNote(); _syncDirNote(); _syncLaunchBlock(); _renderDirRecents();
         _checkTmuxHere(); // tmux missing: said once, Launch off (#6046)
         document.getElementById('launch-dir')?.focus(); // the one thing most launches need: the folder
     } else if (type === "team") {
@@ -189,7 +189,7 @@ async function _onLaunchServerChange(value, { force = false } = {}) {
     const typeSelect = document.getElementById('launch-type');
     if (s.default_agent_type && typeSelect) typeSelect.value = s.default_agent_type;
     if (launch.mode === 'agent' || launch.mode === 'team') _checkTmuxHere();
-    if (launch.mode === 'agent') _loadAgentBoardProjects();
+    if (launch.mode === 'agent') { _loadAgentBoardProjects(); _renderDirRecents(); }
     if (launch.mode === 'team') { _loadExistingTeamBoards(); _checkTeamGitDir(); }
     document.querySelectorAll('#launch-modal [data-acf-uid], #team-agent-modal [data-acf-uid]').forEach(c => {
         if (c.querySelector('.acf-agent-type')) {
@@ -249,6 +249,21 @@ function _syncTeamBlock() {
     if (why) go.setAttribute('aria-describedby', why.id); else go.removeAttribute('aria-describedby');
 }
 document.addEventListener('cli-blocks-launch', e => { if (e.target.closest && e.target.closest('#launch-step-team')) _syncTeamBlock(); });
+
+// The first step helps with the folder (#6370 item 3): the last three folders as buttons (a repeat launch is one click), and for a person who has used none, one line that says what to pick.
+function _renderDirRecents() {
+    const box = document.getElementById('launch-dir-recents'), hint = document.getElementById('launch-dir-hint');
+    if (!box || !hint) return;
+    const dirs = getRecentDirs(_effectiveServer(launch.server)).slice(0, 3);
+    box.replaceChildren(...dirs.map(d => {
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'btn btn-small launch-dir-recent'; b.title = d; b.dataset.dir = d; b.setAttribute('data-on-click', 'launch-dir-recent');
+        b.textContent = d.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || d;
+        return b;
+    }));
+    hint.textContent = dirs.length ? '' : 'Pick your project folder.';
+    hint.hidden = dirs.length > 0;
+}
 
 // The home folder is a wide place to start an agent in: the person may choose it, and one line says what that means (#5990).
 function _syncDirNote() {
