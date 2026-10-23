@@ -10,7 +10,7 @@ import (
 func TestASecretAtTheEdgeOfTheSearchExcerptIsNotShownCut(t *testing.T) {
 	secrets := map[string]string{
 		"a GitHub token":    "ghp_" + strings.Repeat("aB3dE5gH7j", 3) + "kLmNoP",
-		"an AWS access key": "AKIAIOSFODNN7EXAMPLE",
+		"an AWS access key": "AKIAJ7QX2LNB4MWT9RZD",
 		"an Anthropic key":  "sk-ant-api03-" + strings.Repeat("Zx9Qw8Er7T", 4),
 	}
 	longestRun := func(secret, shown string) int {

@@ -3,6 +3,7 @@ package routes
 import (
 	"context"
 	"fmt"
+	"github.com/subgentic/coral/internal/secrets"
 	"github.com/subgentic/coral/pkg/redact"
 	"net/http"
 	"net/url"
@@ -658,7 +659,7 @@ func makeBoundedExcerpt(text string, matchOffset int, maxChars int) string {
 	}
 	// Redact the whole text BEFORE the window is cut out of it: a window whose ends fall inside a secret leaves part of a token that the redactor no longer recognises (a GitHub token short of its last
 	// character passed unchanged, #3733's class; Security's finding on #6207). Text that cannot be checked is not shown.
-	red, err := redact.Rules.Text([]byte(clean))
+	red, err := secrets.Redactor().Text([]byte(clean))
 	if err != nil {
 		return redact.Marker
 	}
