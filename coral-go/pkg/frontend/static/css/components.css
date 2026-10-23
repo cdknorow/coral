@@ -1440,6 +1440,7 @@ button.subscriber-history-link {
     pointer-events: none;
 }
 #warning-toasts:has(.security-warning-toast) { margin-bottom: 10px; }
+#notices:not(:has(.toast, .update-toast)) { display: none; } /* nothing to show: no empty "Notifications" region either */
 #warning-toasts > .security-warning-toast { position: static; min-width: 0; pointer-events: auto; animation: none; }
 #warning-toasts .security-warning-text { max-height: 26vh; } /* three can show at once: each scrolls its own text before the column outgrows the window */
 /* The update notice is a child of the column too: on a desktop it stays fixed at the top right, as it was. */

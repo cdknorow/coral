@@ -11,8 +11,9 @@ import { routeHref } from './markdown.js';
  * opts.blocked: prefix the text with "Blocked: " (once) so a refusal is clear
  *   without relying on colour.
  * opts.action: {label, onClick} adds a button; clicking it dismisses the toast
- *   and runs onClick. A toast with an action stays at least 10s and does not
- *   fade, so the button stays usable.
+ *   and runs onClick. A toast with an action has no timer and does not fade: it
+ *   stays until it is used or dismissed (WCAG 2.2.1: a keyboard-only person is
+ *   far from it, and nothing runs out under them). A plain toast keeps its timer.
  *
  * Returns the toast element. Text is set with textContent only.
  */
@@ -48,7 +49,7 @@ export function showToast(message, isError = false, duration = 4000, opts = {}) 
         });
         toast.appendChild(button);
         toast.classList.add("has-action");
-        duration = Math.max(duration, 10000);
+        duration = Infinity;
     }
     const close = document.createElement("button");
     close.type = "button";
@@ -65,7 +66,7 @@ export function showToast(message, isError = false, duration = 4000, opts = {}) 
     toast.addEventListener("click", (e) => { if (!e.target.closest("button")) toast.classList.toggle("expanded"); });
 
     toastHost().appendChild(toast);
-    timer = setTimeout(dismiss, duration);
+    if (Number.isFinite(duration)) timer = setTimeout(dismiss, duration);
     return toast;
 }
 
@@ -81,6 +82,9 @@ export function noticeColumn() {
         const toasts = document.createElement("div");
         toasts.id = "toast-host";
         col.append(warnings, toasts);
+        // A named region, so a screen reader can jump to the notices (they are drawn fixed, wherever they are in the page).
+        col.setAttribute("role", "region");
+        col.setAttribute("aria-label", "Notifications");
         document.body.appendChild(col);
     }
     placeNotices();
