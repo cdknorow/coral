@@ -1,3 +1,4 @@
+import { rawKeyOk, rawKeySeq } from './raw_keys.js';
 import { importOnce } from './import_once.js';
 import { moveRestarting } from './session_overlay.js';
 import { dashboardPromptRequested } from './dashboard_analytics.js';
@@ -458,22 +459,6 @@ export function renderQuickActions() {
 }
 
 // Map tmux key names to raw terminal sequences for WebSocket input
-const _KEY_TO_SEQ = {
-    "Enter": "\r",
-    "Escape": "\x1b",
-    "Tab": "\t",
-    "BTab": "\x1b[Z",
-    "BSpace": "\x7f",
-    "Up": "\x1b[A",
-    "Down": "\x1b[B",
-    "Right": "\x1b[C",
-    "Left": "\x1b[D",
-    "Home": "\x1b[H",
-    "End": "\x1b[F",
-    "DC": "\x1b[3~",      // Delete
-    "PageUp": "\x1b[5~",
-    "PageDown": "\x1b[6~",
-};
 
 export async function sendRawKeys(keys, { silent = false } = {}) {
     if (!state.currentSession || state.currentSession.type !== "live") {
@@ -490,9 +475,9 @@ export async function sendRawKeys(keys, { silent = false } = {}) {
 
     // Try WebSocket path first — much faster than POST
     const xterm = await _getXtermModule();
-    const allMapped = keys.every(k => k in _KEY_TO_SEQ);
+    const allMapped = keys.every(rawKeyOk);
     if (allMapped && xterm.sendTerminalInputWs) {
-        const seq = keys.map(k => _KEY_TO_SEQ[k]).join("");
+        const seq = keys.map(rawKeySeq).join("");
         if (xterm.sendTerminalInputWs(seq)) {
             if (!silent) showToast(`Sent: ${keys.join(" + ")}`);
             return;
@@ -1191,14 +1176,13 @@ export function updateSidebarActive() {
 // The command pane's toolbar, send menu and attachments (#3645): data-on-* names, never code. Keys
 // and the quick command come from allowlists; a macro runs by its index in the saved list, so its
 // command never sits in an attribute; an index is checked (a bad one does nothing).
-const RAW_KEYS = new Set(['Escape', 'Up', 'Down', 'Enter']);
 const indexOf = v => (v === '0' ? 0 : idOf(v));
 registerActions({
     'cmd-mode-toggle': () => cycleModeToggle(),
     'cmd-quick': el => { if (el.dataset.cmd === '!') sendQuickCommand('!'); },
     'cmd-raw-keys': el => {
         const keys = String(el.dataset.keys || '').split(',');
-        if (keys.length && keys.length <= 4 && keys.every(k => RAW_KEYS.has(k))) sendRawKeys(keys);
+        if (keys.length && keys.length <= 4 && keys.every(rawKeyOk)) sendRawKeys(keys);
     },
     'cmd-macro': el => {
         const i = indexOf(el.dataset.index), m = i === null ? null : getMacros()[i];
