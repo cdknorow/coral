@@ -2201,4 +2201,5 @@
 .composer-held[hidden] { display: none; }
 .composer-queued-item { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; }
 .composer-queued-text { min-width: 0; overflow-wrap: anywhere; }
+.composer-queued-head { margin-bottom: 2px; }
 @media (pointer: coarse) { .composer-queued-cancel { min-height: 44px; min-width: 44px; display: inline-flex; align-items: center; } }

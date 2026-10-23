@@ -40,12 +40,13 @@ const BASE = require('./test_base').BASE;
             check(`${tag}: the line says what is queued and when it sends, with a named Cancel, and the box is usable`, l.shown && l.texts.join() === 'Queued: “Run the tests please”. Sends after you answer the question above.' && l.cancels.join() === 'Cancel the queued message: Run the tests please' && l.usable, JSON.stringify(l));
             await send(8, 'x'.repeat(100));
             l = await line();
-            check(`${tag}: a second held message is a second line, long text cut to its first words`, l.texts.length === 2 && l.texts[1].includes('…') && l.texts[1].length < 140, JSON.stringify(l.texts));
+            const g = await ev(`(() => { const b = document.getElementById('composer-queued'); return { head: (b.querySelector('.composer-queued-head') || {}).textContent, words: b.textContent.split('Sends after you answer').length - 1, rows: [...b.querySelectorAll('.composer-queued-item')].map(r => ({ text: r.querySelector('.composer-queued-text').textContent, oneLine: r.getBoundingClientRect().height < 50, cancelLast: r.lastElementChild.tagName === 'BUTTON' })) }; })()`);
+            check(`${tag}: several held messages say when they send once, above them, and a long one is cut to about 40 characters on one line with its Cancel at the end`, g.head === 'Queued. Sends after you answer the question above:' && g.words === 1 && g.rows.length === 2 && g.rows[1].text.includes('…') && g.rows[1].text.length < 50 && g.rows.every(r => r.oneLine && r.cancelLast), JSON.stringify(g));
 
             console.log(`${tag}: typed, refused, cancelled`);
             await emit('coral:terminal-input-ack', { sessionId: 'hq-id', id: 8 });
             l = await line();
-            check(`${tag}: the message that is typed (ack) leaves the list, the other stays`, l.texts.length === 1 && /Run the tests/.test(l.texts[0]), JSON.stringify(l.texts));
+            check(`${tag}: the message that is typed (ack) leaves the list, the other stays and says it all on its own line`, l.texts.length === 1 && /Run the tests/.test(l.texts[0]) && /Sends after you answer the question above/.test(l.texts[0]), JSON.stringify(l.texts));
             await emit('coral:terminal-input-refused', { sessionId: 'hq-id', id: 7, error: 'The agent session ended, so your message was not sent.' });
             l = await line();
             check(`${tag}: a refusal takes the line away and its reason shows under the box`, !l.shown && /session ended/.test(l.err), JSON.stringify(l));

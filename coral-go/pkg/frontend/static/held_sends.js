@@ -10,7 +10,7 @@ const sent = new Map();     // `${sid}|${id}` -> text, a send over the socket th
 const queued = new Map();   // sid -> Map(id -> { id, text })
 const cancelling = new Set(); // `${sid}|${id}` whose cancel is under way: its refusal is the person's own doing, not an error
 const key = (sid, id) => `${sid}|${id}`;
-const WORDS = 60;
+const WORDS = 40; // a long message stays on one line with its Cancel at the end
 
 /** First words of a message, for the line and for Cancel's name. */
 export function firstWords(text) {
@@ -92,14 +92,18 @@ export function paint() {
     if (sig === lastShown) return;
     lastShown = sig;
     if (box.hidden === !!items.length) box.hidden = !items.length;
-    box.replaceChildren(...items.map(i => {
+    const many = items.length > 1;
+    const row = (i, text) => {
         const li = document.createElement('div'); li.className = 'composer-queued-item';
-        const t = document.createElement('span'); t.className = 'composer-queued-text';
-        t.textContent = `Queued: “${firstWords(i.text)}”. Sends after you answer the question above.`;
+        const t = document.createElement('span'); t.className = 'composer-queued-text'; t.textContent = text;
         const b = document.createElement('button'); b.type = 'button'; b.className = 'cni-link composer-queued-cancel'; b.textContent = 'Cancel';
         b.setAttribute('aria-label', `Cancel the queued message: ${firstWords(i.text)}`);
         b.addEventListener('click', () => cancelQueued(sid, i.id));
         li.append(t, b);
         return li;
-    }));
+    };
+    // One message says it all on its line; several say when they send once, above them.
+    const out = many ? [Object.assign(document.createElement('div'), { className: 'composer-queued-head', textContent: 'Queued. Sends after you answer the question above:' }), ...items.map(i => row(i, `“${firstWords(i.text)}”`))]
+        : items.map(i => row(i, `Queued: “${firstWords(i.text)}”. Sends after you answer the question above.`));
+    box.replaceChildren(...out);
 }
