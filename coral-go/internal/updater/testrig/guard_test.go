@@ -144,3 +144,57 @@ func exprName(e ast.Expr) string {
 	}
 	return ""
 }
+
+// The Windows rehearsal's program builds only with the windowsrehearsal tag. Outside the program's own source, only the rehearsal's script and workflow may name the
+// tag: a release path (release.yml, release-cache-warm.yml, tools/build_windows.ps1, installers/build-*.sh, the windows-tests package job, a dry run) that passes it
+// would build the rig's program, with its fake trust, into something that ships.
+var windowsRehearsalTagAllowed = map[string]bool{
+	"tests/release/update_rehearsal_windows.ps1":       true,
+	"tests/release/update_rehearsal_windows_route.ps1": true,
+	"tests/release/rehearsal_build.ps1":                true,
+	".github/workflows/update-rehearsal-windows.yml":   true,
+}
+
+// windowsRehearsalTagUses returns the files under repo (paths with forward slashes) that name the tag and are not allowed to.
+func windowsRehearsalTagUses(t *testing.T, repo string) []string {
+	t.Helper()
+	var bad []string
+	for _, top := range []string{".github", "installers", "tools", "tests", "coral-go/Makefile", "Casks"} {
+		_ = filepath.WalkDir(filepath.Join(repo, filepath.FromSlash(top)), func(p string, d os.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				if d != nil && d.IsDir() && d.Name() == "node_modules" {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if fi, e := d.Info(); e != nil || fi.Size() > 4<<20 {
+				return nil
+			}
+			b, e := os.ReadFile(p)
+			if e != nil || !strings.Contains(string(b), "windowsrehearsal") {
+				return nil
+			}
+			rel, _ := filepath.Rel(repo, p)
+			rel = filepath.ToSlash(rel)
+			if !windowsRehearsalTagAllowed[rel] {
+				bad = append(bad, rel)
+			}
+			return nil
+		})
+	}
+	return bad
+}
+
+func TestNoReleasePathPassesTheWindowsRehearsalTag(t *testing.T) {
+	repo := filepath.Join(goRoot(t), "..")
+	assert.Empty(t, windowsRehearsalTagUses(t, repo), "only the rehearsal's own script and workflow may name windowsrehearsal")
+	for p := range windowsRehearsalTagAllowed {
+		_, err := os.Stat(filepath.Join(repo, filepath.FromSlash(p)))
+		assert.NoError(t, err, "%s is allowed to name the tag, so it must exist (a stale entry is a hole)", p)
+	}
+	// the census sees a release path that passes the tag (a mutant)
+	tmp := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(tmp, "tools"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, "tools", "build_windows.ps1"), []byte("go build -tags fts5,windowsrehearsal ./cmd/coral\n"), 0o644))
+	assert.Equal(t, []string{"tools/build_windows.ps1"}, windowsRehearsalTagUses(t, tmp))
+}
