@@ -103,6 +103,11 @@ body.cloud-mode .settings-cloud-note { margin: 0 0 12px; }
 /* An enabled destructive action reads as enabled: error colour, not muted
    grey (#3070 F5, was ~2.9:1); a disabled one is visibly dimmed. */
 .cs-revoke, .servers-remove { color: var(--error); }
+.cs-more { position: relative; }
+.cs-more-menu[hidden] { display: none; }
+.cs-more-menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 5; min-width: 120px; padding: 6px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); box-shadow: var(--shadow-md); }
+.cs-more-menu .btn { width: 100%; margin: 0; }
+@media (pointer: coarse), (max-width: 767px) { .cs-more-btn, .cs-more-menu .btn { min-height: var(--control-touch-height, 44px); } }
 .cs-revoke:disabled, .servers-remove:disabled { opacity: .5; cursor: not-allowed; }
 /* Narrow (phone): a stacked list; each row is a card with its name and toggle first, then status, version, agents and the access control; the header turns into a row of sort buttons; the details open under it. */
 @container servers-tab (max-width: 640px) {

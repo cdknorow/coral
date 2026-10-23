@@ -193,7 +193,7 @@ const contrast = (a, b) => {
 
         console.log('3. Rename and Revoke are row actions; a row opens for its details');
         const acts = await ev(`[...document.querySelectorAll('#servers-view tr.cs-row')].map(r => ({ id: r.id, buttons: [...r.querySelectorAll('.cs-col-actions button')].map(b => b.textContent + '|' + b.getAttribute('aria-label')) }))`);
-        assert.ok(acts.every(x => x.buttons.length === 2 && /^Rename\|Rename /.test(x.buttons[0]) && /^Revoke\|Revoke /.test(x.buttons[1])), 'Rename and Revoke, named with the machine, in every row: ' + JSON.stringify(acts));
+        assert.ok(acts.every(x => x.buttons.length === 3 && /^Rename\|Rename /.test(x.buttons[0]) && /^More\|More for /.test(x.buttons[1]) && /^Revoke\|Revoke /.test(x.buttons[2])), 'Rename, More and Revoke (in More), named with the machine, in every row: ' + JSON.stringify(acts));
         await ev(`document.querySelector('#server-row-m1 .cs-toggle').focus(); document.querySelector('#server-row-m1 .cs-toggle').click(); true`);
         await waitFor(`document.querySelector('#server-row-m1 .cs-toggle').getAttribute('aria-expanded') === 'true' && !document.getElementById('server-row-m1-detail').hidden`, 'm1 open', 3000);
         const d = await ev(`(() => { const x = document.getElementById('server-row-m1-detail'); return { text: x.textContent.replace(/\\s+/g, ' '), buttons: [...x.querySelectorAll('button:not(.cs-access-info)')].map(b => b.textContent.trim()), update: (x.querySelector('.cs-update a') || {}).href || null, focus: document.activeElement && document.activeElement.classList.contains('cs-toggle') }; })()`);
@@ -221,7 +221,17 @@ const contrast = (a, b) => {
         await ev(`document.querySelector('#server-row-m1 .cs-toggle').click(); true`);
         await waitFor(`document.getElementById('server-row-m1-detail').hidden`, 'm1 closed again', 3000);
         // Revoke asks in the row (Confirm revoke / Cancel) and opens the details for the warning; Cancel puts the row back.
-        await ev(`document.querySelector('#server-row-m3 .cs-revoke').click(); true`);
+        // Revoke is one step further than Rename: it sits in a More menu, closed until asked (#6370 follow-up, the row keeps Rename and the one thing most visits do).
+        const seen = sel => `(() => { const e = document.querySelector(${JSON.stringify(sel)}); return !!e && e.checkVisibility({ checkVisibilityCSS: true }); })()`;
+        assert.equal(await ev(seen('#server-row-m3 .cs-revoke')), false, 'Revoke is not on the row until More is opened');
+        assert.equal(await ev(`document.querySelector('#server-row-m3 .cs-more-btn').getAttribute('aria-label')`), 'More for Box Three');
+        await ev(`document.querySelector('#server-row-m3 .cs-more-btn').click(); true`);
+        assert.equal(await ev(seen('#server-row-m3 .cs-revoke')), true, 'More shows Revoke');
+        await shot('table-desktop-more-open');
+        await ev(`document.querySelector('#server-row-m3 .cs-more').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); true`);
+        assert.equal(await ev(seen('#server-row-m3 .cs-revoke')), false, 'Escape closes More');
+        assert.equal(await ev(`document.activeElement === document.querySelector('#server-row-m3 .cs-more-btn')`), true, 'and keeps the keyboard on More');
+        await ev(`document.querySelector('#server-row-m3 .cs-more-btn').click(); document.querySelector('#server-row-m3 .cs-revoke').click(); true`);
         await waitFor(`!!document.querySelector('#server-row-m3 .cs-col-actions .btn-danger')`, 'the revoke confirmation', 3000);
         assert.deepEqual(await ev(`[...document.querySelectorAll('#server-row-m3 .cs-col-actions button')].map(b => b.textContent)`), ['Confirm revoke', 'Cancel']);
         assert.match(await ev(`document.getElementById('server-row-m3-detail').textContent`), /Revoke Box Three\? It disconnects this computer from Coral Hub\./);
@@ -232,13 +242,13 @@ const contrast = (a, b) => {
         assert.equal(await ev(`(() => { const d = document.getElementById(document.activeElement.getAttribute('aria-describedby')); return !!d && /Revoke Box Three\\? It disconnects this computer from Coral Hub\\./.test(d.textContent); })()`), true, 'the buttons are described by the question');
         await ev(`document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); true`);
         await waitFor(`!!document.querySelector('#server-row-m3 .cs-revoke')`, 'Escape put the row actions back', 3000);
-        assert.equal(await ev(`document.activeElement === document.querySelector('#server-row-m3 .cs-revoke')`), true, 'Escape returns focus to Revoke');
+        assert.equal(await ev(`document.activeElement === document.querySelector('#server-row-m3 .cs-more-btn')`), true, 'Escape returns focus to More');
         assert.equal(await ev(`(window.__deletes || []).length`), 0, 'nothing was revoked');
-        await ev(`document.querySelector('#server-row-m3 .cs-revoke').click(); true`);
+        await ev(`document.querySelector('#server-row-m3 .cs-more-btn').click(); document.querySelector('#server-row-m3 .cs-revoke').click(); true`);
         await waitFor(`!!document.querySelector('#server-row-m3 .cs-col-actions .btn-danger')`, 'the revoke confirmation again', 3000);
         await ev(`[...document.querySelectorAll('#server-row-m3 .cs-col-actions button')].find(b => b.textContent === 'Cancel').click(); true`);
         await waitFor(`!!document.querySelector('#server-row-m3 .cs-revoke')`, 'the row actions back', 3000);
-        assert.equal(await ev(`document.activeElement === document.querySelector('#server-row-m3 .cs-revoke')`), true, 'Cancel returns focus to Revoke');
+        assert.equal(await ev(`document.activeElement === document.querySelector('#server-row-m3 .cs-more-btn')`), true, 'Cancel returns focus to More');
         assert.equal(await ev(`(window.__deletes || []).length`), 0, 'still nothing revoked');
         // Rename in the row: the name cell becomes a form.
         await ev(`document.querySelector('#server-row-m4 .cs-rename-btn').click(); true`);

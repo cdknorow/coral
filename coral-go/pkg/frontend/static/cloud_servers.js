@@ -57,6 +57,7 @@ export async function showCloudServers(focusId) {
 
 /** Render the server list into `el` (the Servers tab) and keep it fresh. Resolves once loaded. */
 export async function renderCloudServersInto(el) {
+    wireMoreClose();
     if (host !== el) enrollOpen = null; // a new visit follows the account again; a redraw into the same page keeps what the person opened
     host = el;
     confirming = null; renaming = null; loadError = '';
@@ -348,12 +349,17 @@ function accessPicker(s, isBusy, helpId) {
             ['view', 'interact', 'launch'].map(v => h('option', { value: v, selected: v === choice, disabled: rank(v) > rank(local) && v !== choice, text: MODE_INFO[v].label }))));
 }
 
+// A click anywhere else closes an open More.
+let moreClickWired = false;
+function wireMoreClose() { if (moreClickWired) return; moreClickWired = true; document.addEventListener('click', e => { if (moreOpen !== null && !e.target.closest?.('.cs-more')) { moreOpen = null; render(); } }); }
+
 /** Put the keyboard back on a control of a machine's row after the redraw. */
 function focusRow(id, selector) { const el = document.getElementById(rowId(id))?.querySelector(selector); if (el) el.focus(); }
 
 /** Revoke asks first, in the row: the keyboard goes to Cancel (the safe answer), and Cancel or Escape leave the machine connected and put the keyboard back on that row's Revoke. */
-function askRevoke(s) { confirming = s.id; render(); focusRow(s.id, '.cs-col-actions .cs-revoke-cancel'); }
-function cancelRevoke(s) { confirming = null; render(); focusRow(s.id, '.cs-revoke'); }
+let moreOpen = null; // the row whose More menu is open: a redraw (the list refreshes on its own) keeps it open
+function askRevoke(s) { moreOpen = null; confirming = s.id; render(); focusRow(s.id, '.cs-col-actions .cs-revoke-cancel'); }
+function cancelRevoke(s) { confirming = null; render(); focusRow(s.id, '.cs-more-btn'); }
 const revokeNoteId = s => `${rowId(s.id)}-revoke-note`;
 
 /** Rename and Revoke, in the row's last column; Revoke asks in place (Confirm revoke / Cancel). */
@@ -364,7 +370,12 @@ function rowActions(s, isBusy) {
         : [s.needs_relink === true ? h('button', { type: 'button', className: 'btn btn-small btn-primary cs-relink', text: RELINK_BUTTON, 'aria-label': `${RELINK_BUTTON} for ${s.label || 'this server'}: how to confirm it`, 'aria-expanded': String(relinkOpen.has(s.id)), 'aria-controls': relinkId(s),
                onclick: () => { if (relinkOpen.has(s.id)) relinkOpen.delete(s.id); else relinkOpen.add(s.id); render(); focusRow(s.id, '.cs-relink'); } }) : null,
            h('button', { type: 'button', className: 'btn btn-small cs-rename-btn', text: 'Rename', 'aria-label': `Rename ${s.label || 'this server'}`, disabled: isBusy, onclick: () => { renaming = s.id; render(); } }),
-           h('button', { type: 'button', className: 'btn btn-small btn-danger-text cs-revoke', text: 'Revoke', 'aria-label': `Revoke ${s.label || 'this server'}`, disabled: isBusy, onclick: () => askRevoke(s) })];
+           // Revoke is a More away: the row shows Rename, and the rare, destructive step is in a small menu of its own (Escape and a click elsewhere close it).
+           h('div', { className: 'cs-more', onkeydown: e => { if (e.key === 'Escape' && moreOpen === s.id) { e.preventDefault(); e.stopPropagation(); moreOpen = null; render(); focusRow(s.id, '.cs-more-btn'); } } },
+               h('button', { type: 'button', className: 'btn btn-small cs-more-btn', text: 'More', 'aria-label': `More for ${s.label || 'this server'}`, 'aria-haspopup': 'true', 'aria-expanded': String(moreOpen === s.id), 'aria-controls': `${rowId(s.id)}-more`,
+                   onclick: () => { moreOpen = moreOpen === s.id ? null : s.id; render(); focusRow(s.id, '.cs-more-btn'); } }),
+               h('div', { className: 'cs-more-menu', id: `${rowId(s.id)}-more`, hidden: moreOpen !== s.id },
+                   h('button', { type: 'button', className: 'btn btn-small btn-danger-text cs-revoke', text: 'Revoke', 'aria-label': `Revoke ${s.label || 'this server'}`, disabled: isBusy, onclick: () => askRevoke(s) })))];
 }
 
 function detailCell(s, live, online, isBusy, helpId) {

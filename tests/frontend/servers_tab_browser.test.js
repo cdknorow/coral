@@ -173,7 +173,7 @@ const contrast = (a, b) => {
         let v = await rowView('m1');
         assert.deepEqual(v.options, ['View', 'Interact', 'Launch']);
         assert.equal(v.value, 'view'); assert.equal(v.label, 'Hub access for Box One');
-        assert.deepEqual(v.actions, ['Rename', 'Revoke'], 'Rename and Revoke are row actions in the last column');
+        assert.deepEqual(v.actions, ['Rename', 'More', 'Revoke'], 'Rename, More and (in More) Revoke are the row actions in the last column');
         assert.deepEqual(v.inDetails, [], 'no buttons in the details');
         assert.ok(!v.follow && !v.raise && !v.summary && v.dialogs === 0, 'no Follow, no Raise, no Hub/Machine/Effective line, no dialog');
         assert.deepEqual(v.effective, [], 'the effective value shows only when lower than the choice');
