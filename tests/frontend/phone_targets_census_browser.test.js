@@ -6,7 +6,7 @@ const { connect } = require('./agent_view_harness');
 const { launchStandIn } = require('./helpers/stand_in_agent');
 const { guardSettings } = require('./helpers/settings_guard');
 const { STUB, HEX } = require('./helpers/comments_scale');
-const { scene, tap: tapSel, problems, required, useScaleShot } = require('./helpers/phone_targets');
+const { scene, tap: tapSel, problems, required, useScaleShot, openBoardComposer, BOARD_COMPOSER_UP } = require('./helpers/phone_targets');
 const BASE = require('./test_base').BASE;
 const TEAM = 'census-' + Date.now().toString(36);
 const S = `(window.__coralStatic || '/static/')`;
@@ -55,6 +55,14 @@ const { DATA_WORLD, httpJson } = require('./helpers/census_world');
         for (const tab of await ev(`[...document.querySelectorAll('.agentic-state-tabs .agentic-tab[data-tab]')].filter(e => e.getClientRects().length).map(e => e.dataset.tab)`)) await sc(`side panel: ${tab}`, async () => { await tap(`.agentic-state-tabs [data-tab="${tab}"]`); }, { min: 12, expect: `document.querySelector('.agentic-state-tabs [data-tab="${tab}"]').classList.contains('active')` });
         await sc('side panel: customize tabs', async () => { await tap('[aria-label="Customize tabs"]'); }, { min: 12, expect: `!!document.getElementById('tab-customize-title') && document.getElementById('tab-customize-title').getClientRects().length > 0` });
         await ev(`document.body.click(); true`);
+        await sc('side panel: board composer', async () => {
+            await ev(`window.__m.add('board-agent', 'B', 3, { sleeping: false, board_project: ${JSON.stringify(TEAM)} }); window.selectLiveSession('board-agent', 'claude', 'board-agent-id', 'local'); true`);
+            await new Promise(r => setTimeout(r, 600)); // sleep-ok: the phone closes its side panel when another agent is picked
+            if (!(await ev(`!!document.querySelector('.agentic-state-tabs') && document.querySelector('.agentic-state-tabs').getClientRects().length > 0`))) await tap('#panel-toggle-btn');
+            await openBoardComposer(ev, waitFor, TEAM, false);
+        }, { min: 5, expect: BOARD_COMPOSER_UP }); // the team's message box (#6239)
+        await ev(`window.selectLiveSession(${JSON.stringify(standIn.name)}, 'claude', ${JSON.stringify(standIn.sid)}, 'local'); true`);
+        await new Promise(r => setTimeout(r, 600)); // sleep-ok: the stand-in's chat draws again
         await sc('artifact, full screen', async () => {
             await ev(`(async () => { window.PP = await import(${S} + 'preview_pane.js'); return true; })()`);
             await ev(STUB({ filename: 'release-notes.md', content: '# Release notes\n\nThe build is green.\n', mediaType: 'text/markdown', comments: [{ id: 1, parent_id: null, anchor: { whole: true }, body: 'Please check.', author: { kind: 'owner', issuer: 'local', subject: 'Operator' }, created_at: '2026-10-22T00:00:00Z' }] }));
@@ -108,7 +116,7 @@ const { DATA_WORLD, httpJson } = require('./helpers/census_world');
         await sc('settings menu', async () => { await tap('[aria-controls="top-bar-settings-menu"]'); }, { min: 6, expect: `getComputedStyle(document.getElementById('top-bar-settings-menu')).display !== 'none'` });
         await ev(`document.body.click(); true`);
     } finally { await httpJson('DELETE', `/api/board/${TEAM}`).catch(() => {}); if (standIn) await standIn.stop().catch(() => {}); await guard.restore().catch(() => {}); await client.close(); }
-    const bad = problems(results).concat(required(results, ['chat bubbles', 'toasts', 'home (agent list)', 'agent chat and composer', 'composer: model menu', 'chat: find bar', 'terminal view', 'side panel: files', 'side panel: browse', 'side panel: artifacts', 'side panel: customize tabs', 'artifact, full screen', 'artifact: comments sheet', 'team settings: workflow', 'history list', 'history chat', 'history chat: notes', 'history chat: commits', 'board: a team board', 'workflows list', 'workflow detail', 'workflow edit', 'workflow run detail', 'jobs list', 'job detail', 'job edit', 'docs', 'settings: general', 'settings: agents', 'settings: terminal', 'settings: notifications', 'settings: files', 'settings: cleanup', 'settings: network', 'settings: security', 'launch: chooser', 'launch: new agent', 'launch: team', 'create task', 'settings menu']));
+    const bad = problems(results).concat(required(results, ['side panel: board composer', 'chat bubbles', 'toasts', 'home (agent list)', 'agent chat and composer', 'composer: model menu', 'chat: find bar', 'terminal view', 'side panel: files', 'side panel: browse', 'side panel: artifacts', 'side panel: customize tabs', 'artifact, full screen', 'artifact: comments sheet', 'team settings: workflow', 'history list', 'history chat', 'history chat: notes', 'history chat: commits', 'board: a team board', 'workflows list', 'workflow detail', 'workflow edit', 'workflow run detail', 'jobs list', 'job detail', 'job edit', 'docs', 'settings: general', 'settings: agents', 'settings: terminal', 'settings: notifications', 'settings: files', 'settings: cleanup', 'settings: network', 'settings: security', 'launch: chooser', 'launch: new agent', 'launch: team', 'create task', 'settings menu']));
     if (process.env.PHONE_TARGETS_REPORT) { require('node:fs').writeFileSync(process.env.PHONE_TARGETS_REPORT, results.map(r => `${r.name}: ${r.error || r.n + ' controls, ' + r.small.length + ' small'}`).join('\n') + '\n--\n' + bad.join('\n') + '\n'); process.exit(0); }
     assert.deepEqual(bad, [], 'controls under 44 px on a phone:\n  ' + bad.join('\n  '));
     console.log(`PASS ${results.length} scenes: every control is at least 44 x 44 px`);

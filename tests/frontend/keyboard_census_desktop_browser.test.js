@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
 const { launchStandIn } = require('./helpers/stand_in_agent');
 const { guardSettings } = require('./helpers/settings_guard');
-const { tap: tapSel, required } = require('./helpers/phone_targets');
+const { tap: tapSel, required, openBoardComposer, BOARD_COMPOSER_UP } = require('./helpers/phone_targets');
 const { STUB, HEX } = require('./helpers/comments_scale');
 const kb = require('./helpers/keyboard_census');
 const { DATA_WORLD, httpJson } = require('./helpers/census_world');
@@ -54,6 +54,7 @@ const BUBBLES = [{ type: 'user', content: 'Is the build green?', key: 'c1', time
         await tap('#live-view-btn-chat');
         await ev(`window.toggleAgenticPanel && window.toggleAgenticPanel(true); true`);
         for (const tab of await ev(`[...document.querySelectorAll('#agentic-block-top .agentic-tab[data-tab]')].filter(e => e.getClientRects().length).map(e => e.dataset.tab)`)) await sc(`side panel: ${tab}`, async () => { await ev(`window.switchAgenticTab(${JSON.stringify(tab)}, 'top'); true`); }, { min: 5, expect: `document.querySelector('#agentic-block-top .agentic-tab[data-tab="${tab}"]').classList.contains('active')` });
+        await sc('side panel: board composer', async () => { await openBoardComposer(ev, waitFor, TEAM); }, { expect: BOARD_COMPOSER_UP }); // the team's message box (#6239)
         await load();
         await sc('history list', async () => { await ev(`window.switchNavTab('history'); true`); await waitFor(`document.getElementById('history-sessions-list').textContent.includes('Release notes chat')`, 'history', 10000); }, { min: 4 });
         await sc('history chat', async () => { await tap('#history-sessions-list [data-on-click="history-open"]'); await waitFor(`document.getElementById('history-messages').textContent.includes('Hi there')`, 'chat', 10000); }, { min: 5, expect: `document.getElementById('history-messages').getClientRects().length > 0` });
@@ -115,7 +116,7 @@ const BUBBLES = [{ type: 'user', content: 'Is the build green?', key: 'c1', time
         await ev(`window.switchNavTab('workflows'); true`); await waitFor(`!!document.querySelector('#wf-list-container .wf-card[data-on-click="wf-select"]')`, 'workflows', 10000); await tap('.wf-card[data-on-click="wf-select"]'); await waitFor(`!!document.querySelector('[data-on-click="wf-edit"]')`, 'wf detail', 10000);
         await dlg('dialog: workflow edit', { opener: '[data-on-click="wf-edit"]', open: () => ev(`document.querySelector('[data-on-click="wf-edit"]').click(); true`) });
     } finally { await httpJson('DELETE', `/api/board/${TEAM}`).catch(() => {}); if (standIn) await standIn.stop().catch(() => {}); await guard.restore().catch(() => {}); await client.close(); }
-    const bad = results.filter(r => r.error).map(r => `${r.name}: the scene did not open (${r.error})`).concat(found, required(results, ['home (agent list)', 'agent chat and composer', 'composer: model menu', 'terminal view', 'history list', 'history chat', 'board: a team board', 'workflows list', 'workflow run detail', 'job edit', 'settings: general', 'settings: security', 'launch: new agent', 'create task', 'artifact viewer', 'artifact viewer: comments', 'dialog: launch', 'dialog: settings', 'dialog: create task', 'dialog: job edit', 'dialog: workflow edit', 'chat bubbles', 'toasts']));
+    const bad = results.filter(r => r.error).map(r => `${r.name}: the scene did not open (${r.error})`).concat(found, required(results, ['side panel: board composer', 'home (agent list)', 'agent chat and composer', 'composer: model menu', 'terminal view', 'history list', 'history chat', 'board: a team board', 'workflows list', 'workflow run detail', 'job edit', 'settings: general', 'settings: security', 'launch: new agent', 'create task', 'artifact viewer', 'artifact viewer: comments', 'dialog: launch', 'dialog: settings', 'dialog: create task', 'dialog: job edit', 'dialog: workflow edit', 'chat bubbles', 'toasts']));
     if (process.env.KEYBOARD_REPORT) { require('node:fs').writeFileSync(process.env.KEYBOARD_REPORT, results.map(r => `${r.name}: ${r.error || r.stops + ' stops'}${process.env.KEYBOARD_PATHS ? '\n    ' + r.path : ''}`).join('\n') + '\n--\n' + bad.join('\n') + '\n'); process.exit(0); }
     assert.deepEqual(bad, [], 'keyboard-only problems on a desktop:\n  ' + bad.join('\n  '));
     console.log(`PASS ${results.length} scenes: Tab reaches every control and shows where it is`);

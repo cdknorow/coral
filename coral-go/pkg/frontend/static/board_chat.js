@@ -8,6 +8,7 @@ import { messageAttachmentAttrs, messageAttachmentsHtml } from './board_attachme
 import { pollEvery } from './overload.js';
 import { resolveBoardArtifacts } from './board_artifacts.js';
 import { initGrowingTextarea } from './growing_textarea.js';
+import { announceNotice } from './notifications.js';
 import { paintPauseButton as _paintPauseButton } from './board_pause_button.js';
 
 // ── Board Chat (right-panel tab) ──────────────────────────────────────
@@ -428,14 +429,24 @@ async function _sendBoardChat(boardName) {
     const content = inputEl.value.trim();
     if (!content) return;
     inputEl.value = '';
+    let sent = false;
     try {
-        await boardFetch(boardName, `/messages`, {
+        const resp = await boardFetch(boardName, `/messages`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ subscriber_id: OPERATOR_ID, as: 'Operator', content }),
         });
-        _loadBoardPanelChat(boardName);
-    } catch { /* ignore */ }
+        sent = resp.ok;
+    } catch { /* not sent: said below */ }
+    if (!sent) {
+        // The words go back in the box (ahead of anything typed since) and the failure is said: a message that vanished with no word is the worst way to fail (#6275).
+        inputEl.value = inputEl.value ? `${content}\n${inputEl.value}` : content;
+        inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+        showToast('Could not send to the team. Your message is back in the box.', true);
+        return;
+    }
+    announceNotice('Message sent'); // heard once, not drawn: the message itself appears in the list
+    _loadBoardPanelChat(boardName);
 }
 (window.__coral ||= {})._sendBoardChat = _sendBoardChat;
 

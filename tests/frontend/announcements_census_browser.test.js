@@ -5,6 +5,7 @@
 const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
 const { watch, clear, log, problems, said } = require('./helpers/announce_census');
+const { openBoardComposer } = require('./helpers/phone_targets');
 const BASE = require('./test_base').BASE;
 const S = `(window.__coralStatic || '/static/')`;
 
@@ -78,6 +79,25 @@ const S = `(window.__coralStatic || '/static/')`;
                 await ev(`(async () => { const n = await import(${S} + 'notifications.js'); n.showToast('Saved to the board.'); n.showToast('Could not reach the agent.', true); return true; })()`);
                 await wait(800); // sleep-ok: an announcement is timed; there is no event to wait for
             }, { must: [[/Saved to the board/, 'a toast'], [/Could not reach the agent/, 'an error toast']] });
+            // the team's message box (#6239): a send is said once, and a send that fails says so and gives the words back
+            await ev(`window.__m.add('board-agent', 'B', 3, { sleeping: false, board_project: 'ann-team' }); window.selectLiveSession('board-agent', 'claude', 'board-agent-id', 'local'); true`);
+            await wait(800); // sleep-ok: the other agent's chat draws
+            await ev(`window.toggleAgenticPanel && window.toggleAgenticPanel(true); true`);
+            if (mobile && !(await ev(`!!document.getElementById('agentic-panel-board')`))) await ev(`(document.getElementById('popout-panel-toggle-btn') || document.getElementById('panel-toggle-btn')).click(); true`);
+            await openBoardComposer(ev, waitFor, 'ann-team', false);
+            await ev(`(() => { const inner = window.fetch; window.__boardPost = 201; window.fetch = (u, o = {}) => { const url = String(u && u.url || u); if ((o.method || 'GET').toUpperCase() === 'POST' && /\\/api\\/board\\/[^/]+\\/messages(\\?|$)/.test(url)) return Promise.resolve(new Response(JSON.stringify({ id: 1 }), { status: window.__boardPost, headers: { 'content-type': 'application/json' } })); return inner(u, o); }; return true; })()`);
+            const boardSend = async text => {
+                await ev(`(() => { const i = document.getElementById('board-panel-input'); i.focus(); i.value = ${JSON.stringify(text)}; i.dispatchEvent(new Event('input', { bubbles: true })); document.querySelector('#board-chat-input-pane .btn-send').click(); return true; })()`);
+                await wait(1200); // sleep-ok: an announcement is timed; there is no event to wait for
+            };
+            await scene(`${tag}: a board message is sent`, async () => { await boardSend('Ship it when green.'); }, { must: [[/Message sent/i, 'Message sent']] });
+            await scene(`${tag}: a board message fails to send`, async () => {
+                await ev(`window.__boardPost = 500; true`);
+                await boardSend('This one will not go.');
+                const back = await ev(`document.getElementById('board-panel-input').value`);
+                if (back !== 'This one will not go.') throw new Error('the words are not back in the box (' + JSON.stringify(back) + ')');
+                await ev(`window.__boardPost = 201; true`);
+            }, { must: [[/Could not send/i, 'the failure']] });
         }
     } finally { await client.close(); }
     if (process.env.ANNOUNCE_REPORT) { require('node:fs').writeFileSync(process.env.ANNOUNCE_REPORT, scenes.map(s => `## ${s.name}\n` + s.entries.map(e => `  ${String(e.t).padStart(5)} ms ${e.loud ? '!' : ' '} ${e.region}: ${e.text}${process.env.ANNOUNCE_HOW ? '   [' + e.how + ']' : ''}`).join('\n')).join('\n') + '\n--\n' + found.join('\n') + '\n'); process.exit(0); }

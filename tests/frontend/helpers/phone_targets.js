@@ -209,4 +209,13 @@ function required(results, names) {
     return names.filter(n => !have.has(n)).map(n => `${n}: the scene was never visited`);
 }
 
-module.exports = { useScaleShot, scaleOf, SCALE, MEASURE, ALLOW, ALLOW_DUPS, ALLOW_UNNAMED, ALLOW_CONTRAST, useThemeSetter, scene, tap, problems, required };
+/** Open the team board's message box (#6239) the way the dashboard does: an agent on `team` is selected and its side panel's Board tab shown. For the censuses' "side panel: board composer" scene. */
+async function openBoardComposer(ev, waitFor, team, select = true) {
+    if (select) await ev(`window.__m.add('board-agent', 'B', 3, { sleeping: false, board_project: ${JSON.stringify(team)} }); window.selectLiveSession('board-agent', 'claude', 'board-agent-id', 'local'); true`);
+    await waitFor(`!!document.getElementById('agentic-panel-board')`, 'the agent panel', 10000);
+    await ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'render.js'); m.showBoardChatTab(${JSON.stringify(team)}); window.switchAgenticTab('board', 'top'); return true; })()`);
+    await waitFor(`!!document.getElementById('board-panel-input') && !!document.getElementById('board-panel-input').offsetParent`, 'the board message box', 10000);
+}
+const BOARD_COMPOSER_UP = `!!document.getElementById('board-panel-input') && !!document.getElementById('board-panel-input').offsetParent && document.querySelector('#board-chat-input-pane .board-mention-chip').getClientRects().length > 0`;
+
+module.exports = { openBoardComposer, BOARD_COMPOSER_UP, useScaleShot, scaleOf, SCALE, MEASURE, ALLOW, ALLOW_DUPS, ALLOW_UNNAMED, ALLOW_CONTRAST, useThemeSetter, scene, tap, problems, required };
