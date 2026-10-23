@@ -26,7 +26,6 @@ const KNOWN = {
   'launch_dialog.js:launch-dir-note': 'the home-folder warning appears with its words already in it',
   'settings_dialog.js:settings-unsaved': '"Unsaved changes" appears with its words already in it',
   'terminal_backend.js:default-notice-banner': 'the tmux notice appears with its words already in it',
-  'signin_line.js:claude-signin-line': 'the Claude sign-in line appears with its words already in it',
 };
 
 function walk(dir, ext, out = []) {
