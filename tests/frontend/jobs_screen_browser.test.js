@@ -77,7 +77,7 @@ const S = `(window.__coralStatic || '/static/')`;
             assert.match(await text('#scheduler-detail .sched-fail-banner'), /The last run failed.*step 2 \(Test\) exited with 3/s);
             assert.equal(await ev(`/\\benabled\\b/i.test(document.querySelector('#scheduler-detail .sched-header').textContent)`), false, `${at}: no "enabled" pill`);
             const facts = await ev(`[...document.querySelectorAll('#scheduler-detail > .sched-facts dt')].map(d => d.textContent.trim() + '=' + d.nextElementSibling.textContent.replace(/\\s+/g, ' ').trim())`);
-            assert.equal(facts[0], 'Runs=Every day at 02:00 (UTC)');
+            assert.equal(facts[0], 'Schedule=Every day at 02:00 (UTC)', `${at}: the schedule row is Schedule, the history below is the only Runs`);
             // Next agrees with the schedule: 02:00 UTC, in this browser's own time (a different zone would show 19:00 in Pacific)
             const expectNext = await ev(`(() => { const t = new Date(window.__nextDaily(0, 2)); const p = n => String(n).padStart(2, '0'); const day = d => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); const dd = Math.round((day(t) - day(new Date())) / 86400000); return (dd === 0 ? 'today ' : dd === 1 ? 'tomorrow ' : t.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ') + p(t.getHours()) + ':' + p(t.getMinutes()); })()`);
             assert.equal(facts[1], `Next=${expectNext} your time`, `${at}: Next is the schedule's next 02:00 UTC in the viewer's time`);
@@ -101,9 +101,25 @@ const S = `(window.__coralStatic || '/static/')`;
             await ev(`document.querySelector('#scheduler-detail .sched-more-btn').click(); true`);
             assert.equal(await ev(vis('#scheduler-detail .sched-delete')), true);
             await ev(`document.querySelector('#scheduler-detail .sched-more-btn').click(); true`);
+            // More closes on an outside click, and when Tab leaves it
+            await ev(`document.querySelector('#scheduler-detail .sched-more-btn').click(); true`);
+            await ev(`document.querySelector('#scheduler-detail .sched-header h2').click(); true`);
+            assert.equal(await ev(vis('#scheduler-detail .sched-delete')), false, `${at}: a click elsewhere closes More`);
+            assert.equal(await ev(`document.querySelector('#scheduler-detail .sched-more-btn').getAttribute('aria-expanded')`), 'false');
+            await ev(`document.querySelector('#scheduler-detail .sched-more-btn').click(); document.querySelector('#scheduler-detail .sched-delete').focus(); true`);
+            for (const type of ['rawKeyDown', 'keyUp']) await client.Input.dispatchKeyEvent({ type, key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
+            await waitFor(`!document.querySelector('#scheduler-detail .sched-more-menu') || document.querySelector('#scheduler-detail .sched-more-menu').hidden`, `${at}: Tab out of More closes it`, 3000);
+            assert.equal(await ev(`document.querySelector('#scheduler-detail .sched-more-btn').getAttribute('aria-expanded')`), 'false');
             if (mobile) {
                 assert.deepEqual(await ev(`[...document.querySelectorAll('#scheduler-detail .sched-actions .btn')].filter(b => b.getClientRects().length && b.getBoundingClientRect().height < 43.5).length`), 0, `${at}: 44 px targets`);
                 assert.equal(await ev(`document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1`), true, `${at}: no sideways scroll`);
+            }
+            if (mobile) {
+                // 200% text: the page does not scroll sideways and nothing on the job page is cut off by the screen's edge
+                await ev(`document.documentElement.style.fontSize = '32px'; true`);
+                const fit = await ev(`(() => { const r = [...document.querySelectorAll('#scheduler-detail .sched-actions .btn, #scheduler-detail .sched-header h2, #scheduler-detail .sched-facts dd, #scheduler-detail .sched-runs-table')].filter(e => e.getClientRects().length).map(e => Math.round(e.getBoundingClientRect().right)); return { right: Math.max(...r), width: window.innerWidth, scroll: document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1 }; })()`);
+                assert.ok(fit.scroll && fit.right <= fit.width + 1, `${at} at 200% text: nothing past the screen edge: ${JSON.stringify(fit)}`);
+                await ev(`document.documentElement.style.fontSize = ''; true`);
             }
             await shot(`jobs-page-${w}`);
         }
