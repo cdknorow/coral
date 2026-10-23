@@ -21,6 +21,8 @@
 // set in (Coral_Secret_Key is CORAL_SECRET_KEY there), so a filter that matched the case let a
 // server setting spelled another way through to every agent (#19, Security's #20 F1).
 //
+// Claude Code's own session markers (ClaudeSessionMarkers) are removed too: they belong to the Claude Code session that started the server, not to the agent.
+//
 // The variables that are not CORAL_ ones pass on purpose, secrets among them (GITHUB_TOKEN,
 // AWS_*, ANTHROPIC_API_KEY): the agent CLIs and the tools they run need the user's own keys.
 // This filter keeps Coral's server settings away from agents, not the user's environment.
@@ -56,8 +58,30 @@ func IsCoral(name string) bool {
 	return len(name) >= len("CORAL_") && strings.EqualFold(name[:len("CORAL_")], "CORAL_")
 }
 
+// ClaudeSessionMarkers are the variables a running Claude Code session sets for the programs it starts: they say "this process was started by that session" (and where to
+// reach it), not anything an agent needs. A Coral server started from a Claude Code session (an agent starting a test server, say) used to hand them to every agent it launched,
+// and a Claude Code agent that finds them acts as that session's child: QA saw "Transcript saving is off: inherited CLAUDE_CODE_CHILD_SESSION". They are removed.
+//
+// Kept on purpose: the credential and provider variables (agentsignin's credentialEnv: CLAUDE_CODE_OAUTH_TOKEN, CLAUDE_CODE_USE_BEDROCK/VERTEX/FOUNDRY, ANTHROPIC_*), and every
+// setting a person chooses (CLAUDE_CONFIG_DIR, CLAUDE_CODE_MAX_OUTPUT_TOKENS, ...): none is a marker of a parent session.
+var ClaudeSessionMarkers = map[string]bool{
+	"CLAUDECODE":                   true, // =1 in every process a Claude Code session starts
+	"CLAUDE_CODE_CHILD_SESSION":    true,
+	"CLAUDE_CODE_ENTRYPOINT":       true, // cli, sdk, ...: how the parent was started
+	"CLAUDE_CODE_EXECPATH":         true, // the parent's own executable
+	"CLAUDE_CODE_MESSAGING_SOCKET": true, // how to reach the parent
+	"CLAUDE_CODE_MESSAGING_TOKEN":  true, // and the token for it: never for another agent
+	"CLAUDE_CODE_SESSION_ATTENDED": true,
+	"CLAUDE_CODE_SESSION_ID":       true,
+	"CLAUDE_CODE_SSE_PORT":         true, // the parent's IDE link
+	"CLAUDE_PID":                   true,
+}
+
 // Keep reports whether a variable named name may reach an agent.
 func Keep(name string) bool {
+	if ClaudeSessionMarkers[strings.ToUpper(name)] {
+		return false
+	}
 	if !IsCoral(name) {
 		return true
 	}
