@@ -1,0 +1,43 @@
+name: Promote draft rehearsal (throwaway, trial branch only)
+
+# #6394: runs the create and upload commands of promote.yml's publish step on a throwaway DRAFT release, checks what GitHub made of them, and deletes the draft.
+# It never publishes (a published immutable release cannot be undone) and it is never merged: it exists on a trial branch only.
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+env:
+  CORAL_TELEMETRY_DISABLED: "1"
+
+jobs:
+  rehearse:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - name: Create a draft, attach two files, check it, delete it
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          name="promote-v0.0.0-rehearsal-${GITHUB_RUN_ID}"
+          printf '{"rehearsal":true}\n' > promote.json
+          printf '{"rehearsal":"bundle"}\n' > promote.json.sigstore.json
+          trap 'gh release delete "$name" --repo "${GITHUB_REPOSITORY}" --yes >/dev/null 2>&1 || true' EXIT
+          if gh release view "$name" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then echo "exists"; exit 1; fi
+          gh release create "$name" --repo "${GITHUB_REPOSITORY}" --draft --prerelease --latest=false --target "${GITHUB_SHA}" --title "$name" \
+            --notes "Rehearsal draft, deleted by the same run."
+          gh release upload "$name" promote.json promote.json.sigstore.json --repo "${GITHUB_REPOSITORY}"
+          # the flags of the publish command, accepted on a draft (the draft is not published)
+          gh release edit "$name" --repo "${GITHUB_REPOSITORY}" --latest=false
+          gh api "repos/${GITHUB_REPOSITORY}/releases" --paginate --jq ".[] | select(.name == \"$name\") | {name, draft, prerelease, target_commitish, assets: [.assets[].name]}" | tee rel.json
+          [ "$(jq -r .draft rel.json)" = true ] || { echo "not a draft"; exit 1; }
+          [ "$(jq -r .prerelease rel.json)" = true ] || { echo "not a prerelease"; exit 1; }
+          [ "$(jq -r '.assets|sort|join(",")' rel.json)" = "promote.json,promote.json.sigstore.json" ] || { echo "assets differ"; exit 1; }
+          [ "$(jq -r .target_commitish rel.json)" = "${GITHUB_SHA}" ] || { echo "target differs"; exit 1; }
+          echo "rehearsal ok: draft ${name} created with both assets, flags accepted; deleting it"
