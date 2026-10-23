@@ -128,8 +128,11 @@ function New-Scenario([string]$name, [hashtable]$plan, [string]$from = $installD
     $out = & (Join-Path $installDir 'coral.exe') open --print --url $base --home $data 2>&1 | Out-String
     if ($out -notmatch '(http\S*login_token=\S+)') { Fail "$name`: no sign-in link" }
     $link = $Matches[1]
-    $null = Invoke-WebRequest -Uri $link -SessionVariable sv -SkipHttpErrorCheck -UseBasicParsing # the redirect after the one use of the link lands on the dashboard, with the cookie set
+    $lr = Invoke-WebRequest -Uri $link -SessionVariable sv -SkipHttpErrorCheck -UseBasicParsing # the redirect after the one use of the link lands on the dashboard, with the cookie set
     $script:session = $sv
+    $names = @($sv.Cookies.GetCookies($base) | ForEach-Object { $_.Name })
+    Write-Host "sign-in: status $($lr.StatusCode), $($names.Count) cookie(s): $($names -join ',')"
+    if ($names.Count -eq 0) { Fail "$name`: the sign-in link gave no session cookie (link host: $(([uri]$link).Host))" }
 }
 function Click([hashtable]$extraHeaders = @{}, [string]$body = '', $websession = $script:session) {
     $h = @{ Origin = $base; 'Sec-Fetch-Site' = 'same-origin' }
@@ -161,9 +164,9 @@ try {
     $r = Click -websession $null
     if ($r.StatusCode -ne 401) { Fail "no session cookie: expected 401, got $($r.StatusCode)" }
     $r = Click @{ 'X-Coral-Session-Token' = 'not-a-session' }
-    if ($r.StatusCode -lt 400) { Fail "an agent's session token: expected a refusal, got $($r.StatusCode)" }
+    if ($r.StatusCode -ne 403) { Fail "an agent's session token: expected 403 operator_only, got $($r.StatusCode) $($r.Content)" }
     $r = Click @{} '{"version":"1.4.999"}'
-    if ($r.StatusCode -ne 400) { Fail "a body naming a version: expected 400, got $($r.StatusCode)" }
+    if ($r.StatusCode -ne 400) { Fail "a body naming a version: expected 400, got $($r.StatusCode) $($r.Content)" }
     & (Join-Path $installDir 'coral-update.exe') apply # by hand, no click: it answers and asks nothing
     $res = Read-Result 'refusals-by-hand'
     if (-not $res -or $res.result -ne 'not_requested') { Fail "apply by hand: expected not_requested, got $($res | ConvertTo-Json -Compress)" }
