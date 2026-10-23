@@ -26,6 +26,19 @@ const S = `(window.__coralStatic || '/static/')`;
             await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired();
             await waitFor(`typeof window.switchNavTab==='function' && !!window.__coralReady`, 'dashboard'); await ev(`window.__coralReady.startup('liveList','settings')`);
             await watch(ev);
+            await scene(`${tag}: hub: a search is made`, async () => {
+                await ev(`window.switchNavTab('history'); true`);
+                await waitFor(`document.getElementById('history-sessions-list').textContent.includes('Laptop conversation')`, 'history', 10000);
+                await clear(ev);
+                const typed = text => ev(`(() => { const i = document.getElementById('history-search'); i.focus(); i.value = ${JSON.stringify(text)}; i.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
+                await typed('needle');
+                await waitFor(`document.querySelectorAll('#chat-search-results .chat-search-hit').length >= 1`, 'hits', 10000);
+                await wait(800); // sleep-ok: an announcement is timed; there is no event to wait for
+                await typed('zzz');
+                await waitFor(`/No matching chats/.test(document.getElementById('chat-search-results').textContent)`, 'no results', 10000);
+                await wait(800); // sleep-ok: an announcement is timed; there is no event to wait for
+                await typed('');
+            }, { must: [[/chats? match/, 'the number of chats that match'], [/No matching chats/, 'nothing matched']], forbid: [/needle from/] });
             await scene(`${tag}: hub: a chat is opened`, async () => {
                 await ev(`window.switchNavTab('history'); true`);
                 await waitFor(`document.getElementById('history-sessions-list').textContent.includes('Laptop conversation')`, 'history', 10000);

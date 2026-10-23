@@ -37,6 +37,7 @@ async function setupHubWorld({ client, Page, Emulation, width, height, mobile })
     const [_,server,path]=match;window.__remoteRequests.push({server,path,method:m,query:p.search});
     if(path==='/api/sessions/history' && server==='m1' && window.__holdHistory) return new Promise(resolve=>{window.__releaseHistory=()=>resolve(new Response(JSON.stringify({sessions:[{session_id:'same-chat',summary_title:'OLD LAPTOP RESULT'}],total:1}),{headers:{'content-type':'application/json'}}));});
     if(path==='/api/sessions/history')return json({sessions:[{session_id:'same-chat',summary_title:server==='m1'?'Laptop conversation':'Desktop conversation',source_type:'claude'},{session_id:'chat-2',summary_title:'Second conversation on '+server,source_type:'claude'},{session_id:'chat-3',summary_title:'Third conversation on '+server,source_type:'codex'}],total:3,page:1,page_size:50});
+    if(path==='/api/sessions/history/search'&&/[?&]q=zzz/.test(p.search))return json({status:'complete',results:[]});
     if(path==='/api/sessions/history/search')return json({status:'complete',results:[{session_id:'same-chat',type:'agent',hits:[{role:'user',excerpt:'needle from '+server,locator:{session_id:'same-chat',message_index:0}}]}]});
     if(path==='/api/sessions/history/same-chat')return json({agent_type:'claude',messages:[{type:'user',content:'needle from '+server},{type:'assistant',text:'Scoped to this computer.'}],total:2,start:0});
     if(path.endsWith('/notes'))return json({notes_md:'Notes from '+server});

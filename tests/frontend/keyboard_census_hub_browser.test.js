@@ -28,6 +28,13 @@ const { setupHubWorld, BASE } = require('./helpers/hub_world');
                 const nav = async tab => { await ev(`window.switchNavTab('${tab}'); true`); };
         await sc(`${tag}: hub: home`, async () => { await waitFor(`document.querySelectorAll('button, a[href]').length > 5`, 'home'); });
         await sc(`${tag}: hub: chats list`, async () => { await nav('history'); await waitFor(`document.getElementById('history-sessions-list').textContent.includes('Laptop conversation')`, 'history'); });
+        // the Chats page's search through the Hub (#6305): the results, the advanced filters, a search that finds nothing
+        const histType = text => ev(`(() => { const i = document.getElementById('history-search'); i.focus(); i.value = ${JSON.stringify(text)}; i.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
+        await sc(`${tag}: hub: search results`, async () => { await histType('needle'); await waitFor(`document.querySelectorAll('#chat-search-results .chat-search-hit').length >= 1`, 'search hits', 10000); }, {  expect: `document.querySelectorAll('#chat-search-results .chat-search-hit').length >= 1` });
+        await sc(`${tag}: hub: search, advanced filters`, async () => { await tap('#hf-adv-toggle'); await waitFor(`document.getElementById('hf-advanced').style.display !== 'none'`, 'advanced filters', 5000); }, {  expect: `document.getElementById('hf-advanced').style.display !== 'none'` });
+        await tap('#hf-adv-toggle');
+        await sc(`${tag}: hub: search finds nothing`, async () => { await histType('zzz'); await waitFor(`/No matching chats/.test(document.getElementById('chat-search-results').textContent)`, 'no results', 10000); }, {  expect: `/No matching chats/.test(document.getElementById('chat-search-results').textContent)` });
+        await histType(''); await waitFor(`!document.getElementById('history-sessions-list').hidden`, 'the chat list again', 10000);
         await sc(`${tag}: hub: chat transcript`, async () => { await tap('#history-sessions-list [data-on-click="history-open"]'); await waitFor(`document.getElementById('history-messages').textContent.includes('needle from')`, 'chat'); });
         for (const t of ['notes', 'activity', 'tasks', 'agent-notes', 'commits']) await sc(`${tag}: hub: chat tab ${t}`, async () => { await tap(`.history-tab-btn[data-tab="${t}"]`); }, { expect: `document.querySelector('.history-tab-btn[data-tab="${t}"]').classList.contains('active')` });
         await sc(`${tag}: hub: boards list`, async () => { await nav('board'); await waitFor(`document.querySelectorAll('#mb-projects-ul [data-project]').length===2`, 'boards'); });
@@ -53,7 +60,7 @@ const { setupHubWorld, BASE } = require('./helpers/hub_world');
         await Emulation.setDeviceMetricsOverride({ width: 390, height: 844, deviceScaleFactor: 1, mobile: true }); await Emulation.setTouchEmulationEnabled({ enabled: true });
         await run('phone');
         } finally { await client.close(); }
-    const bad = results.filter(r => r.error).map(r => `${r.name}: the scene did not open (${r.error})`).concat(found, required(results, ['hub: home', 'hub: chats list', 'hub: chat transcript', 'hub: chat tab commits', 'hub: boards list', 'hub: board', 'hub: servers', 'hub: servers, a computer opened', 'hub: servers, renaming', 'hub: inbox', 'hub: artifacts', 'hub: docs', 'hub: account menu', 'hub: dialog launch', 'hub: dialog settings'].flatMap(n => ['desktop', 'phone'].map(t => `${t}: ${n}`))));
+    const bad = results.filter(r => r.error).map(r => `${r.name}: the scene did not open (${r.error})`).concat(found, required(results, ['hub: home', 'hub: chats list', 'hub: search results', 'hub: search, advanced filters', 'hub: search finds nothing', 'hub: chat transcript', 'hub: chat tab commits', 'hub: boards list', 'hub: board', 'hub: servers', 'hub: servers, a computer opened', 'hub: servers, renaming', 'hub: inbox', 'hub: artifacts', 'hub: docs', 'hub: account menu', 'hub: dialog launch', 'hub: dialog settings'].flatMap(n => ['desktop', 'phone'].map(t => `${t}: ${n}`))));
     if (process.env.KEYBOARD_REPORT) { require('node:fs').writeFileSync(process.env.KEYBOARD_REPORT, results.map(r => `${r.name}: ${r.error || r.stops + ' stops'}${process.env.KEYBOARD_PATHS ? '\n    ' + r.path : ''}`).join('\n') + '\n--\n' + bad.join('\n') + '\n'); process.exit(0); }
     assert.deepEqual(bad, [], 'keyboard-only problems through the Hub:\n  ' + bad.join('\n  '));
     console.log(`PASS ${results.length} Hub scenes: Tab reaches every control and shows where it is`);
