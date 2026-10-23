@@ -61,11 +61,13 @@ export function applySigninStatus(data) {
     if (!line) return;
     const off = !!data && data.claude_signed_in === false;
     if (data && data.claude_signed_in === true) browserLocal.remove(DISMISS_KEY); // signed in: a later sign-out says so again
-    line.hidden = !off || dismissed() || !hasLocalClaude();
-    if (line.hidden) { // a tap's hint does not stay open for the next time
+    // Written only when it differs: the line follows the agent list, which a feed message re-reads (syncSigninLine), and a write of the value already there is still a write to the page (#5010's budget).
+    const hide = !off || dismissed() || !hasLocalClaude();
+    if (line.hidden !== hide) line.hidden = hide;
+    if (hide) { // a tap's hint does not stay open for the next time
         const hint = document.getElementById('signin-line-hint'), btn = document.getElementById('signin-line-btn');
-        if (hint) hint.hidden = true;
-        if (btn) btn.setAttribute('aria-expanded', 'false');
+        if (hint && !hint.hidden) hint.hidden = true;
+        if (btn && btn.getAttribute('aria-expanded') !== 'false') btn.setAttribute('aria-expanded', 'false');
     }
 }
 
