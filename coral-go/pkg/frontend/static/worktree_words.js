@@ -7,12 +7,14 @@ export function worktreeConfirmWords(branch) {
 }
 
 /** The kill answer's `worktree` ({ state: removed | kept | failed | none, path, branch, reason }) as words: { text, error } (error: said as an alert, the rest as a status), or null when there is nothing to say. */
-export function worktreeAnswerWords(w) {
+export function worktreeAnswerWords(w, subject = 'team') {
     if (!w || typeof w !== 'object' || !w.state || w.state === 'none') return null;
+    const stopped = subject === 'agent' ? 'The agent was killed' : 'The team stopped';
     const reason = typeof w.reason === 'string' ? w.reason.trim().replace(/[.\s]+$/, '') : '';
     const where = w.path ? ` It is at ${w.path}${w.branch ? `, on branch ${w.branch}` : ''}.` : (w.branch ? ` Its branch is ${w.branch}.` : '');
-    if (w.state === 'removed') return { text: 'The team stopped and its worktree was removed.', error: false };
-    if (w.state === 'kept') return { text: `The team stopped. Its worktree was kept${reason ? `: ${reason}` : ''}.${where}`, error: false };
-    if (w.state === 'failed') return { text: `The team stopped, but its worktree could not be removed${reason ? `: ${reason}` : ''}.${where}`, error: true };
+    // removed: the worktree went; a reason says what stays ("its branch is kept: it has commits that are not merged"). kept: why it was kept. failed: why it could not be removed.
+    if (w.state === 'removed') return { text: `${stopped} and its worktree was removed.${reason ? ` ${reason.charAt(0).toUpperCase()}${reason.slice(1)}.` : ''}`, error: false };
+    if (w.state === 'kept') return { text: `${stopped}. Its worktree was kept${reason ? `: ${reason}` : ''}.${where}`, error: false };
+    if (w.state === 'failed') return { text: `${stopped}, but its worktree could not be removed${reason ? `: ${reason}` : ''}.${where}`, error: true };
     return null;
 }
