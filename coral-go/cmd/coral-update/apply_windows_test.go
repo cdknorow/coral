@@ -121,8 +121,9 @@ func TestRunApplyThatInstallsNothingStartsCoralFromTheMarkersFolder(t *testing.T
 // The status says what this install is and whether the apply can update it, as the one install object every platform fills, for the server to ask before it quits
 // (trigger.Preflight reads it).
 func TestStatusSaysWhetherThisInstallCanBeUpdated(t *testing.T) {
-	old := newWindowsMSI
-	t.Cleanup(func() { newWindowsMSI = old })
+	old, oldSelf := newWindowsMSI, selfFolder
+	t.Cleanup(func() { newWindowsMSI, selfFolder = old, oldSelf })
+	selfFolder = func() string { return `C:\Users\x\coral` } // this program runs from the folder the fake says is registered
 	for name, tc := range map[string]struct {
 		msi  apply.MSI
 		want status.Install
@@ -132,11 +133,19 @@ func TestStatusSaysWhetherThisInstallCanBeUpdated(t *testing.T) {
 		"an unreadable install folder": {portableMSI{why: "unreadable_install"}, status.Install{Kind: "unwritable", Unsupported: "unreadable_install"}},
 		"a registered per-machine MSI": {portableMSI{why: ""}, status.Install{Kind: "msi", Writable: true}},
 	} {
+		selfFolder = func() string { return `C:\Users\x\coral` }
 		newWindowsMSI = func(string) apply.MSI { return tc.msi }
 		got := probeInstall()
 		require.NotNil(t, got, name)
 		assert.Equal(t, tc.want, *got, name)
 	}
+	// a copy run from a folder other than the registered one is portable, however clean the registered product is (#6436)
+	newWindowsMSI = func(string) apply.MSI { return portableMSI{why: ""} }
+	selfFolder = func() string { return `C:\Users\x\Downloads\coral` }
+	elsewhere := probeInstall()
+	require.NotNil(t, elsewhere)
+	assert.Equal(t, status.Install{Kind: "portable", Unsupported: "portable_install"}, *elsewhere)
+	selfFolder = func() string { return `C:\Users\x\coral` }
 	// and it is in the status the server reads, as the object
 	newWindowsMSI = func(string) apply.MSI { return portableMSI{why: ""} }
 	var out bytes.Buffer

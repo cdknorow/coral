@@ -45,3 +45,31 @@ func TestDescribeInstallNamesTheKindTheApplyWouldTreatItAs(t *testing.T) {
 	}
 	assert.Nil(t, describeInstall(fakeInstaller{err: errors.New("not in an install")}, "darwin", yes), "a development build is in no install")
 }
+
+// #6436: a Windows copy is judged against the registered product only when it is the registered folder; a copy run from another folder, beside a registered install, is portable, so the
+// click never upgrades the registered install while the copy is the one running.
+func TestACopyRunFromAnotherFolderIsPortableWhateverIsRegistered(t *testing.T) {
+	registered := fakeInstaller{path: `C:\Program Files\Coral`}
+	for name, tc := range map[string]struct {
+		p     fakeInstaller
+		self  string
+		kind  string
+		why   string
+		write bool
+	}{
+		"the registered folder itself":              {registered, `C:\Program Files\Coral`, "msi", "", true},
+		"the same folder in another case and slash": {registered, `c:/program files/coral/`, "msi", "", true},
+		"a portable zip unpacked beside it":         {registered, `C:\Users\x\Downloads\Coral`, "portable", "portable_install", false},
+		"a folder inside the registered one":        {registered, `C:\Program Files\Coral\bin`, "portable", "portable_install", false},
+		"a folder that cannot be read":              {registered, "", "unwritable", "unreadable_install", false},
+		"no registered product":                     {fakeInstaller{err: errors.New("none")}, `C:\Users\x\Coral`, "unregistered", "no_registered_product", false},
+		"registered but not under Program Files":    {fakeInstaller{path: `D:\Coral`, why: "portable_install"}, `D:\Coral`, "portable", "portable_install", false},
+	} {
+		got := describeRegistered(tc.p, tc.self)
+		if assert.NotNil(t, got, name) {
+			assert.Equal(t, tc.kind, got.Kind, name)
+			assert.Equal(t, tc.why, got.Unsupported, name)
+			assert.Equal(t, tc.write, got.Writable, name)
+		}
+	}
+}

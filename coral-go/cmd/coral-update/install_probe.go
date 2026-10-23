@@ -39,3 +39,34 @@ func describeInstall(p installer, goos string, writable func(path string) bool) 
 func homebrewFolder(path string) bool {
 	return path == "/home/linuxbrew" || strings.HasPrefix(path, "/home/linuxbrew/") // a Linux path: its separator is "/" on whatever machine the test runs (a Windows runner too)
 }
+
+// describeRegistered is the status of a Windows copy of Coral against the per-machine product Windows Installer has registered (#6436, found by the Windows route rehearsal): the status
+// judged the REGISTERED product's folder, so a copy run from another folder (a portable zip unpacked beside a registered install) was called msi, the click passed the server's
+// preflight, and the updater upgraded the registered install instead of the copy that was running. self is the folder of this program (the one the server asked); a copy whose folder is
+// not the registered one is portable, and a folder that cannot be read is not called anything the apply would touch.
+func describeRegistered(p installer, self string) *status.Install {
+	install, err := p.Install()
+	if err != nil {
+		return &status.Install{Kind: "unregistered", Unsupported: "no_registered_product"}
+	}
+	if self == "" {
+		return &status.Install{Kind: "unwritable", Unsupported: "unreadable_install"}
+	}
+	if !sameFolder(self, install) {
+		return &status.Install{Kind: "portable", Unsupported: "portable_install"}
+	}
+	switch why := p.Unsupported(install); why {
+	case "":
+		return &status.Install{Kind: "msi", Writable: true}
+	case "portable_install":
+		return &status.Install{Kind: "portable", Unsupported: why}
+	default:
+		return &status.Install{Kind: "unwritable", Unsupported: why}
+	}
+}
+
+// sameFolder compares two Windows folders as Windows does: cleaned, case-insensitive, either separator, a trailing separator ignored.
+func sameFolder(a, b string) bool {
+	norm := func(p string) string { return strings.ToLower(strings.TrimRight(strings.ReplaceAll(p, "/", `\`), `\`)) }
+	return norm(a) != "" && norm(a) == norm(b)
+}
