@@ -6,6 +6,9 @@
 //   2. Coral Hub: the first-launch offer opens and "Skip for now" keeps Coral local (the answer is saved, a reload does not ask again).
 //   3. New Agent in two steps: "+ New Agent" opens the choice (AI Agent / Agent Team / Terminal), AI Agent opens the form, a folder and Launch start the agent and OPEN it; a first prompt
 //      reaches the CLI.
+//   2b. A Hub question answered in the TERMINAL (#6381: Enter skips, only "yes" connects; the skip is stored as welcome_choice skipped and welcome_pending False, the answer the dashboard's own Skip saves):
+//      a page loaded after it does not ask again, while Settings > Network and Hub and the home Coral Hub card still offer Connect. (The terminal side itself, Enter and yes on a real pty, is
+//      cmd/coral's TestCloudStartupPrompt* in cloud_startup_pty_unix_test.go.)
 //   4. Launch Team: the choice, then Agent Team: a name, a folder, a first task, Launch; the team's agents start and the first task reaches the CLI.
 //
 // Not walked here: the Terms (the EULA is a terminal prompt of the release build; this runs the dev build, which skips it: internal/license has its tests) and a real CLI.
@@ -177,10 +180,48 @@ async function freshServer() {
         return s;
     };
 
+    // The Hub question was answered in the terminal: the server holds what the terminal stores for a skip, and no page asks again; Settings and the Hub card still connect.
+    const terminalSkipWalk = async (tag, [w, h, mobile]) => {
+        console.log(`${tag}: the Hub question skipped in the terminal, ${w}x${h}`);
+        const s = await freshServer(); servers.push(s);
+        await Emulation.setDeviceMetricsOverride({ width: w, height: h, deviceScaleFactor: 1, mobile }); await Emulation.setTouchEmulationEnabled({ enabled: mobile });
+        await Page.navigate({ url: s.base + '/' }); await Page.loadEventFired();
+        await waitFor(`!!document.getElementById('create-form')`, `${tag}: the "Create a password" page`, { timeout: 15000, diag: `document.body.innerText.slice(0, 300)` });
+        await ev(`(() => { for (const id of ['password', 'confirm']) { const i = document.getElementById(id); i.value = ${JSON.stringify(PASSWORD)}; i.dispatchEvent(new Event('input', { bubbles: true })); } document.getElementById('submit').click(); return true; })()`);
+        await waitFor(`!document.getElementById('create-form')`, `${tag}: leaving the password page`, { timeout: 15000, diag: `document.body.innerText.slice(0, 300)` });
+        await coralReady();
+        // what the terminal's Enter stores (cmd/coral rememberSkip): one request, the dashboard's own answer
+        const put = await ev(`fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ welcome_choice: 'skipped', welcome_pending: 'False' }) }).then(r => r.status)`);
+        assert.equal(put, 200, `${tag}: the stored skip is accepted`);
+        await Page.navigate({ url: s.base + '/' }); await Page.loadEventFired();
+        await coralReady();
+        await waitFor(`/What do you want to work on\\?/.test(document.body.innerText)`, `${tag}: the home screen`, { timeout: 15000, diag: `document.body.innerText.slice(0, 300)` });
+        // the first-launch offer would open a moment after the settings load: it does not (a bounded look, the offer's own wait for a loading connector is about 3 s)
+        for (let i = 0; i < 40; i++) { assert.ok(!await ev(visible('[data-editions="skip"]')), `${tag}: the Coral Hub offer opened although the question was answered in the terminal`); await sleep(100); }
+        const st = await ev(`fetch('/api/settings').then(r => r.json()).then(j => ({ choice: String((j.settings || j).welcome_choice), pending: String((j.settings || j).welcome_pending) }))`);
+        assert.deepEqual(st, { choice: 'skipped', pending: 'False' }, `${tag}: the answer stays stored (${JSON.stringify(st)})`);
+        console.log(`   ✓ ${tag}: a page loaded after a terminal skip does not ask again`);
+        // Settings > Network and Hub still offers Connect
+        await ev(`window.showSettingsModal('network'); true`);
+        await waitFor(visible('#settings-cloud-connect'), `${tag}: Connect in Settings > Network and Hub`, { timeout: 10000, diag: `document.body.innerText.slice(0, 300)` });
+        await ev(`window.hideSettingsModal(); true`);
+        await waitFor(`getComputedStyle(document.getElementById('settings-modal')).display === 'none'`, `${tag}: Settings closing`, { timeout: 5000 });
+        // the home Hub card still opens the Connect screen (a phone has no such home: it shows the agent list, #4497, so there Settings is the way)
+        if (!mobile) {
+            await ev(`window.switchNavTab('agents'); true`);
+            await waitFor(visible('#editions-home [data-editions="home-hub"]'), `${tag}: the Coral Hub card on the home screen`, { timeout: 10000, diag: `document.body.innerText.slice(0, 300)` });
+            await clickVisible('#editions-home [data-editions="home-hub"]');
+            await waitFor(visible('.editions-connect[data-cloud="connect"]'), `${tag}: Connect on the Hub card's screen`, { timeout: 10000, diag: `document.body.innerText.slice(0, 300)` });
+        }
+        console.log(`   ✓ ${tag}: Settings > Network and Hub${mobile ? '' : ' and the home Coral Hub card'} still offer Connect`);
+    };
+
     try {
         await Promise.all([Page.enable(), Runtime.enable()]);
         for (const [tag, vp] of [['desktop', [1280, 900, false]], ['phone', [390, 844, true]]]) {
             try { await walk(tag, vp); } catch (e) { failures.push(`${tag}: ${String((e && e.message) || e).split('\n')[0]}`); console.log('   ✗ ' + failures[failures.length - 1]); }
+            for (const s of servers.splice(0)) await s.stop().catch(() => {});
+            try { await terminalSkipWalk(tag, vp); } catch (e) { failures.push(`${tag} (terminal skip): ${String((e && e.message) || e).split('\n')[0]}`); console.log('   ✗ ' + failures[failures.length - 1]); }
             for (const s of servers.splice(0)) await s.stop().catch(() => {});
         }
         if (failures.length) throw new Error(`${failures.length} first-run walkthrough(s) failed:\n - ` + failures.join('\n - '));
