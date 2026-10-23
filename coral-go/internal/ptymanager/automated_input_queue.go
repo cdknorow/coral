@@ -393,6 +393,7 @@ func DropHeld(name, why string) {
 	noteDisagreement(name, "", time.Now()) // its disagreement window, if any, ends with it (#3655)
 	gate.checkEnded(name)
 	forgetSessionMemos(name)
+	callHeldDropped(name, why)
 	if n > 0 {
 		slog.Info("automated input: dropped held sends", "session", name, "count", n, "why", why)
 		inputlog.Note(name, inputlog.Text, "[DROPPED "+strconv.Itoa(n)+" held, "+why+"]")

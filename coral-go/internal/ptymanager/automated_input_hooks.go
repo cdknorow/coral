@@ -70,6 +70,46 @@ func SetHeldEndedFunc(fn func(name, agentType, sessionID string)) {
 	heldEnded.Unlock()
 }
 
+// heldDropped holds the callbacks OnHeldDropped installed.
+var heldDropped struct {
+	sync.Mutex
+	next int
+	fns  map[int]func(name, why string)
+}
+
+// OnHeldDropped installs fn to be called, outside the gate's lock, each time DropHeld discards what
+// a session had held: its agent is killed, spawned, restarted or launched again in that terminal.
+// The nudges and messages Coral sent that process, held or typed, are gone with it, so a caller
+// that tracks "already told this agent" starts over (#6544). fn must not block. The returned
+// function removes it.
+func OnHeldDropped(fn func(name, why string)) (remove func()) {
+	heldDropped.Lock()
+	defer heldDropped.Unlock()
+	if heldDropped.fns == nil {
+		heldDropped.fns = make(map[int]func(name, why string))
+	}
+	id := heldDropped.next
+	heldDropped.next++
+	heldDropped.fns[id] = fn
+	return func() {
+		heldDropped.Lock()
+		delete(heldDropped.fns, id)
+		heldDropped.Unlock()
+	}
+}
+
+func callHeldDropped(name, why string) {
+	heldDropped.Lock()
+	fns := make([]func(name, why string), 0, len(heldDropped.fns))
+	for _, fn := range heldDropped.fns {
+		fns = append(fns, fn)
+	}
+	heldDropped.Unlock()
+	for _, fn := range fns {
+		fn(name, why)
+	}
+}
+
 // notifier runs callbacks one at a time, in the order posted, off the caller's
 // goroutine: a held notice and its end must never arrive the wrong way round.
 type notifier struct {

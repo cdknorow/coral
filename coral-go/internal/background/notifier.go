@@ -172,8 +172,21 @@ func (n *BoardNotifier) signal() {
 	}
 }
 
+// watchResets forgets what a session was told when its agent's process is replaced: DropHeld discards a
+// nudge held for it, and a nudge typed to the old process is gone with it, yet notified would hold the
+// next nudge back until the reminder window (#6544: a Sleep/Wake lost a held nudge for up to 15 minutes).
+// The next pass nudges what is still unread. It returns the function that stops watching.
+func (n *BoardNotifier) watchResets() (stop func()) {
+	return ptymanager.OnHeldDropped(func(name, _ string) {
+		n.notifiedMu.Lock()
+		delete(n.notified, name)
+		n.notifiedMu.Unlock()
+	})
+}
+
 // Run starts the notification loop.
 func (n *BoardNotifier) Run(ctx context.Context) error {
+	defer n.watchResets()()
 	ticker := time.NewTicker(n.interval)
 	defer ticker.Stop()
 	for {
