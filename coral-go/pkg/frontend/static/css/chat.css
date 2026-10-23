@@ -599,7 +599,8 @@
 
 .capture-wrapper.chat-mode #pane-capture,
 .capture-wrapper.chat-mode #xterm-container,
-.capture-wrapper.chat-mode .terminal-statusbar {
+.capture-wrapper.chat-mode .terminal-statusbar,
+.capture-wrapper.chat-mode .terminal-key-bar {
     display: none !important;
 }
 

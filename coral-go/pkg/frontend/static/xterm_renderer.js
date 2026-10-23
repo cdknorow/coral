@@ -576,6 +576,7 @@ function _openTerminal(containerEl) {
     _containerEl = containerEl;
     // A person on the keyboard or a screen reader meets the terminal's input with Tab, which the shell keeps: the status bar's hint says how to leave it, so the input is described by it (#6188).
     if (terminal.textarea && document.getElementById('xterm-focus-hint')) terminal.textarea.setAttribute('aria-describedby', 'xterm-focus-hint');
+    if (terminal.textarea) terminal.textarea.setAttribute('aria-label', "Terminal: what you type goes straight to the agent's shell"); // (the message box under it is a message, not this)
     const fitBtn = _fitButton();
     if (fitBtn && !fitBtn.dataset.wired) {
         fitBtn.dataset.wired = '1';

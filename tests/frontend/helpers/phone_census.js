@@ -68,6 +68,7 @@ module.exports = part => (async () => {
             await sc('chat: find bar', async () => { await tap('#chat-find-btn'); await waitFor(`!document.querySelector('.chat-find-bar').hidden`, 'find bar', 5000); }, { min: 12, expect: `document.querySelector('.chat-find-input').getClientRects().length > 0` });
             await tap('.chat-find-close');
             await sc('terminal view', async () => { await tap('#live-view-btn-terminal'); }, { min: 8, expect: `document.getElementById('live-view-btn-terminal').getAttribute('aria-pressed') === 'true' || document.getElementById('live-view-btn-terminal').classList.contains('active')` });
+            await sc('terminal view: key bar', async () => { await waitFor(`!!document.getElementById('terminal-key-bar') && document.getElementById('terminal-key-bar').getClientRects().length > 0`, 'the terminal key bar', 10000); }, { min: 11, expect: `document.querySelectorAll('#terminal-key-bar .tkb-key').length === 11` });
             await tap('#live-view-btn-chat');
             await tap('#panel-toggle-btn'); await waitFor(`document.querySelector('.agentic-state-tabs').getClientRects().length > 0`, 'side panel', 8000);
             for (const tab of await ev(`[...document.querySelectorAll('.agentic-state-tabs .agentic-tab[data-tab]')].filter(e => e.getClientRects().length).map(e => e.dataset.tab)`)) await sc(`side panel: ${tab}`, async () => { await tap(`.agentic-state-tabs [data-tab="${tab}"]`); }, { min: 12, expect: `document.querySelector('.agentic-state-tabs [data-tab="${tab}"]').classList.contains('active')` });

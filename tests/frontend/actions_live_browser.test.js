@@ -80,9 +80,9 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
         }
         check('Esc, ↑, ↓, Enter and Undo send exactly their keys', Object.values(keys).every(Boolean), JSON.stringify(keys));
         await quiet(); await clear();
-        await ev(`(() => { const b = document.createElement('button'); b.setAttribute('data-on-click', 'cmd-raw-keys'); b.dataset.keys = 'Escape,C-c'; document.body.appendChild(b); b.click(); b.remove(); return true; })()`);
+        await ev(`(() => { const b = document.createElement('button'); b.setAttribute('data-on-click', 'cmd-raw-keys'); b.dataset.keys = 'Escape,F1'; document.body.appendChild(b); b.click(); b.remove(); return true; })()`);
         await new Promise(r => setTimeout(r, 600)); // sleep-ok: shows that nothing is sent (no condition to wait for)
-        check('a key outside the allowlist sends nothing', inputs(await sent()).length === 0, JSON.stringify(await sent()));
+        check('a key outside the allowlist sends nothing (Ctrl-C is on it since #6676, F1 is not)', inputs(await sent()).length === 0, JSON.stringify(await sent()));
 
         // ── Bash, a macro, Mode, Send, the send menu ───────────────────────
         await clear();

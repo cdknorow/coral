@@ -14,9 +14,17 @@ const STATES = {
 const bar = () => document.getElementById('terminal-statusbar');
 
 /** Show the bar with the terminal (the Terminal view) or hide it with it. */
+let keyBarWired = false;
+
 export function showTerminalStatusbar(on) {
     const b = bar();
     if (b) b.style.display = on ? '' : 'none';
+    // The phone's key bar (#6676) is part of the Terminal view: shown with it (its CSS shows it at phone width only, and not in the Chat view).
+    const keys = document.getElementById('terminal-key-bar');
+    if (keys) {
+        keys.hidden = !on;
+        if (!keyBarWired) { keyBarWired = true; keys.addEventListener('pointerdown', e => e.preventDefault()); } // a tap on a key leaves focus where it is: the on-screen keyboard stays open
+    }
 }
 
 /** One of connecting, connected, reconnecting, ended, restarting. */
