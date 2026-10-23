@@ -76,7 +76,11 @@ func TestResolveBaseNamesTheBranchesThatExist(t *testing.T) {
 	require.NoError(t, err, string(out))
 	_, err = ResolveBase(context.Background(), dir, "release")
 	require.Error(t, err)
-	assert.Equal(t, `the branch "release" does not exist in this repository; the branches that do: develop, master`, err.Error())
+	assert.Equal(t, "The base branch release does not exist in "+dir+". Its branches: develop, master.", err.Error())
+	var missing *BranchMissingError
+	require.ErrorAs(t, err, &missing)
+	assert.Equal(t, []string{"develop", "master"}, missing.Branches)
+	assert.Equal(t, "master", missing.Default)
 	got, err := ResolveBase(context.Background(), dir, "--upload-pack=evil")
 	require.NoError(t, err)
 	assert.Equal(t, "--upload-pack=evil", got, "a name ValidRef refuses is the caller's to refuse")

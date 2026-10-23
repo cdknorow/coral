@@ -5,6 +5,7 @@ package routes
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/subgentic/coral/internal/logsafe"
 	"log"
@@ -146,9 +147,15 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 	// the team (#5213).
 	ctx, cancel := lifecycleCtxN(viaHub(r.Context(), r), len(body.Agents))
 	defer cancel()
-	workingDir, worktreePath, branchCreated, msg := h.createTeamWorktree(ctx, body)
-	if msg != "" {
-		refuse(tracking.FailWorktreeFailed, msg)
+	workingDir, worktreePath, branchCreated, wtErr := h.createTeamWorktree(ctx, body)
+	if wtErr != nil {
+		var missing *gitutil.BranchMissingError
+		if errors.As(wtErr, &missing) { // the one a dashboard shows under the Base Branch field, with the branches to pick from (#6701)
+			attempt.Finish(tracking.OutcomeFailure, tracking.FailWorktreeFailed, 0, len(body.Agents))
+			writeBranchMissing(w, missing)
+			return
+		}
+		refuse(tracking.FailWorktreeFailed, wtErr.Error())
 		return
 	}
 	teamID := h.createTeamRecord(ctx, body, workingDir, worktreePath)
@@ -457,18 +464,18 @@ func checkTeamRequest(body launchTeamRequest) string {
 // createTeamWorktree makes the team's git worktree when it asks for one (branch coral-team/<board> from its base
 // branch, the repository's current branch by default; the branch reused when a previous run left it), and returns the folder its agents start
 // in, the worktree ("" for none), or why it failed.
-func (h *SessionsHandler) createTeamWorktree(ctx context.Context, body launchTeamRequest) (workingDir, worktreePath string, branchCreated bool, failure string) {
+func (h *SessionsHandler) createTeamWorktree(ctx context.Context, body launchTeamRequest) (workingDir, worktreePath string, branchCreated bool, failure error) {
 	if !body.Worktree || body.WorkingDir == "" {
-		return body.WorkingDir, "", false, ""
+		return body.WorkingDir, "", false, nil
 	}
 	// The base branch: the one the request names, else the repository's current branch (not a "main" the repository may not have, #6701).
 	branch, err := gitutil.ResolveBase(ctx, body.WorkingDir, body.BaseBranch)
 	if err != nil {
-		return "", "", false, err.Error()
+		return "", "", false, err
 	}
 	// The board's name is one folder name under worktrees/: never a path out of it (#5305).
 	if !background.ValidKnowledgeTeam(body.BoardName) {
-		return "", "", false, "the board name cannot name a worktree folder"
+		return "", "", false, errors.New("the board name cannot name a worktree folder")
 	}
 	worktreeDir := filepath.Join(h.cfg.CoralDir(), "worktrees")
 	os.MkdirAll(worktreeDir, 0755)
@@ -476,10 +483,10 @@ func (h *SessionsHandler) createTeamWorktree(ctx context.Context, body launchTea
 	worktreeBranch := fmt.Sprintf("coral-team/%s", body.BoardName)
 	branchCreated, err = gitutil.AddTeamWorktree(ctx, body.WorkingDir, worktreePath, worktreeBranch, branch)
 	if err != nil {
-		return "", "", false, err.Error()
+		return "", "", false, err
 	}
 	log.Printf("[launch-team] created worktree at %s (branch %s from %s)", logsafe.Dir(worktreePath), worktreeBranch, branch)
-	return worktreePath, worktreePath, branchCreated, ""
+	return worktreePath, worktreePath, branchCreated, nil
 }
 
 // createTeamRecord stores the team (its request, its folder, whether that is a worktree) and returns its id, 0
