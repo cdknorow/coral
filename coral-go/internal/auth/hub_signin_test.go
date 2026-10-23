@@ -353,7 +353,7 @@ func TestHubSessionDenyTable(t *testing.T) {
 	for _, rt := range [][2]string{
 		{"POST", "/api/auth/password/set"}, {"POST", "/api/auth/password/change"}, {"POST", "/api/auth/password/reset"},
 		{"GET", "/api/auth/sessions"}, {"POST", "/api/auth/sessions/sign-out-others"}, {"DELETE", "/api/auth/sessions/abcdefabcdef"},
-		{"GET", "/api/auth/setup-code"}, {"PUT", "/api/auth/hub-signin"}, {"GET", "/api/auth/hub-signin"}, {"PUT", "/api/auth/hub-origins"},
+		{"GET", "/api/auth/setup-code"}, {"GET", "/api/auth/setup-code/show"}, {"PUT", "/api/auth/hub-signin"}, {"GET", "/api/auth/hub-signin"}, {"PUT", "/api/auth/hub-origins"},
 		{"POST", "/api/system/login-token"}, {"GET", "/api/system/api-key"}, {"POST", "/api/system/api-key/regenerate"},
 		{"POST", "/api/cloud/connect"}, {"POST", "/api/cloud/disconnect"}, {"POST", "/api/cloud/rekey"}, {"PUT", "/api/cloud/max-mode"},
 		{"PUT", "/api/cloud/allow-auto-accept"}, {"PUT", "/api/cloud/redact-tokens"}, {"POST", "/api/cloud/redeem"},

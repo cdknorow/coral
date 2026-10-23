@@ -179,6 +179,7 @@ func (s *Server) registerAuth(r *chi.Mux) {
 	r.Post("/auth/password", authRoutes.SignInWithPassword)
 	r.Post("/auth/password/create", authRoutes.CreatePassword)
 	r.Get("/api/auth/setup-code", authRoutes.GetSetupCode)
+	r.Get("/api/auth/setup-code/show", authRoutes.ShowSetupCode) // the signed-in person at this computer (#6410); never in the tunnel's table
 	r.Post("/api/auth/password/set", authRoutes.SetPassword)
 	r.Post("/api/auth/password/change", authRoutes.ChangePassword)
 	r.Post("/api/auth/password/reset", authRoutes.ResetPassword)

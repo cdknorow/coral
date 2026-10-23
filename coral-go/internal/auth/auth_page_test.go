@@ -34,7 +34,7 @@ func TestAuthPageStates(t *testing.T) {
 	assert.Contains(t, remote, `id="create-form"`)
 	assert.Contains(t, remote, `id="setup-code"`, "from another computer the one-time setup code is asked for")
 	assert.Contains(t, remote, "coral setup-code", "and says where to find it")
-	assert.Contains(t, remote, "on that computer (or look at the console if you started Coral from a terminal)")
+	assert.Contains(t, remote, "Settings &rsaquo; Network and Hub</b> (or the tray menu), or run <b>coral setup-code</b> there", "where the person is, then the terminal (#6410)")
 	assert.NotContains(t, remote, "startup log", "the code is never in a log, so the page does not send anyone to one")
 
 	assert.Contains(t, AuthPage(PageState{PasswordSet: true, Strict: true}), "the tray and coral open sign in by themselves")

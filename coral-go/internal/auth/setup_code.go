@@ -244,3 +244,37 @@ func (ar *Routes) GetSetupCode(w http.ResponseWriter, r *http.Request) {
 	ar.ks.mu.RUnlock()
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"code": FormatSetupCode(c), "expires_in": int(left.Seconds())})
 }
+
+// ShowSetupCode returns the setup code to the person at this computer who is signed in to the dashboard: Settings, the tray and the app show it
+// where they are, not only in a terminal (#6410, Security's #6408 rank 1 option A). It is the same code, expiry and throttle as `coral setup-code`
+// (the checks that spend it are unchanged); the route is the person's alone: a browser session (a link, the key form or the password), on this
+// computer (fromThisComputer), never an agent's token and never through Coral Hub's tunnel, and it is not in the tunnel's table. The code is
+// not logged, and the answer is never cached.
+// GET /api/auth/setup-code/show
+func (ar *Routes) ShowSetupCode(w http.ResponseWriter, r *http.Request) {
+	if refuseAgent(w, r) {
+		return
+	}
+	if r.Header.Get("X-Coral-Via-Tunnel") != "" {
+		authError(w, http.StatusForbidden, "not_allowed", "The setup code is shown on the computer Coral runs on")
+		return
+	}
+	if !ar.signedIn(r) {
+		notSignedIn(w)
+		return
+	}
+	if !ar.fromThisComputer(r) {
+		authError(w, http.StatusForbidden, "this_computer_only", "The setup code is shown on the computer Coral runs on")
+		return
+	}
+	c := ar.ks.SetupCode()
+	if c == "" {
+		authError(w, http.StatusConflict, "password_set", "A password is already set, so there is no setup code")
+		return
+	}
+	ar.ks.mu.RLock()
+	left := time.Until(ar.ks.setupExpires)
+	ar.ks.mu.RUnlock()
+	w.Header().Set("Cache-Control", "no-store")
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"code": FormatSetupCode(c), "expires_in": int(left.Seconds())})
+}

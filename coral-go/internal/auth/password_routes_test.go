@@ -2,6 +2,7 @@ package auth
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -430,4 +431,59 @@ func TestSettingsSessionsWorkForEverySignIn(t *testing.T) {
 	g.setPassword("pw")
 	with := noSession()
 	assert.Equal(t, without, with, "the answer doesn't tell whether a password exists")
+}
+
+// The setup code where a person is (#6410, Security's #6408 rank 1 option A): Settings, the tray and the app show the code the terminal
+// prints, to a browser session signed in on this computer. The same code and expiry as the command line's; an agent, a request through Coral Hub's
+// tunnel, a session that is not on this computer, and a request with no session get nothing; once a password is set there is no code; and the
+// code is never written to the log.
+func TestShowSetupCodeToTheSignedInPersonOnThisComputer(t *testing.T) {
+	var logged strings.Builder
+	prev := log.Writer()
+	log.SetOutput(&logged)
+	t.Cleanup(func() { log.SetOutput(prev) })
+
+	g := newPwRig(t)
+	g.ar.SetPeerUser(func(*http.Request) (bool, bool) { return true, true })
+	tok, err := g.ks.NewSession(g.req("GET", "/", "", "127.0.0.1", nil), SessionByLink, false)
+	require.NoError(t, err)
+	me := &http.Cookie{Name: g.ks.cookieBase, Value: tok}
+	show := func(mod func(*http.Request), addr string, cookie *http.Cookie) (*httptest.ResponseRecorder, map[string]any) {
+		r := g.req("GET", "/api/auth/setup-code/show", "", addr, cookie)
+		if mod != nil {
+			mod(r)
+		}
+		return g.do(g.ar.ShowSetupCode, r)
+	}
+
+	w, out := show(nil, "127.0.0.1", me)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	assert.Equal(t, FormatSetupCode(g.ks.SetupCode()), out["code"], "the same code the command line prints")
+	left, _ := out["expires_in"].(float64)
+	assert.True(t, left > 0 && left <= setupCodeTTL.Seconds(), "the same expiry: %v", out["expires_in"])
+	assert.Equal(t, "no-store", w.Header().Get("Cache-Control"))
+
+	w, out = show(nil, "127.0.0.1", nil)
+	assert.Equal(t, http.StatusForbidden, w.Code, "no session")
+	assert.Equal(t, "password_session_required", out["code"])
+	w, _ = show(func(r *http.Request) { r.Header.Set(agentTokenHeader, "agent") }, "127.0.0.1", me)
+	assert.Equal(t, http.StatusForbidden, w.Code, "an agent's token")
+	w, _ = show(func(r *http.Request) { r.Header.Set("X-Coral-Via-Tunnel", "1") }, "127.0.0.1", me)
+	assert.Equal(t, http.StatusForbidden, w.Code, "through Coral Hub's tunnel")
+	w, out = show(nil, "10.0.0.5", me)
+	assert.Equal(t, http.StatusForbidden, w.Code, "a signed-in browser that is not on this computer")
+	assert.NotContains(t, w.Body.String(), FormatSetupCode(g.ks.SetupCode()))
+	assert.Equal(t, "this_computer_only", out["code"])
+	w, _ = show(func(r *http.Request) { r.Header.Set("X-Forwarded-For", "203.0.113.9") }, "127.0.0.1", me)
+	assert.Equal(t, http.StatusForbidden, w.Code, "a proxy header")
+
+	assert.NotContains(t, logged.String(), g.ks.SetupCode(), "the code is never logged")
+	assert.NotContains(t, logged.String(), FormatSetupCode(g.ks.SetupCode()))
+
+	// a password is set: there is no code to show
+	cw, _ := g.do(g.ar.CreatePassword, g.req("POST", "/auth/password/create", `{"password":"a password"}`, "127.0.0.1", nil))
+	require.Equal(t, http.StatusOK, cw.Code, cw.Body.String())
+	w, out = show(nil, "127.0.0.1", me)
+	assert.Equal(t, http.StatusConflict, w.Code)
+	assert.Equal(t, "password_set", out["code"])
 }

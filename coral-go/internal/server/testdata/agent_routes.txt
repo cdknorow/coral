@@ -58,6 +58,7 @@ b GET /api/auth/hub-origins
 b GET /api/auth/hub-signin
 b GET /api/auth/sessions
 b GET /api/auth/setup-code
+b GET /api/auth/setup-code/show
 a GET /api/board/projects
 b GET /api/board/remotes
 b GET /api/board/remotes/proxy/{remoteServer}/projects

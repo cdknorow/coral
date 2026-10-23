@@ -175,7 +175,7 @@ var authPageTmpl = template.Must(template.New("auth").Parse(`{{define "hubwarn"}
       <input type="text" name="username" value="coral" autocomplete="username" hidden aria-hidden="true" readonly tabindex="-1">
 {{if not .Local}}
       <label class="pw-field"><span class="pw-label">Setup code</span><span class="pw-input-row"><input class="pw-input setup-input" id="setup-code" name="setup-code" type="text" autocomplete="off" spellcheck="false" autocapitalize="characters" inputmode="text" maxlength="16" autofocus></span></label>
-      <p class="note" style="margin:-4px 0 14px">Run <b>coral setup-code</b> on that computer (or look at the console if you started Coral from a terminal).</p>
+      <p class="note" style="margin:-4px 0 14px">In Coral on that computer, open <b>Settings &rsaquo; Network and Hub</b> (or the tray menu), or run <b>coral setup-code</b> there.</p>
 {{end}}
       <label class="pw-field"><span class="pw-label">Password</span><span class="pw-input-row"><input class="pw-input" id="password" name="new-password" type="password" autocomplete="new-password" spellcheck="false" autocapitalize="off"{{if .Local}} autofocus{{end}} aria-describedby="strength"><button type="button" class="pw-toggle" data-toggle="password" aria-pressed="false" aria-label="Show password">Show</button></span></label>
       <div class="pw-strength" id="meter" data-level="empty"><div class="pw-meter" role="img" aria-label="Strength"><i></i></div><p class="pw-hint" id="strength" aria-live="polite"></p></div>
@@ -195,7 +195,7 @@ var authPageTmpl = template.Must(template.New("auth").Parse(`{{define "hubwarn"}
     <div id="hub-link-err" class="err" role="alert" hidden></div>
     <form id="hub-link-form" autocomplete="off">
       <label class="pw-field" id="hub-setup-field"{{if .Local}} hidden{{end}}><span class="pw-label">Setup code</span><span class="pw-input-row"><input class="pw-input setup-input" id="hub-setup-code" name="setup-code" type="text" autocomplete="off" spellcheck="false" autocapitalize="characters" maxlength="16"></span>
-      <span class="note" style="display:block;margin:6px 0 14px">Run <b>coral setup-code</b> on that computer (or look at the console if you started Coral from a terminal).</span></label>
+      <span class="note" style="display:block;margin:6px 0 14px">In Coral on that computer, open <b>Settings &rsaquo; Network and Hub</b> (or the tray menu), or run <b>coral setup-code</b> there.</span></label>
       <div class="warn"><span style="font-size:1rem">&#9888;</span><span><b>Coral Hub can then sign you in here with full control of this computer.</b> A Coral Hub account that is signed in can run commands on this computer, like your password can.</span></div>
       <label class="check" style="margin-top:0"><input type="checkbox" id="hub-enable"><span>Let Coral Hub sign me in here<small>Off unless you tick it. You can change it later in Settings, Browser sign-in.</small></span></label>
       <div class="btnrow"><button type="submit" id="hub-link-go" class="btn btn-primary wide">Link this computer to Coral Hub and sign in</button></div>

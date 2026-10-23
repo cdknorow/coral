@@ -168,6 +168,7 @@ var operatorOnlyRoutes = map[string]string{
 	"POST /api/auth/password/reset":           "reset the dashboard password",
 	"GET /api/auth/sessions":                  "list the signed-in browsers",
 	"GET /api/auth/setup-code":                "read the password setup code",
+	"GET /api/auth/setup-code/show":           "show the password setup code",
 	"POST /api/auth/sessions/sign-out-others": "sign out other browsers",
 	"DELETE /api/auth/sessions/{id}":          "sign one browser out",
 	// Sign in with Coral Hub (#3966): its local settings.

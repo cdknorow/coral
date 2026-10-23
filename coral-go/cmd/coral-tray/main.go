@@ -393,6 +393,14 @@ func runForeground(host string, port int, noBrowser, debugMode bool, backendType
 		// "Update to vX available": shown only while the server reports a newer approved release and the update feature is on (updater D, #6006)
 		mUpdateAvail := systray.AddMenuItem("", "A newer release of Coral is out")
 		mUpdateAvail.Hide()
+		// The one-time setup code another device asks for, where the person is and not only in a terminal (#6410): hidden until the server has a code to show
+		mSetupCode := systray.AddMenuItem(setupCodeMenuTitle, "The one-time code another device asks for when it signs in to Coral or links this computer to Coral Hub")
+		mSetupCode.Hide()
+		setup := &setupCodeItem{item: mSetupCode}
+		go func() {
+			defer safego.Recover("coral-tray/main:setupCodeItem")
+			setup.run(context.Background(), url, dataDir)
+		}()
 		upd := &updateItem{item: mUpdateAvail, track: trackTrayNotice,
 			ask:    func() (updateAnswer, error) { return askServerForUpdate(url, dataDir, false) },
 			status: func() (updaterStatus, error) { return askServerForUpdaterStatus(url, dataDir) }}
@@ -451,6 +459,8 @@ func runForeground(host string, port int, noBrowser, debugMode bool, backendType
 						defer safego.Recover("coral-tray/main:updateItemOpen")
 						upd.open(func() { executil.OpenBrowser(loginlink.OnPage(loginlink.Or(url, mintLink), updatesPaneLink)) }, executil.OpenBrowser, trackTrayOffer)
 					}()
+				case <-mSetupCode.ClickedCh:
+					go func() { defer safego.Recover("coral-tray/main:setupCodeClick"); setup.click(url, dataDir) }()
 				case <-mUpdate.ClickedCh:
 					go func() { defer safego.Recover("coral-tray/main:checkForUpdates"); checkForUpdates(url, dataDir) }()
 				case <-mLog.ClickedCh:
