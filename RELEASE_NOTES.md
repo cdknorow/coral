@@ -1,5 +1,46 @@
 # Release Notes
 
+## v1.4.159 — Switching an agent's model or thinking level works, helpers end with their agent, and a first run that is easier to start
+
+DRAFT (DevOps, 23 Oct), against ci/v159 46ad12e62: every bullet comes from the commit messages in v1.4.158..46ad12e62 (list: /tmp/list159.txt); #6213, #6226 and #6208 are 160 and are not here.
+
+### Changes
+
+- **Switching an agent's model or thinking level works:** Claude Code 2.1.309 writes a slash command and its output in a new transcript format, so no /model or /effort switch was ever confirmed ("Claude Code did not confirm the model change"). Coral now reads both formats and confirms a switch from Claude's own reply at once; /effort no longer waits for the next reply (the wait is 30 seconds, not 30 minutes). A second choice replaces the first instead of answering "switch in progress", and two are never typed at once; a quick second choice waits for the first to settle. Sleep, Kill and Restart end a pending switch with a message. The chosen model and level survive sleep, wake and a restart of Coral (they are stored, not kept in memory); Default works, including after a wake; a project folder that is a symlink finds its live transcript. The chat shows the command as one short line. Checked against Claude Code 2.1.309's records for /effort; /model uses the same format. The thinking chip shows as soon as a Codex agent on Default is selected, without opening the model menu first.
+- **An agent's helpers end with it:**
+  - On tmux, Kill, Sleep and Restart now end the agent's whole process tree, including helpers that detached from it: every tmux agent carries a random run tag in its environment, which everything it starts inherits.
+  - If Coral crashes or is force-killed, a small guardian process (named `coral pty-guardian` in the process list) ends the process tree of each built-in-terminal agent. A kill of the guardian itself (`pkill coral`) only ends the guardian; Coral starts another.
+  - Limit, plainly: on macOS a helper that detached and is one of Apple's own programs (such as perl or sleep) is not found, because macOS does not show its environment; an ordinary program is. Agents started before 159 have no run tag, so for them only helpers still attached are found; restart them once to get it. The run tag is typed into the agent's pane like the other exported variables, so it shows on the agent's screen and in its terminal log; it names processes and is not a credential.
+- **Confirm owner is stricter and says when to retry:** it adopts the owner label only on a read (GET or HEAD), refuses when several Coral Hub accounts were stamped as the owner within the hour, and then says when to try again, as a time, from a `retry_after` the answer now carries.
+- **History summaries no longer keep the start of a secret:** a summary is redacted before it is shortened, and stored summaries are rewritten once (the first start after updating re-reads History once; a few seconds on a large history).
+- **A shipped Coral has no profiler:** `CORAL_PPROF_ADDR` is ignored outside dev builds, and a release build says it ignored the variable.
+- **Add image is 20 MB here and through Coral Hub** (the 16 MB Hub cap is gone). A stalled upload says so ("The upload stalled. Try again." or "Upload timed out. Try a smaller image.") and no longer marks the computer unreachable. A pending message with images shows their thumbnails and the person's words, not links and download instructions.
+- **Launching an agent, first run:** New Agent chooses the agent (Claude, Codex, Antigravity, Pi) in its first step, the installed ones first and the others marked "not installed"; every folder list has "Use this folder", and a recent folder closes the list so More options has room; Codex's hooks question holds a first send back with one short sentence that points at the card above it, and answering it says the message is still in the box; the "Claude is not signed in" line names what waits (scheduled jobs and workflows that use Claude), can be dismissed for a day, and shows only on Agents, Jobs and Workflows; a History chat is titled by what it says, with its id behind Details.
+- **A new conversation is in History within seconds:** a finished turn, or an empty History list, now asks the indexer for a pass (at most one per 15 seconds) instead of waiting up to two minutes.
+- **The agent list no longer reports your display choices** (provider, model or thinking level hidden, branches shown) as a summary line; only filters and sort appear there, with Clear (named "Clear filters and sort"); a display preference is changed only in the Display panel.
+- **On a phone, an expanded file or artifact preview fills the screen again;** a preview height saved on a desktop no longer cuts it to half.
+- **The sidebar's server rows show their agent count right after the name.**
+- **Notices and toasts on a phone:** the update notice, warnings and short toasts are one stack at the top, below the top bar, one line each until opened, so they no longer cover Send, Wake or a dialog's buttons; the notices are a region named "Notifications" (not drawn while empty); a toast with a button (Retry, Undo, View saved, Open Servers) stays until used or dismissed (Escape dismisses it when focused); a plain toast keeps its 4 seconds; attaching several images raises no toast per file ("Uploading 2 images…" shows in the chip row).
+- **On a phone and by keyboard:** the Jobs list is in the Jobs page, so a job can be picked, read and edited; "+ New Agent" is pinned at the bottom of the sidebar (in view with 20 or more agents) and a row the keyboard focuses is scrolled clear of it; the workflow editor is a real dialog (focus in and back, a standard close); the terminal's way out is announced and no longer dimmed; "Remove shared copy" says what happened (gone from Coral Hub, or still shared elsewhere, so it stays on Coral Hub) and its button names its image; buttons and fields are named by their row or agent (board Save and Delete, the workflow editor's steps, Settings' default-model and CLI-path fields, the Files panel's star, Copy path, Preview and Edit); red and green text, white on the dark accent and the toasts hold AA contrast in both themes.
+- **Windows:** the agent tools folder warning in Settings > Terminal is one line with "How to fix it" behind it; on a pty-only system Settings > Terminal shows one short line up front and the rest behind Learn more; Windows CI now runs the dashboard's `test:cloud` and its CDP suites.
+
+### Fixes
+
+- **Kill in a git repository with no commits** saves its diff (it used to answer "Killed, but changes.diff could not be saved").
+- **Windows and CI:** a Windows `./...` no-cgo build of `cmd/coral-app` no longer has a main package without `main` (the WebView2 profile file is built only with the webview tag).
+
+### For integrators (Coral Hub, API)
+
+- The launch response (and the team launch, reset and restart results) says `launch_path` where it said `backend` (the request's `backend` and the stored column are unchanged); the update relaunch's `restarts[]` rows no longer carry `backend`.
+- Every row of `GET /api/sessions/live`, awake or sleeping, carries `terminal` (`tmux` or `pty`), where the agent really runs.
+- An upload the Coral Hub proxy ends answers 408 with the codes `upload_stalled` or `upload_too_slow`, not 502 "remote unreachable".
+- Confirm owner's 409 `several_hub_users` carries `retry_after` (seconds, rounded up) and a `Retry-After` header; `GET /api/cloud/owner-label` adds `retry_after` while several accounts are stamped.
+
+### Internal
+
+- Release verification reads a `-trimpath` build by its `vcs.revision`: the tag's commit, with `vcs.modified` false (Windows programs may say true: the release rewrites four tracked `.syso` files), instead of an ldflags line that is no longer in the build info; `cross-build` also runs on `ci/` branches; the Windows runner dry run follows the latest published release.
+- Test and lint additions: a lint that nothing is hidden under `(hover: none)`; phone, contrast and keyboard censuses of every dashboard scene; a census that watches the Windows known-reds list; the `terminal_switch` timing check is measured in the page, and a pasted-image test pins both removal cases.
+
 ## v1.4.158 — Quitting Coral ends its agents on the built-in terminal, Add image on a phone, and a Hub that says what to do when it cannot confirm you own a computer
 
 DRAFT (DevOps, 22 Oct), against ci/v158 38e175f4e: every bullet is taken from a landed commit's own message and is to be checked against the final batch list.
