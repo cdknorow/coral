@@ -35,11 +35,23 @@ func newBrewRig(t *testing.T) *brewRig {
 	return r
 }
 
+// symlinkOrSkip makes the link. On Windows a symlink needs Developer Mode or an elevated user ("a required privilege is not held"), so the test is skipped there
+// with that reason, as safefs's Windows tests do; anywhere else a failure is a failure.
+func symlinkOrSkip(t *testing.T, target, link string) {
+	t.Helper()
+	if err := os.Symlink(target, link); err != nil {
+		if runtime.GOOS == "windows" {
+			t.Skipf("symlinks need Developer Mode or an elevated user here: %v", err)
+		}
+		require.NoError(t, err)
+	}
+}
+
 func (r *brewRig) link(version string) {
 	r.t.Helper()
 	dir := filepath.Join(r.prefix, "Caskroom", "coral", version)
 	require.NoError(r.t, os.MkdirAll(dir, 0o755))
-	require.NoError(r.t, os.Symlink(r.app, filepath.Join(dir, "Coral.app")))
+	symlinkOrSkip(r.t, r.app, filepath.Join(dir, "Coral.app"))
 }
 
 func (r *brewRig) metadata(version, file, body string) {
@@ -69,7 +81,7 @@ func TestTheCaskroomLinkToThisAppMeansHomebrew(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Join(other.root, "Elsewhere", "Coral.app"), 0o755))
 	dir := filepath.Join(other.prefix, "Caskroom", "coral", "1.4.100")
 	require.NoError(t, os.MkdirAll(dir, 0o755))
-	require.NoError(t, os.Symlink(filepath.Join(other.root, "Elsewhere", "Coral.app"), filepath.Join(dir, "Coral.app")))
+	symlinkOrSkip(t, filepath.Join(other.root, "Elsewhere", "Coral.app"), filepath.Join(dir, "Coral.app"))
 	assert.Empty(t, MacManaged(other.app, other.options))
 }
 
