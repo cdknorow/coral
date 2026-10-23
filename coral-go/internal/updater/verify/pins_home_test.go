@@ -28,8 +28,11 @@ func TestDefaultPinsNameTheNewHomeAndItsID(t *testing.T) {
 	p := DefaultPins()
 	assert.Equal(t, "subgentic/coral", p.Repo)
 	assert.Equal(t, "1160696364", p.RepoID, "the id survived the transfer (the certificate carried it before and after)")
-	assert.Equal(t, "subgentic/coral-promote", p.PromoteRepo)
-	assert.Equal(t, "1429118389", p.PromoteRepoID, "the promote repository's id is pinned: a manifest from a repository of another id does not verify")
+	// The promote workflow is in the same repository (#6274): same name, same id, told apart from the release workflow by its path, its protected branch and its trigger.
+	assert.Equal(t, "subgentic/coral", p.PromoteRepo)
+	assert.Equal(t, "1160696364", p.PromoteRepoID, "the promote workflow's repository id is the code repository's: a manifest from a repository of another id does not verify")
+	assert.Equal(t, ".github/workflows/promote.yml", p.PromoteWorkflow)
+	assert.Equal(t, "refs/heads/promote", p.PromoteRef, "a branch nobody works on, under its own ruleset: never main, where the team pushes")
 }
 
 // The macOS apply installs nothing without a team (see Pins.MacTeamIDs): the one Developer ID team of the app's signature is pinned.
@@ -51,7 +54,7 @@ func TestAnIdentityWithoutARepositoryIDIsRefused(t *testing.T) {
 	_, err = v.VerifyBundle(bundle, sums, promoteIdentity(noID))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "repository id")
-	// and with the id pinned, a bundle that the RELEASE workflow signed is still not a promote manifest: the SAN names the other repository
+	// and with the id pinned, a bundle that the RELEASE workflow signed is still not a promote manifest: the SAN names another workflow path and ref (the repository is the same since #6274)
 	_, err = v.VerifyBundle(bundle, sums, promoteIdentity(DefaultPins()))
 	require.Error(t, err)
 	assert.NotContains(t, err.Error(), "repository id")
@@ -78,9 +81,15 @@ func TestTheNewPinsRefuseAReleaseBuiltInTheOldHome(t *testing.T) {
 	require.Error(t, err)
 }
 
-// Both identities a verification builds carry the pinned repository id (so a change that dropped it from one would not go unseen).
+// Both identities a verification builds carry the pinned repository id (so a change that dropped it from one would not go unseen); with the promote workflow in the same repository it is one id.
 func TestBothIdentitiesCarryTheirRepositoryIDs(t *testing.T) {
-	p := withPromoteID(DefaultPins())
+	p := DefaultPins()
 	assert.Equal(t, RepoID, releaseIdentity(p, "v1.4.142").SourceRepositoryID)
-	assert.Equal(t, "2222", promoteIdentity(p).SourceRepositoryID)
+	assert.Equal(t, RepoID, promoteIdentity(p).SourceRepositoryID)
+	// and the two identities differ in the SAN's path and ref and in the trigger, which is all that tells a release certificate from a promote certificate now
+	rel, pro := releaseIdentity(p, "v1.4.142"), promoteIdentity(p)
+	assert.NotEqual(t, rel.SAN, pro.SAN)
+	assert.NotEqual(t, rel.SourceRepositoryRef, pro.SourceRepositoryRef)
+	assert.NotEqual(t, rel.BuildTrigger, pro.BuildTrigger)
+	assert.Equal(t, rel.SourceRepositoryURI, pro.SourceRepositoryURI, "the same repository")
 }

@@ -22,10 +22,25 @@ func TestEveryTamperedReleaseIsRefusedAtItsOwnStageAndStagesNothing(t *testing.T
 	require.NoError(t, err)
 	releaseAsPromote := ReleaseCert("v1.4.131")
 	promoteAsRelease := PromoteCert()
-	wrongPromoteRepo := PromoteCert()
-	wrongPromoteRepo.SAN = strings.Replace(wrongPromoteRepo.SAN, "coral-promote", "coral-other", 1)
-	wrongPromoteRepo.SourceRepositoryURI = strings.Replace(wrongPromoteRepo.SourceRepositoryURI, "coral-promote", "coral-other", 1)
+	wrongPromoteRepo := PromoteCert() // the promote workflow of another repository (a name that is not the pinned one)
+	wrongPromoteRepo.SAN = strings.Replace(wrongPromoteRepo.SAN, FakeRepo, FakeRepo+"-other", 1)
+	wrongPromoteRepo.SourceRepositoryURI = strings.Replace(wrongPromoteRepo.SourceRepositoryURI, FakeRepo, FakeRepo+"-other", 1)
 	now := time.Now()
+	// The same-repository cases (#6274): the promote workflow and the release workflow are one repository, told apart only by the SAN's path and ref and by the trigger. Each of these is the right repository
+	// with one thing wrong, and none may be accepted as a promote manifest (or, for the last two, as the release's sums).
+	promoteAt := func(ref string) CertID { // promote.yml at another ref: the stub on main, another branch, a tag
+		c := PromoteCert()
+		c.SAN = strings.Replace(c.SAN, FakePromoteRef, ref, 1)
+		c.SourceRepositoryRef = ref
+		return c
+	}
+	promoteMain, promoteFeature, promoteTag := promoteAt("refs/heads/main"), promoteAt("refs/heads/feature"), promoteAt("refs/tags/v1.4.131")
+	promotePush, promoteSchedule := PromoteCert(), PromoteCert()
+	promotePush.BuildTrigger, promoteSchedule.BuildTrigger = "push", "schedule"
+	releaseDispatched := ReleaseCert("v1.4.131")
+	releaseDispatched.BuildTrigger = "workflow_dispatch"
+	promoteFork, releaseFork := PromoteCert(), ReleaseCert("v1.4.131")
+	promoteFork.SourceRepositoryID, releaseFork.SourceRepositoryID = "9000999", "9000999" // a fork or a re-created repository: every name right, another id
 
 	cases := []struct {
 		name  string
@@ -59,6 +74,14 @@ func TestEveryTamperedReleaseIsRefusedAtItsOwnStageAndStagesNothing(t *testing.T
 		}, stage: verify.StageSumsDigest},
 		{name: "the manifest signed as the release workflow", spec: Spec{PromoteID: &releaseAsPromote}, stage: verify.StageManifestSignature},
 		{name: "the manifest signed by another repository's promote workflow", spec: Spec{PromoteID: &wrongPromoteRepo}, stage: verify.StageManifestSignature},
+		{name: "the manifest from promote.yml at main (the stub's identity)", spec: Spec{PromoteID: &promoteMain}, stage: verify.StageManifestSignature},
+		{name: "the manifest from promote.yml at another branch", spec: Spec{PromoteID: &promoteFeature}, stage: verify.StageManifestSignature},
+		{name: "the manifest from promote.yml at a tag", spec: Spec{PromoteID: &promoteTag}, stage: verify.StageManifestSignature},
+		{name: "the manifest from promote.yml run by a push", spec: Spec{PromoteID: &promotePush}, stage: verify.StageManifestSignature},
+		{name: "the manifest from promote.yml run on a schedule", spec: Spec{PromoteID: &promoteSchedule}, stage: verify.StageManifestSignature},
+		{name: "the manifest from a fork or a re-created repository (another id, every name right)", spec: Spec{PromoteID: &promoteFork}, stage: verify.StageManifestSignature},
+		{name: "the sums from release.yml run by a dispatch", spec: Spec{ReleaseID: &releaseDispatched}, stage: verify.StageSumsSignature},
+		{name: "the sums from a fork or a re-created repository (another id, every name right)", spec: Spec{ReleaseID: &releaseFork}, stage: verify.StageSumsSignature},
 		{name: "the manifest signed under a Sigstore this updater does not trust", spec: Spec{PromoteSigner: other}, stage: verify.StageManifestSignature},
 		{name: "the sums signed as the promote workflow", spec: Spec{ReleaseID: &promoteAsRelease}, stage: verify.StageSumsSignature},
 		{name: "the sums signed for another tag", spec: Spec{ReleaseTag: "v1.4.99"}, stage: verify.StageSumsSignature},

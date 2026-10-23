@@ -15,12 +15,14 @@ import (
 
 // The identities of the rehearsal: nothing of Coral's real release or promote workflow, and an OIDC issuer that cannot exist (.invalid, RFC 6761).
 const (
-	FakeIssuer      = "https://oidc.rehearsal.invalid"
-	FakeRepo        = "rehearsal.invalid/coral"
-	FakePromoteRepo = "rehearsal.invalid/coral-promote"
-	// The rehearsal repositories' numeric ids: the pins require them (#5536).
+	FakeIssuer = "https://oidc.rehearsal.invalid"
+	FakeRepo   = "rehearsal.invalid/coral"
+	// The promote workflow lives in the same repository as the release workflow, as the real one does (#6274), on its own branch.
+	FakePromoteRepo = FakeRepo
+	FakePromoteRef  = "refs/heads/promote"
+	// The rehearsal repository's numeric id: the pins require it (#5536); the promote workflow's is the same.
 	FakeRepoID        = "9000001"
-	FakePromoteRepoID = "9000002"
+	FakePromoteRepoID = FakeRepoID
 	// FakeCommit is the commit the fake release workflow says it built.
 	FakeCommit = "0123456789abcdef0123456789abcdef01234567"
 )
@@ -29,7 +31,7 @@ const (
 func Pins() verify.Pins {
 	return verify.Pins{
 		Repo: FakeRepo, RepoID: FakeRepoID, Issuer: FakeIssuer,
-		PromoteRepo: FakePromoteRepo, PromoteRepoID: FakePromoteRepoID, PromoteWorkflow: ".github/workflows/promote.yml", PromoteRef: "refs/heads/main",
+		PromoteRepo: FakePromoteRepo, PromoteRepoID: FakePromoteRepoID, PromoteWorkflow: ".github/workflows/promote.yml", PromoteRef: FakePromoteRef,
 		MaxManifestLifetime: 60 * 24 * time.Hour, MaxSkew: 5 * time.Minute,
 	}
 }

@@ -5,8 +5,9 @@ package verify
 
 import "time"
 
-// The identities and limits the client trusts, compiled in. They are changed only by a release that carries the change, promoted while the old
-// pins still hold (design note section 12, invariant 3); a test pins them to the release workflow in this repository.
+// The identities and limits the client trusts, compiled in. They are changed only by a release that carries the change; a test pins them to the release workflow in this repository.
+// The promote workflow lives in the same repository as the release workflow, on a protected branch of its own (PromoteRef): the two are told apart by the workflow path and ref in the
+// certificate's SAN and by the trigger (a pushed tag against a dispatch), never by the repository.
 const (
 	// Repo is the repository whose releases are installed: the organization's, since the repository moved from cdknorow/coral (#5299). New homes only: a release must come from
 	// the home that is pinned here, and the versions an updater installs are always newer than the one running, so the releases cut in the old home are never candidates.
@@ -47,17 +48,17 @@ type Pins struct {
 	MacTeamIDs []string
 }
 
-// DefaultPins is the compiled-in set. The promote workflow's place is decided with the approval model (note section 3: a second locked-down
-// repository, option A, is assumed here); until that workflow exists no manifest verifies, so nothing installs.
+// DefaultPins is the compiled-in set. The promote workflow is .github/workflows/promote.yml at refs/heads/promote of Repo itself (#6274): a branch nobody works on, covered by its own
+// ruleset, so the file a certificate names is the reviewed one; its certificate carries Repo's id, and a release certificate (release.yml, a tag, a push) is told apart from it by path, ref and trigger.
 func DefaultPins() Pins {
 	return Pins{
 		Repo:                Repo,
 		RepoID:              RepoID,
 		Issuer:              Issuer,
-		PromoteRepo:         "subgentic/coral-promote",
-		PromoteRepoID:       "1429118389", // subgentic/coral-promote's id: GitHub's own number for the repository, so a renamed or recreated repository does not verify
+		PromoteRepo:         Repo,
+		PromoteRepoID:       RepoID, // the same repository: a renamed or recreated one does not verify
 		PromoteWorkflow:     ".github/workflows/promote.yml",
-		PromoteRef:          "refs/heads/main",
+		PromoteRef:          "refs/heads/promote",
 		MaxManifestLifetime: 60 * 24 * time.Hour,
 		MaxSkew:             5 * time.Minute,
 		MacTeamIDs:          []string{"33UR27T84L"}, // the Developer ID team that signs Coral.app (the certificate of 2026-10-21, used since v1.4.143)

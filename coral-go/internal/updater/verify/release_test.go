@@ -104,7 +104,7 @@ func TestAWellFormedReleaseIsVerifiedInOrder(t *testing.T) {
 	assert.Equal(t, asset("1.4.130"), rec.Asset)
 	// The manifest's signature is checked first, the sums file's second, and for exactly this tag.
 	require.Len(t, f.calls, 2)
-	assert.Equal(t, "https://github.com/subgentic/coral-promote/.github/workflows/promote.yml@refs/heads/main", f.calls[0].SAN)
+	assert.Equal(t, "https://github.com/subgentic/coral/.github/workflows/promote.yml@refs/heads/promote", f.calls[0].SAN)
 	assert.Equal(t, "https://github.com/subgentic/coral/.github/workflows/release.yml@refs/tags/v1.4.130", f.calls[1].SAN)
 	assert.Equal(t, "https://token.actions.githubusercontent.com", f.calls[1].Issuer)
 	assert.Equal(t, "refs/tags/v1.4.130", f.calls[1].SourceRepositoryRef)
@@ -134,7 +134,7 @@ func TestEveryFailureStopsAtItsStageWithNoRecord(t *testing.T) {
 		}},
 		{"manifest signed by another workflow", StageManifestSignature, func(r *release) {
 			id := promoteIdentity(testPins)
-			id.SAN = "https://github.com/cdknorow/coral-promote/.github/workflows/other.yml@refs/heads/main"
+			id.SAN = "https://github.com/subgentic/coral/.github/workflows/other.yml@refs/heads/promote"
 			r.cand.ManifestBundle = signer(r, id, "", r.manifest)
 		}},
 		{"right promote SAN, wrong ref in the certificate", StageManifestSignature, func(r *release) {
