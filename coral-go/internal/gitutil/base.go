@@ -5,9 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/subgentic/coral/internal/clitext"
 )
 
 // ErrNoCommits: a repository with no commit has no branch to start a worktree from.
+var ErrDetached = errors.New("the repository is on a detached HEAD, which is no branch to start from: name the base branch")
+
 var ErrNoCommits = errors.New("the repository has no commits yet: make a first commit, or launch without a worktree")
 
 // ResolveBase is the branch a team's or a job's worktree starts from (#6701). A branch the caller names is used as it is, except "main": that is what a request, a stored team and a stored job
@@ -30,7 +34,7 @@ func ResolveBase(ctx context.Context, repoDir, requested string) (string, error)
 	if branch, err := git(ctx, repoDir, "symbolic-ref", "--short", "-q", "HEAD"); err == nil && branch != "" {
 		return branch, nil
 	}
-	return "HEAD", nil // detached: its commit
+	return "", ErrDetached
 }
 
 // refExists reports whether name resolves to a commit in the repository at dir.
@@ -45,27 +49,41 @@ type BranchMissingError struct {
 	Dir      string   `json:"-"`
 	Branches []string `json:"branches"`
 	Default  string   `json:"default_branch"` // the repository's current branch, "" when it has none
+	more     int
 }
 
 func (e *BranchMissingError) Error() string {
 	list := "none"
 	if len(e.Branches) > 0 {
-		shown, more := e.Branches, ""
-		if len(shown) > 20 {
-			shown, more = shown[:20], fmt.Sprintf(" and %d more", len(shown)-20)
+		list = strings.Join(e.Branches, ", ")
+		if e.more > 0 {
+			list += fmt.Sprintf(" and %d more", e.more)
 		}
-		list = strings.Join(shown, ", ") + more
 	}
 	return fmt.Sprintf("The base branch %s does not exist in %s. Its branches: %s.", e.Branch, e.Dir, list)
 }
 
-// branchMissing names the branches that exist.
+// branchText is a branch name from the repository or the request as text to show: control and invisible characters taken out, at most 100 characters.
+func branchText(s string) string {
+	s = clitext.CleanName(s)
+	if r := []rune(s); len(r) > 100 {
+		s = string(r[:100]) + "..."
+	}
+	return s
+}
+
+// branchMissing names the branches that exist: at most 20, each cleaned, the rest counted.
 func branchMissing(ctx context.Context, repoDir, name string) error {
 	out, _ := git(ctx, repoDir, "for-each-ref", "--format=%(refname:short)", "--sort=refname", "refs/heads")
 	cur, _ := git(ctx, repoDir, "symbolic-ref", "--short", "-q", "HEAD")
-	e := &BranchMissingError{Branch: name, Dir: repoDir, Branches: strings.Fields(out), Default: cur}
-	if e.Branches == nil {
-		e.Branches = []string{}
+	all := strings.Fields(out)
+	e := &BranchMissingError{Branch: branchText(name), Dir: repoDir, Branches: []string{}, Default: branchText(cur)}
+	for i, b := range all {
+		if i == 20 {
+			e.more = len(all) - 20
+			break
+		}
+		e.Branches = append(e.Branches, branchText(b))
 	}
 	return e
 }

@@ -260,3 +260,17 @@ func TestRunWorktreeInARepositoryNotOnMain(t *testing.T) {
 		assert.True(t, launched, "base %q: the agent launched in the run's worktree", base)
 	}
 }
+
+// A job run's worktree with unsaved work in it stays after the run, with its branch: removal is without --force (#6701).
+func TestRunWorktreeWithUnsavedWorkIsKept(t *testing.T) {
+	e := newExitEnv(t, "exit-worktree-dirty")
+	repo := exitGitRepo(t)
+	e.launch(t, func(context.Context) error {
+		return os.WriteFile(filepath.Join(e.dir, "unsaved.txt"), []byte("the agent's work"), 0o644)
+	})
+	e.s.launchAndWatch(e.runID, store.ScheduledJob{AgentType: "claude"}, runConfig{repoPath: repo, createWorktree: true, cleanupWorktree: true})
+	assert.FileExists(t, filepath.Join(e.dir, "unsaved.txt"), "the work is not deleted")
+	out, err := exec.Command("git", "-C", repo, "branch", "--list", "coral/job-run-*").CombinedOutput()
+	require.NoError(t, err, string(out))
+	assert.Contains(t, string(out), "coral/job-run-", "its branch stays too")
+}

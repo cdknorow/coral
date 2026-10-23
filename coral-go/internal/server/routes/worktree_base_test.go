@@ -260,3 +260,40 @@ func TestTeamWorktreeForABoardNameGitRefusesInABranch(t *testing.T) {
 		assert.Contains(t, git("branch", "--list", gitutil.TeamBranch(name)), "coral-team/", "%q", name)
 	}
 }
+
+// Stopping one agent that is the last in its worktree: the worktree goes only when nothing in it is unsaved (the single kill used --force too, #6701).
+func TestKillSessionKeepsADirtyWorktreeAndRemovesAClean(t *testing.T) {
+	for _, dirty := range []bool{false, true} {
+		server, h, terminal, ss := setupSessionsTestServer(t)
+		repo, git := repoOn(t, "master", true)
+		wt := filepath.Join(t.TempDir(), "agent-wt")
+		git("worktree", "add", "-b", "agent-branch", "--", wt, "master")
+		sid := "00000000-0000-0000-0000-0000000067" + map[bool]string{false: "01", true: "02"}[dirty]
+		name := "claude-" + sid
+		terminal.addSession(name, wt)
+		require.NoError(t, ss.RegisterLiveSession(context.Background(), &store.LiveSession{SessionID: sid, AgentType: "claude", AgentName: "claude", WorkingDir: wt}))
+		require.NoError(t, ss.UpdateWorktreeInfo(context.Background(), sid, wt, repo))
+		_ = h
+		if dirty {
+			require.NoError(t, os.WriteFile(filepath.Join(wt, "unsaved.txt"), []byte("mine"), 0o644))
+		}
+
+		resp, err := http.Post(server.URL+"/api/sessions/live/"+name+"/kill", "application/json", strings.NewReader(`{"agent_type":"claude","session_id":"`+sid+`"}`))
+		require.NoError(t, err)
+		var out struct {
+			Worktree map[string]any `json:"worktree"`
+		}
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&out))
+		resp.Body.Close()
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		require.NotNil(t, out.Worktree, "dirty=%v", dirty)
+		if dirty {
+			assert.Equal(t, "kept", out.Worktree["state"])
+			assert.Equal(t, "it has uncommitted changes", out.Worktree["reason"])
+			assert.FileExists(t, filepath.Join(wt, "unsaved.txt"))
+		} else {
+			assert.Equal(t, "removed", out.Worktree["state"])
+			assert.NoDirExists(t, wt)
+		}
+	}
+}

@@ -2,7 +2,9 @@ package gitutil
 
 import (
 	"context"
+	"fmt"
 	"os/exec"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -91,6 +93,23 @@ func TestResolveBaseOnADetachedHead(t *testing.T) {
 	out, err := exec.Command("git", "-C", dir, "checkout", "-q", "--detach").CombinedOutput()
 	require.NoError(t, err, string(out))
 	got, err := ResolveBase(context.Background(), dir, "")
-	require.NoError(t, err)
-	assert.Equal(t, "HEAD", got)
+	assert.ErrorIs(t, err, ErrDetached, "a detached HEAD is no branch: a base is asked for, not the word HEAD (got %q)", got)
+}
+
+// Branch names are text from the repository: cleaned, capped at 20 names of 100 characters, the rest counted.
+func TestBranchMissingTextIsCleanedAndCapped(t *testing.T) {
+	dir := baseRepo(t, "master", true)
+	for i := 0; i < 25; i++ {
+		out, err := exec.Command("git", "-C", dir, "branch", fmt.Sprintf("b%02d-%s", i, strings.Repeat("x", 120))).CombinedOutput()
+		require.NoError(t, err, string(out))
+	}
+	_, err := ResolveBase(context.Background(), dir, "gone\u202e")
+	var missing *BranchMissingError
+	require.ErrorAs(t, err, &missing)
+	assert.Len(t, missing.Branches, 20)
+	for _, b := range missing.Branches {
+		assert.LessOrEqual(t, len([]rune(b)), 103, b)
+	}
+	assert.Contains(t, err.Error(), "and 6 more") // 25 + master, minus the 20 shown
+	assert.NotContains(t, err.Error(), "\u202e")
 }
