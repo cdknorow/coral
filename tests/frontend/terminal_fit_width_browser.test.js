@@ -159,6 +159,7 @@ async function openTab({ contextId, width, height, mobile, fakeHubView = false, 
 // Shows agent `a` in the terminal view and waits until the xterm renders the pane (cols x rows).
 async function show(tab, a, pane) {
     await tab.ev(`(() => { setLiveViewMode('terminal'); selectLiveSession(${JSON.stringify(a.name)}, 'terminal', ${JSON.stringify(a.sid)}); return true; })()`);
+    if (!pane) return tab.waitFor(`(async () => { const v = await ${VIEW}; return v && v.wsOpen && v.cols > 0 && v.screenW > 0 ? v : null; })()`, 'the xterm'); // a window that owns the pane sizes it to itself
     return tab.waitFor(`(async () => { const v = await ${VIEW}; return v && v.wsOpen && v.cols === ${pane.cols} && v.rows === ${pane.rows} && v.screenW > 0 ? v : null; })()`, `the xterm at ${pane.cols}x${pane.rows}`);
 }
 const click = tab => tab.ev(`(() => { document.getElementById('terminal-fit-width-btn').click(); return true; })()`);
@@ -174,6 +175,7 @@ function assertFits(v, what) {
     const contexts = [];
     const tabs = [];
     let A = null;
+    const guard = await require('./helpers/settings_guard').guardSettings(); // terminal_font_size is written below: put back as found, not left as ''
     try {
         const r = await httpJson('POST', '/api/sessions/launch', { working_dir: '/tmp', agent_type: 'terminal', display_name: 'Fit width' });
         assert.equal(r.status, 200, `launch: ${JSON.stringify(r.data)}`);
@@ -321,7 +323,7 @@ function assertFits(v, what) {
             v = await show(tab2, A, eighty);
             assert.equal(v.font, 13, 'a chosen 13 (the old default) is a choice: it stays 13 on a phone');
             await tab2.close(); tabs.pop();
-        } finally { await put({ terminal_font_size: '' }); }
+        } finally { await guard.restore(); }
         console.log('   ✓ 14 and a chosen 13 hold on a phone; the desktop steps above keep 13');
 
         console.log('11. The canvas is drawn at CSS size x pixel ratio, so text is not 2-3x too large at DPR 2 and 3 (#6596)');
@@ -340,7 +342,7 @@ function assertFits(v, what) {
             const ctx = await newContext(); contexts.push(ctx);
             const tab = await openTab({ contextId: ctx, width: w, height: h, mobile, dpr });
             tabs.push(tab);
-            await show(tab, A, eighty);
+            await show(tab, A, mobile ? eighty : null); // the desktop window sizes the pane to itself (69 columns in a small window): any size will do for the canvas
             sizes[label] = (await scaled(tab, label)).backing[0];
             if (mobile) { // a font change redraws the canvas: the fit button shrinks the font, and the canvas stays at its device size
                 await click(tab);
@@ -355,6 +357,7 @@ function assertFits(v, what) {
     } finally {
         for (const t of tabs) await t.close();
         for (const c of contexts) await disposeContext(c);
+        await guard.restore().catch(() => {});
         if (A) await httpJson('POST', `/api/sessions/live/${encodeURIComponent(A.name)}/kill`, { agent_type: 'terminal', session_id: A.sid }).catch(() => {});
     }
 })().catch(err => {
