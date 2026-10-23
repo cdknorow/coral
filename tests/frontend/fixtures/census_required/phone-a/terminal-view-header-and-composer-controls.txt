@@ -1,0 +1,1 @@
+terminal view: header and composer controls
