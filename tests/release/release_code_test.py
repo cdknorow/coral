@@ -103,14 +103,24 @@ class Command(unittest.TestCase):
         self.assertNotIn(wrong, r.stderr)
         self.assertNotIn(SEED, r.stdout + r.stderr)
 
-    def test_a_code_with_line_breaks_cannot_put_a_workflow_command_in_the_log(self):
-        # the code is an input of the workflow: whatever it holds, the only lines starting with :: are add-mask commands for pieces of it, never a command of its own
-        for code in ("123456\n::error::injected\n::stop-commands::x", "::error::x\r::warning::y", "12\x0b::stop-commands::z"):
+    def test_a_hostile_value_prints_nothing_of_itself(self):
+        # the code is an input of the workflow: anything that is not six digits is refused before a single line is written to stdout, and the message holds none of the value
+        hostile = ("123456\n::error::injected\n::stop-commands::x", "::error::x\r::warning::y", "12\x0b::stop-commands::z", "::add-mask::123456", "1234567", "12345", "123  456", "123-45-6", "12 3456\n", "123456\n", " 123456", "abcdef", "")
+        for code in hostile:
             r = run(["verify"], {"RELEASE_CODE": code, "RELEASE_CODE_SEED": SEED})
-            self.assertEqual(r.returncode, 2, r.stdout)
-            for line in r.stdout.splitlines():
-                self.assertTrue(line.startswith("::add-mask::"), "a log line that is not an add-mask: %r" % line)
-            self.assertEqual(r.stdout.splitlines()[0][:12], "::add-mask::")
+            self.assertEqual(r.returncode, 2, (code, r.stdout, r.stderr))
+            self.assertEqual(r.stdout, "", "nothing on stdout for %r" % code)
+            self.assertNotIn("::", r.stderr)
+            for piece in [x for x in code.replace("\r", "\n").split("\n") if x.strip()]:
+                self.assertNotIn(piece, r.stderr)
+
+    def test_only_the_normalised_digits_are_masked_and_the_display_forms_work(self):
+        good = rc.totp(rc.decode_seed(SEED), time.time())
+        for typed in (good, good[:3] + " " + good[3:], good[:3] + "-" + good[3:]):
+            r = run(["verify"], {"RELEASE_CODE": typed, "RELEASE_CODE_SEED": SEED})
+            self.assertEqual(r.returncode, 0, (typed, r.stderr))
+            self.assertEqual(r.stdout.splitlines()[0], "::add-mask::" + good, "the digits only, as the first line")
+            self.assertEqual([l for l in r.stdout.splitlines() if l.startswith("::")], ["::add-mask::" + good])
 
     def test_a_clock_before_the_first_step_is_a_refusal_not_a_crash(self):
         self.assertFalse(rc.check("123456", SEED, 10))

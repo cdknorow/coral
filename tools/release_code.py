@@ -79,15 +79,23 @@ def check(code, seed_text, now=None):
     return ok
 
 
+# What a typed code may look like: six digits, with one space or dash in the middle as an authenticator shows them, and nothing else.
+CODE_SHAPE = re.compile(r"([0-9]{3})[ -]?([0-9]{3})")
+
+
 def cmd_verify():
+    """Checks the shape of the code FIRST: anything that is not six digits (a line break, a ::command::, a long string, nothing) is refused with a fixed message that contains none of it, and
+    nothing is written to stdout, so a hostile workflow input never reaches the log at all. Only the normalised six digits are masked, as the first output line. Every dispatch also needs the
+    release owner's approval as the environment's reviewer, so guessing a code costs an approval per try; this check has no memory of its own."""
     code, seed = os.environ.get("RELEASE_CODE", ""), os.environ.get("RELEASE_CODE_SEED", "")
-    # first output: whatever happens next, the code is not in the log. One command per line of the value: a code with a line break in it must not put a second line of its own into the log,
-    # where the runner would read it as a workflow command (::error::, ::stop-commands::). Its digits without spaces or dashes are masked too, as the authenticator shows them.
-    for line in dict.fromkeys(code.splitlines() + [re.sub(r"[\s-]", "", code)]):
-        if line:
-            print("::add-mask::" + line, flush=True)
+    m = CODE_SHAPE.fullmatch(code)
+    if not m:
+        print("release code not checked: it is not six digits", file=sys.stderr)
+        return 2
+    digits = m.group(1) + m.group(2)
+    print("::add-mask::" + digits, flush=True)
     try:
-        right = check(code, seed)
+        right = check(digits, seed)
     except CodeError as e:
         print("release code not checked: %s" % e, file=sys.stderr)
         return 2
