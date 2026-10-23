@@ -140,7 +140,8 @@ func TestStopTeamRemovesACleanWorktree(t *testing.T) {
 	require.Contains(t, git("worktree", "list"), id)
 
 	got := stopTeam(t, url, id)
-	assert.Equal(t, true, got["removed"], "%v", got)
+	assert.Equal(t, "removed", got["state"], "%v", got)
+	assert.Equal(t, wt, got["path"])
 	assert.NoDirExists(t, wt)
 	assert.NotContains(t, git("worktree", "list"), id)
 	assert.NotContains(t, git("branch", "--list", "coral-team/"+id), id, "a branch with nothing of its own goes with it")
@@ -159,8 +160,8 @@ func TestStopTeamKeepsAWorktreeWithUnsavedWork(t *testing.T) {
 		require.NoError(t, os.WriteFile(filepath.Join(wt, tc.file), []byte("unsaved work"), 0o644))
 
 		got := stopTeam(t, url, id)
-		assert.Equal(t, false, got["removed"], "%s: %v", tc.name, got)
-		assert.Contains(t, got["kept"], "uncommitted or untracked", tc.name)
+		assert.Equal(t, "kept", got["state"], "%s: %v", tc.name, got)
+		assert.Equal(t, "it has uncommitted changes", got["reason"], tc.name)
 		b, err := os.ReadFile(filepath.Join(wt, tc.file))
 		require.NoError(t, err, tc.name)
 		assert.Equal(t, "unsaved work", string(b), tc.name)
@@ -178,19 +179,23 @@ func TestStopTeamKeepsABranchWithUnmergedCommits(t *testing.T) {
 	git("-C", wt, "commit", "-q", "-m", "work")
 
 	got := stopTeam(t, url, id)
-	assert.Equal(t, true, got["removed"], "%v", got)
-	assert.Contains(t, got["kept"], "merged nowhere")
+	assert.Equal(t, "removed", got["state"], "%v", got)
+	assert.Equal(t, "its branch is kept: it has commits that are not merged", got["reason"])
 	assert.NoDirExists(t, wt)
 	assert.Contains(t, git("branch", "--list", "coral-team/"+id), id, "the commits stay reachable")
 }
 
-// #6701: a base branch the repository does not have is a 400 that names the branches that exist.
+// #6701: a base branch the repository does not have is a 400 with one plain sentence, the field, and the branches to pick from (Frontend's #6707 shape).
 func TestTeamLaunchWithAMissingBaseBranchNamesTheBranches(t *testing.T) {
 	url, _ := teamServer(t)
 	repo, _ := repoOn(t, "master", true)
 	status, out := postTeam(t, url, map[string]any{"board_name": "nobranch", "working_dir": repo, "worktree": true, "base_branch": "release", "agent_type": "claude", "agents": []map[string]any{{"name": "A", "prompt": "x"}}})
 	assert.Equal(t, http.StatusBadRequest, status, "%v", out)
-	assert.Equal(t, `the branch "release" does not exist in this repository; the branches that do: master`, out["error"])
+	assert.Equal(t, "The base branch release does not exist in "+repo+". Its branches: master.", out["error"])
+	assert.Equal(t, "base_branch_missing", out["code"])
+	assert.Equal(t, "base_branch", out["field"])
+	assert.Equal(t, []any{"master"}, out["branches"])
+	assert.Equal(t, "master", out["default_branch"])
 }
 
 // #6701: a stopped team resurrects into a worktree on its own branch (coral-team/<board>), with the commits the branch kept: it used to add the base branch itself, which is checked out in the repository.

@@ -39,16 +39,33 @@ func refExists(ctx context.Context, dir, name string) bool {
 	return err == nil
 }
 
-// branchMissing is the plain answer for a base branch the repository does not have: it names the branches that exist.
+// BranchMissingError is a base branch the repository does not have (#6701). Its message is one plain sentence; the fields let a dashboard show it under the field and offer the branches.
+type BranchMissingError struct {
+	Branch   string   `json:"-"`
+	Dir      string   `json:"-"`
+	Branches []string `json:"branches"`
+	Default  string   `json:"default_branch"` // the repository's current branch, "" when it has none
+}
+
+func (e *BranchMissingError) Error() string {
+	list := "none"
+	if len(e.Branches) > 0 {
+		shown, more := e.Branches, ""
+		if len(shown) > 20 {
+			shown, more = shown[:20], fmt.Sprintf(" and %d more", len(shown)-20)
+		}
+		list = strings.Join(shown, ", ") + more
+	}
+	return fmt.Sprintf("The base branch %s does not exist in %s. Its branches: %s.", e.Branch, e.Dir, list)
+}
+
+// branchMissing names the branches that exist.
 func branchMissing(ctx context.Context, repoDir, name string) error {
 	out, _ := git(ctx, repoDir, "for-each-ref", "--format=%(refname:short)", "--sort=refname", "refs/heads")
-	branches := strings.Fields(out)
-	if len(branches) == 0 {
-		return fmt.Errorf("the branch %q does not exist in this repository", name)
+	cur, _ := git(ctx, repoDir, "symbolic-ref", "--short", "-q", "HEAD")
+	e := &BranchMissingError{Branch: name, Dir: repoDir, Branches: strings.Fields(out), Default: cur}
+	if e.Branches == nil {
+		e.Branches = []string{}
 	}
-	more := ""
-	if len(branches) > 20 {
-		branches, more = branches[:20], fmt.Sprintf(" and %d more", len(branches)-20)
-	}
-	return fmt.Errorf("the branch %q does not exist in this repository; the branches that do: %s%s", name, strings.Join(branches, ", "), more)
+	return e
 }

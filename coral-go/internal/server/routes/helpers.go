@@ -7,6 +7,7 @@ import (
 	"errors"
 	"github.com/subgentic/coral/internal/board"
 	"github.com/subgentic/coral/internal/diskguard"
+	"github.com/subgentic/coral/internal/gitutil"
 	"io"
 	"io/fs"
 	"log/slog"
@@ -374,4 +375,9 @@ func getByID[T any](w http.ResponseWriter, r *http.Request, param, badID, missin
 		return
 	}
 	writeJSON(w, http.StatusOK, row)
+}
+
+// writeBranchMissing answers a base branch the repository does not have (#6701): 400 with one plain sentence, the field it belongs to and the branches to pick from, no raw git text.
+func writeBranchMissing(w http.ResponseWriter, e *gitutil.BranchMissingError) {
+	writeJSON(w, http.StatusBadRequest, map[string]any{"error": e.Error(), "code": "base_branch_missing", "field": "base_branch", "branches": e.Branches, "default_branch": e.Default})
 }
