@@ -4,6 +4,7 @@ import { escapeHtml, showToast, escapeAttr } from './utils.js';
 import { registerActions, textOf } from './actions.js';
 import { browserLocal } from './safe_storage.js';
 import { reportUpdate } from './dashboard_analytics.js';
+import { placeNotices } from './notifications.js';
 
 /**
  * Fetch update info from the backend and show a toast if a new version is available.
@@ -80,6 +81,7 @@ function showUpdateToast(data) {
                     <span class="update-toast-current">(you have v${escapeHtml(data.current)})</span>
                     ${data.channel === "agentic" && data.approved === false ? '<span class="update-toast-current update-toast-unapproved">Not yet approved.</span>' : ""}
                 </span>
+                <button type="button" class="update-toast-more" data-on-click="notice-more" aria-expanded="false" aria-label="Show details" title="Show details"><span class="material-icons" aria-hidden="true">expand_more</span></button>
                 <button class="update-toast-close" data-on-click="update-dismiss" data-version="${escapeAttr(data.latest)}" title="Dismiss">&times;</button>
             </div>
             ${notesHtml}
@@ -128,7 +130,15 @@ function showWarningToast(id, heading, message) {
     close.setAttribute("aria-label", `Dismiss: ${heading}`); // the × alone is read as "times"
     close.textContent = "\u00d7";
     close.addEventListener("click", () => toast.remove());
-    header.append(title, close);
+    const more = document.createElement("button");
+    more.type = "button";
+    more.className = "update-toast-more";
+    more.setAttribute("aria-expanded", "false");
+    more.setAttribute("aria-label", "Show details");
+    more.title = "Show details";
+    more.innerHTML = '<span class="material-icons" aria-hidden="true">expand_more</span>';
+    more.addEventListener("click", () => toggleNotice(more));
+    header.append(title, more, close);
     const text = document.createElement("p");
     text.className = "security-warning-text";
     text.textContent = message;
@@ -145,11 +155,24 @@ function warningStack() {
         stack.id = "warning-toasts";
         document.body.appendChild(stack);
     }
+    placeNotices(); // below the top bar on a phone
     return stack;
+}
+
+// On a phone a notice is one line (its title and two buttons) until opened; this opens or folds it, and says so to a screen reader (css hides the details by clipping, so an announced alert still carries them).
+function toggleNotice(btn) {
+    const toast = btn.closest(".update-toast");
+    if (!toast) return;
+    const open = toast.classList.toggle("expanded");
+    btn.setAttribute("aria-expanded", String(open));
+    const label = open ? "Hide details" : "Show details";
+    btn.setAttribute("aria-label", label);
+    btn.title = label;
 }
 
 // The update toast's close button (#3645).
 registerActions({
+    'notice-more': el => toggleNotice(el),
     'update-dismiss': el => { const v = textOf(el.dataset.version, 100); if (v) window.dismissUpdateToast(v); },
     // The Download link opens the release page by its own href; this only reports that it was opened (#5952).
     'update-download': el => { const v = textOf(el.dataset.version, 100); if (v) reportUpdate('update_offer_opened', v, el.dataset.channel); },

@@ -1433,16 +1433,32 @@ button.subscriber-history-link {
 #warning-toasts .security-warning-text { max-height: 26vh; } /* three can show at once: each scrolls its own text before the column outgrows the window */
 /* The update notice is a child of the column too: on a desktop it stays fixed at the top right, as it was. */
 #warning-toasts > .update-toast:not(.security-warning-toast) { pointer-events: auto; }
+.update-toast-more { display: none; } /* the arrow that opens a notice is a phone's: a desktop shows them whole */
 /* The short toasts share one column (a second no longer hides the first): bottom right, as each was. */
 #toast-host { position: fixed; right: 20px; bottom: 20px; z-index: 200; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; max-width: min(520px, calc(100vw - 40px)); pointer-events: none; }
 #toast-host > .toast { position: static; pointer-events: auto; animation: slideIn 0.3s ease, fadeOut 0.3s ease 2.7s; }
 #toast-host > .toast.has-action { animation: slideIn 0.3s ease; }
 /* On a phone the notices and the short toasts are at the top: at the bottom they sat over the composer, Send, Wake and a dialog's buttons (#6162, found on a Windows run where the data-folder warning covered Wake). The column scrolls when several are open. */
 @media (max-width: 767px) {
-    #warning-toasts { top: calc(env(safe-area-inset-top, 0px) + 8px); bottom: auto; left: 8px; right: 8px; width: auto; flex-direction: column; max-height: 45vh; }
+    #warning-toasts { top: var(--notice-top, calc(env(safe-area-inset-top, 0px) + 8px)); bottom: auto; left: 8px; right: 8px; width: auto; flex-direction: column; max-height: 45vh; gap: 6px; }
     #warning-toasts > .update-toast { position: static; min-width: 0; max-width: none; animation: none; }
-    #toast-host { top: calc(env(safe-area-inset-top, 0px) + 8px); bottom: auto; left: 8px; right: 8px; max-width: none; align-items: stretch; z-index: 310; } /* above the notices: a short toast must be seen */
+    /* A notice is one line (its title and two 44 px buttons); the details open on the arrow. Clipped, not display:none, so an announced alert still carries them. */
+    #warning-toasts > .update-toast .update-toast-body { padding: 0 4px 0 14px; gap: 0; }
+    #warning-toasts > .update-toast .update-toast-header { align-items: center; }
+    #warning-toasts > .update-toast .update-toast-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; }
+    #warning-toasts > .update-toast .update-toast-current { display: none; }
+    #warning-toasts > .update-toast .update-toast-more, #warning-toasts > .update-toast .update-toast-close { min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+    #warning-toasts > .update-toast .update-toast-more .material-icons { transition: transform 0.15s; }
+    #warning-toasts > .update-toast.expanded .update-toast-more .material-icons { transform: rotate(180deg); }
+    #warning-toasts > .update-toast:not(.expanded) .update-toast-body > :not(.update-toast-header) { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); border: 0; }
+    #warning-toasts > .update-toast.expanded .update-toast-body { padding: 0 4px 12px 14px; gap: 8px; }
+    #warning-toasts > .update-toast.expanded .update-toast-title { white-space: normal; }
+    #warning-toasts > .update-toast.expanded .update-toast-current { display: inline; }
+    #toast-host { top: var(--notice-top, calc(env(safe-area-inset-top, 0px) + 8px)); bottom: auto; left: 8px; right: 8px; max-width: none; align-items: stretch; z-index: 310; } /* above the notices: a short toast must be seen */
     #toast-host > .toast { max-width: none; }
+    /* A long toast is two lines, a tap shows the rest (it would otherwise cover a third of the screen). */
+    #toast-host > .toast .toast-message { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+    #toast-host > .toast.expanded .toast-message { display: block; -webkit-line-clamp: unset; line-clamp: unset; overflow: visible; }
 }
 
 .update-toast-body {
@@ -1487,6 +1503,10 @@ button.subscriber-history-link {
 .update-toast-close:hover {
     color: var(--text-primary);
 }
+
+.update-toast-more { background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 0; line-height: 1; flex-shrink: 0; }
+.update-toast-more:hover { color: var(--text-primary); }
+.update-toast-more:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* A finger needs 44 px: the dismiss button of a toast (update, security, Windows Firewall, database damage) was 24 px on a touch screen, where the toast can be shown to a phone through remote access. */
 @media (pointer: coarse) {

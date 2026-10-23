@@ -58,6 +58,8 @@ export function showToast(message, isError = false, duration = 4000, opts = {}) 
     close.addEventListener("click", dismiss);
     toast.appendChild(close);
     toast.addEventListener("keydown", (e) => { if (e.key === "Escape") dismiss(); });
+    // On a phone a long toast shows two lines (css); a tap opens the rest. The full text is in the element either way, so a screen reader reads it all.
+    toast.addEventListener("click", (e) => { if (!e.target.closest("button")) toast.classList.toggle("expanded"); });
 
     toastHost().appendChild(toast);
     timer = setTimeout(dismiss, duration);
@@ -72,7 +74,17 @@ function toastHost() {
         host.id = "toast-host";
         document.body.appendChild(host);
     }
+    placeNotices();
     return host;
+}
+
+// On a phone the notices and the short toasts start below the top bar (the Agents picker, home, bookmarks, panel, settings), never over it: css reads --notice-top, set here from the bar's own bottom edge on the two
+// columns themselves (not on <html>, where the theme code treats every inline custom property as a theme colour) and kept current when the window changes.
+export function placeNotices() {
+    const bar = document.querySelector("header.top-bar");
+    const top = `${Math.max(bar ? Math.round(bar.getBoundingClientRect().bottom) : 0, 0) + 8}px`;
+    for (const id of ["toast-host", "warning-toasts"]) document.getElementById(id)?.style.setProperty("--notice-top", top);
+    if (!placeNotices._wired) { placeNotices._wired = true; window.addEventListener("resize", placeNotices); }
 }
 
 export function showWorkflowNotification(title, message, level = 'info', duration = 8000) {
