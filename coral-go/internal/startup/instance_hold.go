@@ -1,6 +1,7 @@
 package startup
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,7 +13,11 @@ type Instance struct {
 	path string
 }
 
-func lockError(err error) error {
+func lockError(coralDir, lockPath string, err error) error {
+	if errors.Is(err, errAlreadyRunning) {
+		// Say which server runs for this folder, where, and what to do, not only "in use" (#235); it begins "Coral is already running": no "cannot start Coral:" before it (#279).
+		return alreadyRunningError(coralDir, lockPath)
+	}
 	return fmt.Errorf("cannot start Coral: %w (stop the existing server or use a different data directory)", err)
 }
 
@@ -29,7 +34,7 @@ func LockInstance(coralDir string) (*Instance, error) {
 	path := filepath.Join(coralDir, "coral-server.lock")
 	l, err := acquireInstanceLock(path)
 	if err != nil {
-		return nil, lockError(err)
+		return nil, lockError(coralDir, path, err)
 	}
 	return &Instance{lock: l, path: path}, nil
 }

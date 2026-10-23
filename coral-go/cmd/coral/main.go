@@ -103,7 +103,37 @@ func main() {
 	showVersion := flag.Bool("version", false, "Print the version and exit (also -v, or coral version)")
 	flag.BoolVar(showVersion, "v", false, "Print the version and exit")
 	allowSharedDataDir := flag.Bool("allow-shared-data-dir", false, "Run even when the data folder can be read by other accounts and Coral can't make it private (Windows: it is owned by someone else, or is a link). By default Coral makes such a folder private to you, or refuses to start (also CORAL_ALLOW_SHARED_DATA_DIR=1)")
-	flag.Parse()
+	// A bad flag gets one line and where to look, not every server flag (#235); --help-all prints them all.
+	flag.Usage = func() {
+		for _, a := range os.Args[1:] {
+			if strings.TrimLeft(a, "-") == "stop" {
+				fmt.Fprintln(os.Stderr, unknownCommandHints["stop"])
+			}
+		}
+		fmt.Fprintln(os.Stderr, "Run 'coral --help' for the commands and main flags, or 'coral --help-all' for every server flag.")
+	}
+	if len(os.Args) > 1 && (os.Args[1] == "--help-all" || os.Args[1] == "-help-all") {
+		printHelp(os.Stdout)
+		fmt.Fprintln(os.Stdout)
+		fmt.Fprintln(os.Stdout, "Every server flag:")
+		flag.CommandLine.SetOutput(os.Stdout)
+		flag.PrintDefaults()
+		os.Exit(0)
+	}
+	// A flag the binary does not have gets coral's own line (and the hint for the word people type, such as --stop), never Go's "flag provided but not defined" with
+	// the usage under it; exit 2.
+	usage := flag.Usage
+	flag.CommandLine.Init(os.Args[0], flag.ContinueOnError)
+	flag.CommandLine.SetOutput(io.Discard)
+	flag.CommandLine.Usage = func() {}
+	if err := flag.CommandLine.Parse(os.Args[1:]); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			usage()
+			os.Exit(0)
+		}
+		os.Exit(flagParseFailure(os.Stderr, err))
+	}
+	flag.CommandLine.Usage = usage
 	config.SetAllowSharedDataDir(*allowSharedDataDir) // before config.Load, which makes the data folder
 	if *showVersion {
 		printVersion(os.Stdout)

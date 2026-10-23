@@ -222,17 +222,19 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 	if fi, statErr := os.Lstat(coralDir); instance == nil && statErr == nil && fi.IsDir() {
 		var err error
 		if instance, err = acquireInstanceLock(lockPath); err != nil {
-			return nil, lockError(err)
+			return nil, lockError(coralDir, lockPath, err)
 		}
 	}
 	logStartup(opts)
 	if err := prepareDataDirs(cfg, coralDir); err != nil {
 		return nil, err
 	}
+	// Which data folder this server uses, as it uses it (#235): next to the tools line, so a test server's log names both.
+	log.Printf("[startup] data folder: %s", logsafe.Path(coralDir)) // a data location, through logsafe (its census, #300)
 	if instance == nil {
 		var err error
 		if instance, err = acquireInstanceLock(lockPath); err != nil {
-			return nil, lockError(err)
+			return nil, lockError(coralDir, lockPath, err)
 		}
 	}
 
@@ -272,6 +274,12 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 	if err != nil {
 		return closeDB(err)
 	}
+	// Where this server can be reached, recorded next to its PID for a second start on the same data folder (#235).
+	scheme := "http"
+	if tlsConfig != nil {
+		scheme = "https"
+	}
+	instance.recordAddress(fmt.Sprintf("%s://localhost:%d", scheme, boundPort))
 	// The DNS-rebinding check accepts exactly the names Coral listens on (#3594).
 	auth.SetListenHosts(cfg.ListenHosts())
 	// The re-checks end with the server (Shutdown, or a Start that fails later), not only with the caller's ctx: a caller may pass

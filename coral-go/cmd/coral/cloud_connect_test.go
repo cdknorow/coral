@@ -361,11 +361,11 @@ func TestCloudConnectRefusals(t *testing.T) {
 	ticket := filepath.Join(t.TempDir(), "ticket")
 	require.NoError(t, os.WriteFile(ticket, []byte(testCred), 0o600))
 	stdin := strings.NewReader(testCred)
-	assert.Equal(t, 4, runCloud([]string{"connect", "--ticket-file", "-", "--url", url}, stdin, &out, &errb))
+	assert.Equal(t, exitCannotReach, runCloud([]string{"connect", "--ticket-file", "-", "--url", url}, stdin, &out, &errb), "Coral down: cannot reach (3)")
 	assert.Equal(t, len(testCred), stdin.Len(), "stdin not read while Coral is down")
-	assert.Equal(t, 4, runCloud([]string{"connect", "--ticket-file", ticket, "--url", url}, nil, &out, &errb))
+	assert.Equal(t, exitCannotReach, runCloud([]string{"connect", "--ticket-file", ticket, "--url", url}, nil, &out, &errb))
 	assert.FileExists(t, ticket)
-	assert.Equal(t, 4, runCloud([]string{"connect", "--url", url}, nil, &out, &errb))
+	assert.Equal(t, exitCannotReach, runCloud([]string{"connect", "--url", url}, nil, &out, &errb))
 }
 
 // Without Coral's command-line token (another user, or Coral not started with
