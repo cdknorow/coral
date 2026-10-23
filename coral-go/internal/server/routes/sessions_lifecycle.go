@@ -1257,19 +1257,19 @@ func (h *SessionsHandler) KillTeam(w http.ResponseWriter, r *http.Request) {
 		killed++
 	}
 
-	// Artifact snapshots above must finish before an owned worktree is removed.
+	// Artifact snapshots above have finished: the owned worktree goes only if nothing in it is unsaved, and the answer says what was kept and why (#6701).
+	resp := map[string]any{"ok": true, "sessions_killed": killed}
 	if teamWorktree != "" {
-		go func() {
-			defer safego.Recover("server/routes/sessions_lifecycle:901")
-			wtCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			defer cancel()
-			// git runs in the team's repository (its stored working dir), not in the folder that holds the worktrees: that is no repository (#6701).
-			if err := gitutil.RemoveWorktree(wtCtx, teamRepo, teamWorktree); err != nil {
-				log.Printf("[kill-team] failed to remove worktree %s: %s", logsafe.Dir(teamWorktree), err)
-			} else {
-				log.Printf("[kill-team] cleaned up worktree: %s", logsafe.Dir(teamWorktree))
-			}
-		}()
+		wtCtx, cancel := context.WithTimeout(bgCtx, 30*time.Second)
+		outcome, err := gitutil.RemoveWorktree(wtCtx, teamRepo, teamWorktree, "coral-team/"+boardName)
+		cancel()
+		if err != nil {
+			outcome.Kept = "the worktree could not be removed: " + err.Error()
+			log.Printf("[kill-team] failed to remove worktree %s: %s", logsafe.Dir(teamWorktree), err)
+		} else {
+			log.Printf("[kill-team] worktree %s: removed=%v %s", logsafe.Dir(teamWorktree), outcome.Removed, outcome.Kept)
+		}
+		resp["worktree"] = outcome
 	}
 
 	// Unpause board
@@ -1277,7 +1277,7 @@ func (h *SessionsHandler) KillTeam(w http.ResponseWriter, r *http.Request) {
 		h.boardHandler.SetPaused(boardName, false)
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "sessions_killed": killed})
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // ResurrectTeam relaunches a stopped team with only the agents that were active at kill time.
