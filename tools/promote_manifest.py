@@ -2,6 +2,7 @@
 """The promote manifest builder (#6274): what .github/workflows/promote.yml checks and writes. Standard library only.
 
     promote_manifest.py check   validates the dispatch inputs from the environment and prints nothing a log reader could misuse
+    promote_manifest.py prev    reads the PREVIOUS promotion's promote.json (PROMOTE_PREV_FILE, already verified by the workflow) and prints its revoked versions
     promote_manifest.py build   writes promote.json (schema 1) from the environment: the validated inputs and the facts the validate job read
 
 Everything comes from the environment, never from arguments: a workflow input is data, and this file is the only place it is parsed. The manifest is exactly the
@@ -23,7 +24,8 @@ HEX40 = re.compile(r"^[0-9a-f]{40}$")
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
 MAX_LIFETIME_DAYS = 59                   # the client allows MaxManifestLifetime (60 days); one under, so no comparison at the edge can refuse it
 DEFAULT_LIFETIME_DAYS = 30
-MAX_REVOKED = 20
+MAX_REVOKED = 20                         # versions one promotion may add through its input
+MAX_REVOKED_TOTAL = 512                  # what the client accepts in one manifest (verify.maxRevoked)
 
 
 class InputError(Exception):
@@ -47,11 +49,11 @@ def parse_lifetime(text):
     return days
 
 
-def parse_revoked(text):
-    """A comma or space separated list of versions to revoke: each must be a version, no more than MAX_REVOKED, no duplicates."""
+def parse_versions(text, limit):
+    """A comma or space separated list of plain versions (a leading v is allowed): each must be a version, no more than limit, no duplicates, sorted."""
     items = [p for p in re.split(r"[,\s]+", (text or "").strip()) if p]
-    if len(items) > MAX_REVOKED:
-        raise InputError("more than %d versions to revoke" % MAX_REVOKED)
+    if len(items) > limit:
+        raise InputError("more than %d versions in a list" % limit)
     out = []
     for item in items:
         v = item[1:] if item.startswith("v") else item
@@ -59,6 +61,28 @@ def parse_revoked(text):
             raise InputError("a version to revoke is not a plain version")
         if v not in out:
             out.append(v)
+    return sorted(out)
+
+
+def parse_revoked(text):
+    """The versions this promotion revokes (the revoke input): at most MAX_REVOKED."""
+    return parse_versions(text, MAX_REVOKED)
+
+
+def read_previous(path):
+    """The revoked versions of the previous promotion's manifest, read strictly: schema 1, a list of plain versions. The workflow verified its signature first."""
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    if not isinstance(data, dict) or data.get("schema") != 1 or not isinstance(data.get("revoked"), list):
+        raise InputError("the previous manifest is not a schema 1 manifest")
+    out = []
+    for v in data["revoked"]:
+        if not isinstance(v, str) or not VERSION.fullmatch(v):
+            raise InputError("the previous manifest revokes something that is not a plain version")
+        if v not in out:
+            out.append(v)
+    if len(out) > MAX_REVOKED_TOTAL:
+        raise InputError("the previous manifest revokes too many versions")
     return sorted(out)
 
 
@@ -71,7 +95,13 @@ def build(env, now=None):
     now = int(time.time() if now is None else now)
     version = parse_tag(env.get("PROMOTE_TAG", ""))
     days = parse_lifetime(env.get("PROMOTE_LIFETIME_DAYS", ""))
-    revoked = parse_revoked(env.get("PROMOTE_REVOKE", ""))
+    # Every revocation the previous promotion carried stays, plus this promotion's; one is removed only by naming it in unrevoke.
+    previous = parse_versions(env.get("PROMOTE_REVOKED_PREV", ""), MAX_REVOKED_TOTAL)
+    added = parse_revoked(env.get("PROMOTE_REVOKE", ""))
+    removed = parse_versions(env.get("PROMOTE_UNREVOKE", ""), MAX_REVOKED)
+    revoked = sorted((set(previous) | set(added)) - set(removed))
+    if len(revoked) > MAX_REVOKED_TOTAL:
+        raise InputError("more than %d versions revoked in all" % MAX_REVOKED_TOTAL)
     repo = env.get("GITHUB_REPOSITORY", "")
     if repo != REPO:
         raise InputError("this workflow runs in %r, not in the pinned repository" % repo[:80])
@@ -100,7 +130,7 @@ def build(env, now=None):
 
 
 def main(argv, env):
-    if len(argv) != 2 or argv[1] not in ("check", "build"):
+    if len(argv) != 2 or argv[1] not in ("check", "prev", "build"):
         print("usage: promote_manifest.py check|build (inputs come from the environment)", file=sys.stderr)
         return 2
     try:
@@ -108,10 +138,14 @@ def main(argv, env):
             parse_tag(env.get("PROMOTE_TAG", ""))
             parse_lifetime(env.get("PROMOTE_LIFETIME_DAYS", ""))
             parse_revoked(env.get("PROMOTE_REVOKE", ""))
+            parse_versions(env.get("PROMOTE_UNREVOKE", ""), MAX_REVOKED)
             print("inputs ok")
             return 0
+        if argv[1] == "prev":
+            print(",".join(read_previous(env.get("PROMOTE_PREV_FILE", ""))))
+            return 0
         manifest = build(env)
-    except InputError as e:
+    except (InputError, OSError, ValueError) as e:
         print("promote: " + str(e), file=sys.stderr)
         return 1
     out = env.get("PROMOTE_OUT", "promote.json")

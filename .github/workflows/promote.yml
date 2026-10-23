@@ -30,6 +30,11 @@ on:
         required: false
         default: ""
         type: string
+      unrevoke:
+        description: "Versions to take OFF the revoked list (comma separated, at most 20); every revocation the previous promotion carried stays unless named here"
+        required: false
+        default: ""
+        type: string
       replace:
         description: "Replace an existing promotion of this tag (a second promotion, for example to revoke)"
         required: false
@@ -55,6 +60,7 @@ jobs:
       source_sha: ${{ steps.release.outputs.source_sha }}
       sums_sha256: ${{ steps.release.outputs.sums_sha256 }}
       prerelease: ${{ steps.release.outputs.prerelease }}
+      revoked_prev: ${{ steps.previous.outputs.revoked_prev }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
@@ -64,6 +70,7 @@ jobs:
           PROMOTE_TAG: ${{ inputs.tag }}
           PROMOTE_LIFETIME_DAYS: ${{ inputs.lifetime_days }}
           PROMOTE_REVOKE: ${{ inputs.revoke }}
+          PROMOTE_UNREVOKE: ${{ inputs.unrevoke }}
         run: python3 -I tools/promote_manifest.py check
       - name: Install cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
@@ -99,6 +106,34 @@ jobs:
             echo "prerelease=${prerelease}"
           } >> "$GITHUB_OUTPUT"
           echo "validated ${PROMOTE_TAG}: commit ${sha}, sums ${digest}, prerelease ${prerelease}"
+      - name: Carry the previous promotion's revocations forward
+        id: previous
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # The newest release that has a promotion (this tag's own earlier one included, so a second promotion keeps what the first revoked). Its signature
+          # is checked against THIS workflow's identity before its list is trusted: an unverifiable manifest stops the run, it is never skipped.
+          prev_tag=""
+          while read -r t; do
+            names="$(gh release view "$t" --repo "${GITHUB_REPOSITORY}" --json assets --jq '.assets[].name')"   # not a pipe into grep -q: under pipefail its early exit can fail the pipe
+            if grep -qx 'promote.json' <<<"$names"; then prev_tag="$t"; break; fi
+          done < <(gh release list --repo "${GITHUB_REPOSITORY}" --limit 50 --exclude-drafts --json tagName,createdAt --jq 'sort_by(.createdAt) | reverse | .[].tagName')
+          revoked_prev=""
+          if [ -n "$prev_tag" ]; then
+            gh release download "$prev_tag" --repo "${GITHUB_REPOSITORY}" --pattern promote.json --pattern promote.json.sigstore.json --dir prev
+            cosign verify-blob prev/promote.json --bundle prev/promote.json.sigstore.json \
+              --certificate-identity "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/.github/workflows/promote.yml@refs/heads/promote" \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+              --certificate-github-workflow-repository "${GITHUB_REPOSITORY}" \
+              --certificate-github-workflow-ref refs/heads/promote \
+              --certificate-github-workflow-trigger workflow_dispatch
+            revoked_prev="$(PROMOTE_PREV_FILE=prev/promote.json python3 -I tools/promote_manifest.py prev)"
+            echo "the previous promotion is ${prev_tag}; it revokes: ${revoked_prev:-nothing}"
+          else
+            echo "no earlier promotion: nothing to carry forward"
+          fi
+          echo "revoked_prev=${revoked_prev}" >> "$GITHUB_OUTPUT"
 
   promote:
     name: Promote
@@ -136,6 +171,8 @@ jobs:
           PROMOTE_TAG: ${{ inputs.tag }}
           PROMOTE_LIFETIME_DAYS: ${{ inputs.lifetime_days }}
           PROMOTE_REVOKE: ${{ inputs.revoke }}
+          PROMOTE_UNREVOKE: ${{ inputs.unrevoke }}
+          PROMOTE_REVOKED_PREV: ${{ needs.validate.outputs.revoked_prev }}
           PROMOTE_PRERELEASE: ${{ needs.validate.outputs.prerelease }}
           PROMOTE_SOURCE_SHA: ${{ needs.validate.outputs.source_sha }}
           PROMOTE_SUMS_SHA256: ${{ needs.validate.outputs.sums_sha256 }}

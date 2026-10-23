@@ -113,6 +113,23 @@ class Workflow(unittest.TestCase):
         self.assertIn('"${PROMOTE_REPLACE}" != true', WF)
 
 
+class Carry(unittest.TestCase):
+    def test_the_previous_manifest_is_verified_against_this_workflows_identity_before_its_list_is_read(self):
+        block = job_block("validate")
+        i = block.index("name: Carry the previous promotion's revocations forward")
+        step = block[i:]
+        self.assertLess(step.index("cosign verify-blob prev/promote.json"), step.index("tools/promote_manifest.py prev"))
+        self.assertIn('--certificate-identity "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/.github/workflows/promote.yml@refs/heads/promote"', step)
+        self.assertIn("--certificate-github-workflow-trigger workflow_dispatch", step)
+        self.assertIn("set -euo pipefail", step)
+        self.assertNotIn("|| true", step)   # a manifest that does not verify stops the run: it is never skipped
+
+    def test_the_promote_job_gets_the_carried_list_and_the_unrevoke_input(self):
+        block = job_block("promote")
+        self.assertIn("PROMOTE_REVOKED_PREV: ${{ needs.validate.outputs.revoked_prev }}", block)
+        self.assertIn("PROMOTE_UNREVOKE: ${{ inputs.unrevoke }}", block)
+
+
 class Manifest(unittest.TestCase):
     def test_the_fields_are_exactly_the_clients_schema(self):
         with open(MANIFEST_GO, encoding="utf-8") as f:
@@ -143,6 +160,36 @@ class Manifest(unittest.TestCase):
         with self.assertRaises(pm.InputError):
             pm.parse_revoked(",".join("1.4.%d" % i for i in range(21)))
         self.assertEqual(len(pm.parse_revoked(",".join("1.4.%d" % i for i in range(20)))), 20)
+
+    def test_earlier_revocations_stay_unless_named_in_unrevoke(self):
+        m = pm.build(env(PROMOTE_REVOKED_PREV="1.4.100,1.4.101", PROMOTE_REVOKE="1.4.102"), now=1)
+        self.assertEqual(m["revoked"], ["1.4.100", "1.4.101", "1.4.102"])
+        m = pm.build(env(PROMOTE_REVOKED_PREV="1.4.100,1.4.101", PROMOTE_REVOKE="1.4.101", PROMOTE_UNREVOKE="v1.4.100"), now=1)
+        self.assertEqual(m["revoked"], ["1.4.101"])
+
+    def test_the_previous_list_is_validated_and_bounded(self):
+        with self.assertRaises(pm.InputError):
+            pm.build(env(PROMOTE_REVOKED_PREV="1.4.100;rm"), now=1)
+        with self.assertRaises(pm.InputError):
+            pm.build(env(PROMOTE_REVOKED_PREV=",".join("1.4.%d" % i for i in range(513))), now=1)
+        pm.build(env(PROMOTE_REVOKED_PREV=",".join("1.4.%d" % i for i in range(512))), now=1)
+        with self.assertRaises(pm.InputError):
+            pm.build(env(PROMOTE_REVOKED_PREV=",".join("1.4.%d" % i for i in range(512)), PROMOTE_REVOKE="2.0.0"), now=1)
+
+    def test_the_previous_manifest_is_read_strictly(self):
+        with tempfile.TemporaryDirectory() as d:
+            def read(obj):
+                path = os.path.join(d, "p.json")
+                with open(path, "w") as f:
+                    f.write(obj if isinstance(obj, str) else json.dumps(obj))
+                return pm.read_previous(path)
+            self.assertEqual(read({"schema": 1, "revoked": ["1.4.2", "1.4.1", "1.4.2"]}), ["1.4.1", "1.4.2"])
+            self.assertEqual(read({"schema": 1, "revoked": []}), [])
+            for bad in ({"schema": 2, "revoked": []}, {"schema": 1}, {"schema": 1, "revoked": ["1.4"]}, {"schema": 1, "revoked": [1]}, {"schema": 1, "revoked": ["1.4.1-rc1"]}, [], "not json"):
+                with self.assertRaises((pm.InputError, ValueError), msg=str(bad)):
+                    read(bad)
+            r = subprocess.run([sys.executable, "-I", TOOL, "prev"], env=dict(PROMOTE_PREV_FILE=os.path.join(d, "missing.json")), capture_output=True, text=True)
+            self.assertEqual(r.returncode, 1)
 
     def test_a_tag_must_be_a_version_tag(self):
         for bad in ("1.4.160", "v1.4", "v1.4.160 ", "v1.4.160\n", "../v1.4.160", "v1.4.160;x", "V1.4.160", "", "v1.4.160-rc1", "v1.4.160-"):
