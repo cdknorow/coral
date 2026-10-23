@@ -103,8 +103,10 @@ func (s *WorkflowStore) DB() *DB {
 
 // ── Workflows ─────────────────────────────────────────────────────────
 
-// SeedDemoWorkflow creates the daily-motivation demo workflow and a scheduled
-// job to run it every morning. Uses a user_settings flag so deleted demos
+// SeedDemoWorkflow creates the daily-motivation example workflow and a scheduled
+// job that would run it every weekday morning. The job is created OFF: an enabled job on a new
+// install would start an agent and spend the person's CLI credit before they have asked for anything
+// (#6384); the person turns it on from the Jobs tab. Uses a user_settings flag so deleted examples
 // won't re-appear on restart.
 func (s *WorkflowStore) SeedDemoWorkflow(ctx context.Context, schedStore *ScheduleStore) {
 	var seeded string
@@ -121,7 +123,7 @@ func (s *WorkflowStore) SeedDemoWorkflow(ctx context.Context, schedStore *Schedu
 
 	wf, err := s.CreateWorkflow(ctx, &Workflow{
 		Name:             "daily-motivation",
-		Description:      "Demo: generates a motivational message and shows it as a popup",
+		Description:      "Example: generates a motivational message and shows it as a popup",
 		StepsJSON:        stepsJSON,
 		DefaultAgentJSON: defaultAgentJSON,
 		Enabled:          1,
@@ -137,18 +139,18 @@ func (s *WorkflowStore) SeedDemoWorkflow(ctx context.Context, schedStore *Schedu
 		wfID := wf.ID
 		_, err := schedStore.CreateScheduledJob(ctx, &ScheduledJob{
 			Name:        "morning-motivation",
-			Description: "Runs the daily-motivation workflow every weekday at 9am",
+			Description: "Example (switched off): would run the daily-motivation workflow every weekday at 9am. Turn it on to try it.",
 			CronExpr:    "0 9 * * 1-5",
 			Timezone:    "Local",
 			JobType:     "workflow",
 			WorkflowID:  &wfID,
-			Enabled:     1,
+			Enabled:     0,
 		})
 		if err != nil {
 			log.Printf("Warning: failed to seed demo job: %v", err)
 			return
 		}
-		log.Printf("Seeded demo job: morning-motivation (weekdays 9am)")
+		log.Printf("Seeded example job: morning-motivation (weekdays 9am, switched off)")
 	}
 }
 

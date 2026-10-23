@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -33,6 +34,17 @@ func TestDemoSeedCanBeTurnedOff(t *testing.T) {
 			require.NoError(t, db.GetContext(ctx, &workflows, `SELECT COUNT(*) FROM workflows WHERE name = 'daily-motivation'`))
 			assert.Equal(t, tc.want, jobs, "seeded scheduled job")
 			assert.Equal(t, tc.want, workflows, "seeded workflow")
+			// A new install must never run an agent on its own: whatever is seeded is OFF and says it is an example (#6384).
+			var enabled int
+			require.NoError(t, db.GetContext(ctx, &enabled, `SELECT COUNT(*) FROM scheduled_jobs WHERE enabled != 0`))
+			assert.Zero(t, enabled, "a fresh data folder has no enabled scheduled job")
+			if tc.want == 1 {
+				var jobDesc, wfDesc string
+				require.NoError(t, db.GetContext(ctx, &jobDesc, `SELECT description FROM scheduled_jobs WHERE name = 'morning-motivation'`))
+				require.NoError(t, db.GetContext(ctx, &wfDesc, `SELECT description FROM workflows WHERE name = 'daily-motivation'`))
+				assert.True(t, strings.HasPrefix(jobDesc, "Example"), "the seeded job is marked as an example: %q", jobDesc)
+				assert.True(t, strings.HasPrefix(wfDesc, "Example"), "the seeded workflow is marked as an example: %q", wfDesc)
+			}
 		})
 	}
 }

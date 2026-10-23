@@ -40,7 +40,7 @@ async function freshServer() {
     const port = await freePort(), deadHub = await freePort();
     assert.notEqual(port, 8420);
     const log = path.join(root, 'coral.log');
-    const env = { PATH: `${dirs.bin}:/usr/bin:/bin`, HOME: dirs.home, TMPDIR: root, CORAL_DATA_DIR: dirs.data, CORAL_TELEMETRY_DISABLED: '1', CORAL_NO_DEMO_SEED: '1' };
+    const env = { PATH: `${dirs.bin}:/usr/bin:/bin`, HOME: dirs.home, TMPDIR: root, CORAL_DATA_DIR: dirs.data, CORAL_TELEMETRY_DISABLED: '1' }; // demo seeding stays ON: a fresh install is what a person gets, and the check below is that it holds nothing that runs
     const proc = spawn(BIN, ['--home', dirs.data, '--host', '127.0.0.1', '--port', String(port), '--no-browser', '--cloud-url', `http://127.0.0.1:${deadHub}`, '--backend', 'pty'],
         { env, stdio: ['ignore', fs.openSync(log, 'w'), fs.openSync(log, 'a')], detached: true });
     let exited = null; proc.on('exit', (c, s) => { exited = `exit ${c} ${s}`; }); proc.on('error', e => { exited = String(e); });
@@ -110,6 +110,11 @@ async function freshServer() {
         const choice = await ev(`fetch('/api/settings').then(r => r.json()).then(j => ({ choice: String((j.settings || j).welcome_choice), pending: String((j.settings || j).welcome_pending) }))`);
         assert.equal(choice.choice, 'skipped', `${tag}: "Skip for now" is remembered (${JSON.stringify(choice)})`);
         console.log(`   ✓ ${tag}: the Coral Hub offer is skipped and the answer saved`);
+        // a new install runs nothing on its own (#6384): whatever the examples are, no scheduled job is switched on
+        const jobs = await ev(`fetch('/api/scheduled/jobs').then(r => r.json()).then(j => (Array.isArray(j) ? j : j.jobs || []).map(x => ({ name: x.name, enabled: x.enabled, description: String(x.description || '').slice(0, 30) })))`);
+        assert.deepEqual(jobs.filter(x => x.enabled), [], `${tag}: a fresh data folder has an enabled scheduled job, which would start an agent and spend CLI credit on a new install (${JSON.stringify(jobs)})`);
+        assert.ok(jobs.length === 0 || jobs.every(x => /^Example/.test(x.description)), `${tag}: a seeded job says it is an example (${JSON.stringify(jobs)})`);
+        console.log(`   ✓ ${tag}: no scheduled job is on in a fresh install (${jobs.length} example job(s), off)`);
         await waitFor(`/What do you want to work on\\?/.test(document.body.innerText)`, `${tag}: the home screen`, { timeout: 15000, diag: `document.body.innerText.slice(0, 300)` });
 
         // 3. New Agent in two steps: the choice, then the form

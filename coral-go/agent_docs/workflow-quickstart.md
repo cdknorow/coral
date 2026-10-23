@@ -136,7 +136,7 @@ curl http://localhost:8420/api/scheduled/jobs/1/runs \
   -H "Authorization: Bearer $(coral api-key)"
 ```
 
-> **Tip:** Coral ships with the daily-motivation workflow and morning-motivation job pre-installed. Try triggering it from the Jobs tab to see it in action.
+> **Tip:** Coral ships with an example daily-motivation workflow and an example morning-motivation job. The job is switched off, so nothing runs (and no CLI credit is spent) until you turn it on from the Jobs tab; you can also trigger the workflow by hand to see it in action.
 
 ---
 
