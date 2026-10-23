@@ -4,10 +4,20 @@
 export const DESKTOP_FONT = 13;
 export const PHONE_FONT = 10;
 const PHONE_MAX_WIDTH = 767; // the mobile layout's breakpoint (mobile.js, css/mobile.css)
+const PHONE_SHORT_SIDE = 500; // a phone's short side, turned either way: a tablet's is more
 
-/** The default size for this window: the phone's when it is phone-wide, else the desktop's. */
+/** Is this window a phone's? Narrow (the mobile layout's breakpoint), or a touch screen whose short side is a phone's: a phone turned to landscape (844x390, 800x360, with the keyboard up 844x200) is wider than
+ *  the breakpoint and draws the desktop layout, but it is still a phone: it follows the shared pane's size and never sets it (#6675), and it draws the phone's font. */
+export function isPhoneViewer() {
+    if (typeof window === 'undefined') return false;
+    if (window.innerWidth <= PHONE_MAX_WIDTH) return true;
+    const coarse = typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
+    return coarse && Math.min(window.innerWidth, window.innerHeight) <= PHONE_SHORT_SIDE;
+}
+
+/** The default size for this window: the phone's when it is a phone, else the desktop's. */
 export function defaultTerminalFont() {
-    return typeof window !== 'undefined' && window.innerWidth <= PHONE_MAX_WIDTH ? PHONE_FONT : DESKTOP_FONT;
+    return isPhoneViewer() ? PHONE_FONT : DESKTOP_FONT;
 }
 
 /** The size to draw at: the person's own setting when it is a number, else this window's default. */
