@@ -2,8 +2,8 @@
 # tools/devops/promote.sh inputs|release|sums|previous|check|publish: the steps of .github/workflows/promote.yml (#326).
 #
 # A promotion is a release of its own in this repository, because the product releases are immutable and can take no new file:
-#   promote-<sequence>  promote.json and its Sigstore bundle; the sequence is the highest published one plus one, so the updater finds the
-#                       newest by probing the names (coral-go/internal/updater/stage/promotion.go)
+#   promote-<sequence>  promote.json and its Sigstore bundle; the sequence is the smallest name above the previous real promotion that isn't
+#                       taken, so every name up to it exists and the updater's probe reaches it (coral-go/internal/updater/stage/promotion.go)
 #   promote-v<version>  the first promotion of that version, for the Windows rollback lookup
 # Both are pre-releases that are never marked latest: Latest stays the product release people download, and GitHub never falls back to a
 # pre-release as Latest. The sums and the packages stay in the product release v<version>; the manifest only names it.
@@ -12,10 +12,11 @@
 #   release   TAG is an approved product release (published, immutable, not a pre-release, never revoked; the latest, except for backfill);
 #             for revoke, each version revoked carries approve-release's "Revoked:" line
 #   sums      SHA256SUMS.txt of TAG, verified against release.yml's identity for exactly that tag and the tag's commit (an annotated tag peeled)
-#   previous  the highest REAL promotion: walking down from the highest promote-<n> tag, the first whose manifest verifies and whose sequence
-#             is n (anyone who can create releases could publish a junk promote-<n>, and a published release can't be removed); the new
-#             sequence is the highest TAG + 1, so it never collides with a junk name
-#   check     the built promote.json is for TAG and takes the next sequence, and no promote-<n> tag appeared since (before it signs)
+#   previous  the highest REAL promotion: down the promote-<n> tags that exist, the first whose manifest verifies and whose sequence is n
+#             (anyone who can create releases could publish a junk promote-<n>, and a published release can't be removed), and the list of
+#             every promote-<n> name taken, for the next sequence
+#   check     the built promote.json is for TAG, and its sequence is still the smallest free name above the previous real promotion, by the
+#             tags read again now (before it signs)
 #   publish   promote-<sequence> (and promote-v<version> the first time), then Latest read back unchanged and the manifest read back
 # TAG and REVOKE are data from workflow inputs: they are matched here before any use and never go through a shell as text.
 # Needs gh, jq and cosign. Env: GH_TOKEN, GITHUB_REPOSITORY, MODE, TAG, REVOKE.
@@ -44,11 +45,21 @@ tag_commit() {
   [[ "$sha" =~ ^[0-9a-f]{40}$ ]] && echo "$sha"
 }
 
-# highest_promotion: the highest n of a promote-<n> tag (0 when there is none)
-highest_promotion() {
+# taken_promotions: every n of a promote-<n> tag, one per line, ascending (nothing when there is none)
+taken_promotions() {
   gh api "repos/$REPO/git/matching-refs/tags/promote-" --paginate --jq '.[].ref' |
-    sed -n 's#^refs/tags/promote-\([1-9][0-9]*\)$#\1#p' | sort -n | tail -1 | grep . || echo 0
+    sed -n 's#^refs/tags/promote-\([1-9][0-9]*\)$#\1#p' | sort -n -u
 }
+
+# next_free PREV TAKENFILE: the smallest n above PREV that isn't in TAKENFILE
+next_free() {
+  local n=$(( $1 + 1 ))
+  while grep -qx "$n" "$2"; do n=$(( n + 1 )); done
+  echo "$n"
+}
+
+# The most promote-<n> that exist but aren't real promotions the walk down passes over: more than the updater's 64, with a margin.
+MAX_JUNK=128
 
 cmd="${1:-}"
 case "$cmd" in
@@ -100,13 +111,13 @@ case "$cmd" in
 
   previous)
     mkdir -p work/previous
-    top="$(highest_promotion)"
-    echo "$top" > work/previous/highest_tag
+    taken_promotions > work/previous/taken
     echo 0 > work/previous/sequence
-    if [ "$top" = 0 ]; then echo "no promotion yet"; exit 0; fi
-    # Walk down past junk to the highest real promotion, at most 50 names.
-    n="$top"; found=0
-    while [ "$n" -ge 1 ] && [ "$n" -gt $(( top - 50 )) ]; do
+    echo 0 > work/previous/junk_above
+    if [ ! -s work/previous/taken ]; then echo "no promotion yet"; exit 0; fi
+    # Down the names that exist, past junk, to the highest real promotion (names that don't exist cost nothing).
+    found=0; junk=0
+    for n in $(sort -n -r work/previous/taken); do
       rm -rf work/candidate && mkdir work/candidate
       if gh release download "promote-$n" --repo "$REPO" --pattern promote.json --pattern promote.json.sigstore.json --dir work/candidate 2>/dev/null \
         && verify_promote work/candidate/promote.json work/candidate/promote.json.sigstore.json 2>/dev/null \
@@ -114,23 +125,25 @@ case "$cmd" in
         found="$n"; break
       fi
       echo "::warning::promote-$n is not a real promotion (no verified manifest of sequence $n): skipped"
-      n=$(( n - 1 ))
+      junk=$(( junk + 1 ))
+      [ "$junk" -lt "$MAX_JUNK" ] || break
     done
-    [ "$found" != 0 ] || die "no real promotion among the 50 highest promote-<n> names (the highest is promote-$top): look at what was published"
+    [ "$found" != 0 ] || die "no real promotion found past $junk junk promote-<n> names: look at what was published"
     cp work/candidate/promote.json work/previous/promote.json
     rm -rf work/candidate
     echo "$found" > work/previous/sequence
-    echo "previous: promote-$found (highest tag promote-$top) $(jq -c '{tag, expires_at, revoked}' work/previous/promote.json)"
+    echo "$junk" > work/previous/junk_above
+    echo "previous: promote-$found ($junk junk promote-* names above it) $(jq -c '{tag, expires_at, revoked}' work/previous/promote.json)"
     ;;
 
   check)
     valid_mode "${MODE:-}" && valid_tag "${TAG:-}" || die "bad inputs"
     [ "$(jq -r .tag promote.json)" = "$TAG" ] || die "the manifest is not for $TAG"
     [ "$(jq -r .source_sha promote.json)" = "$(cat work/source_sha)" ] || die "the manifest's commit is not the verified one"
-    prev="$(cat work/previous/sequence)"; top="$(cat work/previous/highest_tag)"; seq="$(jq -r .sequence promote.json)"
-    if [ "$MODE" = backfill ]; then want=$(( prev > 0 ? prev : 1 )); else want=$(( top + 1 )); fi
-    [ "$seq" = "$want" ] || die "the manifest's sequence $seq is not $want"
-    [ "$(highest_promotion)" = "$top" ] || die "a promote-<n> tag was published since the build: run it again"
+    prev="$(cat work/previous/sequence)"; seq="$(jq -r .sequence promote.json)"
+    taken_promotions > work/taken_now   # read again: a name taken since the build moves the next free one
+    if [ "$MODE" = backfill ]; then want=$(( prev > 0 ? prev : 1 )); else want="$(next_free "$prev" work/taken_now)"; fi
+    [ "$seq" = "$want" ] || die "the manifest's sequence $seq is not $want (promote-<n> names changed since the build): run it again"
     echo "ok: promote.json is for $TAG, sequence $seq"
     ;;
 
@@ -164,6 +177,7 @@ case "$cmd" in
       echo "- mode: $MODE"
       echo "- tag: $TAG"
       echo "- sequence: $seq"
+      echo "- $(cat work/previous/junk_above) junk promote-* names above the last real one"
       echo "- latest (unchanged): $after"
       echo "- run by: ${GITHUB_ACTOR:-unknown}"
     } >> "${GITHUB_STEP_SUMMARY:-/dev/null}"

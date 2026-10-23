@@ -3,6 +3,7 @@ package testrig
 import (
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -71,6 +72,18 @@ func (g *FakeGitHub) PublishPromotion(seq int64, manifest, bundle []byte) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.promotions[seq] = promotion{manifest, bundle}
+}
+
+// Taken is every promote-<n> published, real or not, ascending: what the promote workflow reads from the tags.
+func (g *FakeGitHub) Taken() []int64 {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	var out []int64
+	for n := range g.promotions {
+		out = append(out, n)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out
 }
 
 // URL is the address of the server.

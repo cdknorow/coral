@@ -45,7 +45,7 @@ env:
   CORAL_TELEMETRY_DISABLED: "1"   # verify-release runs the release's own programs: none may send a usage event
 
 concurrency:
-  group: promote   # one at a time: the sequence is the highest published one plus one
+  group: promote   # one at a time: the sequence is the next free name above the previous promotion
   cancel-in-progress: false
 
 jobs:
@@ -134,7 +134,7 @@ jobs:
           prev=""; [ -f work/previous/promote.json ] && prev=work/previous/promote.json
           # NOW and LIFETIME_DAYS are for the tests only: never taken from the runner's environment here.
           env -u NOW -u LIFETIME_DAYS SOURCE_SHA="$(cat work/source_sha)" SUMS_FILE=work/SHA256SUMS.txt PREV_MANIFEST="$prev" \
-            HIGHEST_TAG="$(cat work/previous/highest_tag)" python3 -I tools/devops/promote_manifest.py > promote.json
+            TAKEN="$(tr '\n' ' ' < work/previous/taken)" python3 -I tools/devops/promote_manifest.py > promote.json
           cat promote.json; echo
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

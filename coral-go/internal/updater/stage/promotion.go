@@ -1,13 +1,13 @@
 package stage
 
 // Finding the newest promotion (#326). The product releases are immutable, so the promote workflow publishes each promotion as a release of
-// its own, tagged promote-<sequence>, with promote.json and its bundle. The sequence goes up by one per promotion (the workflow takes the
-// highest published one plus one), so the newest is found by name alone, with no API host and no list: from the highest sequence this
-// computer has seen, probe promote-<n> upward (1, 2, 4, ... further, then halve the gap) to the highest tag that exists.
+// its own, tagged promote-<sequence>, with promote.json and its bundle. The workflow gives each promotion the smallest name above the last
+// real promotion that isn't taken (tools/devops/promote.sh), so every name from 1 to the newest exists, and the newest is found by name alone,
+// with no API host and no list: from the highest sequence this computer has seen, probe promote-<n> upward (1, 2, 4, ... further, then halve
+// the gap) to the highest tag that exists.
 //
 // What exists is not trusted. Anyone who can create a release could publish a promote-<n> of their own, and a published release can't be
-// removed. The workflow numbers the next promotion above every promote-<n> name that exists (tools/devops/promote.sh), so junk leaves names
-// taken, not holes. From the highest name down (none below the accepted sequence, which the rules would refuse anyway) each is checked in full:
+// removed. Junk takes names the workflow then steps over; it leaves no hole below a real promotion. From the highest name down (none below the accepted sequence, which the rules would refuse anyway) each is checked in full:
 // signed by the promote workflow, a well-formed manifest, and its sequence the name's own number. The first that passes is the newest promotion.
 // A name that doesn't exist costs a request and is not counted; up to maxInvalid that exist but fail are passed over. Junk delays an update at
 // worst; it never installs anything. Probing reaches at most maxAhead past the highest sequence seen, so a junk name far above isn't looked at.
