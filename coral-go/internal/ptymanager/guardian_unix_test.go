@@ -31,6 +31,9 @@ func TestGuardParentHelper(t *testing.T) {
 	}
 	b := NewPTYBackend()
 	cmd := strings.Replace(strings.Replace(attached, "%s", "", 1), "%s", filepath.Join(dir, "child"), 1)
+	if os.Getenv("CORAL_GUARD_TEST_LATE") == "1" { // a helper that is orphaned six seconds in (descendant_sampler_unix_test.go)
+		cmd = lateDetachCmd(filepath.Join(dir, "child"))
+	}
 	if err := b.Spawn("claude-00000000-0000-4000-8000-000000006129", "claude", dir, "00000000-0000-4000-8000-000000006129", cmd, 80, 24); err != nil {
 		t.Fatal(err)
 	}
@@ -51,12 +54,12 @@ func TestGuardParentHelper(t *testing.T) {
 	}
 }
 
-func runGuardParent(t *testing.T, quit bool) (child, guardianPID int, parent *exec.Cmd, dir string) {
+func runGuardParent(t *testing.T, quit bool, extraEnv ...string) (child, guardianPID int, parent *exec.Cmd, dir string) {
 	t.Helper()
 	needPerl(t)
 	dir = t.TempDir()
 	parent = exec.Command(os.Args[0], "-test.run=^TestGuardParentHelper$")
-	parent.Env = append(os.Environ(), guardParentEnv+"="+dir)
+	parent.Env = append(append(os.Environ(), guardParentEnv+"="+dir), extraEnv...)
 	if quit {
 		parent.Env = append(parent.Env, "CORAL_GUARD_TEST_QUIT=1")
 	}

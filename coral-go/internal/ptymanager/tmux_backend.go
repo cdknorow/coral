@@ -31,6 +31,8 @@ type TmuxBackend struct {
 	mu       sync.RWMutex
 	sessions map[string]*tmuxSession // keyed by session name
 	tails    map[string]*logTail     // keyed by session name; one tail per session
+
+	untrackSampler func() // ends the descendant sampler's look at this backend's panes (Close)
 }
 
 type tmuxSession struct {
@@ -51,10 +53,11 @@ type logTail struct {
 // NewTmuxBackend creates a TmuxBackend wrapping the given tmux client.
 func NewTmuxBackend(client *tmux.Client, logDir string) *TmuxBackend {
 	return &TmuxBackend{
-		client:   client,
-		logDir:   logDir,
-		sessions: make(map[string]*tmuxSession),
-		tails:    make(map[string]*logTail),
+		client:         client,
+		logDir:         logDir,
+		sessions:       make(map[string]*tmuxSession),
+		tails:          make(map[string]*logTail),
+		untrackSampler: trackTmuxPanes(client), // what an agent's tree is seen to hold is remembered for its Kill, sleep and Restart (#6183)
 	}
 }
 
@@ -542,6 +545,13 @@ func (b *TmuxBackend) LogPath(name string) string {
 
 func (b *TmuxBackend) Close() error {
 	finishPendingTreeKills() // a kill still waiting out its grace is finished, not left to die with this process (#6141)
+	b.mu.Lock()
+	untrack := b.untrackSampler
+	b.untrackSampler = nil
+	b.mu.Unlock()
+	if untrack != nil {
+		untrack()
+	}
 	// Stop all tails
 	b.mu.Lock()
 	for name := range b.tails {

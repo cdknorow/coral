@@ -45,6 +45,7 @@ func newTestTmuxBackend(t *testing.T) *TmuxBackend {
 	os.MkdirAll(logDir, 0755)
 
 	backend := NewTmuxBackend(client, logDir)
+	t.Cleanup(func() { backend.Close() }) // ends the descendant sampler's look at its panes (#6183)
 
 	t.Cleanup(func() {
 		exec.Command("tmux", "-S", sock, "kill-server").Run()

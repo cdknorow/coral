@@ -61,6 +61,7 @@ func newTerminalTestTmuxBackend(t *testing.T) (*ptymanager.TmuxBackend, *tmux.Cl
 	os.MkdirAll(logDir, 0755)
 
 	backend := ptymanager.NewTmuxBackend(client, logDir)
+	t.Cleanup(func() { backend.Close() })
 
 	t.Cleanup(func() {
 		exec.Command("tmux", "-S", sock, "kill-server").Run()
@@ -360,6 +361,7 @@ func TestWSTerminal_SessionRecoveryAfterRestart(t *testing.T) {
 	// Create a NEW TmuxBackend with the same tmux socket but empty sessions map
 	logDir := filepath.Dir(backend.LogPath("recover-agent"))
 	backend2 := ptymanager.NewTmuxBackend(client, logDir)
+	t.Cleanup(func() { backend2.Close() })
 
 	server := setupTerminalTestServer(t, backend2)
 
