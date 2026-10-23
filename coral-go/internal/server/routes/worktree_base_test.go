@@ -317,3 +317,18 @@ func TestResurrectTeamRefusesAWorktreeOutsideTheWorktreesFolder(t *testing.T) {
 	assert.Contains(t, body, "worktrees folder")
 	assert.NoDirExists(t, elsewhere)
 }
+
+// UI/UX's #6723: a launch refused over its base branch takes back the board it made, so fixing the field and launching again with the same name goes through (it answered "board already exists, 0 members").
+func TestRefusedTeamLaunchLeavesNoBoardAndTheRetryGoesThrough(t *testing.T) {
+	url, _ := teamServer(t)
+	repo, _ := repoOn(t, "master", true)
+	body := func(base string) map[string]any {
+		return map[string]any{"board_name": "crew-retry", "working_dir": repo, "worktree": true, "base_branch": base, "agent_type": "claude", "agents": []map[string]any{{"name": "A", "prompt": "x"}}}
+	}
+	status, out := postTeam(t, url, body("nope"))
+	require.Equal(t, http.StatusBadRequest, status, "%v", out)
+	assert.Equal(t, "base_branch_missing", out["code"])
+
+	status, out = postTeam(t, url, body("master"))
+	assert.Equal(t, http.StatusOK, status, "the same name, the field fixed: %v", out)
+}
