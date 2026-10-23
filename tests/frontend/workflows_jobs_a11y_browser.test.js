@@ -16,13 +16,7 @@ const { DATA_WORLD } = require('./helpers/census_world');
             await Page.navigate({ url: process.env.CORAL_TEST_URL + '/' }); await Page.loadEventFired(); await install();
             await ev(`window.__coralReady.startup('liveList', 'liveListLoaded', 'settings')`);
 
-            // the sidebar's Active / Scheduled buttons
-            const pressed = () => ev(`[...document.querySelectorAll('.sidebar-subtab[data-subtab]')].map(b => b.dataset.subtab + ':' + b.getAttribute('aria-pressed') + ':' + b.classList.contains('active'))`);
-            let p = await pressed();
-            assert.ok(p.every(x => x.split(':')[1] === x.split(':')[2]), `${tag}: Active and Scheduled say which is on with aria-pressed (${JSON.stringify(p)})`);
-            await ev(`document.querySelector('.sidebar-subtab[data-subtab="scheduled"]').click(); true`);
-            p = await pressed();
-            assert.ok(p.every(x => x.split(':')[1] === x.split(':')[2]) && p.includes('scheduled:true:true'), `${tag}: choosing Scheduled moves it (${JSON.stringify(p)})`);
+            // (the sidebar's Active / Scheduled buttons are gone: one list of every job, #6521)
 
             // the workflow editor
             await ev(`window.switchNavTab('workflows'); true`);
@@ -51,7 +45,6 @@ const { DATA_WORLD } = require('./helpers/census_world');
 
             // the job editor
             await ev(`window.switchNavTab('jobs'); true`);
-            await ev(`document.querySelector('.sidebar-subtab[data-subtab="scheduled"]').click(); true`);
             await waitFor(`!!document.querySelector('#scheduled-jobs-list [data-on-click="job-select"]')`, `${tag}: jobs`, 10000);
             await ev(`document.querySelector('#scheduled-jobs-list [data-on-click="job-select"]').click(); true`);
             await waitFor(`!!document.querySelector('#scheduler-detail [data-on-click="job-edit"]')`, `${tag}: job`, 10000);
@@ -76,6 +69,6 @@ const { DATA_WORLD } = require('./helpers/census_world');
             await ev(`import(${S} + 'scheduler.js').then(m => m.hideJobModal()).then(() => true)`);
             console.log(`   ✓ ${tag}`);
         }
-        console.log('PASS Workflows and Jobs: subtab state, editor errors said and the field marked, cron status described');
+        console.log('PASS Workflows and Jobs: editor errors said and the field marked, cron status described');
     } finally { await client.close(); }
 })().catch(e => { console.error(e); process.exit(1); });

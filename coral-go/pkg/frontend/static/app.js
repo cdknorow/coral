@@ -32,7 +32,7 @@ import { attachAllDialogFocus } from './dialog_focus.js';
 import './board_choice.js'; // the duplicate-name choice used by the lazy modals.js (#3538): loaded at startup so a launch never fails on it
 import './dialog_focus.js'; // focus into a dialog and back to its opener (accessibility pass); used by lazy modals.js
 import { toggleBrowser, browserNavigateTo, browserNavigateUp, browserSelectRecent, browserUse } from './browser.js';
-import { switchJobsSubtab, toggleAgenticPanel, toggleSidebarRail } from './sidebar.js';
+import { toggleAgenticPanel, toggleSidebarRail } from './sidebar.js';
 import { connectTerminalWs, disconnectTerminalWs } from './xterm_renderer.js';
 import { saveNotes, generateSummary, toggleNotesEdit, cancelNotesEdit, switchHistoryTab } from './notes.js';
 import { addTagToSession, removeTagFromSession, showTagDropdown, hideTagDropdown, createTag } from './tags.js';
@@ -234,7 +234,6 @@ registerActions({
     'toggle-show-model': () => window.toggleShowModel(),
     'toggle-show-thinking': () => window.toggleShowThinking(),
     'toggle-group-by-server': () => window.toggleGroupByServer(),
-    'jobs-subtab': el => { if (el.dataset.tab === 'active' || el.dataset.tab === 'scheduled') window.switchJobsSubtab(el.dataset.tab); },
 });
 // The live agent view's header, view toggle, side panel tabs and command row (#3645). Restart is
 // destructive (actions.js DESTRUCTIVE_ACTIONS: a popout hides it) and still asks first
@@ -375,7 +374,7 @@ Object.assign(window, {
     selectLiveJobRun,
     // preview_pane
     // sidebar
-    switchJobsSubtab, toggleAgenticPanel, toggleSidebarRail,
+    toggleAgenticPanel, toggleSidebarRail,
     // browser
     toggleBrowser, browserNavigateTo, browserNavigateUp, browserSelectRecent, browserUse,
     // theme

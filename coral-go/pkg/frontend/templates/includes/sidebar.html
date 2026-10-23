@@ -60,20 +60,14 @@
                     </div>
                 </div>
                 <div class="sidebar-section-body">
-                    <div class="sidebar-subtabs">
-                        <button class="sidebar-subtab active" aria-pressed="true" data-subtab="active" data-on-click="jobs-subtab" data-tab="active">Active <span class="subtab-count" id="active-jobs-count"></span></button>
-                        <button class="sidebar-subtab" aria-pressed="false" data-subtab="scheduled" data-on-click="jobs-subtab" data-tab="scheduled">Scheduled <span class="subtab-count" id="scheduled-jobs-count"></span></button>
+                    <p id="live-jobs-status" class="sr-only" role="status" aria-live="polite"></p>
+                    <div id="live-jobs-group" class="sidebar-jobs-group" hidden>
+                        <h3 class="sidebar-jobs-heading">Running now</h3>
+                        <ul id="live-jobs-list" class="session-list"></ul>
                     </div>
-                    <div class="sidebar-subtab-content" id="jobs-subtab-active">
-                        <ul id="live-jobs-list" class="session-list">
-                            <li class="empty-state">No active jobs</li>
-                        </ul>
-                    </div>
-                    <div class="sidebar-subtab-content" id="jobs-subtab-scheduled" style="display:none">
-                        <ul id="scheduled-jobs-list" class="session-list">
-                            <li class="empty-state">No scheduled jobs</li>
-                        </ul>
-                    </div>
+                    <ul id="scheduled-jobs-list" class="session-list">
+                        <li class="empty-state">No jobs yet. New job schedules one.</li>
+                    </ul>
                 </div>
             </section>
             <section class="sidebar-section" data-section="docs" style="display:none">

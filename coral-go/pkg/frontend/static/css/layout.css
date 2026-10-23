@@ -496,49 +496,6 @@ body.panel-dragging .sidebar {
     text-align: center;
 }
 
-/* ── Sidebar Subtabs ───────────────────────────────────────── */
-
-.sidebar-subtabs {
-    display: flex;
-    gap: 2px;
-    padding: 0 12px 8px;
-}
-
-.sidebar-subtab {
-    flex: 1;
-    padding: 4px 8px;
-    font-size: var(--fs-md);
-    font-weight: 500;
-    background: none;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    color: var(--text-secondary);
-    cursor: pointer;
-    text-align: center;
-    transition: all 0.15s;
-    min-height: var(--control-compact-height);
-}
-
-.sidebar-subtab.active {
-    background: var(--bg-tertiary);
-    border-color: var(--accent-dim);
-    color: var(--text-primary);
-}
-
-.sidebar-subtab:hover:not(.active) {
-    background: var(--bg-hover);
-}
-
-.subtab-count:empty {
-    display: none;
-}
-
-.subtab-count {
-    font-size: var(--fs-sm);
-    color: var(--text-muted);
-    margin-left: 2px;
-}
-
 .sidebar-new-btn-full {
     width: 100%;
     padding: 8px 0;

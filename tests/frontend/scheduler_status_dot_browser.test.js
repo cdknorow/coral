@@ -15,7 +15,7 @@ const BASE = require('./test_base').BASE;
         const got = await ev(`(async () => { const real = window.fetch; window.fetch = (u, o) => String(u).endsWith('/api/scheduled/jobs') ? Promise.resolve(new Response(JSON.stringify({ jobs: ${JSON.stringify(jobs)} }), { status: 200, headers: { 'Content-Type': 'application/json' } })) : real(u, o);
             const m = await import((window.__coralStatic || '/static/') + 'scheduler.js'); m.initScheduler();
             for (let i = 0; i < 100 && document.querySelectorAll('#scheduled-jobs-list .sched-dot').length < 5; i++) await new Promise(r => setTimeout(r, 50)); // sleep-ok: waiting for the render the call above started
-            return [...document.querySelectorAll('#scheduled-jobs-list li')].map(li => { const d = li.querySelector('.sched-dot'); return { name: li.querySelector('.session-name').textContent.trim(), role: d.getAttribute('role'), label: d.getAttribute('aria-label'), title: d.getAttribute('title') }; }); })()`);
+            return [...document.querySelectorAll('#scheduled-jobs-list li')].map(li => { const d = li.querySelector('.sched-dot'); return { name: li.querySelector('.sched-row-name').textContent.trim(), role: d.getAttribute('role'), label: d.getAttribute('aria-label'), title: d.getAttribute('title') }; }); })()`);
         const want = { done: 'Last run completed', going: 'Last run running', broke: 'Last run failed', stopped: 'Last run killed', fresh: 'Not run yet' };
         assert.equal(got.length, 5, 'five jobs listed: ' + JSON.stringify(got));
         for (const g of got) {

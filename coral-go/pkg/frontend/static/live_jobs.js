@@ -15,15 +15,15 @@ export function renderLiveJobs(runs) {
     const list = document.getElementById('live-jobs-list');
     if (!list) return;
 
-    // Update active jobs count badge
-    const countBadge = document.getElementById('active-jobs-count');
-    if (countBadge) countBadge.textContent = activeRuns.length || '';
-
-    // Update combined jobs section count
+    // "Running now" is there only while something runs (#6521): an empty "No active jobs" over jobs that exist read as "no jobs"
+    const group = document.getElementById('live-jobs-group');
+    if (group) group.hidden = !activeRuns.length;
+    const status = document.getElementById('live-jobs-status'); // said once when a run starts or the last one ends, not on every redraw
+    if (status) { const said = activeRuns.length ? `${activeRuns.length} job${activeRuns.length === 1 ? '' : 's'} running now` : ''; if (status.textContent !== said) status.textContent = said; }
     updateJobsSectionCount();
 
     if (!activeRuns.length) {
-        list.innerHTML = '<li class="empty-state">No active jobs</li>';
+        list.replaceChildren();
         return;
     }
 
@@ -86,17 +86,12 @@ function formatElapsed(startedAt) {
     }
 }
 
-function updateJobsSectionCount() {
+/** The Jobs count is the jobs (a running job is one of them, not another): recounted whenever the list is drawn. */
+export function updateJobsSectionCount() {
     const jobsCount = document.getElementById('jobs-count');
     if (!jobsCount) return;
     const scheduledList = document.getElementById('scheduled-jobs-list');
-    const scheduledCount = scheduledList ? scheduledList.querySelectorAll('li:not(.empty-state)').length : 0;
-    const total = activeRuns.length + scheduledCount;
-    jobsCount.textContent = total;
-
-    // Update scheduled count badge
-    const schedBadge = document.getElementById('scheduled-jobs-count');
-    if (schedBadge) schedBadge.textContent = scheduledCount || '';
+    jobsCount.textContent = scheduledList ? scheduledList.querySelectorAll('li:not(.empty-state)').length : 0;
 }
 
 // A running job's row opens its agent (#3645).

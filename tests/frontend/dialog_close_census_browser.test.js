@@ -43,7 +43,7 @@ const REAL = {
     'open-folder-modal': { prep: `window.switchNavTab('agents')`, steps: ['#welcome-open-folder'] },
     'settings-modal': { prep: `window.switchNavTab('agents')`, steps: ['[aria-controls="top-bar-settings-menu"]', '[data-on-click="m-close-top-bar-settings-then-show-settings-modal"]'], returnsTo: 0 },
     'wf-create-modal': { prep: `window.switchNavTab('workflows')`, steps: ['[data-on-click="wf-create"]'] },
-    'job-modal': { prep: `window.switchNavTab('jobs')`, steps: ['[data-subtab="scheduled"]', '[data-on-click="job-new"], [data-on-click="m-show-job-modal"], #scheduler-new-job-btn'] },
+    'job-modal': { prep: `window.switchNavTab('jobs')`, steps: ['[data-on-click="job-new"], [data-on-click="m-show-job-modal"], #scheduler-new-job-btn'] },
 };
 
 (async () => {

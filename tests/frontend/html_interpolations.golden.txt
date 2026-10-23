@@ -384,32 +384,24 @@
 1	sandbox_frame.js	DOC_CSP
 1	sandbox_frame.js	content
 2	saved_marks.js	BOOKMARK_SVG
+1	scheduler.js	cls
 1	scheduler.js	data.next_fire_times.slice(0, 3).map(t => new Date(t).toLocaleString()).join(', ')
+1	scheduler.js	doesHtml
 1	scheduler.js	dot
-2	scheduler.js	duration
-1	scheduler.js	enabledLabel
 1	scheduler.js	failBadge
 1	scheduler.js	failBanner
 1	scheduler.js	fails
-1	scheduler.js	fails === 1 ? 'The last run failed.' : `The last ${fails} runs all failed.`
-1	scheduler.js	job.max_duration_s
-1	scheduler.js	jobTypeHtml
-1	scheduler.js	nextFire
-1	scheduler.js	r.id
-1	scheduler.js	r.session_id.substring(0, 8)
-2	scheduler.js	r.status
-2	scheduler.js	runFailureTag(r)
-1	scheduler.js	runs.map(r => { const scheduled = new Date(r.scheduled_at).toLocaleString(); const duration = r.started_at && 
-1	scheduler.js	runs.map(r => { const statusClass = r.status === 'completed' ? 'status-ok' : r.status === 'failed' || r.status
+1	scheduler.js	fails === 1 ? 'The last run failed' : `The last ${fails} runs all failed`
+1	scheduler.js	k
+1	scheduler.js	paused
+2	scheduler.js	resultCell(r)
+1	scheduler.js	runFailureTag(r)
+1	scheduler.js	runs.map(r => `<tr data-on-click="job-run" data-run-id="${Number(r.id)}" style="cursor:pointer"> <td>${escapeH
+1	scheduler.js	runs.map(r => { const sessionLink = r.session_id ? ` <a href="#" class="run-session-link" title="Open the conv
 1	scheduler.js	runsHtml
-1	scheduler.js	scheduled
 1	scheduler.js	sessionLink
-1	scheduler.js	started
-1	scheduler.js	status
-2	scheduler.js	statusClass
-1	scheduler.js	stepsInfo
-1	scheduler.js	toggleLabel
-1	scheduler.js	typeIcon
+1	scheduler.js	settingsRows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')
+1	scheduler.js	v
 1	scheduler.js	workflows.map(w => `<option value="${Number(w.id)}">${escapeHtml(w.name)}${w.description ? ' — ' + escapeHtml(
 1	server_status.js	count
 1	server_status.js	dd(r)

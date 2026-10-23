@@ -221,10 +221,6 @@
     margin-right: 4px;
 }
 
-.sched-cron {
-    font-family: var(--font-mono);
-}
-
 /* ── Failing job indicators ────────────────────────────────────────────── */
 
 /* A job that fires on schedule and fails every run looks healthy in the list:
@@ -258,16 +254,6 @@
     margin-bottom: 2px;
 }
 
-.sched-fail-error {
-    margin-top: 6px;
-    overflow-x: auto;
-}
-
-.sched-fail-error code {
-    font-size: 0.7188rem;
-    color: var(--text-secondary);
-    white-space: pre;
-}
 
 /* A run that failed because the agent's CLI is not signed in (#5471): the words, what to do, and a tag after the status in a table */
 .run-failure-text { font-weight: 600; }
@@ -278,3 +264,33 @@
 .sched-prompt-section > summary::-webkit-details-marker { display: none; }
 .sched-prompt-section > summary::before { content: '▸' / ''; }
 .sched-prompt-section[open] > summary::before { content: '▾' / ''; }
+
+/* Jobs, one list and a page that answers first (#6515, #6521). */
+.sidebar-jobs-heading { margin: 4px 8px; font-size: var(--fs-md); color: var(--text-secondary); font-weight: 600; }
+.sidebar-jobs-group { margin-bottom: 8px; }
+.sidebar-jobs-group[hidden] { display: none; }
+.sched-row { display: flex; flex-direction: column; align-items: stretch; gap: 2px; }
+.sched-row-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.sched-row-name { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.sched-row-meta { color: var(--text-secondary); font-size: var(--fs-md); padding-left: 1.5rem; }
+.sched-chip { border: 1px solid var(--border); border-radius: 999px; padding: 0 8px; font-size: .75rem; color: var(--text-secondary); white-space: nowrap; }
+.sched-header { flex-wrap: wrap; gap: 8px; }
+.sched-header h2 { margin-right: auto; overflow-wrap: anywhere; min-width: 0; }
+.sched-facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 8px 0 12px; font-size: .875rem; }
+.sched-facts dt { color: var(--text-secondary); }
+.sched-facts dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.sched-path { font-family: var(--font-mono, monospace); font-size: .8125rem; }
+.sched-link { color: var(--accent); }
+.sched-settings { margin: 6px 0 12px; }
+.sched-settings > summary { cursor: pointer; color: var(--text-secondary); font-size: var(--fs-md); min-height: 28px; display: flex; align-items: center; }
+.sched-more { position: relative; }
+.sched-more-menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 5; min-width: 120px; padding: 6px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); box-shadow: var(--shadow-md); }
+.sched-more-menu[hidden] { display: none; }
+.sched-more-menu .btn { width: 100%; margin: 0; }
+.sched-actions .btn { margin: 0; }
+@media (pointer: coarse), (max-width: 767px) {
+    .sched-actions { flex: 1 0 100%; }
+    .sched-actions .btn, .sched-more-menu .btn { min-height: var(--control-touch-height, 44px); }
+    .sched-row { min-height: var(--control-touch-height, 44px); }
+    .sched-settings > summary { min-height: var(--control-touch-height, 44px); }
+}

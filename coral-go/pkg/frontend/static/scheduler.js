@@ -8,6 +8,8 @@ import { changedFields, NOTHING_TO_SAVE } from './settings_diff.js';
 import { ensureBuilt } from './lazy_dom.js';
 import { formatDuration as fmtDuration } from './format.js';
 import { runFailure, runFailureTag } from './run_failure.js';
+import { cronWords, atWords, awayWords, whenWords, resultWords, reasonWords, lastWords, limitWords } from './job_words.js';
+import { updateJobsSectionCount } from './live_jobs.js';
 
 let scheduledJobs = [];
 let selectedJobId = null;
@@ -46,40 +48,47 @@ function renderJobsSidebar() {
     const list = document.getElementById('scheduled-jobs-list');
     if (!list) return;
     if (!scheduledJobs.length) {
-        list.innerHTML = '<li class="empty-state">No scheduled jobs</li>';
+        list.innerHTML = '<li class="empty-state">No jobs yet. New job schedules one.</li>';
+        updateJobsSectionCount();
         return;
     }
+    // One list of every job (#6521): its schedule, its last result and its next run in words.
     list.innerHTML = scheduledJobs.map(job => {
         const active = selectedJobId === job.id ? 'active' : '';
-        // A job the scheduler paused itself says so (#3171).
-        const status = job.enabled ? '' : (job.paused_reason ? ' (paused: failing)' : ' (paused)');
         const lastStatus = job.last_run ? job.last_run.status : '';
         const dot = lastStatus === 'completed' ? '🟢'
             : lastStatus === 'running' ? '🔵'
             : lastStatus === 'failed' || lastStatus === 'killed' ? '🔴'
             : '⚪';
         const dotWords = lastStatus ? `Last run ${lastStatus}` : 'Not run yet'; // the dot is a coloured circle: its words say what it means
-        const isWorkflow = !!job.workflow_id;
-        const typeIcon = isWorkflow
-            ? '<span class="material-icons sched-type-icon" style="font-size:0.8125rem;color:var(--color-tool-agent)" title="Workflow" aria-hidden="true">account_tree</span>'
-            : '';
-        // A job whose scheduling works but whose every run fails otherwise looks
-        // identical to a healthy one here — enabled, with a next fire time.
+        const paused = job.enabled ? '' : `<span class="sched-chip">${job.paused_reason ? 'paused: failing' : 'paused'}</span>`;
+        // A job whose scheduling works but whose every run fails otherwise looks identical to a healthy one here.
         const fails = job.consecutive_failures || 0;
         const failBadge = fails >= 2
             ? `<span class="sched-fail-badge" title="The last ${escapeAttr(fails)} runs all failed">${fails} failed</span>`
             : '';
-        return `<li class="session-list-item ${escapeAttr(active)}" data-on-click="job-select" data-job-id="${Number(job.id)}">
-            <span class="sched-dot" role="img" aria-label="${escapeAttr(dotWords)}" title="${escapeAttr(dotWords)}">${dot}</span>
-            ${typeIcon}
-            <span class="session-name">${escapeHtml(job.name)}${status}</span>
-            ${failBadge}
-            <span class="sched-cron" style="font-size:0.625rem;color:var(--text-muted);margin-left:auto">${escapeHtml(job.cron_expr)}</span>
+        const meta = [cronWords(job.cron_expr), lastWords(job.last_run), job.enabled && job.next_fire_at ? `next ${awayWords(job.next_fire_at)}` : ''].filter(Boolean).join(' · ');
+        const nextTitle = job.enabled && job.next_fire_at ? `Next run ${atWords(job.next_fire_at)} your time` : '';
+        return `<li class="session-list-item sched-row ${escapeAttr(active)}" data-on-click="job-select" data-job-id="${Number(job.id)}" title="${escapeAttr(nextTitle)}">
+            <span class="sched-row-head"><span class="sched-dot" role="img" aria-label="${escapeAttr(dotWords)}" title="${escapeAttr(dotWords)}">${dot}</span> <span class="sched-row-name">${escapeHtml(job.name)}</span> ${paused} ${failBadge}</span>
+            <span class="sched-row-meta">${escapeHtml(meta)}</span>
         </li>`;
     }).join('');
+    updateJobsSectionCount();
 }
 
 // ── Job detail view ──────────────────────────────────────────────────────
+
+let workflowsById = null; // the workflows a job can run, by id, for the name and the step count
+
+async function loadWorkflowsById() {
+    try {
+        const resp = await fetch('/api/workflows');
+        const data = await resp.json();
+        workflowsById = new Map((data.workflows || []).map(w => [Number(w.id), w]));
+    } catch { workflowsById = workflowsById || new Map(); }
+    return workflowsById;
+}
 
 export async function selectScheduledJob(jobId) {
     selectedJobId = jobId;
@@ -97,7 +106,7 @@ export async function selectScheduledJob(jobId) {
         if (!el.closest('#scheduled-jobs-list')) el.classList.remove('active');
     });
 
-    const runs = await fetchJobRuns(jobId);
+    const [runs] = await Promise.all([fetchJobRuns(jobId), job.workflow_id ? loadWorkflowsById() : null]);
     renderJobDetail(job, runs);
     if (window.innerWidth <= 767) document.getElementById('scheduler-detail')?.scrollIntoView({ block: 'start' }); // the list is above it on a phone: show the job that was picked (#6139)
 }
@@ -106,23 +115,12 @@ function renderJobDetail(job, runs) {
     const container = document.getElementById('scheduler-detail');
     if (!container) return;
 
-    const enabledLabel = job.enabled ? 'Enabled' : 'Paused';
-    const toggleLabel = job.enabled ? 'Pause' : 'Enable';
-    const nextFire = job.next_fire_at ? new Date(job.next_fire_at).toLocaleString() : 'N/A';
     const isWorkflow = !!job.workflow_id;
-
-    // Workflow-specific info or agent info
-    let jobTypeHtml = '';
-    if (isWorkflow) {
-        const wfName = job.workflow_name || `Workflow #${job.workflow_id}`;
-        jobTypeHtml = `
-            <dt>Type</dt><dd><span class="material-icons" style="font-size:0.875rem;vertical-align:-2px;color:var(--color-tool-agent)" aria-hidden="true">account_tree</span> Workflow</dd>
-            <dt>Workflow</dt><dd><a href="#" data-on-click="job-workflow" data-workflow-id="${Number(job.workflow_id)}" style="color:var(--accent)">${escapeHtml(wfName)}</a></dd>`;
-    } else {
-        jobTypeHtml = `
-            <dt>Type</dt><dd>Agent Job</dd>
-            <dt>Agent</dt><dd>${escapeHtml(job.agent_type)}</dd>`;
-    }
+    const wf = isWorkflow && workflowsById ? workflowsById.get(Number(job.workflow_id)) : null;
+    const wfName = wf ? wf.name : (job.workflow_name || `workflow ${job.workflow_id}`);
+    const doesHtml = isWorkflow
+        ? `Workflow <a href="#" data-on-click="job-workflow" data-workflow-id="${Number(job.workflow_id)}" class="sched-link">${escapeHtml(wfName)}</a>${wf && Array.isArray(wf.steps) ? ` (${wf.steps.length} step${wf.steps.length === 1 ? '' : 's'})` : ''}`
+        : `${escapeHtml(AGENT_NAMES[job.agent_type] || job.agent_type || 'Agent')} agent${job.repo_path ? ` in <span class="sched-path">${escapeHtml(job.repo_path)}</span>` : ''}`;
 
     // Run history: for workflow jobs, show workflow runs; for agent jobs, show scheduled runs
     let runsHtml = '';
@@ -134,13 +132,13 @@ function renderJobDetail(job, runs) {
         runsHtml = '<p class="empty-state">No runs yet</p>';
     }
 
-    // Surface a job that fires on schedule and fails every time. Without this
-    // the only evidence is inside the run history table, which nobody opens
-    // for a job that appears to be running fine.
+    // The failure comes first (#6521): a job that fires on schedule and fails every time otherwise looks fine until the run history is opened.
     const fails = job.consecutive_failures || 0;
-    const lastErr = job.last_run && job.last_run.error_msg ? job.last_run.error_msg : '';
+    const last = job.last_run || null;
     // A run refused for want of a sign-in does not count as a failure (the job keeps its schedule and runs again once signed in), so it has its own banner (#5471).
-    const noSignIn = runFailure(job.last_run);
+    const noSignIn = runFailure(last);
+    const why = reasonWords(last);
+    const when = last && (last.finished_at || last.started_at) ? ` ${whenWords(last.finished_at || last.started_at)}` : '';
     const failBanner = noSignIn
         ? `<div class="sched-fail-banner" role="status">
              <strong>The last run did not start: ${escapeHtml(noSignIn.text)}.</strong>
@@ -148,90 +146,89 @@ function renderJobDetail(job, runs) {
            </div>`
         : fails >= 1
         ? `<div class="sched-fail-banner" role="status">
-             <strong>${fails === 1 ? 'The last run failed.' : `The last ${fails} runs all failed.`}</strong>
-             This job is still firing on schedule; its runs are not completing.
-             ${lastErr ? `<div class="sched-fail-error"><code>${escapeHtml(lastErr)}</code></div>` : ''}
+             <strong>${fails === 1 ? 'The last run failed' : `The last ${fails} runs all failed`}</strong>${escapeHtml(when)}${why ? `: ${escapeHtml(why)}` : ''}. It is still scheduled.
            </div>`
         : '';
 
+    const settingsRows = [
+        job.repo_path ? ['Folder', `<span class="sched-path">${escapeHtml(job.repo_path)}</span>`] : null,
+        !isWorkflow ? ['Base branch', escapeHtml(job.base_branch || 'main')] : null,
+        ['Time limit', escapeHtml(limitWords(job.max_duration_s) || `${job.max_duration_s} seconds`)],
+        !isWorkflow ? ['Cleanup worktree', job.cleanup_worktree ? 'Yes' : 'No'] : null,
+        job.flags ? ['Flags', `<code>${escapeHtml(job.flags)}</code>`] : null,
+    ].filter(Boolean);
+
+    const moreId = `sched-more-${Number(job.id)}`;
     container.innerHTML = `
         ${failBanner}
         <div class="sched-header">
             <h2>${escapeHtml(job.name)}</h2>
+            ${job.enabled ? '' : '<span class="sched-chip">paused</span>'}
             <div class="sched-actions">
                 <button class="btn btn-small" data-on-click="job-edit" data-job-id="${Number(job.id)}">Edit</button>
-                <button class="btn btn-small" data-on-click="job-toggle" data-job-id="${Number(job.id)}">${toggleLabel}</button>
-                <button class="btn btn-small btn-warning" data-on-click="job-delete" data-job-id="${Number(job.id)}">Delete</button>
+                <button class="btn btn-small" data-on-click="job-toggle" data-job-id="${Number(job.id)}">${job.enabled ? 'Pause' : 'Enable'}</button>
+                <div class="sched-more">
+                    <button class="btn btn-small sched-more-btn" type="button" data-on-click="job-more" aria-expanded="false" aria-controls="${escapeAttr(moreId)}" aria-label="More for ${escapeAttr(job.name)}">More</button>
+                    <div class="sched-more-menu" id="${escapeAttr(moreId)}" hidden>
+                        <button class="btn btn-small btn-warning sched-delete" type="button" data-on-click="job-delete" data-job-id="${Number(job.id)}" aria-label="Delete ${escapeAttr(job.name)}">Delete</button>
+                    </div>
+                </div>
             </div>
         </div>
         ${job.description ? `<p class="sched-desc">${escapeHtml(job.description)}</p>` : ''}
-        <dl class="info-grid" style="margin-bottom:16px">
-            <dt>Schedule</dt><dd><code>${escapeHtml(job.cron_expr)}</code> (${escapeHtml(job.timezone)})</dd>
-            <dt>Status</dt><dd>${enabledLabel}${!job.enabled && job.paused_reason ? `<div class="sched-paused-reason" role="status">${escapeHtml(job.paused_reason)}. Fix the cause, then Enable to resume.</div>` : ''}</dd>
-            <dt>Next Run</dt><dd>${nextFire}</dd>
-            ${jobTypeHtml}
-            <dt>Repo</dt><dd style="word-break:break-all">${escapeHtml(job.repo_path)}</dd>
-            <dt>Base branch</dt><dd>${escapeHtml(job.base_branch || 'main')}</dd>
-            <dt>Timeout</dt><dd>${job.max_duration_s}s</dd>
-            <dt>Cleanup Worktree</dt><dd>${job.cleanup_worktree ? 'Yes' : 'No'}</dd>
-            ${job.flags ? `<dt>Flags</dt><dd><code>${escapeHtml(job.flags)}</code></dd>` : ''}
+        <dl class="sched-facts">
+            <dt>Runs</dt><dd title="${escapeAttr(job.cron_expr)}">${escapeHtml(cronWords(job.cron_expr))}${job.timezone ? ` (${escapeHtml(job.timezone)})` : ''}</dd>
+            ${job.enabled
+                ? (job.next_fire_at ? `<dt>Next</dt><dd title="${escapeAttr(awayWords(job.next_fire_at))}">${escapeHtml(atWords(job.next_fire_at))} your time</dd>` : '<dt>Next</dt><dd>not scheduled</dd>')
+                : `<dt>Paused</dt><dd>${job.paused_reason ? `${escapeHtml(job.paused_reason)}. Fix the cause, then Enable to resume.` : 'Enable it to run on schedule.'}</dd>`}
+            <dt>Does</dt><dd>${doesHtml}</dd>
         </dl>
+        <details class="disclosure sched-settings">
+            <summary>Settings: ${isWorkflow ? 'folder, time limit' : 'folder, branch, time limit'}</summary>
+            <dl class="sched-facts">${settingsRows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>
+        </details>
         ${!isWorkflow && job.prompt ? `<details class="disclosure sched-prompt-section">
             <summary>Prompt</summary>
             <pre class="sched-prompt">${escapeHtml(job.prompt)}</pre>
         </details>` : ''}
         <div class="sched-runs-section">
-            <h3>Run History</h3>
+            <h3>Runs</h3>
             ${runsHtml}
         </div>
     `;
 }
 
+const AGENT_NAMES = { claude: 'Claude', codex: 'Codex', agy: 'Antigravity', antigravity: 'Antigravity', gemini: 'Antigravity', pi: 'Pi' };
+
+function resultCell(r) {
+    const cls = r.status === 'completed' ? 'status-ok' : r.status === 'failed' || r.status === 'killed' ? 'status-err' : r.status === 'running' ? 'status-running' : '';
+    return `<span class="sched-status ${cls}">${escapeHtml(resultWords(r))}</span>${runFailureTag(r)}`;
+}
+const tookOf = (r) => (r.started_at && r.finished_at ? formatDuration(new Date(r.finished_at) - new Date(r.started_at)) : r.started_at ? 'running...' : '-');
+
+// The runs of a job, one table for both kinds (#6521): when, what came of it in words, how long it took.
 function renderWorkflowRunsTable(runs) {
     return `<table class="sched-runs-table">
-        <thead><tr><th>Run</th><th>Status</th><th>Steps</th><th>Started</th><th>Duration</th></tr></thead>
-        <tbody>${runs.map(r => {
-            const statusClass = r.status === 'completed' ? 'status-ok'
-                : r.status === 'failed' || r.status === 'killed' ? 'status-err'
-                : r.status === 'running' ? 'status-running'
-                : '';
-            const started = r.started_at ? new Date(r.started_at).toLocaleString() : '-';
-            const duration = r.started_at && r.finished_at
-                ? formatDuration(new Date(r.finished_at) - new Date(r.started_at))
-                : r.started_at ? 'running...' : '-';
-            const stepsInfo = r.current_step != null ? `${r.current_step + 1}` : '-';
-            return `<tr data-on-click="job-run" data-run-id="${Number(r.id)}" style="cursor:pointer">
-                <td>#${r.id}</td>
-                <td><span class="sched-status ${statusClass}">${r.status}</span>${runFailureTag(r)}</td>
-                <td>${stepsInfo}</td>
-                <td>${started}</td>
-                <td>${duration}</td>
-            </tr>`;
-        }).join('')}</tbody>
+        <thead><tr><th>When</th><th>Result</th><th>Took</th></tr></thead>
+        <tbody>${runs.map(r => `<tr data-on-click="job-run" data-run-id="${Number(r.id)}" style="cursor:pointer">
+                <td>${escapeHtml(whenWords(r.started_at || r.created_at) || '-')}</td>
+                <td>${resultCell(r)}</td>
+                <td>${escapeHtml(tookOf(r))}</td>
+            </tr>`).join('')}</tbody>
     </table>`;
 }
 
 function renderRunsTable(runs) {
     return `<table class="sched-runs-table">
-        <thead><tr><th>Scheduled</th><th>Status</th><th>Duration</th><th>Exit</th><th>Session</th></tr></thead>
+        <thead><tr><th>When</th><th>Result</th><th>Took</th></tr></thead>
         <tbody>${runs.map(r => {
-            const scheduled = new Date(r.scheduled_at).toLocaleString();
-            const duration = r.started_at && r.finished_at
-                ? formatDuration(new Date(r.finished_at) - new Date(r.started_at))
-                : '-';
-            const statusClass = r.status === 'completed' ? 'status-ok'
-                : r.status === 'failed' || r.status === 'killed' ? 'status-err'
-                : r.status === 'running' ? 'status-running'
-                : '';
             const sessionLink = r.session_id
-                ? `<a href="#" class="run-session-link" title="View session history" data-on-click="job-run-session" data-session-id="${escapeAttr(r.session_id)}">${r.session_id.substring(0, 8)}</a>`
-                : '-';
+                ? ` <a href="#" class="run-session-link" title="Open the conversation" data-on-click="job-run-session" data-session-id="${escapeAttr(r.session_id)}">Open the conversation</a>`
+                : '';
             return `<tr>
-                <td>${scheduled}</td>
-                <td><span class="sched-status ${statusClass}">${r.status}</span>${runFailureTag(r)}</td>
-                <td>${duration}</td>
-                <td>${escapeHtml(r.exit_reason || '-')}</td>
-                <td>${sessionLink}</td>
+                <td>${escapeHtml(whenWords(r.scheduled_at || r.started_at) || '-')}</td>
+                <td>${resultCell(r)}${sessionLink}</td>
+                <td>${escapeHtml(tookOf(r))}</td>
             </tr>`;
         }).join('')}</tbody>
     </table>`;
@@ -494,7 +491,18 @@ export async function saveScheduledJob() {
 
 // ── Init ─────────────────────────────────────────────────────────────────
 
+function toggleJobMore(btn, open) {
+    const menu = document.getElementById(btn.getAttribute('aria-controls'));
+    if (!menu) return;
+    const to = open === undefined ? menu.hidden : open;
+    menu.hidden = !to;
+    btn.setAttribute('aria-expanded', String(to));
+}
+
 export function initScheduler() {
+    // A click elsewhere and Escape close an open More (it is redrawn with the page, never kept)
+    document.addEventListener('click', (e) => { for (const b of document.querySelectorAll('.sched-more-btn[aria-expanded="true"]')) if (!b.parentElement.contains(e.target)) toggleJobMore(b, false); });
+    document.addEventListener('keydown', (e) => { if (e.key !== 'Escape') return; const b = document.querySelector('.sched-more-btn[aria-expanded="true"]'); if (b) { toggleJobMore(b, false); b.focus(); e.stopPropagation(); } }, true);
     fetchJobs();
     // Refresh jobs every 30s
     pollEvery(fetchJobs, 30000, { whenHidden: true }); // job notifications
@@ -508,6 +516,7 @@ registerActions({
     'job-edit': el => withId(el.dataset.jobId, editScheduledJob),
     'job-toggle': el => withId(el.dataset.jobId, toggleScheduledJob),
     'job-delete': el => withId(el.dataset.jobId, deleteScheduledJob),
+    'job-more': el => toggleJobMore(el),
     'job-workflow': (el, event) => { event.preventDefault(); withId(el.dataset.workflowId, id => window.selectWorkflow(id)); },
     'job-run': el => withId(el.dataset.runId, id => window.selectWorkflowRun(id)),
     'job-run-session': (el, event) => { event.preventDefault(); const sid = uuidOf(el.dataset.sessionId); if (sid) window.selectHistorySession(sid); },
