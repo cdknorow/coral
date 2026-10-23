@@ -829,13 +829,6 @@ body.panel-dragging .sidebar {
     --welcome-preset-card-width: 190px;
     --welcome-preset-gap: 14px;
     --welcome-preset-columns: 3;
-    --welcome-row-width: min(
-        calc(
-            (var(--welcome-preset-card-width) * var(--welcome-preset-columns)) +
-            (var(--welcome-preset-gap) * (var(--welcome-preset-columns) - 1))
-        ),
-        calc(100vw - 32px)
-    );
     flex-direction: column;
     align-items: center;
     /* Centered when there is room, from the top (and scrollable) when there is not: justify-content: center would
@@ -914,7 +907,7 @@ body.hub-no-machine .welcome-launch-list, body.hub-no-machine .welcome-header p,
 .editions-home-hide .material-icons { font-size: 1.125rem; }
 @media (pointer: coarse), (max-width: 1024px) { .editions-home-hide { width: 44px; height: 44px; margin: -8px -8px -8px 0; } }
 .editions-home-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
-.editions-home-item { position: relative; display: flex; align-items: flex-start; gap: 12px; min-width: 0; padding: 14px 40px 14px 14px; border: 1px solid var(--border); border-radius: var(--radius-xl); background: transparent; color: var(--text-secondary); font-family: inherit; text-align: left; text-decoration: none; cursor: pointer; transition: border-color .15s ease, background .15s ease; }
+.editions-home-item { position: relative; display: flex; align-items: flex-start; gap: 12px; min-width: 0; padding: 14px 40px 14px 14px; border: 1px solid var(--border); border-radius: var(--radius-xl); color: var(--text-secondary); font-family: inherit; text-align: left; text-decoration: none; cursor: pointer; transition: border-color .15s ease, background .15s ease; }
 /* "Use Coral from anywhere" is a quiet row under the launch cards, not two more cards of their weight (#6042); its border returns on hover and focus. */
 .editions-home-item { border-color: transparent; background: transparent; }
 .editions-home-item:hover, .editions-home-item:focus-visible { border-color: var(--border-light); background: var(--bg-tertiary); } /* as .welcome-launch (#4218) */

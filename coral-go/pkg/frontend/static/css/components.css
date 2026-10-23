@@ -4202,9 +4202,8 @@ dialog.signed-out-panel code { background: var(--bg-tertiary); padding: 1px 6px;
 .saved-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .saved-pane { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; container-type: inline-size; }
 /* The dashboard's own Inbox (#4811), on every Coral but the hub's frame: Needs you, then Saved for later (the one Saved list, moved in by saved.js). The page scrolls as one. */
-.inbox-local { box-sizing: border-box; width: 100%; max-width: 880px; margin: 0 auto; align-self: flex-start; padding: var(--space-lg, 16px); display: flex; flex-direction: column; gap: var(--space-xl, 24px); }
+.inbox-local { box-sizing: border-box; width: 100%; max-width: 880px; margin: 0 auto; align-self: flex-start; padding: var(--space-lg, 16px); display: flex; flex-direction: column; gap: var(--space-md, 12px); }
 .inbox-local[hidden] { display: none; }
-.inbox-local { gap: var(--space-md, 12px); }
 .inbox-head { margin: 0; }
 .inbox-title { margin: 0 0 4px; font-size: 1.5rem; font-weight: 600; color: var(--text-primary); }
 .inbox-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); }

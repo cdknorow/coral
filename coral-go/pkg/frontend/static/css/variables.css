@@ -162,9 +162,7 @@
     /* Chat */
     --chat-human-bg:      color-mix(in srgb, var(--accent) 12%, var(--bg-tertiary));
     --chat-prose-inline-code: #e5931f;
-    --chat-human-color:   var(--text-primary);
     --chat-assistant-bg:  var(--bg-tertiary);
-    --board-msg-bg:       transparent;
 
     /* Chat / markdown specifics */
     --code-inline-bg:  rgba(255, 255, 255, 0.07);
@@ -204,7 +202,6 @@
     --xterm-bright-white:        #f0f0f2;
 
     /* Message Board */
-    --mb-bg:          #18181c;
     --mb-text:        #e0e0e0;
     --mb-text-bright: #f0f0f0;
     --mb-heading:     #79c0ff;
@@ -320,9 +317,7 @@
     /* Chat */
     --chat-human-bg:      #d4e4f7;
     --chat-prose-inline-code: #7d5200; /* #e5931f's hue, dark enough for 4.5:1 on the bubble and the code chip (#976012 was 4.3 on the chip, #5273) */
-    --chat-human-color:   #1f2328;
     --chat-assistant-bg:  #f0f1f3;
-    --board-msg-bg:       transparent;
 
     /* Chat / markdown specifics */
     --code-inline-bg:  rgba(31, 35, 40, 0.07);
@@ -362,7 +357,6 @@
     --xterm-bright-white:        #1f2328;
 
     /* Message Board */
-    --mb-bg:          rgba(240, 240, 240, 0.6);
     --mb-text:        #333;
     --mb-text-bright: #1a1a1a;
     --mb-heading:     #2e7d9c;
