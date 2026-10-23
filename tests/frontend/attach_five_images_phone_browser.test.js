@@ -49,6 +49,20 @@ async function httpJson(method, p, body) {
         check('nothing is left saying Uploading once they are in', s.uploading === '', JSON.stringify(s.uploading));
         check('five images: not one toast on screen (none covers Send or the message box)', s.toasts.length === 0, JSON.stringify(s.toasts));
         check('five images at 390 px: a tap on Send hits Send, a tap in the message box hits the box', s.sends >= 1 && s.sendHit && s.boxHit, JSON.stringify(s));
+
+        // While uploads are in flight the chip row says so (#6160; #6196's audit: nothing asserted this, and the line could go unnoticed): two uploads are held in the page, the row says
+        // "Uploading 2 images…" with the five chips still there, and once they finish it is gone and seven chips are in.
+        await ev(`(() => { const real = window.fetch; window.__gate = new Promise(r => { window.__release = r; });
+            window.fetch = async (u, o = {}) => { if (String(u).endsWith('/api/upload') && (o.method || 'GET').toUpperCase() === 'POST') await window.__gate; return real(u, o); }; return true; })()`);
+        const hold = i => ev(`(() => { window.__ups = (window.__ups || []).concat([(async () => { const c = document.createElement('canvas'); c.width = 41 + ${i}; c.height = 29; const x = c.getContext('2d'); x.fillStyle = '#6c3'; x.fillRect(0, 0, 41, 29); x.fillStyle = '#c36'; x.fillRect(${i}, 0, 6, 29);
+            const b = await new Promise(r => c.toBlob(r, 'image/png')); const f = new File([b], 'held-${i}.png', { type: 'image/png' }); const m = await import(${S} + 'controls.js'); return m.uploadAndInsertImage(f); })()]); return true; })()`);
+        await hold(1); await hold(2);
+        await waitFor(`(document.querySelector('#image-attachments .image-uploading') || {}).textContent === 'Uploading 2 images…'`, 'the Uploading line while two uploads are held', 8000);
+        s = await state();
+        check('two uploads in flight: the chip row says "Uploading 2 images…" and the five chips are still there', s.uploading === 'Uploading 2 images…' && s.chips === 5, JSON.stringify(s));
+        await ev(`window.__release(); Promise.all(window.__ups).then(() => true)`);
+        s = await state();
+        check('once they are in: no Uploading line, seven chips and "7 images attached"', s.uploading === '' && s.chips === 7 && s.status === '7 images attached', JSON.stringify(s));
     } finally {
         if (standIn) await standIn.stop().catch(() => {});
         await guard.restore().catch(() => {});
