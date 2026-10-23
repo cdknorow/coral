@@ -250,6 +250,8 @@ func TestWSTerminal_ComposerSendFloodIsBounded(t *testing.T) {
 			busy[m["id"].(float64)] = true
 		}
 	}
+	// The delivery that holds the agent's turn reads the agent's signals first (a message is held behind a box that asks the person, #6610), so it may not have reached the terminal yet.
+	require.Eventually(t, func() bool { return term.entered.Load() == 1 }, 5*time.Second, 5*time.Millisecond, "one delivery typing")
 	assert.EqualValues(t, 1, term.entered.Load(), "one delivery typing; the others under way wait their turn for this agent")
 	close(term.release)
 	acks := 0

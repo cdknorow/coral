@@ -766,20 +766,31 @@ func (t *terminalStream) composerSend(msg terminalFrame) {
 	go func() {
 		defer safego.Recover("server/routes/websocket:composer_send")
 		defer t.composing.Add(-1)
-		err := t.h.deliverHumanSend(t.ctx, t.name, t.agentType, t.sessionID, msg.Data)
-		switch {
-		case err == nil:
-			wsWriteJSON(t.ctx, t.conn, map[string]any{"type": "terminal_input_ack", "id": id})
-		case errors.Is(err, ptymanager.ErrTerminalGone):
-			wsWriteJSON(t.ctx, t.conn, map[string]any{"type": "terminal_gone", "code": "terminal_gone", "error": terminalGoneMessage, "not_sent": true, "id": id})
-		default:
-			out := map[string]any{"type": "terminal_input_failed", "error": "The message could not be sent to the agent's terminal.", "not_sent": true, "id": id}
-			if _, hs, ok := humanSendError(err); ok {
-				out["error"], out["code"], out["not_sent"] = hs["error"], hs["code"], hs["not_sent"]
-			}
-			wsWriteJSON(t.ctx, t.conn, out)
+		// A message held behind the agent's box (#6610) is answered held now, and acked or refused by this id when it is typed.
+		reply := func(err error) { t.composerAnswer(id, err) }
+		held, err := t.h.deliverPersonSend(t.ctx, t.name, t.agentType, t.sessionID, msg.Data, reply)
+		if held {
+			wsWriteJSON(t.ctx, t.conn, map[string]any{"type": "terminal_input_held", "id": id, "note": heldNote})
+			return
 		}
+		t.composerAnswer(id, err)
 	}()
+}
+
+// composerAnswer tells the composer how its message ended: delivered, the terminal gone, or refused.
+func (t *terminalStream) composerAnswer(id any, err error) {
+	switch {
+	case err == nil:
+		wsWriteJSON(t.ctx, t.conn, map[string]any{"type": "terminal_input_ack", "id": id})
+	case errors.Is(err, ptymanager.ErrTerminalGone):
+		wsWriteJSON(t.ctx, t.conn, map[string]any{"type": "terminal_gone", "code": "terminal_gone", "error": terminalGoneMessage, "not_sent": true, "id": id})
+	default:
+		out := map[string]any{"type": "terminal_input_failed", "error": "The message could not be sent to the agent's terminal.", "not_sent": true, "id": id}
+		if _, hs, ok := humanSendError(err); ok {
+			out["error"], out["code"], out["not_sent"] = hs["error"], hs["code"], hs["not_sent"]
+		}
+		wsWriteJSON(t.ctx, t.conn, out)
+	}
 }
 
 // writeLoop forwards the terminal's live output as binary frames, answers resizes with the pane's size, and ends the
