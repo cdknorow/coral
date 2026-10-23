@@ -160,17 +160,25 @@ else result "1 update" FAIL "the world of N did not come up: $(tail -3 "$work/up
 sweep
 
 # ---- 2 tampered --------------------------------------------------------------------------------------------------------
+# The refusal must be for the tampered bytes: the check names the digest mismatch (the updater's own words), the package really was asked for, and a package that cannot be downloaded at all
+# (the control, in a data folder of its own) is a DIFFERENT result that this item rejects. Without that, a rig that was down would pass or fail this item by luck (#6297, Security).
 if setup tampered; then
   pid0=$srv
   run_rehearsal "$work/pkg/n1.tar.gz" "$N1" --tamper bit
   ck=$(step_of check)
   cr=$(printf '%s' "$ck" | jget result); cs=$(printf '%s' "$ck" | jget failed_stage)
+  why=$(printf '%s' "$ck" | jget reason); hits=$(printf '%s' "$ck" | jget package_requests)
+  mkdir -p "$s/ctl"
+  "${CENV[@]}" "$work/bin/rehearsal-update" --data-dir "$s/ctl" --install "$inst" --parent "$srv" --installed "$N" --package "$work/pkg/n1.tar.gz" --version "$N1" --tamper break --mode check > "$s/ctl.out" 2> "$s/ctl.err"
+  ctl=$(grep '"step":"check"' "$s/ctl.out" | tail -1)
+  ctl_stage=$(printf '%s' "$ctl" | jget failed_stage); ctl_reason=$(printf '%s' "$ctl" | jget reason)
   alive=no; kill -0 "$pid0" 2>/dev/null && alive=yes
   v=$(health_version); iv=$(installed_version); staged=$(ls "$dd/updates/staging" 2>/dev/null | grep -c .)
-  if [ "$cr" = failed ] && [ "$cs" = package ] && [ "$alive" = yes ] && [ "$v" = "$N" ] && [ "$iv" = "$N" ] && [ "$staged" = 0 ]; then
-    result "2 tampered" PASS "a bit flipped on the wire: refused at the package stage, nothing staged, the server of $N untouched (same process, /api/health says $N)"
+  digest=no; case "$why" in *"the verified sums file says"*) digest=yes ;; esac
+  if [ "$cr" = failed ] && [ "$cs" = package ] && [ "$digest" = yes ] && [ "${hits:-0}" -ge 1 ] && [ "$ctl_stage" = download ] && [ -z "$ctl_reason" ] && [ "$alive" = yes ] && [ "$v" = "$N" ] && [ "$iv" = "$N" ] && [ "$staged" = 0 ]; then
+    result "2 tampered" PASS "a bit flipped on the wire: refused at the package stage with the digest mismatch named, the package asked for $hits time(s), nothing staged, the server of $N untouched (same process, /api/health says $N); the control (a package that 404s) is a $ctl_stage failure with no digest reason, a different result"
   else
-    result "2 tampered" FAIL "check=[$cr/$cs] server alive=$alive health=[$v] install=[$iv] staged entries=$staged"
+    result "2 tampered" FAIL "check=[$cr/$cs] reason=[${why:0:160}] package requests=[$hits] control=[$ctl_stage/${ctl_reason:0:60}] server alive=$alive health=[$v] install=[$iv] staged entries=$staged; rehearsal err: $(tail -c 300 "$s/rehearsal.err" | tr '\n' ' ')"
   fi
 else result "2 tampered" FAIL "the world of N did not come up"; fi
 sweep
@@ -254,7 +262,7 @@ SHIM
   agent_pids() { for d in /proc/[0-9]*; do exe=$(readlink "$d/exe" 2>/dev/null) || continue; [ "$exe" = "$work/bin/mock-agent" ] && echo "${d#/proc/}"; done | sort -n | tr '\n' ' '; }
   person --method PUT --path /api/settings --body "{\"cli_path_claude\":\"$work/bin/mock-agent\"}" > "$s/cli.out"
   mkdir -p "$s/agentdir"
-  person --method POST --path /api/sessions/launch --body "{\"working_dir\":\"$s/agentdir\",\"agent_type\":\"claude\",\"backend\":\"pty\",\"board_name\":\"rhsproj\",\"display_name\":\"Rig\"}" > "$s/launch.out"
+  person --method POST --path /api/sessions/launch --body "{\"working_dir\":\"$s/agentdir\",\"agent_type\":\"claude\",\"backend\":\"pty\",\"board_id\":\"rhsproj\",\"display_name\":\"Rig\"}" > "$s/launch.out"
   for _ in $(seq 1 50); do [ -n "$(agent_pids)" ] && break; sleep 0.2; done
   agents_before=$(agent_pids)
   st=$(person --path /api/system/update | cut -d' ' -f2-)

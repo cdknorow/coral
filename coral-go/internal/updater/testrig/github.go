@@ -81,6 +81,19 @@ func (g *FakeGitHub) file(tag, name string) ([]byte, bool) {
 	return nil, false
 }
 
+// Requests counts the requests so far whose path ends with suffix (the package's file name, to say a test served it).
+func (g *FakeGitHub) Requests(suffix string) int {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	n := 0
+	for p, c := range g.Hits {
+		if strings.HasSuffix(p, suffix) {
+			n += c
+		}
+	}
+	return n
+}
+
 func (g *FakeGitHub) serve(w http.ResponseWriter, req *http.Request) {
 	g.mu.Lock()
 	defer g.mu.Unlock()

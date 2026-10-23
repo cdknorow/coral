@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -44,7 +45,7 @@ func run() int {
 	installed := flag.String("installed", "", "the installed version")
 	pkg := flag.String("package", "", "the new release's tarball")
 	version := flag.String("version", "", "the new release's version")
-	tamper := flag.String("tamper", "", `"bit": serve the package with one bit flipped`)
+	tamper := flag.String("tamper", "", `"bit": serve the package with one bit flipped; "break": answer 404 for the package (a download that fails, the control of "bit": a different result)`)
 	mode := flag.String("mode", "both", "check or both")
 	waitFor := flag.Duration("wait", 2*time.Minute, "how long the apply waits for the server to end")
 	healthFor := flag.Duration("health-for", 30*time.Second, "how long the new install has to stay up")
@@ -85,12 +86,21 @@ func run() int {
 	if *restage {
 		_ = os.RemoveAll(filepath.Join(*dataDir, stage.UpdatesDir, stage.StagingDir)) // the staging folder of this rehearsal's own data folder; the state file keeps saying what was staged
 	}
+	if *tamper == "break" {
+		gh.Status["v"+*version+"/"+testrig.Asset(*version)] = http.StatusNotFound
+	}
 	cfg := stage.Config{DataDir: *dataDir, Installed: *installed, Pins: testrig.Pins(), Verifier: verify.Sigstore{Trust: signer.Trust()}, Asset: testrig.Asset}
 	gh.Config(&cfg)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 	defer cancel()
 	res := stage.Check(ctx, cfg)
-	say(map[string]any{"step": "check", "result": res.Result, "installed": res.Installed, "version": res.Version, "failed_stage": res.FailedStage})
+	// What the check refused for, in the updater's own words (the state file's last failure), and whether the package was really asked for: a test that a tampered package was refused
+	// for its digest, and not for a rig that was down, needs both.
+	reason := ""
+	if st, err := verify.LoadState(filepath.Join(*dataDir, stage.UpdatesDir)); err == nil && st.LastFailure != nil {
+		reason = st.LastFailure.Reason
+	}
+	say(map[string]any{"step": "check", "result": res.Result, "installed": res.Installed, "version": res.Version, "failed_stage": res.FailedStage, "reason": reason, "package_requests": gh.Requests(testrig.Asset(*version))})
 	if *mode == "check" || res.Result != stage.ResultStaged {
 		if res.Result == stage.ResultStaged {
 			return 0
