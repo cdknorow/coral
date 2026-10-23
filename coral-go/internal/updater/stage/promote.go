@@ -89,6 +89,7 @@ func (c *checker) findPromotion(ctx context.Context, onlyTag string) (p *promoti
 		list = list[:100] // a page is 30: anything more is not read
 	}
 	looked := 0
+	var rehearsal *promotion
 	var first *noneVerified
 	skip := func(version string, f *verify.Failure) {
 		junk++
@@ -143,9 +144,21 @@ func (c *checker) findPromotion(ctx context.Context, onlyTag string) (p *promoti
 			skip(version, &verify.Failure{Stage: verify.StageManifestRules, Reason: "the manifest names another tag or sequence than its release"})
 			continue
 		}
+		if m.Prerelease {
+			// A rehearsal's manifest is signed and valid but is never what a Coral updates to: it is skipped before the highest sequence is picked, so a rehearsal with a higher
+			// sequence than the real promotion of the same tag cannot hide the real one (Security's #6393 follow-up). When there is no other candidate the highest one is kept, so the
+			// rules refuse it by its flag as before and the check says why nothing was staged.
+			if rehearsal == nil || m.Sequence > rehearsal.m.Sequence {
+				rehearsal = &promotion{tag: r.TagName, manifest: manifest, bundle: bundle, m: m}
+			}
+			continue
+		}
 		if p == nil || m.Sequence > p.m.Sequence {
 			p = &promotion{tag: r.TagName, manifest: manifest, bundle: bundle, m: m}
 		}
+	}
+	if p == nil && rehearsal != nil {
+		p = rehearsal
 	}
 	if p == nil {
 		if first != nil {

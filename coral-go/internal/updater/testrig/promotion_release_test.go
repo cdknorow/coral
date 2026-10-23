@@ -142,3 +142,17 @@ func TestADraftPromotionIsNeverTaken(t *testing.T) {
 	assert.Equal(t, "1.4.131", res.Version, "the draft's version and sequence are ignored")
 	assert.Zero(t, r.gh.Hits[FakeRepo+"/releases/download/"+PromotionTag("v1.4.140", 99)+"/promote.json"], "its files are not even asked for")
 }
+
+// A rehearsal run after the real promotion of the same tag carries a higher sequence: the client skips a pre-release manifest before it picks the highest, so the real promotion is still what it
+// stages (Security's #6393 follow-up).
+func TestARehearsalWithAHigherSequenceDoesNotHideTheRealPromotion(t *testing.T) {
+	r := newRig(t)
+	r.publish(Spec{Version: "1.4.131", Sequence: 5})
+	rehearsal, err := r.s.NewRelease(Spec{Version: "1.4.131", Sequence: 9, Prerelease: true})
+	require.NoError(t, err)
+	r.gh.PublishPromotion(PromotionTag("v1.4.131", 9), rehearsal.Manifest, rehearsal.ManifestBundle)
+	res := r.check()
+	require.Equal(t, stage.ResultStaged, res.Result, "%+v", res)
+	assert.Equal(t, "1.4.131", res.Version)
+	// before the guard the rehearsal (sequence 9) was picked and then refused by the rules: the result was a refusal and nothing was staged
+}
