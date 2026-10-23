@@ -145,7 +145,7 @@ func TestPtyQuitDoesNotKillAgents(t *testing.T) {
 		t.Errorf("steps: %q", steps)
 	}
 	for _, r := range seen {
-		if r != "GET /api/sessions/live" && r != "GET /api/settings" {
+		if r != "GET /api/sessions/live" && r != "GET /api/settings" && r != "GET /api/system/auto-wake" {
 			t.Errorf("Quit sent %q: it must not end agents", r)
 		}
 	}
@@ -200,4 +200,59 @@ func settingsOr(w http.ResponseWriter, r *http.Request, settings func()) {
 		return
 	}
 	io.WriteString(w, `[{"name":"a","sleeping":false},{"name":"b","sleeping":false},{"name":"c","sleeping":false}]`)
+}
+
+// A Quit that follows a wake by less than 10 minutes is skipped by the server's crash-loop guard: the label and the note say that, in the server's words, and not "wake next time" (#319).
+func TestGuardedWakeSaysItWillNotWake(t *testing.T) {
+	const why = "Coral woke its agents less than 10 minutes ago"
+	for _, c := range []struct {
+		name     string
+		settings string
+		guard    string
+		agents   int
+		quit     string
+		note     string
+		wakes    bool
+	}{
+		{"guarded", `{"settings":{}}`, `{"state":"done","guarded_now":true,"guard_why":"` + why + `"}`, 3,
+			"Quit Coral (3 agents stop: " + why + ")", "Coral quit. 3 agents stopped: " + why + ". Wake them from Coral when you want them back.", false},
+		{"guarded, one agent", `{"settings":{}}`, `{"guarded_now":true,"guard_why":"` + why + `"}`, 1,
+			"Quit Coral (1 agent stops: " + why + ")", "Coral quit. 1 agent stopped: " + why + ". Wake it from Coral when you want it back.", false},
+		{"not guarded", `{"settings":{}}`, `{"state":"","guarded_now":false}`, 3,
+			"Quit Coral (3 agents wake next time)", "Coral quit. 3 agents will wake next time you open Coral.", true},
+		{"an older server says nothing about it", `{"settings":{}}`, `{"state":"done"}`, 3,
+			"Quit Coral (3 agents wake next time)", "Coral quit. 3 agents will wake next time you open Coral.", true},
+		{"the setting is off: stop, and no guard reason", `{"settings":{"auto_wake_after_restart":"false"}}`, `{"guarded_now":true,"guard_why":"` + why + `"}`, 3,
+			"Quit Coral (3 agents stop)", "Coral quit. 3 agents stopped. Wake them from Coral when you want them back.", false},
+		{"the guard cannot be read: the setting decides", `{"settings":{}}`, ``, 3,
+			"Quit Coral (3 agents wake next time)", "Coral quit. 3 agents will wake next time you open Coral.", true},
+	} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/api/settings":
+				io.WriteString(w, c.settings)
+			case "/api/system/auto-wake":
+				if c.guard == "" {
+					http.Error(w, "boom", 500)
+					return
+				}
+				io.WriteString(w, c.guard)
+			default:
+				io.WriteString(w, `[{"name":"a","sleeping":false},{"name":"b","sleeping":false},{"name":"c","sleeping":false}]`)
+			}
+		}))
+		got := readAgentsNow(srv.URL, t.TempDir())
+		srv.Close()
+		n := got.count
+		if c.agents == 1 { // the same server, one agent: only the wording is under test
+			n = 1
+		}
+		it := exitItemsWhy("windows", "pty", n, got.wakes, got.why)
+		if it.quit != c.quit || quitNoteWhy(n, got.wakes, got.why) != c.note || got.wakes != c.wakes {
+			t.Errorf("%s: wakes=%v %q / %q", c.name, got.wakes, it.quit, quitNoteWhy(n, got.wakes, got.why))
+		}
+		if !c.wakes && got.why != "" && !strings.Contains(it.quitTip, why) {
+			t.Errorf("%s: the tooltip does not say why: %q", c.name, it.quitTip)
+		}
+	}
 }

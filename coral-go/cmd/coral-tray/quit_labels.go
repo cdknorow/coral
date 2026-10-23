@@ -54,10 +54,17 @@ func wakeRuleFrom(body []byte) (wakeRule, bool) {
 }
 
 // quitNote is what Quit tells the person once it has stopped Coral on the built-in terminal: how many agents will wake next time, or that they stopped.
-func quitNote(agents int, wakes bool) string {
+func quitNote(agents int, wakes bool) string { return quitNoteWhy(agents, wakes, "") }
+
+// quitNoteWhy is quitNote with the reason the agents will not wake when the server's crash-loop guard is the reason (why is the guard's own words: "Coral woke its agents less than 10 minutes ago").
+func quitNoteWhy(agents int, wakes bool, why string) string {
 	switch {
 	case agents <= 0:
 		return "Coral quit."
+	case !wakes && why != "" && agents == 1:
+		return "Coral quit. 1 agent stopped: " + why + ". Wake it from Coral when you want it back."
+	case !wakes && why != "":
+		return fmt.Sprintf("Coral quit. %d agents stopped: %s. Wake them from Coral when you want them back.", agents, why)
 	case !wakes && agents == 1:
 		return "Coral quit. 1 agent stopped. Wake it from Coral when you want it back."
 	case !wakes:
@@ -70,11 +77,21 @@ func quitNote(agents int, wakes bool) string {
 
 // exitItemsFor builds the tray's exit items; agents is how many agents are running now and wakes whether they wake by themselves next time (the pty Quit says which).
 func exitItemsFor(goos, backend string, agents int, wakes bool) exitItems {
+	return exitItemsWhy(goos, backend, agents, wakes, "")
+}
+
+// exitItemsWhy is exitItemsFor with the reason the agents will not wake when the crash-loop guard is the reason (#319): the title and the tip say so in the server's words,
+// not "wake next time".
+func exitItemsWhy(goos, backend string, agents int, wakes bool, why string) exitItems {
 	if goos == "windows" || backend != "tmux" {
 		it := exitItems{oneExit: true, quit: "Quit Coral", quitTip: "Exit Coral",
 			shutdown: "Quit Coral", shutTip: "Exit Coral"}
 		switch {
 		case agents <= 0:
+		case !wakes && why != "" && agents == 1:
+			it.quit, it.quitTip = "Quit Coral (1 agent stops: "+why+")", "1 agent stops now: "+why+". Wake it from Coral when you want it back."
+		case !wakes && why != "":
+			it.quit, it.quitTip = fmt.Sprintf("Quit Coral (%d agents stop: %s)", agents, why), fmt.Sprintf("%d agents stop now: %s. Wake them from Coral when you want them back.", agents, why)
 		case wakes && agents == 1:
 			it.quit, it.quitTip = "Quit Coral (1 agent wakes next time)", "1 agent stops now and wakes next time you open Coral"
 		case wakes:
@@ -196,6 +213,27 @@ func wakeRuleNow(client *http.Client, baseURL string) (wakeRule, bool) {
 type agentsNow struct {
 	count int
 	wakes bool
+	why   string // when the agents will not wake because of the server's crash-loop guard: its words
+}
+
+// wakeGuardNow reads the crash-loop guard from the server (GET /api/system/auto-wake): whether a Coral started now would skip the wake, and the reason in the server's own words.
+func wakeGuardNow(client *http.Client, baseURL string) (guarded bool, why string) {
+	resp, err := client.Get(baseURL + "/api/system/auto-wake")
+	if err != nil {
+		return false, ""
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return false, ""
+	}
+	var st struct {
+		GuardedNow bool   `json:"guarded_now"`
+		GuardWhy   string `json:"guard_why"`
+	}
+	if json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&st) != nil || !st.GuardedNow {
+		return false, ""
+	}
+	return true, st.GuardWhy
 }
 
 // readAgentsNow asks the server for both.
@@ -203,7 +241,14 @@ func readAgentsNow(baseURL, dataDir string) agentsNow {
 	client := agentsClient(dataDir)
 	n := runningAgents(client, baseURL)
 	rule, ok := wakeRuleNow(client, baseURL)
-	return agentsNow{count: n, wakes: ok && rule.wakes(n)}
+	wakes := ok && rule.wakes(n)
+	if wakes && n > 0 {
+		// The setting says wake, but the crash-loop guard skips a wake that follows a recent one: say so, as the dashboard's notice does.
+		if guarded, why := wakeGuardNow(client, baseURL); guarded {
+			return agentsNow{count: n, wakes: false, why: why}
+		}
+	}
+	return agentsNow{count: n, wakes: wakes}
 }
 
 // watchAgents keeps cur current for Quit's title: it asks every 10 seconds and calls onChange when the answer changes.
@@ -226,6 +271,6 @@ func quitKeepingAgentsPlace(baseURL, dataDir string, closeApp, stopServer func()
 	a := readAgentsNow(baseURL, dataDir)
 	closeApp()
 	stopServer()
-	notify(quitNote(a.count, a.wakes))
+	notify(quitNoteWhy(a.count, a.wakes, a.why))
 	exit()
 }
