@@ -18,6 +18,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/subgentic/coral/internal/secfile"
@@ -35,8 +36,24 @@ const (
 
 var seriesIDRe = regexp.MustCompile(`^[0-9a-f]{32}$`)
 
-// seriesLocks: one of 256 locks per series (its first byte), taken before any digest lock (lockArtifact) by every path that holds both.
+// seriesLocks: one of 256 locks per series (its first byte), taken before any digest lock (lockArtifact) by every path that holds both, and after the create lock (seriesCreateLocks) a first version holds.
 var seriesLocks [256]sync.Mutex
+
+// seriesCreateLocks: one of 256 locks per artifact a first version is made of (its digest's first byte). Several first versions of one unversioned artifact have no series id yet to
+// serialise on, so each made its own series (#6406, Security): the create lock is taken before the artifact's series is looked up and held until the version is committed. A separate array
+// from seriesLocks (sharing one could deadlock on a bucket collision). Lock order: create, then series, then digest (lockArtifact).
+var seriesCreateLocks [256]sync.Mutex
+
+func lockSeriesCreate(digest string) func() {
+	var i byte
+	if len(digest) >= 2 {
+		if b, err := hexByte(digest[0], digest[1]); err == nil {
+			i = b
+		}
+	}
+	seriesCreateLocks[i].Lock()
+	return seriesCreateLocks[i].Unlock
+}
 
 func lockSeries(id string) func() {
 	var i byte
@@ -124,8 +141,12 @@ type seriesRecord struct {
 	rec     agentUploadRecord
 }
 
+// uploadRecordWalks counts the walks of every upload record (a test pins that a read with a good index makes none).
+var uploadRecordWalks atomic.Int64
+
 // forEachUploadRecord calls fn with every session upload record in the store (uploads/<session>/<digest>.json) until fn returns false.
 func forEachUploadRecord(coralDir string, fn func(session, digest string, rec agentUploadRecord) bool) {
+	uploadRecordWalks.Add(1)
 	sessions, err := os.ReadDir(filepath.Join(coralDir, "artifacts", "uploads"))
 	if err != nil {
 		return
@@ -194,27 +215,39 @@ type seriesMember struct {
 // seriesMembers returns the versions of series id as their upload records say, in version order. The index is only where to look first: an entry whose record is gone or says
 // another series or number is dropped (the records win), and a series whose index is missing or damaged is found by one walk of the records.
 func seriesMembers(coralDir, id string) []seriesMember {
+	return membersOfSeries(coralDir, id, false)
+}
+
+// membersOfSeries: a read (full false) trusts a good index (one file read per version, each checked against its record) and walks every upload record only when the index is missing or damaged
+// or a row fails its record. A write (full true, under the series lock) always walks, so an upload that stopped before its index was written is found and the next commit heals the index.
+func membersOfSeries(coralDir, id string, full bool) []seriesMember {
 	if !seriesIDRe.MatchString(id) {
 		return nil // never a walk for "records of the empty series", which every unversioned artifact would match
 	}
 	var out []seriesMember
 	seen := map[string]bool{}
-	if idx, ok := readSeriesIndex(coralDir, id); ok {
+	idx, indexed := readSeriesIndex(coralDir, id)
+	clean := indexed
+	if indexed {
 		for _, v := range idx.Versions {
 			if rec, ok := readUploadRecord(coralDir, v.Session, v.Digest); ok && rec.SeriesID == id && rec.Version == v.N && !seen[v.Digest] {
 				seen[v.Digest] = true
 				out = append(out, memberOf(v.Digest, v.Session, rec))
+			} else {
+				clean = false
 			}
 		}
 	}
-	// A record that names this series and is not in the index (a lost or stale index, an upload that stopped before the index was written) is a member too: records win.
-	forEachUploadRecord(coralDir, func(session, digest string, rec agentUploadRecord) bool {
-		if rec.SeriesID == id && !seen[digest] {
-			seen[digest] = true
-			out = append(out, memberOf(digest, session, rec))
-		}
-		return true
-	})
+	if full || !clean {
+		// A record that names this series and is not in the index (a lost or stale index, an upload that stopped before the index was written) is a member too: records win.
+		forEachUploadRecord(coralDir, func(session, digest string, rec agentUploadRecord) bool {
+			if rec.SeriesID == id && !seen[digest] {
+				seen[digest] = true
+				out = append(out, memberOf(digest, session, rec))
+			}
+			return true
+		})
+	}
 	sort.Slice(out, func(i, j int) bool { return out[i].N < out[j].N })
 	return out
 }
@@ -309,9 +342,16 @@ func planNewVersion(coralDir, ref, callerBoard, newDigest string) (*seriesPlan, 
 		return nil, errSeriesNoBoard
 	}
 	p := &seriesPlan{board: callerBoard}
+	var unlockCreate func() // a first version holds the create lock from before the artifact's series is looked up until the version is committed (or refused)
 	if series != "" {
 		p.id = series
 	} else {
+		unlockCreate = lockSeriesCreate(digest)
+		defer func() {
+			if unlockCreate != nil {
+				unlockCreate()
+			}
+		}()
 		// The artifact the caller names must be one its board uploaded (a record of it names the caller's board): records decide, never the index.
 		recs := recordsOfDigest(coralDir, digest)
 		for _, r := range recs {
@@ -324,6 +364,8 @@ func planNewVersion(coralDir, ref, callerBoard, newDigest string) (*seriesPlan, 
 		}
 		if sid, _, in := digestSeries(coralDir, digest); in {
 			p.id = sid
+			unlockCreate() // it is in a series already: the series lock serialises from here, as for a series link
+			unlockCreate = nil
 		}
 	}
 	if p.id == "" {
@@ -333,10 +375,16 @@ func planNewVersion(coralDir, ref, callerBoard, newDigest string) (*seriesPlan, 
 		}
 		p.id, p.create = id, true
 	}
-	p.unlock = lockSeries(p.id)
+	unlockSeries := lockSeries(p.id)
+	p.unlock = unlockSeries
+	if unlockCreate != nil { // a new series: the create lock is let go after the series lock, when the version is committed
+		held := unlockCreate
+		unlockCreate = nil
+		p.unlock = func() { unlockSeries(); held() }
+	}
 	fail := func(e error) (*seriesPlan, error) { p.unlock(); return nil, e }
 	if !p.create {
-		p.rows = seriesMembers(coralDir, p.id)
+		p.rows = membersOfSeries(coralDir, p.id, true)
 		if len(p.rows) == 0 || p.rows[0].Board != callerBoard {
 			return fail(errSeriesNotYours) // not found and not yours look the same
 		}
@@ -382,6 +430,11 @@ func (p *seriesPlan) commit(coralDir, newDigest, session string) (versions int, 
 	if !p.create {
 		if old, ok := readSeriesIndex(coralDir, p.id); ok {
 			idx = old
+		}
+		// Rebuilt from the records the plan walked, so a version whose index row was never written is in it from now on.
+		idx.Versions = nil
+		for _, m := range p.rows {
+			idx.Versions = append(idx.Versions, seriesVersionRow{Digest: m.Digest, N: m.N, Session: m.Session, At: m.At})
 		}
 	} else if err := stampRecord(coralDir, p.base.session, p.rows[0].Digest, seriesStamp{ID: p.id, Version: 1}); err != nil {
 		return 0, err
