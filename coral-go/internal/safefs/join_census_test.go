@@ -260,6 +260,7 @@ var joinSites = map[string]joinEntry{
 	"internal/tracking/milestones.go\tdisclosurePath":                                        {1, joinOwn, "a fixed or program-made name in its own folder"},
 	"internal/tracking/milestones.go\tmilestonesPath":                                        {1, joinOwn, "a fixed or program-made name in its own folder"},
 	"internal/transcriptlink/codex.go\tBindCodex":                                            {2, joinContained, "safefs.Within and Resolve against the sessions folder; the thread id is a canonical UUID"},
+	"internal/transcriptlink/codex.go\tBindCodexByMarker":                                    {4, joinFixed, "names from a directory listing, each matched against a fixed pattern first (four digits, two digits, rollout-<uuid>.jsonl) under the sessions folder; the file is then opened only through the sessions root (rolloutMarker)"},
 	"internal/transcriptlink/codex.go\trolloutPath":                                          {1, joinContained, "safefs.Within and Resolve against the sessions folder; the thread id is a canonical UUID"},
 	"internal/uploads/uploads.go\tDelete":                                                    {1, joinOwn, "a name made safe (base name, safeNameRE, safefs.CheckName) before the join"},
 	"internal/uploads/uploads.go\tlist":                                                      {1, joinFixed, "names from a directory listing or numbers and hashes the program makes"},

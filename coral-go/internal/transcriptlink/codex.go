@@ -9,7 +9,10 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
+	"strconv"
 	"strings"
+	"time"
 
 	at "github.com/subgentic/coral/internal/agenttypes"
 	"github.com/subgentic/coral/internal/safefs"
@@ -237,4 +240,87 @@ func rolloutMarker(path string) string {
 		}
 	}
 	return ""
+}
+
+// The bounds of the search BindCodexByMarker makes for a session whose link is missing (#6325): the last markerSearchDays of Codex's day folders, at most markerSearchFiles rollouts, and
+// markerSearchTime, whichever is reached first. A wake waits for it, so it is short; a conversation older than that is not found and starts fresh, as before.
+var (
+	markerSearchDays  = 14
+	markerSearchFiles = 500
+	markerSearchTime  = 2 * time.Second
+)
+
+var (
+	dayDirName    = regexp.MustCompile(`^[0-9]{2}$`)
+	yearDirName   = regexp.MustCompile(`^[0-9]{4}$`)
+	rolloutNameRe = regexp.MustCompile(`^rollout-.*-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$`)
+)
+
+// sortedDirNames is the names of the folders in dir that match re, largest first (the newest day first).
+func sortedDirNames(dir string, re *regexp.Regexp) []string {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	var names []string
+	for _, e := range entries {
+		if e.IsDir() && re.MatchString(e.Name()) {
+			names = append(names, e.Name())
+		}
+	}
+	sort.Sort(sort.Reverse(sort.StringSlice(names)))
+	return names
+}
+
+// BindCodexByMarker finds, with no hook link, the Codex thread of a Coral session by the one identity a rollout carries that Coral wrote: the session marker in its first developer message
+// (rolloutMarker, the same check a takeover of a link has to pass). It looks through the newest rollouts first, within the bounds above, and binds the first thread whose rollout is
+// marked as this session's (BindCodex verifies its metadata) so a wake can resume it. It reports whether a link to that session now exists. A rollout that names another session, or none,
+// is never taken, and nothing is guessed from a folder or a time.
+func BindCodexByMarker(sessionID string) bool {
+	if !uuid.MatchString(sessionID) {
+		return false
+	}
+	if Codex(sessionID).ThreadID != "" {
+		return true
+	}
+	deadline := time.Now().Add(markerSearchTime)
+	oldest := time.Now().AddDate(0, 0, -markerSearchDays-1) // a day of slack for the time zone Codex names its folders by
+	sessions := filepath.Join(codexHome(), "sessions")
+	files := 0
+	for _, y := range sortedDirNames(sessions, yearDirName) {
+		year, _ := strconv.Atoi(y)
+		for _, m := range sortedDirNames(filepath.Join(sessions, y), dayDirName) {
+			month, _ := strconv.Atoi(m)
+			for _, d := range sortedDirNames(filepath.Join(sessions, y, m), dayDirName) {
+				day, _ := strconv.Atoi(d)
+				if time.Date(year, time.Month(month), day, 23, 59, 59, 0, time.Local).Before(oldest) {
+					return false // every folder after this one is older
+				}
+				dir := filepath.Join(sessions, y, m, d)
+				entries, err := os.ReadDir(dir)
+				if err != nil {
+					continue
+				}
+				var names []string
+				for _, e := range entries {
+					if !e.IsDir() && rolloutNameRe.MatchString(e.Name()) {
+						names = append(names, e.Name())
+					}
+				}
+				sort.Sort(sort.Reverse(sort.StringSlice(names)))
+				for _, name := range names {
+					if files++; files > markerSearchFiles || time.Now().After(deadline) {
+						return false
+					}
+					path := filepath.Join(dir, name)
+					if rolloutMarker(path) != sessionID {
+						continue
+					}
+					thread := rolloutNameRe.FindStringSubmatch(name)[1]
+					return BindCodex(sessionID, thread) == nil
+				}
+			}
+		}
+	}
+	return false
 }

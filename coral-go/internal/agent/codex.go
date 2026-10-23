@@ -341,7 +341,11 @@ func (a *CodexAgent) LaunchCommand(params LaunchParams) (string, error) {
 // failed, one killed at its start) has none, and "codex resume <id>" ends at "No saved session found" and a bare shell (#5222).
 func CodexSessionSaved(coralSessionID string) bool {
 	thread := coralSessionID
-	if link := transcriptlink.Codex(coralSessionID); link.ThreadID != "" {
+	link := transcriptlink.Codex(coralSessionID)
+	if link.ThreadID == "" && transcriptlink.BindCodexByMarker(coralSessionID) { // no hook wrote a link (Codex's hooks not trusted): the rollout the session's own marker names is its thread (#6325)
+		link = transcriptlink.Codex(coralSessionID)
+	}
+	if link.ThreadID != "" {
 		if link.Path != "" { // the link's own rollout file, checked by the link reader
 			return true
 		}

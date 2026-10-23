@@ -306,7 +306,7 @@ func (h *SessionsHandler) wakeExistingSession(ctx context.Context, ls *store.Liv
 	// A Codex agent that never completed a turn has no saved session: "codex resume" would end at "No saved session found" and a bare shell. It starts a new one
 	// (a wake is asked to bring the agent back, not to resume a particular conversation) (#5222).
 	if ls.AgentType == at.Codex && !codexSessionSaved(ls.SessionID) {
-		log.Printf("[wake] session=%s: Codex has no saved session for it (it never completed a turn); starting a new one", sessionName)
+		log.Printf("[wake] session=%s: Codex could not find its saved conversation (no link, and no recent rollout carries its marker); starting a new one", sessionName)
 		launchParams.ResumeSessionID = ""
 	}
 
