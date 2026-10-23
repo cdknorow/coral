@@ -134,7 +134,6 @@ var joinSites = map[string]joinEntry{
 	"internal/background/knowledge.go\tknowledgeTeamDir":                                     {1, joinOwn, "slugify or ValidKnowledgeTeam: a plain name, no separator, no device name"},
 	"internal/background/knowledge.go\twriteKnowledgeBundle":                                 {1, joinOwn, "slugify or ValidKnowledgeTeam: a plain name, no separator, no device name"},
 	"internal/background/scheduler.go\tJobScheduler.runWorktreeDir":                          {1, joinOwn, "a run id number and the base name of the repo path"},
-	"internal/background/token_poller.go\tresolveClaudeTranscriptPath":                       {2, joinID, "transcriptlink.IsSessionID or safefs.IsSafeID before the join"},
 	"internal/background/token_poller.go\tresolvePiSessionPath":                              {1, joinID, "transcriptlink.IsSessionID or safefs.IsSafeID before the join"},
 	"internal/background/workflow_runfolder.go\topenRunFolder":                               {1, joinFixed, "names from a directory listing or numbers and hashes the program makes"},
 	"internal/background/workflow_runfolder.go\trunFiles.step":                               {1, joinContained, "opened through an os.Root over the run folder"},
