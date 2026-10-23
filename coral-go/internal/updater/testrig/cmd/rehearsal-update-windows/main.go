@@ -43,6 +43,8 @@ type plan struct {
 	RequireSign  bool     `json:"require_signed"` // the apply refuses a package with no Authenticode signature
 	StaleClick   bool     `json:"stale_click"`    // serve a newer release than the one the person clicked for (a newer one staged since)
 	Unhealthy    bool     `json:"unhealthy"`      // the new Coral is reported not healthy once (the rollback's case)
+	UnhealthyNew bool     `json:"unhealthy_new"`  // the new Coral is reported not healthy whenever the new version is the registered one (a crash then has a rollback to make)
+	CrashAt      string   `json:"crash_at"`       // "before_install" or "after_install": the apply dies there (a panic the program catches), then the next apply runs in this process (recoverMSI)
 	ServerArgs   []string `json:"server_args"`    // the server's flags when Coral is started (no spaces in any): --port, --host
 }
 
@@ -182,13 +184,22 @@ type rehearsalMSI struct {
 	*apply.WindowsMSI
 	unhealthy  bool
 	serverArgs []string
-	notes      []string
+	// newVersion is the version being installed; unhealthyNew and crashAtStart are keyed to it through what Windows Installer reports as registered, so the old Coral's
+	// own start and health check (after a rollback) are the real ones.
+	newVersion   string
+	unhealthyNew bool
+	crashAtStart bool
+	notes        []string
 }
 
 // Start starts Coral's server the way the tray's supervisor does (coral-tray --server-child, which is where the server's "quit for the update" is wired), headless:
 // a runner has no tray to supervise it. The child stops when its standard input closes, so a long-lived pipe (ping) feeds it; cmd.exe holds that pipe after this
 // process is gone.
 func (r *rehearsalMSI) Start(ctx context.Context, install string) error {
+	if r.crashAtStart && r.newIsRegistered() {
+		r.crashAtStart = false
+		panic("rehearsal: the apply dies after the install, before it starts the new Coral")
+	}
 	tray := filepath.Join(install, "coral-tray.exe")
 	cmd := exec.Command(os.Getenv("ComSpec"))
 	cmd.Dir = install
@@ -205,7 +216,16 @@ func (r *rehearsalMSI) Start(ctx context.Context, install string) error {
 
 func (r *rehearsalMSI) Notify(title, text string) { r.notes = append(r.notes, title+": "+text) }
 
+// newIsRegistered is whether Windows Installer reports the version being installed as the registered one.
+func (r *rehearsalMSI) newIsRegistered() bool {
+	v, err := r.WindowsMSI.RegisteredVersion()
+	return err == nil && r.newVersion != "" && strings.HasPrefix(v, r.newVersion)
+}
+
 func (r *rehearsalMSI) Healthy(ctx context.Context, install string) error {
+	if r.unhealthyNew && r.newIsRegistered() {
+		return fmt.Errorf("rehearsal: the new Coral is not healthy")
+	}
 	if r.unhealthy {
 		r.unhealthy = false
 		return fmt.Errorf("rehearsal: the new Coral is not healthy")
@@ -222,7 +242,8 @@ func applyRun(ctx context.Context, dataDir string, p plan, m trigger.Marker) int
 		return result(dataDir, map[string]any{"result": "rehearsal_error", "error": err.Error()})
 	}
 	defer w.gh.Close()
-	msi := &rehearsalMSI{WindowsMSI: &apply.WindowsMSI{DataDir: dataDir}, unhealthy: p.Unhealthy, serverArgs: p.ServerArgs}
+	msi := &rehearsalMSI{WindowsMSI: &apply.WindowsMSI{DataDir: dataDir}, unhealthy: p.Unhealthy, serverArgs: p.ServerArgs,
+		newVersion: p.NewVersion, unhealthyNew: p.UnhealthyNew, crashAtStart: p.CrashAt == "after_install"}
 	if res := stage.Check(ctx, w.cfg); res.Result != stage.ResultStaged {
 		// What the real updater does with an answer that installed nothing: Coral is started again from the click's folder.
 		sctx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -234,7 +255,7 @@ func applyRun(ctx context.Context, dataDir string, p plan, m trigger.Marker) int
 		clicked = "0.0.1"
 	}
 	verifier := w.cfg.Verifier
-	res := apply.RunMSI(ctx, apply.MSIConfig{
+	mcfg := apply.MSIConfig{
 		DataDir: dataDir, Installed: config.Version, Pins: testrig.Pins(), Verifier: verifier, Asset: msiName, MSI: msi,
 		RequireSigned: p.RequireSign, ClickedVersion: clicked,
 		Rollback: func() (string, *verify.Record, error) {
@@ -249,15 +270,35 @@ func applyRun(ctx context.Context, dataDir string, p plan, m trigger.Marker) int
 			}
 			return s.PackagePath, rec, nil
 		},
-	})
+	}
+	if p.CrashAt == "before_install" {
+		mcfg.BeforeInstall = func() { panic("rehearsal: the apply dies just before msiexec") }
+	}
+	res, crashed := runOnce(ctx, mcfg)
+	if crashed {
+		// The next apply, in this process (the rig's keys are in it): it finds the journal the dead one left and makes the install consistent by what Windows reports
+		// as registered now (apply.recoverMSI), then, when nothing was installed, goes on with the update.
+		mcfg.BeforeInstall = nil
+		res, _ = runOnce(ctx, mcfg)
+	}
 	// An answer that installed nothing and left no Coral: the real coral-update starts Coral again from the click's folder; so does this.
-	out := map[string]any{"result": res.Result, "from": res.From, "to": res.To, "failed_stage": res.FailedStage, "notes": msi.notes}
+	out := map[string]any{"result": res.Result, "from": res.From, "to": res.To, "failed_stage": res.FailedStage, "notes": msi.notes, "crashed": crashed}
 	if res.Result == apply.ResultUnsupported || (res.Result == apply.ResultFailed && res.FailedStage == "updates_folder") {
 		sctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
 		out["restarted"] = msi.Start(sctx, m.InstallDir) == nil
 	}
 	return result(dataDir, out)
+}
+
+// runOnce is apply.RunMSI, returning crashed instead of dying when the run panics (the crash a rehearsal asks for).
+func runOnce(ctx context.Context, cfg apply.MSIConfig) (res apply.Result, crashed bool) {
+	defer func() {
+		if recover() != nil {
+			res, crashed = apply.Result{}, true
+		}
+	}()
+	return apply.RunMSI(ctx, cfg), false
 }
 
 func status() int {
