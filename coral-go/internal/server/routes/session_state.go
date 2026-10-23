@@ -48,7 +48,10 @@ func (h *SessionsHandler) deriveSingleSessionState(ctx context.Context, sessionI
 func (h *SessionsHandler) applyTranscriptState(input *SessionStateInput, events []store.AgentEvent, agentType, name, sessionID, workingDir string) {
 	switch agentType {
 	case at.Codex:
-		kind, atTime := h.jsonl.ReadCodexTurnEvent(sessionID, workingDir)
+		kind, atTime, activity := h.jsonl.ReadCodexTurn(sessionID, workingDir)
+		if kind == "prompt_submit" && activity {
+			kind = "turn_activity" // the turn going on, not a new turn: it never answers an open request (#6672)
+		}
 		mergeTranscriptTurnEvent(input, events, kind, atTime)
 	case at.Agy, at.Antigravity, at.Gemini:
 		kind, atTime, summary := h.jsonl.ReadAgyTurnEvent(sessionID, workingDir)

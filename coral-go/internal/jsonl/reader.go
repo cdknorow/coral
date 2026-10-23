@@ -65,8 +65,10 @@ type codexTurnCache struct {
 	event  string
 	at     time.Time
 	active bool
-	model  string // the newest turn_context's model (#4065)
-	effort string // the newest turn_context's effort: the reasoning level that turn ran at (#4969)
+	// activity is true when event/at come from a record of the turn going on (a record that is not a turn's start or end), not from a lifecycle record (#6672).
+	activity bool
+	model    string // the newest turn_context's model (#4065)
+	effort   string // the newest turn_context's effort: the reasoning level that turn ran at (#4969)
 }
 
 type agyTurnCache struct {

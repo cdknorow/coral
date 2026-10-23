@@ -227,6 +227,15 @@ func (d *deriver) apply(event Event) bool {
 	switch event.Type {
 	case "tool_use":
 		d.toolUsed(event)
+	case "turn_activity":
+		// The agent's transcript shows its turn going on (a Codex record that is not a turn's start or end, #6672). It keeps a turn that is open open, as a prompt does, but it is never an answer: while a
+		// request to the user is open it changes nothing (a record written while a dialog waits, a parallel tool's output, bookkeeping, or a kind a later release adds, must not release a person's
+		// message into the box). A request closes only on its tool's PostToolUse, a turn's end, a new turn, or the hold's own limit.
+		if d.state.NeedsInput {
+			return false
+		}
+		d.latestType = "prompt_submit"
+		d.state.AwaitingUser = false
 	case "session_reset", "prompt_submit":
 		d.latestType = event.Type
 		d.clearRequest()

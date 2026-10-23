@@ -13,6 +13,13 @@ import (
 // ReadCodexTurnEvent reuses the session reader's resolved path so frequent UI
 // updates do not rescan the transcript directory for every agent.
 func (r *SessionReader) ReadCodexTurnEvent(sessionID, workingDir string) (string, time.Time) {
+	kind, at, _ := r.ReadCodexTurn(sessionID, workingDir)
+	return kind, at
+}
+
+// ReadCodexTurn is ReadCodexTurnEvent that also says whether the event is a record of the turn going on (activity) rather than a turn's start or end: only a start (task_started,
+// user_message) and an end (task_complete, turn_aborted) can answer an open request, an activity record never does (#6672).
+func (r *SessionReader) ReadCodexTurn(sessionID, workingDir string) (kind string, at time.Time, activity bool) {
 	c := r.getOrCreateSessionCache(sessionID)
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -23,7 +30,8 @@ func (r *SessionReader) ReadCodexTurnEvent(sessionID, workingDir string) (string
 			c.path = resolveTranscriptPath(sessionID, workingDir, "codex")
 		}
 	}
-	return readCodexTurnEventIncremental(c.path, &c.codexState)
+	kind, at = readCodexTurnEventIncremental(c.path, &c.codexState)
+	return kind, at, c.codexState.activity
 }
 
 // readCodexTurnEventIncremental tracks lifecycle records by byte offset. A
@@ -32,7 +40,7 @@ func (r *SessionReader) ReadCodexTurnEvent(sessionID, workingDir string) (string
 // and size checks reset the tracker when a rollout is replaced or truncated.
 func readCodexTurnEventIncremental(path string, state *codexTurnCache) (string, time.Time) {
 	scanTranscriptAppend(path, &state.transcriptReadState, func() {
-		state.event, state.at, state.active, state.model, state.effort = "", time.Time{}, false, "", ""
+		state.event, state.at, state.active, state.activity, state.model, state.effort = "", time.Time{}, false, false, "", ""
 	}, func(line []byte) {
 		if m, e := codexLineModelEffort(line); m != "" {
 			state.model, state.effort = m, e
@@ -62,7 +70,7 @@ func updateCodexTurnState(state *codexTurnCache, line []byte) {
 		}
 		if kind != "" {
 			if timestamp, err := time.Parse(time.RFC3339Nano, entry.Timestamp); err == nil {
-				state.event, state.at = kind, timestamp
+				state.event, state.at, state.activity = kind, timestamp, false
 			}
 		}
 		return
@@ -80,7 +88,7 @@ func updateCodexTurnState(state *codexTurnCache, line []byte) {
 	}
 	if json.Unmarshal(line, &activity) == nil {
 		if timestamp, err := time.Parse(time.RFC3339Nano, activity.Timestamp); err == nil {
-			state.event, state.at = "prompt_submit", timestamp
+			state.event, state.at, state.activity = "prompt_submit", timestamp, true
 		}
 	}
 }

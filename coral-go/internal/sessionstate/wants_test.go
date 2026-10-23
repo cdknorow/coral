@@ -50,3 +50,25 @@ func TestWantsNeverMakeARequestLookLikeAnApproval(t *testing.T) {
 	assert.False(t, IsApprovalRequest(st.WaitingSummary), "auto-accept does not take it for an approval prompt it may answer")
 	assert.Equal(t, NotificationInformational, Classify(st.WaitingSummary))
 }
+
+// #6672: a transcript record of the turn going on (turn_activity) keeps an open turn open but never closes a request; with no request it works like a prompt.
+func TestTurnActivityNeverClosesAnOpenRequestButKeepsATurnOpen(t *testing.T) {
+	now := time.Now()
+	ev := func(typ, summary string, detail *string, tool string) Event {
+		e := NewEvent(typ, summary, detail)
+		e.ToolName, e.At = tool, now
+		now = now.Add(time.Second)
+		return e
+	}
+	req := ev("permission_request", "Waiting for the user: permission (Bash)", detailJSON(`{"kind":"permission","tool_name":"Bash"}`), "Bash")
+	st := Derive(Input{Events: []Event{ev("prompt_submit", "go", nil, ""), req, ev("turn_activity", "", nil, "")}})
+	assert.True(t, st.NeedsInput, "the request stays open")
+	assert.Equal(t, "permission", st.WaitingKind)
+
+	st = Derive(Input{Events: []Event{ev("prompt_submit", "go", nil, ""), req, ev("turn_activity", "", nil, ""), ev("tool_use", "Ran", nil, "Bash")}})
+	assert.False(t, st.NeedsInput, "its tool's own PostToolUse closes it")
+
+	st = Derive(Input{Events: []Event{ev("prompt_submit", "go", nil, ""), ev("stop", "done", nil, ""), ev("turn_activity", "", nil, "")}})
+	assert.True(t, st.Working, "with no request it is the turn going on, as a prompt is")
+	assert.False(t, st.AwaitingUser)
+}
