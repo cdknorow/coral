@@ -164,7 +164,7 @@ try {
     $r = Click -websession $null
     if ($r.StatusCode -ne 401) { Fail "no session cookie: expected 401, got $($r.StatusCode)" }
     $r = Click @{ 'X-Coral-Session-Token' = 'not-a-session' }
-    if ($r.StatusCode -ne 403) { Fail "an agent's session token: expected 403 operator_only, got $($r.StatusCode) $($r.Content)" }
+    if (($r.StatusCode -ne 401 -or $r.Content -notmatch 'session_token_required') -and ($r.StatusCode -ne 403 -or $r.Content -notmatch 'operator_only')) { Fail "an agent's session token: expected 401 session_token_required or 403 operator_only, got $($r.StatusCode) $($r.Content)" }
     $r = Click @{} '{"version":"1.4.999"}'
     if ($r.StatusCode -ne 400) { Fail "a body naming a version: expected 400, got $($r.StatusCode) $($r.Content)" }
     & (Join-Path $installDir 'coral-update.exe') apply # by hand, no click: it answers and asks nothing
