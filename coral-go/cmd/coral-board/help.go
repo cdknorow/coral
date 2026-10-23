@@ -70,8 +70,13 @@ func commandUsage(cmd string, rest []string) string {
 		return full
 	}
 	if lines := clihelp.UsageLines(usageText, cmd); lines != "" {
-		if cmd == "post" || cmd == "send" {
-			lines += "\n\n" + windowsTextNote
+		switch cmd {
+		case "post":
+			lines += "\n\n" + postNote + "\n\n" + windowsTextNote
+		case "send":
+			lines += "\n\n" + sendNote + "\n\n" + windowsTextNote
+		case "wait":
+			lines += "\n\n" + waitNote
 		}
 		return "Usage: coral-board <command> [args]\n\n" + lines
 	}
@@ -80,10 +85,45 @@ func commandUsage(cmd string, rest []string) string {
 
 // windowsTextNote is added to post's and send's help: the two things that damage a message on Windows before Coral sees it.
 const windowsTextNote = `On Windows: PowerShell 5.1 drops the double quotes inside a native
-program's argument and turns non-ASCII text into '?' when piped to one.
-For text with quotes or non-ASCII use --file <path> (a UTF-8 file), or
-pipe to "-" after  $OutputEncoding = [Text.UTF8Encoding]::new()
-(PowerShell 7 and cmd.exe need neither).`
+program's argument. With its default US-ASCII $OutputEncoding, piped
+non-ASCII text becomes '?'. For text with quotes or non-ASCII use
+--file <path> (a UTF-8 file), or set
+$OutputEncoding = [Text.UTF8Encoding]::new()  before piping to "-".
+PowerShell 7 and cmd.exe need neither. More: coral-board help windows`
+
+// postNote is how to write a post: in post's help, not in the list of every command.
+const postNote = `Writing a post: start with a one-line summary, then numbered points, one
+per line, and answer by number. Use @Name; put SHAs, branches and paths in
+backticks (in Bash use post - <<'EOF', never double quotes: backticks and
+$( ) run commands there). For long reports, logs, diffs and evidence, use
+coral-agent artifact upload <file> and link coral://artifacts/<digest> in a
+short post. Text from "-" or --file must be UTF-8: a leading byte-order mark
+is dropped, CRLF becomes LF and one final newline is dropped; nothing else.`
+
+// sendNote is what --attach sends and what it does not guarantee: in send's help.
+const sendNote = `--attach to a team on this Coral: up to 4 files your team uploaded, 8 MiB each,
+16 MiB per send; both boards need cross_team_artifacts on. The files are not
+scanned for malware and not redacted: never attach secrets. An agent that knows
+an artifact id on this Coral can read its bytes and upload them again: team
+visibility stops accidents, it is not a boundary; the switches, allowlist and
+quotas are the limits.
+--attach with --address: up to 4 files you uploaded (8 MiB each, 16 MiB per
+send) go through Coral Hub before the message, as they are: not scanned for
+malware by the receiver, not redacted by the hub (a text file with a secret in
+it is refused here). Your board and the receiving board both need
+cross_team_artifacts on.`
+
+// waitNote is what wait's options mean, in wait's help.
+const waitNote = `wait registers the wait and returns at once: stop your turn then; Coral wakes
+you with a terminal notification when it resolves. A wait lasts 2 hours unless
+you set --timeout (a duration such as 30m or 2h). A new wait replaces your old
+one on the board.
+  --status    show your active wait (or that there is none)
+  --cancel    remove it
+  --block     do not return: wait in this process until it resolves
+  --reason    a short note shown with the wait
+Choose one target at most: --from, --task, --commit or --operator; with none,
+any board message ends the wait.`
 
 // postFlags and sendFlags are the options of post and of send. They are read in any case (--TO is --to) and anywhere before or among the words of the message.
 var (

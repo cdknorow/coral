@@ -82,7 +82,7 @@ func commandUsage(cmd string, rest []string) string {
 	case "ui":
 		return uiUsageText
 	case "artifact":
-		return artifactUsageText
+		return artifactUsage(rest)
 	case "notify":
 		return notifyUsageText
 	case "docs":
