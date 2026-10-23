@@ -63,6 +63,14 @@ const BASE = require('./test_base').BASE;
             assert.equal(await stage(), 'folder', `${at}: a new New Agent opens on step 1`);
             await ev(`(() => { document.getElementById('launch-dir').value = '/work/repo'; document.getElementById('launch-agent-next').click(); document.querySelector('#launch-dir-summary .btn').click(); return true; })()`);
             assert.equal(await stage(), 'folder', `${at}: Change returns to the folder`);
+            // reopening New Agent after a launch that reached step 2: step 1, and nothing stale in the live line (#6376)
+            await ev(`(() => { document.getElementById('launch-dir').value = '/work/repo'; document.getElementById('launch-agent-next').click(); return true; })()`);
+            assert.match(await ev(`document.getElementById('launch-stage-live').textContent`), /^Step 2 of 2/, `${at}: step 2 says so`);
+            await ev(`window.hideLaunchModal(); true`);
+            await ev(`(async () => { await window.showLaunchModal(); document.querySelector('#launch-step-chooser [data-arg="agent"]').click(); return true; })()`);
+            await waitFor(`getComputedStyle(document.getElementById('launch-step-agent')).display !== 'none'`, `${at}: New Agent reopened`, 4000);
+            assert.equal(await stage(), 'folder', `${at}: reopened on step 1`);
+            assert.equal(await ev(`document.getElementById('launch-stage-live').textContent`), '', `${at}: and the live line is not left saying Step 2 of 2`);
             await ev(`window.hideLaunchModal(); true`);
         }
         console.log('PASS New Agent two steps: folder then details, Enter is Next, focus and the step are announced, 44 px on a phone');
