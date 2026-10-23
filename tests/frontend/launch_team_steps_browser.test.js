@@ -70,8 +70,12 @@ const BASE = require('./test_base').BASE;
         assert.equal(await step(), 'members');
         assert.equal(await ev(`document.getElementById('team-step-live').textContent`), 'Step 2 of 3');
         assert.deepEqual(await ev(`[...document.querySelectorAll('.team-members-table th')].map(t => t.textContent.trim())`), ['Role', 'Provider', 'Model', 'Thinking', 'Mode', 'Actions']);
-        const first = await ev(`(() => { const r = document.querySelector('#team-agents-list .team-agent-row'); return [r.querySelector('.team-agent-edit-btn').getAttribute('aria-label'), r.querySelector('.team-agent-remove').getAttribute('aria-label'), r.querySelector('.team-agent-mode').textContent, r.querySelector('.team-agent-thinking').textContent]; })()`);
-        assert.deepEqual(first, ['Edit Dungeon Master', 'Remove Dungeon Master', 'Default', 'Default']);
+        const first = await ev(`(() => { const r = document.querySelector('#team-agents-list .team-agent-row'); return [r.querySelector('.team-agent-edit-btn').getAttribute('aria-label'), r.querySelector('.team-agent-remove').getAttribute('aria-label'), r.querySelector('.team-agent-mode').textContent, r.querySelector('.team-agent-thinking').textContent, r.querySelector('.team-agent-model').textContent]; })()`);
+        // the cells show what will be used, with a mark where the member did not choose it: Mode is the team's, the model and level are the CLI's own
+        assert.deepEqual(first, ['Edit Dungeon Master', 'Remove Dungeon Master', 'Default team', 'CLI default', 'CLI default']);
+        assert.equal(await ev(`document.querySelector('#team-agents-list .team-agent-row .team-agent-mode .team-default-mark').textContent`), 'team');
+        assert.deepEqual(await ev(`[...document.querySelectorAll('#team-agents-list .team-agent-row:nth-child(2) .team-agent-reorder-btn')].map(b => b.getAttribute('aria-label'))`), ['Move Warrior up', 'Move Warrior down']);
+        assert.equal(await ev(`Math.round(document.querySelector('#team-agents-list .team-agent-reorder-btn').getBoundingClientRect().width)`), 32, 'the arrows are 32 px on a pointer screen (44 on touch)');
         assert.equal(await vis('#team-agents-list .team-agent-prompt'), false);
         await click('#team-agents-list .team-agent-row .team-agent-role-name');
         assert.equal(await vis('#team-agents-list .team-agent-row .team-agent-prompt'), true, 'the prompt opens inline');

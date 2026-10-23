@@ -14,6 +14,7 @@ const { getAgentConfig, renderAgentConfigForm, setAgentConfig } = await importOn
 const { markFieldInvalid, _launchBlocked, _launchOn, _onServerSuffix, _refreshAfterLaunch, _resetDirInputs, _showLaunchStep, hideLaunchModal, showTeamLaunchFailures } = await importOnce('./launch_core.js');
 const { _syncFlagButtons } = await importOnce('./flag_shortcuts.js');
 const { showSettingsModal } = await importOnce('./settings_dialog.js');
+const { modelName, levelName } = await importOnce('./model_labels.js');
 const { BUILTIN_TEAM_TEMPLATES, _renderTeamTemplateSelector, markTeamTemplate, resetTeamTemplatePicker } = await importOnce('./team_templates_ui.js');
 const { showTeamStep, currentTeamStep, TEAM_STEPS } = await importOnce('./team_steps.js');
 
@@ -35,20 +36,31 @@ function _updateTeamAgentSummary(row) {
     const name = config.name || 'New Agent';
     const typeSelect = document.getElementById('team-agent-type');
     const typeLabel = v => [...(typeSelect?.options || [])].find(o => o.value === v)?.textContent.replace(/ \(.*\)$/, '') || v;
-    const set = (sel, text) => { const el = row.querySelector(sel); if (el) el.textContent = text; };
+    // A cell shows the value that will be used; a small mark says where it comes from when the member did not choose it.
+    const set = (sel, text, mark = '') => {
+        const el = row.querySelector(sel); if (!el) return;
+        el.textContent = text;
+        if (mark) { const m = document.createElement('span'); m.className = 'team-default-mark'; m.textContent = mark; el.append(' ', m); }
+    };
+    const type = config.agentType || typeSelect?.value || 'claude';
     set('.team-agent-role-name', name);
-    set('.team-agent-provider', typeLabel(config.agentType || typeSelect?.value || 'claude'));
-    set('.team-agent-model', config.model || 'Default');
-    set('.team-agent-thinking', config.thinking || 'Default');
-    set('.team-agent-mode', _memberModeLabel(config.flags));
+    set('.team-agent-provider', typeLabel(type));
+    const modelId = config.model || '';
+    set('.team-agent-model', modelId ? modelName(type, modelId, _effectiveServer(launch.server)) : 'CLI default', modelId && modelId === _settingsFor(_effectiveServer(launch.server))['default_model_' + type] ? 'default' : '');
+    set('.team-agent-thinking', config.thinking ? levelName(config.thinking) : 'CLI default');
+    const own = /--permission-mode|--mode/.test(config.flags || '');
+    set('.team-agent-mode', _memberModeLabel(config.flags), own ? '' : 'team');
     const prompt = row.querySelector('.team-agent-prompt');
     if (prompt) prompt.textContent = config.prompt || 'No behavior prompt yet.';
     const nameBtn = row.querySelector('.team-agent-role-name');
     nameBtn?.setAttribute('aria-label', `${name}: show or hide its prompt`);
     row.querySelector('.team-agent-edit-btn')?.setAttribute('aria-label', `Edit ${name}`);
     row.querySelector('.team-agent-remove')?.setAttribute('aria-label', `Remove ${name}`);
-    row.querySelector('[data-dir="up"]')?.setAttribute('aria-label', `Move ${name} up`);
-    row.querySelector('[data-dir="down"]')?.setAttribute('aria-label', `Move ${name} down`);
+    for (const dir of ['up', 'down']) {
+        const b = row.querySelector(`[data-dir="${dir}"]`);
+        b?.setAttribute('aria-label', `Move ${name} ${dir}`);
+        b?.setAttribute('title', `Move ${dir}`);
+    }
 }
 
 function _refreshTeamSummaries() {
