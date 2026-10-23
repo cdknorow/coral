@@ -50,6 +50,23 @@ export const FILTER_CTX = {
 // The bars are built when the Display panel is open (or was left open), not at load: they are two selects and a row of fields in a panel nobody has opened yet, and drawing
 // them cost 17 ms of the first render at a 4x slowdown (#4995). The count dot does not need them.
 let lastArgs = null;
+// What the list now holds, said politely when the person changes a filter or the search (nothing on screen, #6612): with the summary line gone, a screen reader would otherwise not hear that the list narrowed.
+// A redraw of the list that the person did not cause says nothing; typing in the search says it once, when the typing settles.
+const LIVE_SETTLE_MS = 500;
+let lastFilterSig = null;
+let liveTimer = 0;
+function announceCount() {
+    if (!lastArgs) return;
+    const [sessions, matched] = lastArgs;
+    const f = getListFilters();
+    const n = sessions.length;
+    const noun = `agent${n === 1 ? '' : 's'}`;
+    const text = (f.state || f.board || f.machine || getAgentFilter()) ? `Showing ${matched} of ${n} ${noun}` : `Showing all ${n} ${noun}`;
+    for (const el of inListHeaders('[data-agent-list-live]')) {
+        el.textContent = ''; // a same sentence again (a filter on, off and on) is still heard: the region changes
+        setTimeout(() => { el.textContent = text; }, 50);
+    }
+}
 document.addEventListener(DISPLAY_PANEL_OPEN, () => { if (lastArgs) { sigs.clear(); syncAgentListBars(...lastArgs); } });
 
 export function syncAgentListBars(sessions, matched) {
@@ -60,6 +77,9 @@ export function syncAgentListBars(sessions, matched) {
     // A filter whose board or machine has no agents now is still shown (and can be removed).
     if (f.board && !boards.includes(f.board)) boards.push(f.board);
     if (f.machine && !machines.includes(f.machine)) machines.push(f.machine);
+    const sig = JSON.stringify([f.state, f.board, f.machine, getAgentFilter()]);
+    if (lastFilterSig === null) lastFilterSig = sig; // the first draw is not a change
+    else if (sig !== lastFilterSig) { lastFilterSig = sig; clearTimeout(liveTimer); liveTimer = setTimeout(announceCount, LIVE_SETTLE_MS); }
     const narrowed = !!(f.state || f.board || f.machine || getAgentFilter());
     const n = sessions.length;
     const text = narrowed ? `${matched} of ${n} agent${n === 1 ? '' : 's'}` : `${n} agent${n === 1 ? '' : 's'}`;

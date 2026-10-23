@@ -25,7 +25,7 @@ const SERVERS = [
             window.__m.add('a-m1', 'S', 3, { sleeping: false, server: 'm1' }); T.render.renderLiveSessions(T.state.liveSessions); true`);
         const measure = () => ev(`(() => { const h = [...document.querySelectorAll('.mobile-list-header')].find(x => x.getClientRects().length);
             if (!h) return null;
-            const kids = [...h.children].filter(c => c.getClientRects().length && !c.classList.contains('mobile-search-row')).map(c => { const r = c.getBoundingClientRect(); return { top: Math.round(r.top), mid: Math.round(r.top + r.height / 2), right: Math.round(r.right), left: Math.round(r.left) }; });
+            const kids = [...h.children].filter(c => c.getClientRects().length && !c.classList.contains('mobile-search-row') && !c.classList.contains('sr-only')).map(c => { const r = c.getBoundingClientRect(); return { top: Math.round(r.top), mid: Math.round(r.top + r.height / 2), right: Math.round(r.right), left: Math.round(r.left) }; });
             return { kids, wrap: getComputedStyle(h).flexWrap, vw: innerWidth }; })()`);
         await waitFor(`!![...document.querySelectorAll('.mobile-list-header')].find(x => x.getClientRects().length)`, 'the phone list header', 8000);
         await sleep(500); // sleep-ok: a layout settles over frames; there is no completion event

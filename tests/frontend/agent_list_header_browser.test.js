@@ -76,6 +76,31 @@ const SESSIONS = Array.from({ length: 6 }, (_, i) => {
             assert.equal(await dot(), false, at + 'cleared: no dot');
             assert.equal(await label(), 'Display options');
             await shot(`agent-list-header-clear-${w}`);
+
+            // 6. what the list now holds is said politely when the person changes a filter or the search (#6612), and not when it only redraws
+            const live = () => ev(`(() => { const e = document.querySelector('${header} [data-agent-list-live]'); return e ? { role: e.getAttribute('role'), polite: e.getAttribute('aria-live'), text: e.textContent, tiny: e.getBoundingClientRect().width <= 2 } : null; })()`);
+            const l0 = await live();
+            assert.deepEqual([l0.role, l0.polite, l0.tiny], ['status', 'polite', true], at + 'a polite status that draws nothing: ' + JSON.stringify(l0));
+            assert.equal(l0.text, '', at + 'nothing said at load');
+            await ev(`window.__liveMuts = 0; new MutationObserver(m => { window.__liveMuts += m.length; }).observe(document.querySelector('${header} [data-agent-list-live]'), { childList: true, characterData: true, subtree: true }); true`);
+            await panel(true);
+            await ev(`(() => { const s = document.querySelector('${bar} select[id$="-state"]'); s.value = 'needs_input'; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+            await waitFor(`document.querySelector('${header} [data-agent-list-live]').textContent === 'Showing 1 of 6 agents'`, 'the narrowed count said', 8000);
+            await panel(false);
+            const muts = await ev(`window.__liveMuts`);
+            await ev(`window.__T.render.flushLiveSessionsRender(); window.__T.render.renderLiveSessions(window.__T.state.liveSessions); true`);
+            await new Promise(r => setTimeout(r, 900)); // sleep-ok: nothing is said after a redraw the person did not cause, so there is no event to wait for; the wait is longer than the 500 ms settle
+            assert.equal(await ev(`window.__liveMuts`), muts, at + 'a redraw says nothing again');
+            await panel(true);
+            await ev(`document.querySelector('${bar} .list-bar-clear-all').click(); true`);
+            await waitFor(`document.querySelector('${header} [data-agent-list-live]').textContent === 'Showing all 6 agents'`, 'the cleared count said', 8000);
+            // the search: typing says it once, when it settles
+            const searchSel = mobile ? '.mobile-search-input' : '#agent-search-input';
+            await ev(`window.__liveMuts = 0; (() => { const i = document.querySelector('${searchSel}'); i.focus(); for (const v of ['A', 'Ag', 'Agent', 'Agent 2']) { i.value = v; i.dispatchEvent(new Event('input', { bubbles: true })); } return true; })()`);
+            await waitFor(`document.querySelector('${header} [data-agent-list-live]').textContent === 'Showing 1 of 6 agents'`, 'the search count said', 8000);
+            assert.ok(await ev(`window.__liveMuts`) <= 2, at + 'four keystrokes are one announcement (a clear and a set): ' + await ev(`window.__liveMuts`));
+            await ev(`(() => { const i = document.querySelector('${searchSel}'); i.value = ''; i.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
+            await panel(false);
         }
         console.log('PASS agent list header: no summary line, the dot only for a real filter');
     } finally { await client.close(); }
