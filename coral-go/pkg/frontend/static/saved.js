@@ -121,7 +121,7 @@ function chipFor(it) {
     const c = checks.get(uid(it));
     if (c && c.state === 'gone') return { text: 'Gone', cls: 'gone' };
     if (it.kind === 'board') return { text: 'Board', cls: '' };
-    if (c ? (c.state === 'ended' || c.state === 'noopen') : !liveAgent(it)) return { text: 'Ended agent', cls: 'ended' };
+    if (c ? (c.state === 'ended' || c.state === 'noopen') : !liveAgent(it)) return { text: '', cls: 'ended' }; // an ended agent is the usual item: only a live one is marked
     return { text: 'Agent', cls: '' };
 }
 
@@ -143,6 +143,40 @@ function btn(cls, label, name, icon, onClick) {
     return b;
 }
 
+// More (#6580): Remove, the one destructive action, behind a button named "More for <message>" that discloses a menu. It opens on a click or ArrowDown with its first item focused, Escape closes it and
+// returns to the button, and leaving it by Tab or a click elsewhere closes it.
+let openMore = null;
+function closeMore(focusToggle) {
+    const m = openMore; openMore = null;
+    if (!m) return;
+    m.menu.hidden = true; m.toggle.setAttribute('aria-expanded', 'false');
+    if (focusToggle) m.toggle.focus();
+}
+document.addEventListener('click', e => { if (openMore && !openMore.wrap.contains(e.target)) closeMore(false); });
+let moreSeq = 0;
+function moreMenu(it) {
+    const wrap = document.createElement('div'); wrap.className = 'saved-more';
+    const id = `saved-more-${++moreSeq}`;
+    const toggle = document.createElement('button'); toggle.type = 'button'; toggle.className = 'btn saved-more-btn';
+    toggle.textContent = 'More'; toggle.setAttribute('aria-label', `More for ${whichOne(it)}`);
+    toggle.setAttribute('aria-haspopup', 'menu'); toggle.setAttribute('aria-expanded', 'false'); toggle.setAttribute('aria-controls', id);
+    const menu = document.createElement('div'); menu.className = 'saved-more-menu'; menu.id = id; menu.setAttribute('role', 'menu'); menu.hidden = true;
+    const rm = document.createElement('button'); rm.type = 'button'; rm.className = 'btn saved-remove'; rm.setAttribute('role', 'menuitem'); rm.textContent = 'Remove from saved'; rm.setAttribute('aria-label', `Remove from saved: ${whichOne(it)}`);
+    rm.addEventListener('click', () => { closeMore(false); remove(it); });
+    menu.append(rm);
+    const open = () => { if (openMore && openMore.wrap !== wrap) closeMore(false); openMore = { wrap, menu, toggle }; menu.hidden = false; toggle.setAttribute('aria-expanded', 'true'); rm.focus(); };
+    toggle.addEventListener('click', () => { if (openMore && openMore.wrap === wrap) closeMore(true); else open(); });
+    wrap.addEventListener('keydown', e => {
+        const isOpen = !!openMore && openMore.wrap === wrap;
+        if (e.key === 'Escape' && isOpen) { e.preventDefault(); e.stopPropagation(); closeMore(true); }
+        else if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && e.target === toggle) { e.preventDefault(); if (!isOpen) open(); }
+        else if (isOpen && (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Home' || e.key === 'End') && e.target === rm) e.preventDefault(); // one item: the arrows stay on it
+    });
+    wrap.addEventListener('focusout', e => { if (openMore && openMore.wrap === wrap && !wrap.contains(e.relatedTarget)) closeMore(false); });
+    wrap.append(toggle, menu);
+    return wrap;
+}
+
 function itemNode(it) {
     const done = !!it.done_at;
     const chk = checks.get(uid(it));
@@ -155,9 +189,13 @@ function itemNode(it) {
     const top = document.createElement('div'); top.className = 'top';
     const ic = document.createElement('span'); ic.className = 'material-icons'; ic.setAttribute('aria-hidden', 'true');
     ic.textContent = it.kind === 'board' ? ICON.board : (chip.cls === 'ended' ? ICON.ended : ICON.agent);
-    const src = document.createElement('span'); src.className = 'src'; src.textContent = srcLabel(it); src.title = srcLabel(it);
-    const kind = document.createElement('span'); kind.className = `kind ${chip.cls}`.trim(); kind.textContent = chip.text;
-    top.append(ic, src, kind);
+    // The title is the one way in: the control that opens the source, named "Open chat: <title>" (there is no second Open button for the same action). An item this hub cannot open keeps a plain title.
+    let src;
+    if (gone || noopen) { src = document.createElement('span'); src.className = 'src'; }
+    else { src = document.createElement('button'); src.type = 'button'; src.className = 'src saved-open'; src.setAttribute('aria-label', openLabel(it).name + (openSuffix.get(uid(it)) || '')); src.addEventListener('click', () => openItem(it, li)); }
+    src.textContent = srcLabel(it); src.title = srcLabel(it);
+    top.append(ic, src);
+    if (chip.text) { const kind = document.createElement('span'); kind.className = `kind ${chip.cls}`.trim(); kind.textContent = chip.text; top.append(kind); }
     if (multi) { const sv = document.createElement('span'); sv.className = 'server'; sv.textContent = serverName(it.server); sv.title = sv.textContent; top.append(sv); }
     const snip = document.createElement('p'); snip.className = 'snip'; snip.textContent = it.snippet || '(no text)';
     li.append(top, snip);
@@ -175,12 +213,8 @@ function itemNode(it) {
     meta.children[1]?.setAttribute('aria-hidden', 'true');
     li.append(meta);
     const acts = document.createElement('div'); acts.className = 'acts';
-    if (!gone) {
-        const o = openLabel(it); o.name += openSuffix.get(uid(it)) || '';
-        if (!noopen) acts.append(btn('btn-primary saved-open', o.text, o.name, 'launch', () => openItem(it, li)));
-        acts.append(btn('saved-done', done ? 'Reopen' : 'Done', `${done ? 'Reopen, move back to Open' : 'Mark done'}: ${whichOne(it)}`, done ? 'replay' : 'done', () => setDone(it, !done)));
-    }
-    acts.append(btn('saved-remove', 'Remove', `Remove from saved: ${whichOne(it)}`, 'close', () => remove(it)));
+    if (!gone) acts.append(btn('saved-done', done ? 'Reopen' : 'Done', `${done ? 'Reopen, move back to Open' : 'Mark done'}: ${whichOne(it)}`, done ? 'replay' : 'done', () => setDone(it, !done)));
+    acts.append(moreMenu(it));
     li.append(acts);
     // "Read the whole message": the shared Inbox component's control (inbox_panel.js), inline under the snippet; not for an item whose source is gone.
     if (!gone) { const x = savedExpandFor(it, whichOne(it)); if (x && !x.root.hidden) li.insertBefore(x.root, why); }

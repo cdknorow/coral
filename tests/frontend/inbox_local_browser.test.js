@@ -143,7 +143,29 @@ const hex = i => i.toString(16).padStart(20, '0');
         await rowsShown('All saved', 'back on the Inbox');
         s = await state();
         check('"Back to Saved" returns to the Inbox (everything), not to a scoped list in the sidebar', s.inbox && s.navActive === 'hub-inbox' && s.uiIn === 'saved-view' && s.heading === 'All saved' && s.rows.length === 7, JSON.stringify([s.inbox, s.navActive, s.uiIn, s.heading, s.rows.length]));
+        // the More menu on a saved item (#6580): a named disclosure, Remove inside it as a menu item, Escape back to its button, Tab or a click elsewhere closes it
+        const more = () => ev(`(() => { const li = document.querySelector('#saved-list .saved-item'), b = li.querySelector('.saved-more-btn'), m = li.querySelector('.saved-more-menu'), a = document.activeElement;
+            return { name: b.getAttribute('aria-label'), expanded: b.getAttribute('aria-expanded'), hasPopup: b.getAttribute('aria-haspopup'), controls: b.getAttribute('aria-controls') === m.id, shown: !m.hidden && m.getClientRects().length > 0, role: m.getAttribute('role'),
+                item: m.querySelector('[role=menuitem]').textContent, onToggle: a === b, onItem: a === m.querySelector('[role=menuitem]'), visibleRemove: [...li.querySelectorAll('.acts > .btn')].some(x => /Remove/.test(x.textContent)) }; })()`);
+        let mm = await more();
+        check('a saved item shows Done and More, and Remove is not on screen until More is opened', mm.expanded === 'false' && !mm.shown && !mm.visibleRemove && /^More for /.test(mm.name) && mm.hasPopup === 'menu' && mm.controls && mm.role === 'menu', JSON.stringify(mm));
+        await ev(`document.querySelector('#saved-list .saved-item .saved-more-btn').focus(); true`);
+        await ev(`document.querySelector('#saved-list .saved-item .saved-more-btn').click(); true`); // (a button's Enter is a click)
+        mm = await more();
+        check('More opens its menu with Remove from saved focused (aria-expanded true)', mm.expanded === 'true' && mm.shown && mm.onItem && mm.item === 'Remove from saved', JSON.stringify(mm));
+        await key('Escape', 27);
+        mm = await more();
+        check('Escape closes the menu and returns to the More button', mm.expanded === 'false' && !mm.shown && mm.onToggle, JSON.stringify(mm));
+        await ev(`document.querySelector('#saved-list .saved-item .saved-more-btn').click(); true`); await key('Tab', 9);
+        mm = await more();
+        check('Tab out of the menu closes it', mm.expanded === 'false' && !mm.shown && !mm.onItem, JSON.stringify(mm));
+        await ev(`document.querySelector('#saved-list .saved-item .saved-more-btn').click(); true`);
+        await ev(`document.getElementById('inbox-title').click(); true`);
+        mm = await more();
+        check('a click elsewhere closes it', mm.expanded === 'false' && !mm.shown, JSON.stringify(mm));
+        await ev(`document.querySelector('#saved-list .saved-item .saved-more-btn').click(); true`);
         await ev(`document.querySelector('#saved-list .saved-item .saved-remove').click(); true`);
+
         await settle(`document.querySelectorAll('#saved-list > li:not(.saved-empty)').length === 6`, 'a removal in the Inbox');
         s = await state();
         check('Remove in the Inbox removes the item and stays on it', s.inbox, JSON.stringify([s.inbox]));

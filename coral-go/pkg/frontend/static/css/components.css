@@ -4170,7 +4170,7 @@ dialog.signed-out-panel code { background: var(--bg-tertiary); padding: 1px 6px;
 .inbox-needs-why { color: var(--warning); font-size: 0.8125rem; }
 .inbox-needs-team { color: var(--text-muted); font-size: 0.8125rem; margin-left: auto; }
 .inbox-needs-ask { grid-column: 1; min-width: 0; color: var(--text-secondary); font-size: 0.8125rem; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow-wrap: anywhere; } /* two lines at most: the command is the part worth reading */
-.inbox-needs-open { grid-column: 2; grid-row: 1 / span 2; align-self: center; color: var(--accent); font-weight: 600; font-size: 0.8125rem; border: 1px solid var(--control-border); border-radius: var(--radius-sm); padding: 6px 12px; }
+.inbox-needs-open { grid-column: 2; grid-row: 1 / span 2; align-self: center; color: var(--text-primary); font-weight: 600; font-size: 0.8125rem; border: 1px solid var(--accent); border-radius: var(--radius-sm); padding: 6px 12px; }
 .inbox-needs-item:hover .inbox-needs-open { background: var(--bg-primary); }
 .inbox-needs-empty { margin: 0; color: var(--text-secondary); font-size: 0.875rem; }
 .inbox-needs-empty[hidden] { display: none; }
@@ -4297,12 +4297,21 @@ a.ibx-open, a.ibx-open:visited { color: var(--link-text); }
 .saved-status { min-height: 1.25em; color: var(--text-secondary); font-size: 0.8125rem; padding: 0 12px 8px; flex: none; }
 @media (pointer: coarse) {
     .saved-item .acts .btn, .saved-tab { min-height: 44px; min-width: 44px; }
+    .saved-item button.src { min-height: 44px; display: inline-flex; align-items: center; }
     .saved-item .acts .btn { padding: 8px 14px; font-size: 0.875rem; }
     .saved-item .acts { gap: 8px; }
     .saved-item .snip, .saved-item .src { font-size: 0.9375rem; }
     .saved-tab { font-size: 0.875rem; }
 }
-/* Phone: Open in Chats, Done and Remove stay on one row at 390 px (a little less padding and gap); a narrower screen may wrap (#5882). */
+/* The title is the link that opens the saved message's source (#6580); More holds Remove. */
+.saved-item button.src { background: none; border: 0; padding: 0 0 3px; margin: 0; font: inherit; font-size: 0.8125rem; font-weight: 700; color: var(--text-primary); text-align: left; cursor: pointer; border-radius: var(--radius-sm); text-decoration: underline; text-decoration-color: var(--accent); text-underline-offset: 2px; }
+.saved-item button.src:hover { text-decoration-thickness: 2px; }
+.saved-item button.src:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.saved-more { position: relative; margin-left: auto; }
+.saved-more-menu { position: absolute; right: 0; bottom: calc(100% + 4px); z-index: 5; min-width: max-content; background: var(--bg-secondary); border: 1px solid var(--control-border); border-radius: var(--radius-ml); padding: 4px; box-shadow: var(--shadow-md); }
+.saved-more-menu[hidden] { display: none; }
+.saved-item .acts .saved-more-menu .btn { width: 100%; justify-content: flex-start; color: var(--danger); }
+/* Phone: Done and More stay on one row at 390 px (a little less padding and gap); a narrower screen may wrap (#5882). */
 @media (max-width: 600px) {
     .saved-item .acts { gap: 6px; }
     .saved-item .acts .btn { padding-inline: 10px; }
@@ -4499,6 +4508,12 @@ a.ibx-open, a.ibx-open:visited { color: var(--link-text); }
 /* The Saved panel's search bar (#4778): the shared list bar between its tabs and its list. */
 .saved-bar:empty { display: none; }
 .saved-bar { flex: none; }
+/* Saved's bar is one row (search, Filters, Sort), not three: the chips and the open filter menu take a row of their own, and the count is the Open (n) tab's (#6580). */
+.saved-bar .list-bar-bar { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px; }
+.saved-bar .list-bar-search-row { flex: 1 1 14em; min-width: 0; }
+.saved-bar .list-bar-controls { flex: 0 1 auto; }
+.saved-bar .list-bar-chips, .saved-bar .list-bar-menu { flex: 1 1 100%; }
+.saved-bar .list-bar-count { display: none; }
 
 /* The Servers list's search box (#4778): the shared list bar above the list, from six machines up. */
 .servers-bar[hidden] { display: none; }

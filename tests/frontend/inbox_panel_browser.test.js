@@ -97,10 +97,10 @@ const STUB = `(() => {
             check(`${dev}, ${theme}, ${kind}: its border holds 3:1 against the row, the panel and the page`, i && i.borderOnRow >= 3 && i.borderOnPanel >= 3 && i.borderOnPage >= 3, JSON.stringify(i));
             check(`${dev}, ${theme}, ${kind}: 8 px above it, 12 px below it`, i && Math.abs(i.above - 8) <= 1 && i.below !== null && Math.abs(i.below - 12) <= 1, JSON.stringify(i));
             if (kind === 'saved') {
-                const sv = await ev(`(() => { const panel = document.querySelector(${JSON.stringify(sel)}); const li = panel.closest('.saved-item'); const snip = li.querySelector('.snip'), btn = li.querySelector('.ibx-saved-toggle'), acts = [...li.querySelectorAll('.acts .btn')];
+                const sv = await ev(`(() => { const panel = document.querySelector(${JSON.stringify(sel)}); const li = panel.closest('.saved-item'); const snip = li.querySelector('.snip'), btn = li.querySelector('.ibx-saved-toggle'), acts = [...li.querySelectorAll('.acts > .btn, .acts .saved-more-btn')];
                     return { snip: getComputedStyle(snip).display, toggle: btn.textContent, exp: btn.getAttribute('aria-expanded'), tops: acts.map(b => Math.round(b.getBoundingClientRect().top)), n: acts.length }; })()`);
                 check(`${dev}, ${theme}: while the full message is shown the snippet is hidden, and the button is a toggle ("Show less", aria-expanded true)`, sv.snip === 'none' && sv.toggle === 'Show less' && sv.exp === 'true', JSON.stringify(sv));
-                check(`${dev}, ${theme}: Open in Chats, Done and Remove are on one row`, sv.n === 3 && new Set(sv.tops).size === 1, JSON.stringify(sv));
+                check(`${dev}, ${theme}: Done and More are on one row (the title opens the chat, Remove is in More)`, sv.n === 2 && new Set(sv.tops).size === 1, JSON.stringify(sv));
             }
             if (kind === 'tasks') {
                 check(`${dev}, ${theme}: 8 px from the header row to the meta line`, i && i.headGap !== null && Math.abs(i.headGap - 8) <= 1, JSON.stringify(i.headGap));
