@@ -127,6 +127,11 @@ type commentView struct {
 	Deleted    bool           `json:"deleted"`
 	Mine       bool           `json:"mine"`
 	Can        commentCan     `json:"can"`
+	// With ?series=1 only (#6459): the version the comment was written on, and for a comment of an EARLIER version, where its text stands in the version being read.
+	Version       *int           `json:"version,omitempty"`
+	FromVersion   *int           `json:"from_version,omitempty"`
+	Carried       string         `json:"carried,omitempty"` // found, ambiguous, gone or unchecked
+	CarriedAnchor *commentAnchor `json:"carried_anchor,omitempty"`
 }
 
 type commentAuthor struct {
@@ -327,8 +332,43 @@ func (h *SessionsHandler) listArtifactComments(w http.ResponseWriter, r *http.Re
 	locked, _ := h.ss.ArtifactCommentsLocked(r.Context(), id, board)
 	hubWrite := h.hubWriteOn(r)
 	out := make([]commentView, 0, len(all))
+	var own *int
+	var members []seriesMember
+	if r.URL.Query().Get("series") == "1" { // the earlier versions' comments, marked (#6459); without the flag the answer is exactly as it was
+		if sid, n, in := digestSeries(h.cfg.CoralDir(), id); in {
+			own, members = &n, seriesMembers(h.cfg.CoralDir(), sid)
+		}
+	}
 	for _, t := range all {
-		out = append(out, h.commentView(caller, t, locked, hubWrite))
+		v := h.commentView(caller, t, locked, hubWrite)
+		v.Version = own
+		out = append(out, v)
+	}
+	if own != nil {
+		carried := h.carriedComments(r, id, *own, members, state)
+		ts := make([]store.ArtifactComment, len(carried))
+		for i, c := range carried {
+			ts[i] = c.t
+		}
+		if boards := h.commentBoards(r, caller, ts); boards != nil { // an agent sees only the boards it is on, as for this version's own
+			keep := map[string]bool{}
+			for _, b := range boards {
+				keep[b] = true
+			}
+			kept := carried[:0]
+			for _, c := range carried {
+				if keep[c.t.Board] {
+					kept = append(kept, c)
+				}
+			}
+			carried = kept
+		}
+		for _, c := range carried {
+			v := h.commentView(caller, c.t, c.srcLock, hubWrite)
+			from := c.from
+			v.FromVersion, v.Carried, v.CarriedAnchor = &from, c.state, c.anchor
+			out = append(out, v)
+		}
 	}
 	canCreate, why := commentPolicy(caller, commentCreate, nil, locked, hubWrite)
 	writeJSON(w, http.StatusOK, map[string]any{"comments": out, "locked": locked, "you": map[string]any{"kind": caller.Kind, "name": viewerName(caller), "can_comment": canCreate, "reason": why, "can_lock": caller.Kind == commentCallerOwner},
