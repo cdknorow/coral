@@ -230,6 +230,14 @@ const contrast = (a, b) => {
         await shot('table-desktop-more-open');
         await ev(`document.querySelector('#server-row-m3 .cs-more').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); true`);
         assert.equal(await ev(seen('#server-row-m3 .cs-revoke')), false, 'Escape closes More');
+        // a click anywhere else closes an open More (the menu would otherwise stay over the list); a click on its own button toggles it
+        await ev(`document.querySelector('#server-row-m3 .cs-more-btn').click(); true`);
+        assert.equal(await ev(seen('#server-row-m3 .cs-revoke')), true, 'More opens again');
+        await ev(`document.body.click(); true`);
+        await waitFor(`!document.querySelector('#server-row-m3 .cs-revoke') || document.querySelector('#server-row-m3 .cs-revoke').getClientRects().length === 0`, 'a click elsewhere closed More', 3000);
+        await ev(`document.querySelector('#server-row-m3 .cs-more-btn').click(); true`);
+        await ev(`document.querySelector('#server-row-m3 .cs-more-btn').click(); true`);
+        assert.equal(await ev(seen('#server-row-m3 .cs-revoke')), false, 'the More button toggles: a second click closes it');
         assert.equal(await ev(`document.activeElement === document.querySelector('#server-row-m3 .cs-more-btn')`), true, 'and keeps the keyboard on More');
         await ev(`document.querySelector('#server-row-m3 .cs-more-btn').click(); document.querySelector('#server-row-m3 .cs-revoke').click(); true`);
         await waitFor(`!!document.querySelector('#server-row-m3 .cs-col-actions .btn-danger')`, 'the revoke confirmation', 3000);
