@@ -2,10 +2,10 @@ package config
 
 import "strings"
 
-// ExtendedPath is a data folder given in the extended-length form with forward slashes (//?/D:/coral, as a shell or a script on Windows may hand it) written the one way Windows accepts: the
-// \\?\ prefix with backslashes all through (#6717, Windows finding 5: SQLite could not open a database under //?/D:/..., so a long data folder stopped the server from starting). Any other path,
-// including a plain long one, is returned as it is.
-func ExtendedPath(dir string) string {
+// PlainDrivePath is a data folder given with the extended-length prefix (//?/D:/coral, \\?\D:\coral: Git Bash's cygpath -m and MSYS's environment conversion write the first form for a long path)
+// written as the plain drive path (D:\coral). SQLite cannot open a database under either prefixed form (unable to open database file (14), Windows proof #6722), and the plain one works. Any other
+// path, a plain long one, a UNC or a device path, is returned as it is (#6717 item 5, redone).
+func PlainDrivePath(dir string) string {
 	rest, ok := strings.CutPrefix(dir, "//?/")
 	if !ok {
 		if rest, ok = strings.CutPrefix(dir, `\\?\`); !ok {
@@ -15,5 +15,5 @@ func ExtendedPath(dir string) string {
 	if len(rest) < 2 || rest[1] != ':' || !(rest[0] >= 'A' && rest[0] <= 'Z' || rest[0] >= 'a' && rest[0] <= 'z') {
 		return dir // the UNC form and device paths are not rewritten
 	}
-	return `\\?\` + strings.ReplaceAll(rest, "/", `\`)
+	return strings.ReplaceAll(rest, "/", `\`)
 }
