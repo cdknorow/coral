@@ -1,7 +1,7 @@
 /* The per-message buttons of the agent chat (Copy, Save for later) as ONE Tab stop (#6727, the phone chat audit #6712): a long chat has a button pair on every bubble, so a keyboard or screen-reader user passed
  * dozens of same-named stops before the message box. Now the buttons are a roving group: one of them (the last message's, near the box, until the person moves) is the stop, and Up, Down, Left, Right, Home and End
  * move between them; the stop is described by a line that says so. Each Copy button says which message it copies. Touch and mouse are unchanged: every button is still on its bubble. Work is done once per new
- * button (a streaming chat of a thousand messages re-reads nothing: a mutation that adds no button does nothing), and written only on a change. */
+ * button (a streaming chat of a thousand messages re-reads nothing: a mutation that adds no button does nothing, except words arriving in a bubble whose button has no name yet), and written only on a change. */
 
 const SEL = '.chat-copy-btn, .chat-save-btn';
 const LABEL_CHARS = 40;
@@ -27,6 +27,7 @@ export function wireMessageActions(container) {
     let moved = false;     // the person has moved with the arrows: the stop stays where they put it
     let queued = false;
     const named = new WeakSet(); // buttons that have had their one-time work (tabindex -1, their name)
+    const waiting = new Set();   // Copy buttons whose message had no words yet (a streaming reply): named when words arrive in their bubble
     const buttons = () => [...container.querySelectorAll(SEL)];
     const sync = () => {
         queued = false;
@@ -37,7 +38,7 @@ export function wireMessageActions(container) {
                 if (b !== tabbed && b.getAttribute('tabindex') !== '-1') b.setAttribute('tabindex', '-1');
                 if (b.classList.contains('chat-copy-btn')) {
                     const n = copyName(b);
-                    if (n) { if (b.getAttribute('aria-label') !== n) b.setAttribute('aria-label', n); named.add(b); } // a message with no words yet is looked at again
+                    if (n) { if (b.getAttribute('aria-label') !== n) b.setAttribute('aria-label', n); named.add(b); waiting.delete(b); } else waiting.add(b); // no words yet: looked at again when words arrive
                 } else named.add(b);
             }
         }
@@ -53,12 +54,17 @@ export function wireMessageActions(container) {
         if (queued) return;
         let work = false;
         for (const r of records) {
+            if (waiting.size && (r.type === 'characterData' || r.addedNodes.length)) { // words arriving in a bubble whose Copy button has no name yet
+                const bub = (r.target.nodeType === 1 ? r.target : r.target.parentElement)?.closest('.chat-bubble');
+                const btn = bub && bub.querySelector('.chat-copy-btn');
+                if (btn && waiting.has(btn)) { work = true; break; }
+            }
             for (const n of r.addedNodes) if (n.nodeType === 1 && (n.matches(SEL) || n.querySelector(SEL))) { work = true; break; }
             if (!work) for (const n of r.removedNodes) if (n.nodeType === 1 && (n === tabbed || n.contains(tabbed))) { work = true; break; }
             if (work) break;
         }
         if (work) { queued = true; requestAnimationFrame(sync); }
-    }).observe(container, { childList: true, subtree: true });
+    }).observe(container, { childList: true, subtree: true, characterData: true });
     container.addEventListener('keydown', e => {
         const b = e.target.closest && e.target.closest(SEL);
         if (!b || e.altKey || e.ctrlKey || e.metaKey) return;

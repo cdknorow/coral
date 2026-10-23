@@ -45,6 +45,11 @@ const { connect } = require('./agent_view_harness');
                 await new Promise(r => setTimeout(r, 250)); /* sleep-ok: counting writes over a fixed quiet window */ const quiet = n; n = 0;
                 const b = document.createElement('div'); b.className = 'chat-bubble assistant'; b.innerHTML = '<div class="message-text">A new reply</div><button type="button" class="chat-copy-btn" aria-label="Copy message"></button>'; c.append(b);
                 await new Promise(r => setTimeout(r, 250)); /* sleep-ok: the observer batches in a frame */ const added = n; mo.disconnect(); b.remove(); return { quiet, added }; })()`);
+            // a streaming reply: its Copy button is made before the message has words and is named when they arrive
+            const stream = await ev(`(async () => { const c = document.getElementById('live-history-messages'); const b = document.createElement('div'); b.className = 'chat-bubble assistant'; b.innerHTML = '<div class="message-text"></div><button type="button" class="chat-copy-btn" aria-label="Copy message"></button>'; c.append(b);
+                await new Promise(r => setTimeout(r, 250)); /* sleep-ok: the new button is looked at on a frame */ const before = b.querySelector('.chat-copy-btn').getAttribute('aria-label');
+                b.querySelector('.message-text').textContent = 'Streaming words arrive'; await new Promise(r => setTimeout(r, 250)); /* sleep-ok: the words wake the sync on a frame */ const after = b.querySelector('.chat-copy-btn').getAttribute('aria-label'); b.remove(); return { before, after }; })()`);
+            assert.equal(stream.after, 'Copy message: Streaming words arrive', `${tag}: a Copy button made before its reply has words is named when they arrive (${JSON.stringify(stream)})`);
             assert.equal(marks.quiet, 0, `${tag}: a change that adds no button writes nothing (${marks.quiet} attribute writes)`);
             assert.ok(marks.added > 0 && marks.added <= 6, `${tag}: a new message's button costs a few writes, not one per bubble (${marks.added})`);
             // an approval question, as the stand-in terminal reports it (kept by the chat's own polls)
