@@ -60,7 +60,7 @@ class T(unittest.TestCase):
             cmds = [(n, c) for n, c in commands(text) if "mock-agent" not in c and '-tags "dev' not in c]
             missing += [f"{f}:{n}" for n, c in cmds if not re.search(r"-overlay\s+\"?\$\{?overlay\}?\"?|-overlay\s+\"\$OVERLAY\"|-overlay\s+\"\$\$O\"", c, re.I)]
             if cmds:
-                gen = len(re.findall(r"go run \./tools/strip-static(?!\s+-)", text))
+                gen = len(re.findall(r"go run \./tools/strip-static(?!\s+-(?:check|clean))", text))
                 clean = len(re.findall(r"strip-static -clean", text))
                 if gen < 1 or clean < 1:
                     unscoped.append(f"{f}: makes the overlay {gen} time(s) and deletes it {clean}: both must be at least 1")

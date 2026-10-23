@@ -132,6 +132,11 @@ func Validate(overlayPath, staticDir string) error {
 	if err != nil {
 		return err
 	}
+	if st, err := os.Lstat(overlayPath); err != nil || !st.Mode().IsRegular() {
+		return fmt.Errorf("%s is not a regular file", overlayPath)
+	} else if err := checkPrivate(overlayPath, st); err != nil {
+		return err
+	}
 	keys := make([]string, 0, len(ov.Replace))
 	for k := range ov.Replace {
 		keys = append(keys, k)
@@ -155,9 +160,46 @@ func Validate(overlayPath, staticDir string) error {
 		if tr, err := filepath.Rel(folder, filepath.Clean(target)); err != nil || tr == "." || strings.HasPrefix(filepath.ToSlash(tr), "../") || filepath.IsAbs(tr) {
 			return fmt.Errorf("overlay target %q is outside the overlay's own folder %s", target, folder)
 		}
-		if st, err := os.Stat(target); err != nil || !st.Mode().IsRegular() {
-			return fmt.Errorf("overlay target %q is not a file", target)
+		// Lstat: a symlink is refused, and the file and every folder between it and the overlay's folder must be the caller's and closed to others
+		if st, err := os.Lstat(target); err != nil || !st.Mode().IsRegular() {
+			return fmt.Errorf("overlay target %q is not a regular file", target)
+		} else if err := checkPrivate(target, st); err != nil {
+			return err
 		}
+		for d := filepath.Dir(filepath.Clean(target)); ; d = filepath.Dir(d) {
+			st, err := os.Lstat(d)
+			if err != nil || !st.IsDir() {
+				return fmt.Errorf("overlay folder %q is not a real folder", d)
+			}
+			if err := checkPrivate(d, st); err != nil {
+				return err
+			}
+			if d == folder {
+				break
+			}
+		}
+	}
+	return nil
+}
+
+// CheckOutDir accepts an -out folder only when it is a real (not symlinked), empty folder named coral-static-*, so -clean can remove it and nothing else is in it.
+func CheckOutDir(dir string) error {
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return err
+	}
+	if !strings.HasPrefix(filepath.Base(abs), "coral-static-") {
+		return fmt.Errorf("-out %s: the folder must be named coral-static-*", dir)
+	}
+	st, err := os.Lstat(abs)
+	if err != nil || !st.IsDir() {
+		return fmt.Errorf("-out %s: not an existing folder (a symlink does not count)", dir)
+	}
+	if err := checkPrivate(abs, st); err != nil {
+		return err
+	}
+	if ents, err := os.ReadDir(abs); err != nil || len(ents) != 0 {
+		return fmt.Errorf("-out %s: the folder must be empty", dir)
 	}
 	return nil
 }

@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -19,7 +20,7 @@ var realStatic = filepath.Join("..", "..", "pkg", "frontend", "static")
 // The overlay ships exactly what the server serves: every replaced file is MinifyAsset of its source, and every JS and CSS file the overlay leaves alone is one MinifyAsset leaves as it is (so a file cannot
 // be forgotten or changed by something else). Runs in the default test set: it is the proof that the release's bytes are the served bytes.
 func TestOverlayIsMinifyAssetFileByFile(t *testing.T) {
-	out := t.TempDir()
+	out := ownerOnly(t, t.TempDir())
 	res, err := Generate(realStatic, out)
 	require.NoError(t, err)
 	require.NoError(t, Validate(res.Overlay, realStatic))
@@ -65,6 +66,15 @@ func TestOverlayIsMinifyAssetFileByFile(t *testing.T) {
 	}
 }
 
+// ownerOnly makes dir what Generate's folder is (t.TempDir is 0755 on some systems).
+func ownerOnly(t *testing.T, dir string) string {
+	t.Helper()
+	if runtime.GOOS != "windows" {
+		require.NoError(t, os.Chmod(dir, 0o700))
+	}
+	return dir
+}
+
 func writeOverlay(t *testing.T, dir string, replace map[string]string) string {
 	t.Helper()
 	b, err := json.Marshal(overlayJSON{Replace: replace})
@@ -77,7 +87,7 @@ func writeOverlay(t *testing.T, dir string, replace map[string]string) string {
 // An overlay can replace any file the compiler reads, Go sources included: Validate must refuse every key but a JS or CSS file of the static tree, and every target outside the overlay's folder (Security, #6208).
 func TestValidateRefusesAnythingButStaticJSAndCSS(t *testing.T) {
 	abs, _ := filepath.Abs(realStatic)
-	dir := t.TempDir()
+	dir := ownerOnly(t, t.TempDir())
 	target := filepath.Join(dir, "x.js")
 	require.NoError(t, os.WriteFile(target, []byte("x"), 0o600))
 	goFile, _ := filepath.Abs(filepath.Join("..", "..", "internal", "stripstatic", "stripstatic.go"))
@@ -111,7 +121,7 @@ func TestGenerateRefusesToShipNothingOrWithMinifyOff(t *testing.T) {
 	_, err := Generate(src, t.TempDir())
 	assert.ErrorContains(t, err, "nothing under")
 	t.Setenv("CORAL_NO_MINIFY", "1")
-	_, err = Generate(realStatic, t.TempDir())
+	_, err = Generate(realStatic, ownerOnly(t, t.TempDir()))
 	assert.ErrorContains(t, err, "CORAL_NO_MINIFY")
 }
 
@@ -134,4 +144,54 @@ func TestStripMarkerIsStillInTheSource(t *testing.T) {
 		return nil
 	}))
 	assert.True(t, found, "no JS or CSS file of the static tree holds %q any more: pick another comment line for tests/release/strip_marker.txt", marker)
+}
+
+// A folder or file another user could change is refused (Unix), and so is a symlink standing in for a target (Security, #6208).
+func TestValidateRefusesAnOpenFolderOrASymlinkTarget(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("mode bits: the Windows build step makes an owner-only folder (-out)")
+	}
+	abs, _ := filepath.Abs(realStatic)
+	ok := filepath.Join(abs, "app.js")
+	dir := ownerOnly(t, t.TempDir())
+	target := filepath.Join(dir, "x.js")
+	require.NoError(t, os.WriteFile(target, []byte("x"), 0o600))
+	p := writeOverlay(t, dir, map[string]string{ok: target})
+	require.NoError(t, Validate(p, realStatic))
+
+	require.NoError(t, os.Chmod(dir, 0o777))
+	assert.ErrorContains(t, Validate(p, realStatic), "owner-only", "a folder open to others")
+	require.NoError(t, os.Chmod(dir, 0o700))
+
+	require.NoError(t, os.Chmod(target, 0o666))
+	assert.ErrorContains(t, Validate(p, realStatic), "written by other users", "a file others can write")
+	require.NoError(t, os.Chmod(target, 0o600))
+
+	real := filepath.Join(t.TempDir(), "real.js")
+	require.NoError(t, os.WriteFile(real, []byte("x"), 0o600))
+	link := filepath.Join(dir, "link.js")
+	require.NoError(t, os.Symlink(real, link))
+	assert.ErrorContains(t, Validate(writeOverlay(t, dir, map[string]string{ok: link}), realStatic), "not a regular file", "a symlink target")
+}
+
+func TestCheckOutDir(t *testing.T) {
+	root := t.TempDir()
+	mk := func(name string) string {
+		d := filepath.Join(root, name)
+		require.NoError(t, os.Mkdir(d, 0o700))
+		return d
+	}
+	assert.NoError(t, CheckOutDir(mk("coral-static-a")))
+	assert.Error(t, CheckOutDir(mk("other")), "wrong name")
+	assert.Error(t, CheckOutDir(filepath.Join(root, "coral-static-missing")), "missing")
+	full := mk("coral-static-full")
+	require.NoError(t, os.WriteFile(filepath.Join(full, "x"), []byte("x"), 0o600))
+	assert.Error(t, CheckOutDir(full), "not empty")
+	if runtime.GOOS != "windows" {
+		open := mk("coral-static-open")
+		require.NoError(t, os.Chmod(open, 0o777))
+		assert.Error(t, CheckOutDir(open), "open to others")
+		require.NoError(t, os.Symlink(mk("coral-static-real"), filepath.Join(root, "coral-static-link")))
+		assert.Error(t, CheckOutDir(filepath.Join(root, "coral-static-link")), "symlink")
+	}
 }

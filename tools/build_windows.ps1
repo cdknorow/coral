@@ -33,8 +33,12 @@ New-Item -ItemType Directory -Force -Path $BinDir | Out-Null
 Write-Host "Building coral.exe..." -ForegroundColor Yellow
 Push-Location $CoralGoDir
 # The dashboard ships minified (#6208): a fresh owner-only folder; only the go build commands below read it
-$overlay = (go run ./tools/strip-static)
-if ($LASTEXITCODE -ne 0) { throw "strip-static failed" }
+$overlayDir = Join-Path ([IO.Path]::GetTempPath()) ("coral-static-" + [guid]::NewGuid().ToString("N")) # owner-only on Windows too: only the build's user may read or write it
+New-Item -ItemType Directory -Path $overlayDir | Out-Null
+icacls $overlayDir /inheritance:r /grant:r "*$([Security.Principal.WindowsIdentity]::GetCurrent().User.Value):(OI)(CI)F" | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "icacls failed on the overlay folder" }
+$overlay = (go run ./tools/strip-static -out $overlayDir)
+if ($LASTEXITCODE -ne 0 -or -not $overlay) { throw "strip-static failed" }
 try {
 $env:GOOS = "windows"
 $env:GOARCH = "amd64"
