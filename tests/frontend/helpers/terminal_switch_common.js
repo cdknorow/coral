@@ -30,6 +30,7 @@ async function httpJson(method, path, body) {
 const MOD = `(window.__coralStatic || '/static/')`;
 const sleep = ms => new Promise(r => setTimeout(r, ms)); // sleep-ok: timing is what is measured; there is no completion event for a repaint
 const BUDGET_MS = 500;
+const FIRST_BUDGET_MS = 1500; // the page's first terminal: xterm.js is loaded and the terminal attaches (the later switches only show it again); 440 to 580 ms on a machine 12 times slower, where the others take 20 to 170
 
 module.exports = parts => (async () => {
     const client = await CDP({ port: Number(process.env.CDP_PORT || 9222) });
@@ -49,6 +50,7 @@ module.exports = parts => (async () => {
         for (let i = 0; i < b.length; i++) { const l = b.getLine(i); if (l) n += l.translateToString(true).trim().length; } return n; })()`;
     const setup = async ({ width, height }) => {
         await Emulation.setDeviceMetricsOverride({ width, height, deviceScaleFactor: 1, mobile: width < 700 });
+        if (process.env.CORAL_CPU_THROTTLE) await Emulation.setCPUThrottlingRate({ rate: Number(process.env.CORAL_CPU_THROTTLE) }); // a loaded runner, reproduced: CORAL_CPU_THROTTLE=8
         await Page.addScriptToEvaluateOnNewDocument({ source: `(() => { window.__tws = []; const R = window.WebSocket;
             window.WebSocket = function (url, p) { const s = p === undefined ? new R(url) : new R(url, p); if (/\\/ws\\/terminal\\//.test(String(url))) window.__tws.push(s); return s; };
             window.WebSocket.prototype = R.prototype; for (const k of ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED']) window.WebSocket[k] = R[k];
@@ -58,15 +60,16 @@ module.exports = parts => (async () => {
         await ev(`(async () => { const x = await import(${MOD} + 'xterm_renderer.js'); window.__getTerm = x.getTerminal; })()`);
     };
     const select = s => ev(`window.selectLiveSession(${JSON.stringify(s.name)}, 'claude', ${JSON.stringify(s.sid)}, ''); true`);
-    // Time from the switch to a terminal that has text in its buffer and ink on its canvas; -1 when it never does within the limit.
-    const switchToTerminal = async (limitMs = 3000) => {
-        const t0 = await ev(`(() => { window.setLiveViewMode('terminal'); return performance.now(); })()`);
-        for (let k = 0; k < limitMs / 5; k++) {
-            if ((await ev(CHARS)) > 0 && (await ev(INK)) > 50) return (await ev(`performance.now()`)) - t0;
-            await sleep(5);
-        }
-        return -1;
-    };
+    // Time from the switch to a terminal that has text in its buffer and ink on its canvas; -1 when it never does within the limit. The clock and the polling run in the page: a CDP round trip per probe
+    // (three a poll, each with a full read of the canvas) is the runner's load, not the product's switch, and on a loaded Windows runner it was most of the 1.6 s one of twenty switches seemed to take (#6175).
+    const PROBE = `(() => {
+        const chars = () => ${CHARS.trim()};
+        const ink = () => { let n = 0; for (const c of document.querySelectorAll('#xterm-container canvas')) { if (!c.width || !c.height) continue; const g = c.getContext('2d'); if (!g) continue;
+            const d = g.getImageData(0, 0, c.width, c.height).data; for (let i = 3; i < d.length; i += 4) if (d[i] && ++n > 50) return n; } return n; };
+        return { chars, ink }; })()`;
+    const switchToTerminal = async (limitMs = 3000) => ev(`(async () => { const { chars, ink } = ${PROBE}; const t0 = performance.now(); window.setLiveViewMode('terminal');
+        while (performance.now() - t0 < ${limitMs}) { if (chars() > 0 && ink() > 50) return performance.now() - t0; await new Promise(r => setTimeout(r, 4)); }
+        return -1; })()`);
     try {
         for (const name of ['Switch A', 'Switch B'].slice(0, parts.some(x => x.endsWith(':agent')) ? 2 : 1)) { // only the 'agent' scenarios switch between two
             const si = await launchStandIn(httpJson, { displayName: name });
@@ -87,7 +90,7 @@ module.exports = parts => (async () => {
             }
             stop = true; if (streamer) await streamer;
             const worst = Math.max(...ms);
-            check(`${label}: all 20 switches show text within ${BUDGET_MS} ms`, ms.every(v => v >= 0 && v <= BUDGET_MS), `worst ${worst} ms, ${ms.join(' ')}`);
+            check(`${label}: all 20 switches show text within ${BUDGET_MS} ms (the first, which attaches the page's terminal, within ${FIRST_BUDGET_MS} ms)`, ms.every((v, i) => v >= 0 && v <= (i === 0 ? FIRST_BUDGET_MS : BUDGET_MS)), `worst ${worst} ms, ${ms.join(' ')}`);
         };
 
         // 1 and 2: warm switches at desktop or phone width; each part is one scenario at one width: 'desktop:idle', 'phone:stream', 'desktop:agent' ...
