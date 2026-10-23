@@ -338,7 +338,7 @@ func (h *SessionsHandler) wakeExistingSession(ctx context.Context, ls *store.Liv
 				target = sessionName
 			}
 			log.Printf("[wake] session=%s: the agent CLI had exited (%s in the foreground); resuming it in the same terminal", sessionName, fg)
-			if err := h.startAgentCLI(ctx, boardName, target, cmd); err != nil {
+			if err := h.startAgentCLI(ctx, boardName, ls.AgentType, target, cmd); err != nil {
 				return err
 			}
 		}
@@ -365,7 +365,7 @@ func (h *SessionsHandler) wakeExistingSession(ctx context.Context, ls *store.Liv
 				} else {
 					time.Sleep(500 * time.Millisecond)
 				}
-				if err := h.startAgentCLI(ctx, boardName, sessionName, cmd); err != nil {
+				if err := h.startAgentCLI(ctx, boardName, ls.AgentType, sessionName, cmd); err != nil {
 					return fmt.Errorf("pty wake command failed: %w", err)
 				}
 			}
@@ -380,7 +380,7 @@ func (h *SessionsHandler) wakeExistingSession(ctx context.Context, ls *store.Liv
 			folderName := filepath.Base(ls.WorkingDir)
 			h.terminal.SetPaneTitle(ctx, sessionName+".0", fmt.Sprintf("%s — %s", folderName, ls.AgentType))
 
-			if err := h.startAgentCLI(ctx, boardName, sessionName+".0", cmd); err != nil {
+			if err := h.startAgentCLI(ctx, boardName, ls.AgentType, sessionName+".0", cmd); err != nil {
 				return err
 			}
 

@@ -10,8 +10,10 @@ import (
 	"log"
 	"log/slog"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -284,14 +286,52 @@ func refuseRestartBusy(w http.ResponseWriter) {
 // afterTeamSlot runs f once d has passed (tests replace it).
 var afterTeamSlot = func(d time.Duration, f func()) { time.AfterFunc(d, f) }
 
+// codexFirstStartGap is how long the first Codex start on a Codex home that has never completed a turn protects itself (#6364): Codex migrates its memories database when it starts, and a second
+// Codex started on the same new home in the middle of that migration exits with "failed to migrate memories DB ... table stage1_outputs already exists". A var so a test can set it (the package's
+// TestMain sets it to zero: every test that launches Codex shares one home).
+var codexFirstStartGap = 10 * time.Second
+
+var codexFirstStarts = struct {
+	sync.Mutex
+	at map[string]time.Time // by Codex home: when the first start on it was typed
+}{at: map[string]time.Time{}}
+
+// reserveCodexFirstStart says how long a Codex start waits so it does not run with the first one on a new Codex home. The first Codex start on a home with no sessions folder (Codex makes it with the
+// first turn it takes) goes at once and is remembered; every other start on that home waits until codexFirstStartGap after it, all together, since the migration is then done. A home that has sessions
+// (it has been used), another agent type, and a zero gap are never delayed.
+func reserveCodexFirstStart(agentType string, now time.Time) time.Duration {
+	if agentType != at.Codex || codexFirstStartGap <= 0 {
+		return 0
+	}
+	sessions := (&agent.CodexAgent{}).HistoryBasePath()
+	home := filepath.Dir(sessions)
+	if _, err := os.Stat(sessions); err == nil {
+		return 0
+	}
+	codexFirstStarts.Lock()
+	defer codexFirstStarts.Unlock()
+	first, ok := codexFirstStarts.at[home]
+	if !ok {
+		codexFirstStarts.at[home] = now
+		return 0
+	}
+	if d := first.Add(codexFirstStartGap).Sub(now); d > 0 {
+		return d
+	}
+	return 0
+}
+
 // startAgentCLI types an agent's start command (its CLI, or its resume) into its terminal. The
 // starts of one team are 2-3 s apart (#3613: each starts an API turn at once): the team's first
 // is typed now; a later one is typed when its slot comes, on a background context, and this
 // returns at once. A launch, team launch or wake request never waits for the spacing, so the
 // hub's response deadline can't cut a team launch in half (Security's MUST); the terminal and
 // the session already exist, and the dashboard shows each agent start.
-func (h *SessionsHandler) startAgentCLI(ctx context.Context, team, target, cmd string) error {
+func (h *SessionsHandler) startAgentCLI(ctx context.Context, team, agentType, target, cmd string) error {
 	d := ptymanager.ReserveTeamStart(team)
+	if g := reserveCodexFirstStart(agentType, time.Now()); g > d {
+		d = g
+	}
 	if d <= 0 {
 		return sendLaunchCommand(ctx, h.terminal, target, cmd)
 	}

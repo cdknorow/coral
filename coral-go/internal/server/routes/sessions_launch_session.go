@@ -352,7 +352,7 @@ func (h *SessionsHandler) startOnBackend(ctx context.Context, team, sessionName,
 	} else {
 		time.Sleep(500 * time.Millisecond)
 	}
-	if err := h.startAgentCLI(ctx, team, sessionName, cmd); err != nil {
+	if err := h.startAgentCLI(ctx, team, agentType, sessionName, cmd); err != nil {
 		return "", fmt.Errorf("pty launch command failed: %w", err)
 	}
 	return logFile, nil
@@ -429,7 +429,7 @@ func (h *SessionsHandler) startOnTmux(ctx context.Context, params agent.LaunchPa
 		return nil
 	}
 	log.Printf("[launch] tmux session=%s agent=%s cmd=%s", sessionName, agentType, cmd)
-	return h.startAgentCLI(ctx, team, sessionName+".0", cmd)
+	return h.startAgentCLI(ctx, team, agentType, sessionName+".0", cmd)
 }
 
 // validateAgentModel rejects only known Coral model IDs whose provider is
