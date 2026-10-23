@@ -82,7 +82,7 @@ const BASE = require('./test_base').BASE;
             assert.equal(await text('#settings-setup-code-spoken'), 'Setup code: H 2 X R, H S 1 6', at + 'the code is spelled for a screen reader');
             assert.equal(await ev(`document.getElementById('settings-setup-code').getAttribute('aria-hidden')`), 'true', at + 'and the visible code is not read twice');
             assert.equal(await ev(`document.getElementById('settings-setup-code-copy').getAttribute('aria-label')`), 'Copy setup code');
-            assert.match(await text('#settings-setup-code-hint'), /Valid for about 59 more minutes; it works once\. It hides itself in a minute\./);
+            assert.match(await text('#settings-setup-code-hint'), /^The code is below\. .*Valid for about 59 more minutes; it works once\. It hides itself in a minute\./);
             await ev(`document.getElementById('settings-setup-code-copy').click(); true`);
             await waitFor(`document.getElementById('settings-setup-code-hint').textContent === 'Copied.'`, 'Copied', 5000);
             await ev(`document.getElementById('settings-setup-code-reveal').scrollIntoView({ block: 'center' }); true`);

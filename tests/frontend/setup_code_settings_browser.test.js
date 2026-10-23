@@ -36,7 +36,7 @@ const BASE = require('./test_base').BASE;
             check(`${tag}: with Remote access on there is a group, and the code is not on the screen or in the page`, a.shown && a.code === '' && !a.boxShown, JSON.stringify(a));
             await reveal();
             a = await group();
-            check(`${tag}: Show setup code shows it with how long it lasts`, a.code === 'H2XR-HS16' && a.boxShown && /about 59 more minutes;/.test(a.hint), JSON.stringify(a));
+            check(`${tag}: Show setup code shows it with how long it lasts`, a.code === 'H2XR-HS16' && a.boxShown && /about 59 more minutes;/.test(a.hint) && /^The code is below\./.test(a.hint), JSON.stringify(a));
             // read again each time Settings opens; not kept by the page
             await ev(`window.hideSettingsModal ? window.hideSettingsModal() : document.getElementById('settings-modal').style.display = 'none'; window.__show.reads = 0; window.__show.body = { code: 'ABCD-2345', expires_in: 60 }; true`);
             await open(); await remoteOn(true);

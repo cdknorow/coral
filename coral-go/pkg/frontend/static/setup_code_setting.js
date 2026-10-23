@@ -43,7 +43,7 @@ function show() {
     btn.textContent = 'Hide setup code';
     btn.setAttribute('aria-expanded', 'true');
     const m = minutes(_expires);
-    $('settings-setup-code-hint').textContent = `For linking or signing in from another device. Valid for about ${m} more minute${m === 1 ? '' : 's'}; it works once. It hides itself in a minute.`;
+    $('settings-setup-code-hint').textContent = `The code is below. For linking or signing in from another device. Valid for about ${m} more minute${m === 1 ? '' : 's'}; it works once. It hides itself in a minute.`;
     clearTimeout(_hideTimer);
     _hideTimer = setTimeout(() => hide(true), SHOW_MS); // timeout-ok: the code leaves the screen by itself
 }
