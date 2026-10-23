@@ -52,6 +52,35 @@ func waitingLine(text string) any {
 	return line
 }
 
+// waitingSource is the text a row's waiting_summary is made from: what the open request wants to do (the agent's PermissionRequest, stored already sanitized) when it said, else the
+// summary. Only the display reads it; the classifiers and auto-accept read the summary alone (#6622).
+func waitingSource(wants, summary string) string {
+	if strings.TrimSpace(wants) != "" {
+		return wants
+	}
+	return summary
+}
+
+// sanitizeWants turns the words a PermissionRequest sent for its wants into what is stored: the same line waitingLine shows, or nothing when there is none to show. The raw text is never
+// stored, logged or sent anywhere (#6622).
+func sanitizeWants(detail any) any {
+	d, ok := detail.(map[string]any)
+	if !ok {
+		return detail
+	}
+	raw, has := d["wants"]
+	if !has {
+		return detail
+	}
+	text, _ := raw.(string)
+	if line, ok := waitingLine(text).(string); ok && line != "" {
+		d["wants"] = line
+	} else {
+		delete(d, "wants")
+	}
+	return d
+}
+
 // waitingLineIf is waitingLine when cond holds, else nil (an agent that is not waiting has no line).
 func waitingLineIf(cond bool, text string) any {
 	if !cond {

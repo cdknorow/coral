@@ -21,6 +21,9 @@ type Event struct {
 	Kind string
 	// ToolName is the tool of a tool_use or permission_request, when known.
 	ToolName string
+	// Wants is what a permission_request wants to do ("Wants to run: <command>"), as the server stored it: already cleaned, redacted and cut (#6622). It is display text only: no
+	// classifier reads it, so an agent's command cannot say "needs your permission" to them.
+	Wants string
 	// At is when the event was recorded (zero when unknown).
 	At time.Time
 }
@@ -34,8 +37,12 @@ func NewEvent(eventType, summary string, detailJSON *string) Event {
 	var d struct {
 		Kind             string `json:"kind"`
 		NotificationType string `json:"notification_type"`
+		Wants            string `json:"wants"`
 	}
 	if json.Unmarshal([]byte(*detailJSON), &d) == nil {
+		if eventType == "permission_request" && len(d.Wants) <= maxWantsBytes {
+			e.Wants = d.Wants
+		}
 		e.Kind = d.Kind
 		if !RequestKinds[e.Kind] {
 			e.Kind = "" // agent-controlled: only the known kinds
@@ -46,6 +53,9 @@ func NewEvent(eventType, summary string, detailJSON *string) Event {
 	}
 	return e
 }
+
+// maxWantsBytes bounds the stored Wants of an event read back (the server stores at most 200 characters; this is the read side's own bound).
+const maxWantsBytes = 2048
 
 // RequestKinds are what an agent's request to the user can be (#3481). The kind comes
 // from the agent's own event, so anything else is ignored.
@@ -96,11 +106,13 @@ type State struct {
 	// WaitingKind is what the agent waits on while NeedsInput: permission, question,
 	// plan or elicitation, when the agent said so (#3481); empty otherwise.
 	WaitingKind string
-	Working     bool
-	NotStarted  bool
-	Sleeping    bool
-	Stuck       bool
-	Done        bool
+	// WaitingWants is what the open request wants to do (Event.Wants), or "" (#6622); only the row's display text reads it.
+	WaitingWants string
+	Working      bool
+	NotStarted   bool
+	Sleeping     bool
+	Stuck        bool
+	Done         bool
 	// NeedsLogin: the agent waits for the user to sign in (Input.NeedsLogin). It is also
 	// NeedsInput, kind KindLogin, so every surface that shows a request shows this one.
 	NeedsLogin bool
@@ -173,6 +185,7 @@ func (d *deriver) clearRequest() {
 	d.state.WaitingReason = ""
 	d.state.WaitingSummary = ""
 	d.state.WaitingKind = ""
+	d.state.WaitingWants = ""
 	d.pending, d.open = map[string]int{}, 0
 }
 
@@ -190,6 +203,9 @@ func (d *deriver) raise(event Event, kind string) {
 	d.state.AwaitingUser = false
 	d.state.WaitingReason = "notification"
 	d.state.WaitingSummary = event.Summary
+	if event.Wants != "" { // kept when the agent's notification for the same request follows: it carries no words of the request's own
+		d.state.WaitingWants = event.Wants
+	}
 }
 
 // phase is what the session is in: a request, a turn, idle, or nothing yet.

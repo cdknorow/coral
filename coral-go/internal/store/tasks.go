@@ -72,6 +72,24 @@ type AgentEvent struct {
 	RefID *string `db:"ref_id" json:"ref_id,omitempty"`
 }
 
+// MarshalJSON is the event as every API sends it. What a permission_request wants to do (its detail's "wants", #6622) is display text for the live row alone, which the
+// Coral Hub connector drops for a viewer who can only look: no events list, search or feed carries it, so a view-only viewer cannot read a command there.
+func (e AgentEvent) MarshalJSON() ([]byte, error) {
+	type plain AgentEvent
+	p := plain(e)
+	if e.EventType == "permission_request" && e.DetailJSON != nil && strings.Contains(*e.DetailJSON, `"wants"`) {
+		var d map[string]any
+		if json.Unmarshal([]byte(*e.DetailJSON), &d) == nil {
+			delete(d, "wants")
+			if b, err := json.Marshal(d); err == nil {
+				s := string(b)
+				p.DetailJSON = &s
+			}
+		}
+	}
+	return json.Marshal(p)
+}
+
 // StateEvent is the event as the session state derivation reads it: its type,
 // summary, kind (from its detail), tool and time (#3481).
 func (e AgentEvent) StateEvent() sessionstate.Event {
