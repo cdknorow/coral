@@ -37,11 +37,11 @@ func (s *SessionStore) UpsertSessionIndex(ctx context.Context, idx *SessionIndex
 		_, err := tx.ExecContext(ctx,
 			`INSERT OR REPLACE INTO session_index
 			 (session_id, source_type, source_file, first_timestamp, last_timestamp,
-			  message_count, display_summary, agent_name, display_name, indexed_at, file_mtime, index_version)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			  message_count, display_summary, first_user_message, agent_name, display_name, indexed_at, file_mtime, index_version)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			idx.SessionID, idx.SourceType, idx.SourceFile,
 			idx.FirstTimestamp, idx.LastTimestamp,
-			idx.MessageCount, idx.DisplaySummary,
+			idx.MessageCount, idx.DisplaySummary, idx.FirstUserMessage,
 			idx.AgentName, idx.DisplayName, now, idx.FileMtime, idx.IndexVersion)
 		return err
 	})
@@ -54,7 +54,7 @@ func (s *SessionStore) GetIndexedSession(ctx context.Context, sessionID string) 
 	var idx SessionIndex
 	err := s.reader().GetContext(ctx, &idx,
 		`SELECT session_id, source_type, source_file, first_timestamp, last_timestamp,
-			message_count, display_summary, agent_name, display_name, indexed_at, file_mtime, index_version
+			message_count, display_summary, first_user_message, agent_name, display_name, indexed_at, file_mtime, index_version
 		 FROM session_index WHERE session_id = ?`, sessionID)
 	if err == sql.ErrNoRows {
 		return nil, nil

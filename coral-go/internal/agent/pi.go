@@ -76,7 +76,7 @@ func parsePiSession(fpath string, mtime float64) (*IndexedSession, error) {
 
 	var sessionID string
 	var firstTS, lastTS *string
-	var summary string
+	var summary, firstMsg string
 	var fts FTSBodyBuilder
 	msgCount := 0
 
@@ -105,6 +105,11 @@ func parsePiSession(fpath string, mtime float64) (*IndexedSession, error) {
 			}
 			content, _ := entry["content"].(string)
 			fts.Add(content)
+			if firstMsg == "" {
+				if role, _ := entry["role"].(string); role == "user" && !injectedUserText(content) {
+					firstMsg = clipFirstMessage(content)
+				}
+			}
 			if summary == "" {
 				if role, _ := entry["role"].(string); role == "user" && content != "" {
 					summary = redactedCut(content, 200)
@@ -119,16 +124,17 @@ func parsePiSession(fpath string, mtime float64) (*IndexedSession, error) {
 	}
 
 	return &IndexedSession{
-		SessionID:      sessionID,
-		SourceType:     "pi",
-		SourceFile:     fpath,
-		FileMtime:      mtime,
-		FirstTimestamp: firstTS,
-		LastTimestamp:  lastTS,
-		MessageCount:   msgCount,
-		DisplaySummary: summary,
-		IndexVersion:   HistoryIndexVersion,
-		FTSBody:        buildFTSBody(summary, &fts),
+		SessionID:        sessionID,
+		SourceType:       "pi",
+		SourceFile:       fpath,
+		FileMtime:        mtime,
+		FirstTimestamp:   firstTS,
+		LastTimestamp:    lastTS,
+		MessageCount:     msgCount,
+		DisplaySummary:   summary,
+		FirstUserMessage: firstMsg,
+		IndexVersion:     HistoryIndexVersion,
+		FTSBody:          buildFTSBody(summary, &fts),
 	}, nil
 }
 
