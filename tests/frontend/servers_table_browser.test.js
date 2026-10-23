@@ -227,6 +227,7 @@ const contrast = (a, b) => {
         assert.equal(await ev(`document.querySelector('#server-row-m3 .cs-more-btn').getAttribute('aria-label')`), 'More for Box Three');
         await ev(`document.querySelector('#server-row-m3 .cs-more-btn').click(); true`);
         assert.equal(await ev(seen('#server-row-m3 .cs-revoke')), true, 'More shows Revoke');
+        assert.deepEqual(await ev(`(() => { const b = document.querySelector('#server-row-m3 .cs-more-btn'); return [b.getAttribute('aria-expanded'), b.hasAttribute('aria-haspopup'), !!document.getElementById(b.getAttribute('aria-controls'))]; })()`), ['true', false, true], 'More is a disclosure (expanded, controls its group), not a role=menu');
         await shot('table-desktop-more-open');
         await ev(`document.querySelector('#server-row-m3 .cs-more').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); true`);
         assert.equal(await ev(seen('#server-row-m3 .cs-revoke')), false, 'Escape closes More');
