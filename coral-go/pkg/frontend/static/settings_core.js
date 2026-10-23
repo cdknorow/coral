@@ -211,10 +211,17 @@ export async function loadSettings() {
         // Apply scrollbar visibility
         document.body.classList.toggle('no-scrollbars', !s.show_scrollbars);
 
-        // Apply theme from settings (default to Dark if no theme configured)
+        // Apply the saved theme: a custom theme by name; else the built-in Light, System or Dark the person saved (#283: before,
+        // every load forgot Light and System and showed Dark, and a browser's earlier choice could show instead of a saved Dark).
         // No custom theme (or the retired default) is the built-in one the page already has (theme_init.js): nothing is fetched or overlaid, so a hub that stores no theme leaves the stylesheet's own tokens (#6087).
         // Nothing is written into the settings here (#6114): a stored theme the person never picked would be saved back by the next Save.
-        if (s.custom_theme && s.custom_theme !== "GhostV3") await applyCustomThemeByName(s.custom_theme, { remember: false }); // the page load applies the person's stored theme; it does not rewrite the browser's saved choice
+        // A page load never rewrites the browser's saved choice (remember: false, #6087).
+        if (s.custom_theme && s.custom_theme !== "GhostV3") {
+            await applyCustomThemeByName(s.custom_theme, { remember: false });
+        } else if (s.theme === "light" || s.theme === "system" || s.theme === "dark") {
+            clearCustomThemeVars();
+            applyTheme(s.theme, { remember: false });
+        }
         // A partner build names itself in the settings menu
         _loadTierBadge();
     } catch (e) {
