@@ -62,6 +62,7 @@ const HEX = c => c.repeat(64);
         // no team: the line says to pick one
         await ev(`localStorage.removeItem('coral-agentic-tab-top'); window.TA.selectFilesSource('team-artifacts'); true`);
         await teamState(null, null);
+        await ev(`window.__RealDate = Date; { const RD = Date, FIXED = RD.parse('2026-10-10T12:00:00Z'); window.Date = class extends RD { constructor(...a) { if (a.length) super(...a); else super(FIXED); } static now() { return FIXED; } }; } true`); // the artifacts lists say "today" and "Oct 1" from the clock (#6751): fixed for these cases
         cases['team artifacts: no team'] = await snap('team-artifacts');
         // a team, a list that is still loading, then the answer
         await teamState(TEAM, SESSION);
@@ -103,6 +104,7 @@ const HEX = c => c.repeat(64);
         cases['agent artifacts: a standalone agent'] = await snap('artifacts');
         await teamState(null, null);
         cases['agent artifacts: no agent'] = await snap('artifacts');
+        await ev(`window.Date = window.__RealDate; true`);
 
         // ── needs_input_card.js needsInputHtml (through syncNeedsInputCard, which the chat calls on every poll) ──
         await ev(`(async () => { const st = ${S}; window.NI = await import(st + 'needs_input_card.js'); return true; })()`);

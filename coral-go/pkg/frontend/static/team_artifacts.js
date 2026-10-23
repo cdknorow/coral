@@ -13,6 +13,7 @@ import { boardFetch, teamFetch, serverUrl, splitKey, sessionTeamKey, sessionServ
 import { refreshDistill, startDistill, distillJob } from './knowledge_distill.js';
 import { browserLocal } from './safe_storage.js';
 import { buildBar } from './team_artifact_bar.js';
+import { shortWhen } from './artifact_when.js';
 import { loadPanelOpen, savePanelOpen } from './list_bar.js';
 import { EMPTY, isFiltered, loadFilters, saveFilters, toParams } from './team_artifact_filters.js';
 
@@ -365,7 +366,8 @@ function buildRow(item) {
             external_url: link.preview ? null : link.url,
         });
     };
-    const title = el(link ? 'button' : 'span', 'team-artifact-name', name);
+    const title = el(link ? 'button' : 'span', 'team-artifact-name');
+    title.append(el('span', 'team-artifact-name-text', name)); // the icon goes before it (below), on the same line (#6751)
     if (link) {
         title.type = 'button';
         title.addEventListener('click', doPreview);
@@ -421,7 +423,9 @@ function buildRow(item) {
     };
     if (!details.hidden) addReaders();
     info.append(details);row.append(info);
-    row.append(el('td', 'team-artifact-col-type', type), el('td', 'team-artifact-col-created', created));
+    const createdCell = el('td', 'team-artifact-col-created', shortWhen(item.created_at)); // short in the list, the whole time in its title and in Details
+    createdCell.title = created;
+    row.append(el('td', 'team-artifact-col-type', type), createdCell);
     const actionCell = el('td', 'team-artifact-col-actions');row.append(actionCell);
     const actions = el('div', 'team-artifact-actions');
     const infoBtn = el('button', 'team-artifacts-action team-artifact-icon-btn team-artifact-info-btn');

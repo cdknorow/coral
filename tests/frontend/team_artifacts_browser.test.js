@@ -301,7 +301,7 @@ const SHOTS = process.env.CORAL_SCREENSHOT_DIR;
                 nameLines: Math.max(...rows.map(r => { const n = r.querySelector('.team-artifact-name'); return Math.round(n.getBoundingClientRect().height / parseFloat(getComputedStyle(n).lineHeight)); })),
             };
         })()`;
-        for (const width of [680, 520, 420, 350, 320, 260]) {
+        for (const width of [900, 680, 520, 420, 350, 320, 260]) {
             await ev(`document.getElementById('agentic-state').style.width='${width}px'`); await settle();
             const l = await ev(LAYOUT);
             assert.equal(l.rows, 4, `${width}px: all rows rendered`);
@@ -312,7 +312,8 @@ const SHOTS = process.env.CORAL_SCREENSHOT_DIR;
             assert.ok(l.nameLines <= 2, `${width}px: names clamp to two lines (got ${l.nameLines})`);
             assert.ok(l.cols.includes('name') && l.cols.includes('actions'), `${width}px: Name and Actions always shown (${l.cols})`);
             if (width <= 420) assert.deepEqual(l.cols, ['name', 'actions'], `${width}px: narrow shows Name + Actions only`);
-            if (width >= 680) assert.deepEqual(l.cols, ['name', 'type', 'created', 'actions'], `${width}px: wide shows all four columns`);
+            if (width >= 900) assert.deepEqual(l.cols, ['name', 'type', 'created', 'actions'], `${width}px: wide shows all four columns`);
+            if (width === 680) assert.deepEqual(l.cols, ['name', 'created', 'actions'], `${width}px: a middle panel drops Type first (#6751)`);
         }
         await ev(`document.getElementById('agentic-state').style.width='320px'; document.getElementById('agentic-state').style.zoom='2'`); await settle();
         let z = await ev(LAYOUT);

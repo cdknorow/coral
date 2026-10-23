@@ -2371,11 +2371,13 @@ body.panel-dragging .agentic-state {
 .team-artifacts-caption { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 .team-artifacts-list :is(th, td) { padding: var(--space-md) var(--space-lg); vertical-align: top; text-align: left; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
 .team-artifacts-list th { color: var(--text-secondary); font-weight: 500; }
-.team-artifact-col-type { width: 88px; }
-.team-artifact-col-created { width: 170px; }
+.team-artifact-col-type { width: 72px; }
+.team-artifact-col-created { width: 112px; } /* short times ("today 9:46", "Oct 21"): Name gets the free width (#6751) */
 .team-artifact-col-actions { width: calc(212px + 2 * var(--space-lg)); } /* six 32 px icon buttons and their gaps: Details, Preview, Download, Copy link, Keep, Delete (#4469, #5283) */
-/* Long names wrap to two lines, then ellipsize; the full name is the tooltip. */
-.team-artifact-name { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; padding: 0; background: none; border: 0; color: var(--text-primary); font: 500 var(--fs-md)/1.4 var(--font-sans); text-align: left; overflow-wrap: anywhere; }
+/* The file icon beside the name, one line, an ellipsis only when the name is truly long; the full name is the tooltip (#6751). */
+.team-artifact-name > :not(.team-artifact-name-text) { flex: none; }
+.team-artifact-name-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.team-artifact-name { display: flex; align-items: center; gap: 6px; max-width: 100%; min-width: 0; overflow: hidden; padding: 0; background: none; border: 0; color: var(--text-primary); font: 500 var(--fs-md)/1.4 var(--font-sans); text-align: left; overflow-wrap: anywhere; }
 button.team-artifact-name { cursor: pointer; }
 .team-artifact-missing { font-size: var(--fs-base); color: var(--text-secondary); }
 /* Where a row came from: a file this team sent, one from another computer, or a link Coral could not verify (#4396). Words, not colour alone. */
@@ -2388,6 +2390,8 @@ button.team-artifact-name { cursor: pointer; }
 .team-artifact-details dt { font-weight: 600; margin-top: var(--space-md); }
 .team-artifact-details dd { margin: 0; overflow-wrap: anywhere; }
 .team-artifact-details dd + dd { margin-top: var(--space-xs); } /* several senders of one file are one line each, with a gap between them (#4460) */
+/* A middle panel drops Type first (it is in Details); a narrow one shows Name and Actions only. */
+@container (max-width: 760px) { .team-artifacts-list .team-artifact-col-type { display: none; } }
 /* A narrow panel shows Name and Actions; Type and Created are in Details. */
 @container (max-width: 520px) {
     .team-artifacts-list :is(.team-artifact-col-type, .team-artifact-col-created) { display: none; }
