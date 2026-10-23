@@ -341,3 +341,29 @@ func TestAutoWakeNoticeNudgesTheNamedAgent(t *testing.T) {
 		assert.Equal(t, want, n, who)
 	}
 }
+
+// GET /api/system/auto-wake says whether a Coral started now would skip the wake, in the notice's own words: the tray's Quit label reads it (#319).
+func TestAutoWakeStatusSaysWhatTheGuardWouldDo(t *testing.T) {
+	r := newWakeRig(t)
+	get := func() autoWakeStatus {
+		rec := httptest.NewRecorder()
+		r.h.AutoWakeStatus(rec, httptest.NewRequest("GET", "/api/system/auto-wake", nil))
+		require.Equal(t, http.StatusOK, rec.Code)
+		var st autoWakeStatus
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &st))
+		return st
+	}
+	st := get()
+	assert.False(t, st.GuardedNow, "no pass yet: a start now wakes")
+	assert.Empty(t, st.GuardWhy)
+
+	runs, _ := json.Marshal([]time.Time{r.now.Add(-3 * time.Minute)})
+	require.NoError(t, os.WriteFile(filepath.Join(r.h.cfg.CoralDir(), autoWakeRunsFile), runs, 0o600))
+	st = get()
+	assert.True(t, st.GuardedNow, "a pass 3 minutes ago: a start now is skipped")
+	assert.Equal(t, "Coral woke its agents less than 10 minutes ago", st.GuardWhy)
+
+	r.now = r.now.Add(8 * time.Minute) // 11 minutes since the pass
+	st = get()
+	assert.False(t, st.GuardedNow, "the guard has lapsed")
+}
