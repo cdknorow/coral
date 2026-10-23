@@ -64,6 +64,8 @@ jobs:
           python3 tests/release/windows_build_census_test.py   # windows-tests' package build is release.yml's Windows build: same tags and programs (#5886)
           python3 tests/release/trimpath_census_test.py   # every release and installer go build has -trimpath: no builder path in a shipped trace (#6052)
           python3 tests/release/verify_buildinfo_test.py   # verify-release reads a -trimpath build by its vcs.revision, not by an ldflags line that is no longer there (#6052)
+          python3 tests/release/release_code_test.py   # the release code's TOTP check: RFC 6238 vectors, hostile values, mutants (#6274)
+          python3 tests/release/promote_workflow_test.py   # promote.yml's order of steps, permissions and pinned actions, and the manifest builder (#6274)
           bash tests/release/signature_required_check_test.sh   # the N4 check: a required Windows signature never meets an unsigned build
           bash tests/release/ldflags_build_test.sh      # every build script's -X flags take effect: version and PostHog key land in the binary (#5539)
           bash tests/release/resolve_release.sh "$GITHUB_REF_NAME" | tee -a "$GITHUB_OUTPUT"
