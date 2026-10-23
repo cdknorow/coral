@@ -154,3 +154,18 @@ func TestACodexRealTimelineOpenDialogThenNoClearsOnlyAfterItsTail(t *testing.T) 
 	assert.False(t, r.needsInput(), "and the abort keeps it closed")
 	assert.False(t, r.h.blockedOnBox(context.Background(), r.name, "codex", r.sid))
 }
+
+// #6658: a bookkeeping record (token_usage_record, turn_context) written well after the request, while the dialog is still open, does not close it: the row stays at Needs input and a person's
+// message stays held. (Before, any record outside event_msg counted as the turn going on.)
+func TestALateBookkeepingRecordDoesNotCloseAnOpenCodexRequest(t *testing.T) {
+	r := newCodexRig(t)
+	r.openDialog()
+	require.True(t, r.needsInput())
+	for _, kind := range []string{"token_usage_record", "turn_context"} {
+		r.line(kind, "", 3*time.Second) // two seconds past the whole-second margin
+		assert.True(t, r.needsInput(), kind+": the dialog is still open")
+		assert.True(t, r.h.blockedOnBox(context.Background(), r.name, "codex", r.sid), kind+": and the message is still held")
+	}
+	r.line("response_item", "custom_tool_call_output", 3*time.Second) // the turn's own record does close it
+	assert.False(t, r.needsInput())
+}
