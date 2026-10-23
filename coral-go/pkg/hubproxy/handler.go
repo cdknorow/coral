@@ -213,6 +213,16 @@ func (h *Handler) proxyHTTP(w http.ResponseWriter, r *http.Request, id string, t
 			if r.Context().Err() != nil && !deadlines.bodyExpired() {
 				return // browser went away
 			}
+			if deadlines.bodyExpired() {
+				// The browser's upload was too slow or stopped: its fault, not the machine's outage, so the
+				// server is not marked unreachable and the reply says which limit it hit.
+				msg := "upload stalled"
+				if deadlines.uploadCut() == CodeUploadTooSlow {
+					msg = "upload too slow"
+				}
+				h.writeCodedErr(w, http.StatusRequestTimeout, msg, deadlines.uploadCut(), id)
+				return
+			}
 			h.writeUpstreamErr(w, req.Context(), id, err)
 		},
 	}
@@ -237,6 +247,7 @@ type proxyDeadlines struct {
 	lastProgress                       time.Time
 	bodyDone, headersReceived, stopped bool
 	bodyTimedOut                       bool
+	bodyStalled                        bool // the cut was the stall limit, not the total cap
 }
 
 func (d *proxyDeadlines) startBody() {
@@ -262,6 +273,7 @@ func (d *proxyDeadlines) expireBody(idle bool) {
 		}
 	}
 	d.bodyTimedOut = true
+	d.bodyStalled = idle
 	d.abortBody()
 }
 
@@ -297,6 +309,22 @@ func (d *proxyDeadlines) bodyExpired() bool {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return d.bodyTimedOut
+}
+
+// Codes a cut upload answers (408, "code" in the body), for the dashboard to say which limit it hit (#6190).
+const (
+	CodeUploadStalled = "upload_stalled"
+	CodeUploadTooSlow = "upload_too_slow"
+)
+
+// uploadCut is the code for an upload the proxy ended: the stall limit or the total cap.
+func (d *proxyDeadlines) uploadCut() string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.bodyStalled {
+		return CodeUploadStalled
+	}
+	return CodeUploadTooSlow
 }
 
 func (d *proxyDeadlines) stop() {

@@ -2,6 +2,7 @@ package hubproxy
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -131,7 +132,7 @@ func TestProxyHeaderTimeoutAfterBody(t *testing.T) {
 func TestProxyUploadStallTimeout(t *testing.T) {
 	t.Parallel()
 	remoteDone := make(chan struct{})
-	_, hub, _ := setup(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	res, hub, _ := setup(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer close(remoteDone)
 		_, _ = io.Copy(io.Discard, r.Body)
 	}), nil)
@@ -156,7 +157,8 @@ func TestProxyUploadStallTimeout(t *testing.T) {
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
-	require.Equal(t, http.StatusBadGateway, resp.StatusCode)
+	requireUploadCut(t, resp.StatusCode, resp.Body, CodeUploadStalled)
+	require.False(t, res.hasMark("a:"+StatusUnreachable), "a slow browser upload is not an outage of the machine")
 	require.GreaterOrEqual(t, time.Since(started), 29*time.Second)
 	require.Less(t, time.Since(started), 35*time.Second)
 	select {
@@ -192,7 +194,7 @@ func TestProxyUploadOverallTimeout(t *testing.T) {
 		recorder := httptest.NewRecorder()
 		started := time.Now()
 		(&Handler{}).proxyHTTP(recorder, req, "a", target, "/api/upload", "/api/upload")
-		require.Equal(t, http.StatusBadGateway, recorder.Code)
+		requireUploadCut(t, recorder.Code, recorder.Body, CodeUploadTooSlow)
 		require.Equal(t, 10*time.Minute, time.Since(started), "moving bytes reset the idle limit, never the total cap")
 		require.Greater(t, received, int64(0))
 		require.Greater(t, body.remaining, int64(0), "the trickle never reached EOF")
@@ -264,7 +266,18 @@ func TestProxyUploadProgressResetsStall(t *testing.T) {
 		req.ContentLength = -1
 		recorder := httptest.NewRecorder()
 		(&Handler{}).proxyHTTP(recorder, req, "a", target, "/api/upload", "/api/upload")
-		require.Equal(t, http.StatusBadGateway, recorder.Code)
+		requireUploadCut(t, recorder.Code, recorder.Body, CodeUploadStalled)
 		require.Equal(t, 50*time.Second, time.Since(started), "stall time starts at the most recent body byte")
 	})
+}
+
+// requireUploadCut pins the reply to an upload the proxy ended (#6190): 408 with a fixed code naming the limit,
+// never the generic "remote unreachable" that means the machine is down.
+func requireUploadCut(t *testing.T, status int, body io.Reader, code string) {
+	t.Helper()
+	require.Equal(t, http.StatusRequestTimeout, status)
+	var reply map[string]string
+	require.NoError(t, json.NewDecoder(body).Decode(&reply))
+	require.Equal(t, code, reply["code"])
+	require.NotContains(t, reply["error"], "unreachable")
 }
