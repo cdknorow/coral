@@ -51,25 +51,35 @@ func (m member) current() bool {
 	return err == nil && created == m.created
 }
 
-// procSnap is the process table at one moment: who is whose child, and a handle on each process. One scan serves every terminal that is asked about.
+// procInfo is what a scan of the process table knows of one process: its parent and when it started.
+type procInfo struct {
+	ppid    int
+	created int64
+}
+
+// procSnap is the process table at one moment: who is whose child, and when each process started. One scan serves every terminal that is asked about.
 type procSnap struct {
-	parent map[int]int
-	byPID  map[int]*process.Process
+	parent  map[int]int
+	started map[int]int64
 }
 
 func takeSnap() *procSnap {
-	procs, err := process.Processes()
+	table, err := scanProcTable()
 	if err != nil {
 		return &procSnap{}
 	}
-	s := &procSnap{parent: make(map[int]int, len(procs)), byPID: make(map[int]*process.Process, len(procs))}
-	for _, p := range procs {
-		s.byPID[int(p.Pid)] = p
-		if pp, err := p.Ppid(); err == nil {
-			s.parent[int(p.Pid)] = int(pp)
-		}
+	s := &procSnap{parent: make(map[int]int, len(table)), started: make(map[int]int64, len(table))}
+	for pid, in := range table {
+		s.parent[pid] = in.ppid
+		s.started[pid] = in.created
 	}
 	return s
+}
+
+// has reports whether m is a process of this snapshot and still the one it was (its pid has not been given to another since).
+func (s *procSnap) has(m member) bool {
+	created, ok := s.started[m.pid]
+	return ok && created == m.created
 }
 
 // tree is every live process of the terminal whose shell is root and that carries tag: root and what descends from it, and what carries the tag wherever it now is. root counts only while it is
@@ -78,10 +88,8 @@ func takeSnap() *procSnap {
 func (s *procSnap) tree(root member, tag string) []member {
 	self, selfGroup := os.Getpid(), syscall.Getpgrp()
 	members := map[int]bool{}
-	if root.pid > 1 && root.current() {
-		if _, ok := s.parent[root.pid]; ok {
-			members[root.pid] = true
-		}
+	if root.pid > 1 && s.has(root) {
+		members[root.pid] = true
 	}
 	for grown := true; grown; {
 		grown = false
@@ -93,11 +101,11 @@ func (s *procSnap) tree(root member, tag string) []member {
 		}
 	}
 	want := runTagEnv + "=" + tag
-	for pid, p := range s.byPID {
+	for pid := range s.started {
 		if members[pid] || tag == "" { // no tag (a tmux pane has none): descent only
 			continue
 		}
-		if env, err := p.Environ(); err == nil {
+		if env, err := (&process.Process{Pid: int32(pid)}).Environ(); err == nil {
 			for _, kv := range env {
 				if kv == want {
 					members[pid] = true
@@ -111,8 +119,8 @@ func (s *procSnap) tree(root member, tag string) []member {
 		if excluded(pid, self, selfGroup) {
 			continue
 		}
-		created, err := s.byPID[pid].CreateTime()
-		if err != nil {
+		created, ok := s.started[pid]
+		if !ok {
 			continue
 		}
 		out = append(out, member{pid, created})
@@ -244,10 +252,13 @@ func mergeCapped(old, add []member, max int) (merged []member, dropped bool) {
 }
 
 // stillThere is the members of ms that are still the processes they were.
-func stillThere(ms []member) []member {
+func stillThere(ms []member) []member { return stillThereBy(ms, member.current) }
+
+// stillThereBy is stillThere with live deciding: member.current asks the system about each member; a snapshot's has asks nothing.
+func stillThereBy(ms []member, live func(member) bool) []member {
 	out := ms[:0:0]
 	for _, m := range ms {
-		if m.current() {
+		if live(m) {
 			out = append(out, m)
 		}
 	}
@@ -286,11 +297,14 @@ func (s *seen) add(ms []member) []member {
 }
 
 // prune forgets members that have ended (or whose pid now belongs to another process).
-func (s *seen) prune() {
+func (s *seen) prune() { s.pruneBy(member.current) }
+
+// pruneBy is prune with isLive deciding who is still there (see stillThereBy).
+func (s *seen) pruneBy(isLive func(member) bool) {
 	s.mu.Lock()
 	ms := append([]member(nil), s.ms...)
 	s.mu.Unlock()
-	live := stillThere(ms)
+	live := stillThereBy(ms, isLive)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	keep := map[member]bool{}
