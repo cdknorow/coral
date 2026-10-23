@@ -29,6 +29,10 @@ func NewScheduleHandler(db *store.DB, cfg *config.Config) *ScheduleHandler {
 	}
 }
 
+// fireTimeLayout is how a next fire time is written: the job's own clock time WITH its real UTC offset ("-07:00", "+09:00", "+00:00" for UTC), so a reader gets the right instant. It used to be
+// the zone's clock time labelled "+00:00", which for any job outside UTC named an instant hours away from the real one (#6538). A numeric offset always, never "Z", so a UTC job reads as before.
+const fireTimeLayout = "2006-01-02T15:04:05-07:00"
+
 // ListJobs returns all scheduled jobs enriched with last_run and next_fire_at.
 // GET /api/scheduled/jobs
 func (h *ScheduleHandler) ListJobs(w http.ResponseWriter, r *http.Request) {
@@ -69,7 +73,7 @@ func (h *ScheduleHandler) ListJobs(w http.ResponseWriter, r *http.Request) {
 			}
 			next := s.Next(time.Now().In(loc))
 			if !next.IsZero() {
-				ts := next.In(loc).Format("2006-01-02T15:04:05+00:00")
+				ts := next.In(loc).Format(fireTimeLayout)
 				ej.NextFireAt = &ts
 			}
 		}
@@ -406,7 +410,7 @@ func (h *ScheduleHandler) ValidateCron(w http.ResponseWriter, r *http.Request) {
 		if t.IsZero() {
 			break
 		}
-		nextFires = append(nextFires, t.In(loc).Format("2006-01-02T15:04:05+00:00"))
+		nextFires = append(nextFires, t.In(loc).Format(fireTimeLayout))
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"valid": true, "next_fire_times": nextFires})
