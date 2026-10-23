@@ -301,6 +301,7 @@ class CloudPanel {
                 const ago = Number.isFinite(seen) ? `, seen ${Math.max(0, Math.round((Date.now() - seen) / 60000))} min ago` : '';
                 cand.textContent = `The last owner Coral Hub showed was ${d.candidate}${host ? ` (${host})` : ''}${ago}. Confirm owner trusts the account that opens an owner-only page next.`;
                 cand.hidden = false;
+            } else if (d.several === true) { cand.textContent = 'More than one Coral Hub account tried this; check who has access, then try again.'; cand.hidden = false;
             } else if (host) { cand.textContent = `Confirm owner trusts the account that opens an owner-only page next through ${host}.`; cand.hidden = false; }
         } catch { /* the row keeps its text */ }
     }
@@ -314,6 +315,10 @@ class CloudPanel {
         try {
             const r = await fetch('/api/cloud/owner-label/arm', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
             if (r.status === 429) return fail('Pressed a few times already. Try again later, or link this computer again.');
+            if (r.status === 409) {
+                const body = await r.json().catch(() => null);
+                if (body && body.code === 'several_hub_users') return fail('More than one Coral Hub account tried this; check who has access, then try again.');
+            }
             if (!r.ok) return fail(r.status === 409 ? 'Coral Hub is not connected right now, or the owner is already recorded.' : 'Could not start. Link this computer again instead.');
             reply = await r.json();
         } catch { return fail('Could not start. Link this computer again instead.'); }

@@ -299,3 +299,36 @@ func TestAFailedAdoptionUsesTheWindowUp(t *testing.T) {
 	assert.Equal(t, "owner_label_missing", refusalCode(t, e.hubOwnerRequest(ownerHeaders(ownerLabel))), "the window was used up by the first request")
 	assert.Empty(t, e.store.adopted)
 }
+
+// #6186: only a read adopts. A write through the hub while armed is refused as before and leaves the window for the read that follows.
+func TestOnlyAReadAdoptsAndAWriteDoesNotUseTheWindowUp(t *testing.T) {
+	e := newOwnerLabelEnv(t)
+	require.Equal(t, http.StatusOK, e.arm().Code)
+	rec := customCall(customRig(t), http.MethodPut, oneCustomModel, ownerHeaders(ownerLabel))
+	assert.Equal(t, "owner_label_missing", refusalCode(t, rec), "a write is refused, not adopted")
+	assert.Empty(t, e.store.adopted)
+	assert.Equal(t, http.StatusOK, e.hubOwnerRequest(ownerHeaders(ownerLabel)).Code, "the read after it still adopts: the write did not use the window up")
+	assert.Equal(t, []string{ownerLabel}, e.store.adopted)
+}
+
+// #6186: when more than one hub account was stamped as the owner in the last hour, Confirm owner is refused with a plain message and nothing is adopted, even if it was armed earlier.
+func TestSeveralStampedHubUsersRefuseToArmAndToAdopt(t *testing.T) {
+	e := newOwnerLabelEnv(t)
+	other := "hub-user-00001111"
+	require.NotEqual(t, ownerLabel, other)
+	// a first account is stamped, then a second one
+	assert.Equal(t, "owner_label_missing", refusalCode(t, e.hubOwnerRequest(ownerHeaders(ownerLabel))))
+	assert.Equal(t, "owner_label_missing", refusalCode(t, e.hubOwnerRequest(ownerHeaders(other))))
+	rec := e.arm()
+	require.Equal(t, http.StatusConflict, rec.Code, rec.Body.String())
+	assert.Contains(t, rec.Body.String(), "several_hub_users")
+	assert.Contains(t, rec.Body.String(), "More than one Coral Hub account tried this; check who has access, then try again")
+	assert.Empty(t, e.store.adopted)
+
+	// armed with one account stamped, a second account stamped afterwards: the request that would adopt is refused and the label stays empty
+	e2 := newOwnerLabelEnv(t)
+	assert.Equal(t, "owner_label_missing", refusalCode(t, e2.hubOwnerRequest(ownerHeaders(ownerLabel))))
+	require.Equal(t, http.StatusOK, e2.arm().Code)
+	assert.Equal(t, "owner_label_missing", refusalCode(t, e2.hubOwnerRequest(ownerHeaders(other))), "two accounts in the hour: nothing is adopted")
+	assert.Empty(t, e2.store.adopted)
+}

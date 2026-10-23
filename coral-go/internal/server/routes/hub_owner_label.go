@@ -18,7 +18,7 @@ import (
 
 const (
 	ownerArmWindow = time.Minute // how long a press of Confirm owner is good for
-	ownerArmsMax   = 3           // presses per hour
+	ownerArmsMax   = 3           // presses per hour, counted per run of Coral (in memory: a restart starts again, which needs someone at this computer too)
 	ownerArmsSpan  = time.Hour
 )
 
@@ -84,6 +84,13 @@ func ownerArmedUntil(now time.Time) time.Time {
 func (h *CloudHandler) SetOwnerLabelStore(s ownerLabelStore) {
 	h.ownerLabels = s
 	hubOwnerAdopt = h.adoptOwner
+	// A freshly wired handler starts with no memory of which accounts the Hub stamped and with nothing armed: what was seen before it was wired does not decide who it trusts (#6186).
+	ownerStamps.Lock()
+	ownerStamps.seen = map[string]time.Time{}
+	ownerStamps.Unlock()
+	ownerArm.Lock()
+	ownerArm.until, ownerArm.arms = time.Time{}, nil
+	ownerArm.Unlock()
 }
 
 // adoptOwner records user as the owner label when this computer is linked, the tunnel is up to the enrolled hub, and no label is recorded.
@@ -183,8 +190,11 @@ func (h *CloudHandler) OwnerLabel(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, reply)
 }
 
+// textSeveralHubUsers is the answer to Confirm owner when the Hub stamped more than one account as the owner in the last hour (#6186): there is no one account to trust.
+const textSeveralHubUsers = "More than one Coral Hub account tried this; check who has access, then try again"
+
 // ArmOwnerLabel: POST /api/cloud/owner-label/arm {} (this computer's dashboard only; never through Coral Hub). It arms the adoption for a minute, only while no owner label is recorded and the
-// tunnel is up to the enrolled hub, and at most three times an hour. The label itself is recorded by the first owner-only request the Hub stamps for the owner in that minute (adoptOwnerFromRequest).
+// tunnel is up to the enrolled hub, and at most three times an hour per run of Coral (the count is in memory). The label itself is recorded by the first owner-only request the Hub stamps for the owner in that minute (adoptOwnerFromRequest).
 func (h *CloudHandler) ArmOwnerLabel(w http.ResponseWriter, r *http.Request) {
 	if h.refuseCloud(w, r, allowDashboard) || !requireJSON(w, r) {
 		return
@@ -204,6 +214,10 @@ func (h *CloudHandler) ArmOwnerLabel(w http.ResponseWriter, r *http.Request) {
 		return
 	case !h.connectedToEnrolledHub():
 		writeJSON(w, http.StatusConflict, map[string]string{"code": "hub_not_connected", "error": "Coral Hub is not connected to the hub this computer was linked to"})
+		return
+	}
+	if _, _, several := ownerCandidate(ownerNow()); several {
+		writeJSON(w, http.StatusConflict, map[string]string{"code": "several_hub_users", "error": textSeveralHubUsers})
 		return
 	}
 	until, ok, retry := armOwnerAdoption(ownerNow())

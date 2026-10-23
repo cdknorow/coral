@@ -132,13 +132,21 @@ func refuseNonOwner(w http.ResponseWriter, r *http.Request) bool {
 
 // adoptOwnerFromRequest is called by refuseNonOwner for a request that passed every owner check except the missing label (ownerLabelMissingFor): an owner-only route, the connector's own
 // stamp, the owner marker and a hub user of the exact form. If the adoption is armed it is used up here, and when the connected hub is the enrolled one the request's hub user becomes the owner
-// label; true means the label was recorded and the request goes on as the owner's.
+// label; true means the label was recorded and the request goes on as the owner's. Only GET and HEAD adopt, and never while several hub accounts were stamped as the owner in the last hour.
 func adoptOwnerFromRequest(r *http.Request) bool {
 	if hubOwnerAdopt == nil {
 		return false
 	}
+	// Only a read can carry the adoption (a write is refused without using the arm up): a label recorded from a request that changes something would let that request act before anyone confirmed the account.
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		return false
+	}
 	id := identifyOwner(r, hubOwnerLabel, &hubOwnerNoLabelLog)
 	if !id.owner || !tunnel.ValidHubUser(id.pseudo) {
+		return false
+	}
+	// More than one hub account was stamped as the owner in the last hour: there is no one account to trust, so nothing is adopted (and the arm stays for the person to see the answer).
+	if _, _, several := ownerCandidate(ownerNow()); several {
 		return false
 	}
 	if !takeOwnerArm(ownerNow()) {
