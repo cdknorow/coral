@@ -142,7 +142,11 @@ function _connectHtml() {
             <div class="editions-status" data-cloud="status" role="status" aria-live="polite">Loading…</div>
             <div class="editions-code" data-cloud="code" hidden>
                 <div>Open <a data-cloud="link" target="_blank" rel="noopener noreferrer"></a> — your code should already be filled in:</div>
-                <div class="editions-usercode" data-cloud="usercode"></div>
+                <div class="editions-usercode-row">
+                    <div class="editions-usercode" data-cloud="usercode"></div>
+                    <button type="button" class="btn btn-icon editions-copy-code" data-cloud="copy-code" aria-label="Copy code" title="Copy code"><span class="material-icons" aria-hidden="true">content_copy</span></button>
+                    <span class="sr-only" data-cloud="copy-code-said" role="status"></span>
+                </div>
             </div>
             <div class="cloud-command-row" data-cloud="command-row" hidden><code data-cloud="command"></code><button type="button" class="btn btn-small" data-cloud="copy">Copy</button></div>
             <fieldset class="editions-ask" data-cloud="ask-row" hidden>

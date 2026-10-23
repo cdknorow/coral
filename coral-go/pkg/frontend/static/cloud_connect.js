@@ -118,6 +118,9 @@ export function describe(st) {
     return st.state === 'idle' && st.last_error_code === 'code_expired';
 }
 
+/** Write a text only when it changed: the poll redraws the panel every few seconds, and rewriting an element's text throws away a selection inside it (the code a person is selecting, #6323). */
+function put(el, v) { if (el && el.textContent !== v) el.textContent = v; }
+
 function safeHref(u) {
     try {
         const p = new URL(u);
@@ -156,7 +159,7 @@ class CloudPanel {
 
     say(text) {
         const s = this.part('status');
-        if (s) s.textContent = text;
+        put(s, text);
     }
 
     /** After a failed start the server says how many seconds until Connect may ask again (retry_in_s): "Try again in 27 s" counts down beside the sentence (a plain element that is not a live region, so a
@@ -202,11 +205,11 @@ class CloudPanel {
             const href = safeHref(st.verification_url);
             const a = this.part('link');
             if (a) {
-                a.textContent = href || st.hub_url;
+                put(a, href || st.hub_url);
                 if (href) a.setAttribute('href', href); else a.removeAttribute('href');
             }
             const uc = this.part('usercode');
-            if (uc) uc.textContent = st.user_code || '';
+            put(uc, st.user_code || '');
         }
         const show = (role, on) => { const el = this.part(role); if (el) el.hidden = !on; };
         // A server with no hub says what to run: the command is in the row, with Copy (a person copies it into a terminal).
@@ -214,7 +217,7 @@ class CloudPanel {
         if (startRow && st.state === 'off') {
             const all = this.commandsInRow ? `${START_COMMAND}\n${CONNECT_COMMAND}` : START_COMMAND;
             show('command-row', true);
-            const c = this.part('command'); if (c) c.textContent = all;
+            put(this.part('command'), all);
             this.command = all;
             if (this.commandsInRow) this.say(OFF_SHORT);
         }
@@ -230,7 +233,7 @@ class CloudPanel {
         const sk = st.secret_key;
         show('rekey-row', !!sk && sk.state === 'refused');
         const rt = this.part('rekey-text');
-        if (rt) rt.textContent = sk ? rekeyText(sk) : '';
+        put(rt, sk ? rekeyText(sk) : '');
         this.secretKey = sk || null;
         this.last = st;
         let mode = st.max_mode || 'view';
@@ -241,7 +244,7 @@ class CloudPanel {
         if (ask) {
             this.asking = st.state === 'idle' || st.state === 'revoked';
             if (this.asking) { if (!this.pick) this.pick = st.max_mode_saved ? mode : 'launch'; mode = this.pick; } else this.pick = null;
-            ask.hidden = !st.configured || st.state === 'off';
+            ask.hidden = !st.configured || st.state === 'off' || st.state === 'enrolling' || st.state === 'connecting'; // waiting for the approval: the answer was given before Connect and went with it, so only the code, the link and Cancel are on the screen (#6323)
             for (const r of ask.querySelectorAll('input[data-cloud-mode]')) r.checked = r.value === mode;
         }
         const sel = this.part('max-mode');
@@ -260,8 +263,8 @@ class CloudPanel {
         }
         const desc = this.part('mode-desc');
         const full = this.part('mode-full');
-        if (full) full.textContent = MODE_HELP[mode] + ' Coral Hub\'s owner can limit this further for each server, never raise it.';
-        if (desc) desc.textContent = unchosen ? (st.state !== 'idle' && st.state !== 'off' ? 'Coral Hub can only view until you choose here.' : 'Chosen when you connect. Until then Coral Hub can only view.') : MODE_SHORT[mode];
+        if (full) put(full, MODE_HELP[mode] + ' Coral Hub\'s owner can limit this further for each server, never raise it.');
+        if (desc) put(desc, unchosen ? (st.state !== 'idle' && st.state !== 'off' ? 'Coral Hub can only view until you choose here.' : 'Chosen when you connect. Until then Coral Hub can only view.') : MODE_SHORT[mode]);
         // Auto-accept from the hub (#3182): a local kill switch, shown only with Launch (the owner's opt-in),
         // on unless the owner turned it off here. Only changeable on this computer.
         show('auto-accept-row', mode === 'launch');
@@ -503,6 +506,16 @@ class CloudPanel {
             const ok = await copyText(this.command || CONNECT_COMMAND);
             btn.textContent = ok ? 'Copied' : 'Copy failed';
             setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+        });
+        this.part('copy-code')?.addEventListener('click', async () => {
+            const btn = this.part('copy-code'), code = this.part('usercode'), said = this.part('copy-code-said');
+            const ok = await copyText((code && code.textContent) || ''); // the code exactly as shown
+            const icon = btn.querySelector('.material-icons');
+            if (icon) icon.textContent = ok ? 'check' : 'error_outline';
+            btn.setAttribute('aria-label', ok ? 'Copied' : 'Copy failed');
+            put(said, ok ? 'Code copied' : 'Could not copy the code');
+            clearTimeout(this.copyCodeTimer);
+            this.copyCodeTimer = setTimeout(() => { if (icon) icon.textContent = 'content_copy'; btn.setAttribute('aria-label', 'Copy code'); put(said, ''); }, 1500);
         });
         this.part('max-mode')?.addEventListener('change', (e) => { if (e.target.value) this.act('PUT', '/api/cloud/max-mode', { mode: e.target.value }); }); // the "Not chosen yet" placeholder saves nothing
         this.part('allow-auto-accept')?.addEventListener('change', (e) => {

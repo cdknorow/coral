@@ -1024,7 +1024,11 @@
                     <div id="settings-cloud-status" data-cloud="status" class="settings-hint" role="status" aria-live="polite">Loading…</div>
                     <div id="settings-cloud-code" data-cloud="code" class="settings-cloud-code" hidden>
                         <div>Open <a id="settings-cloud-link" data-cloud="link" target="_blank" rel="noopener noreferrer"></a> — your code should already be filled in:</div>
-                        <div id="settings-cloud-usercode" data-cloud="usercode" class="settings-mono-input settings-cloud-usercode"></div>
+                        <div class="settings-cloud-usercode-row">
+                            <div id="settings-cloud-usercode" data-cloud="usercode" class="settings-mono-input settings-cloud-usercode"></div>
+                            <button type="button" class="btn btn-icon editions-copy-code" data-cloud="copy-code" aria-label="Copy code" title="Copy code"><span class="material-icons" aria-hidden="true">content_copy</span></button>
+                            <span class="sr-only" data-cloud="copy-code-said" role="status"></span>
+                        </div>
                     </div>
                     <div class="cloud-command-row" data-cloud="command-row" hidden><code data-cloud="command"></code><button type="button" class="btn btn-small" data-cloud="copy">Copy</button></div>
                     <div class="settings-cloud-actions">

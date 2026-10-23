@@ -928,6 +928,11 @@ body.hub-no-machine .welcome-launch-list, body.hub-no-machine .welcome-header p,
 .editions-code { color: var(--text-secondary); font-size: 0.8125rem; }
 .editions-code[hidden], .editions-cloud [hidden] { display: none; }
 .editions-code a { color: var(--accent); word-break: break-all; }
+.editions-usercode-row, .settings-cloud-usercode-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.editions-usercode-row .editions-usercode { margin-top: 0; }
+.editions-copy-code { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; padding: 0; }
+.editions-copy-code .material-icons { font-size: 1.25rem; }
+@media (pointer: coarse) { .editions-copy-code { width: var(--control-touch-height, 44px); height: var(--control-touch-height, 44px); } }
 .editions-usercode { margin-top: 6px; color: var(--text-primary); font: 600 1.5rem/1.2 var(--font-mono, monospace); letter-spacing: .12em; user-select: all; }
 .editions-cloud-actions { display: flex; gap: 8px; }
 .editions-cloud-actions:not(:has(> :not([hidden]))) { display: none; }
