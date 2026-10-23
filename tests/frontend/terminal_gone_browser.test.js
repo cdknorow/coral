@@ -46,7 +46,7 @@ const MESSAGE = "The agent's terminal is gone. Restart it to continue.";
         const r = b.getBoundingClientRect(), input = document.getElementById('command-input').getBoundingClientRect();
         const restart = b.querySelector('.composer-error-restart');
         return { text: b.querySelector('.composer-error-text').textContent, restart: !restart.hidden,
-            below: r.top >= input.bottom - 1, inView: r.bottom <= innerHeight + 1 && r.top >= 0, role: b.getAttribute('role') }; })()`);
+            below: r.top >= input.bottom - 1, inView: r.bottom <= innerHeight + 1 && r.top >= 0, role: b.querySelector('.composer-error-text').getAttribute('role'), boxRole: b.getAttribute('role') }; })()`); // the alert is on the message's own span (#6213): the box holds buttons too
     const toasts = () => ev(`[...document.querySelectorAll('.toast .toast-message')].map(t => t.textContent)`);
     const clearToasts = () => ev(`document.querySelectorAll('.toast').forEach(t => t.remove())`);
     const rowChip = name => ev(`!!document.querySelector('.session-group-item[data-session-id="${name}-id"] .terminal-gone-chip')`);
@@ -114,7 +114,8 @@ const MESSAGE = "The agent's terminal is gone. Restart it to continue.";
                     assert.equal(box.restart, true, `${tag} ${path}: Restart is offered`);
                     assert.equal(box.below, true, `${tag} ${path}: under the composer's text`);
                     assert.equal(box.inView, true, `${tag} ${path}: on screen`);
-                    assert.equal(box.role, 'alert', `${tag} ${path}: announced`);
+                    assert.equal(box.role, 'alert', `${tag} ${path}: announced (the message's own span is the alert)`);
+                    assert.equal(box.boxRole, null, `${tag} ${path}: and the box with its buttons is not a second live region`);
                     assert.deepEqual((await toasts()).filter(t => /terminal|Sent/.test(t)), [], `${tag} ${path}: no toast, never "Sent"`);
                 }
                 assert.equal(await ev(`document.getElementById('command-input').value`), 'hello gone', `${tag}: the draft is kept`);
