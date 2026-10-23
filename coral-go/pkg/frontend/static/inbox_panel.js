@@ -117,7 +117,7 @@ export function mountInbox(host, adapter, options) {
         head.setAttribute('aria-controls', bodyId);
         const title = el('span', 'ibx-task-title', task.title || '(no title)');
         const meta = el('span', 'ibx-task-meta');
-        const bits = [task.board, task.priority, task.status === 'review_pending' ? 'review' : '', ago(task.updated_at || task.created_at, adapter.now)].filter(Boolean);
+        const bits = [task.created_by ? `From ${task.created_by}` : '', task.board, task.priority, task.status === 'review_pending' ? 'review' : '', ago(task.updated_at || task.created_at, adapter.now)].filter(Boolean); // who, where, how urgent, how old: said once, here
         meta.textContent = bits.join(' · ');
         head.append(title, meta);
         const region = el('div', 'ibx-task-body');
@@ -159,9 +159,11 @@ export function mountInbox(host, adapter, options) {
         // The meta line (who it is from, its status, and the link to the task at its right end), the message body alone in its panel, then the reply: boxes in boxes are not drawn (#5882).
         const out = [];
         const from = full.created_by || task.created_by;
-        const facts = [from ? `From ${from}` : '', full.status || task.status || ''].filter(Boolean).join(' · ');
+        const review = (full.status || task.status) === 'review_pending';
         const metaRow = el('div', 'ibx-task-metarow');
-        if (facts) metaRow.append(el('p', 'ibx-task-facts', facts));
+        // The row above already says who it is from, where, how urgent and how old. A task to review cannot be approved from here: the line that says so is the reply box's description too.
+        const reviewNote = review ? el('p', 'ibx-task-facts', 'To approve or reject, open the task') : null;
+        if (reviewNote) { reviewNote.id = uid('ibx-review-note'); metaRow.append(reviewNote); }
         const href = typeof adapter.taskHref === 'function' ? safePath(adapter.taskHref(task)) : '';
         if (href) { const a = el('a', 'ibx-open', 'Open the task'); a.setAttribute('href', safePath(href)); metaRow.append(a); }
         else if (typeof adapter.openTask === 'function') {
@@ -172,11 +174,11 @@ export function mountInbox(host, adapter, options) {
         if (metaRow.childNodes.length) out.push(metaRow);
         const text = full.body == null ? '' : String(full.body);
         out.push(inset(text ? await renderBody(text, adapter) : el('p', 'ibx-empty', 'This task has no text.')));
-        out.push(replyBox(task, from));
+        out.push(replyBox(task, from, reviewNote ? reviewNote.id : ''));
         return out;
     }
 
-    function replyBox(task, creator) {
+    function replyBox(task, creator, describedBy) {
         const form = el('form', 'ibx-reply');
         form.noValidate = true;
         const key = draftKey(task.project, task.id);
@@ -184,18 +186,21 @@ export function mountInbox(host, adapter, options) {
         const label = el('label', 'ibx-reply-label', `Your reply to ${task.title || 'this task'}`);
         label.setAttribute('for', id);
         const ta = el('textarea', 'ibx-reply-input');
-        ta.id = id; ta.rows = 4; ta.maxLength = REPLY_MAX;
+        ta.id = id; ta.rows = 1; ta.maxLength = REPLY_MAX; // one line that grows as the reply does
         ta.value = _drafts.get(key) || '';
         _boxes.add(ta);
         const send = el('button', 'btn btn-primary ibx-send', 'Send reply');
         send.type = 'submit';
         const status = el('p', 'ibx-reply-status'); // its words are spoken once, through the panel's live region (say), not by a second one here
-        const note = el('p', 'ibx-note', 'A reply does not complete or change the task.');
         const row = el('div', 'ibx-reply-row'); row.append(send, status);
-        form.append(label, ta, row, note);
+        form.append(label, ta, row);
+        if (describedBy) ta.setAttribute('aria-describedby', describedBy); // a task to review: the line above the box says it cannot be answered here
+        else { const note = el('p', 'ibx-note', 'A reply does not complete or change the task.'); note.id = uid('ibx-reply-note'); ta.setAttribute('aria-describedby', note.id); form.append(note); }
+        const grow = () => { ta.style.height = 'auto'; if (ta.scrollHeight > 0) ta.style.height = `${Math.min(ta.scrollHeight + 2, 240)}px`; };
+        queueMicrotask(grow); // after the form is in the page (a box with a saved draft opens tall enough for it)
         let busy = false;
         const sync = () => { send.disabled = busy || !ta.value.trim(); };
-        ta.addEventListener('input', () => { if (ta.value) _drafts.set(key, ta.value); else _drafts.delete(key); sync(); });
+        ta.addEventListener('input', () => { if (ta.value) _drafts.set(key, ta.value); else _drafts.delete(key); sync(); grow(); });
         ta.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); form.requestSubmit(); } });
         sync();
         Promise.resolve().then(() => adapter.canReply()).then(can => {
@@ -216,7 +221,7 @@ export function mountInbox(host, adapter, options) {
                     ? `Reply saved on the board, but ${who} could not be notified.`
                     : (res && Array.isArray(res.notified) && res.notified.length ? `Reply sent. ${res.notified.join(', ')} notified.` : 'Reply sent.');
                 _drafts.delete(key);
-                ta.value = '';
+                ta.value = ''; grow();
                 status.textContent = text;
                 say(text);
                 ta.focus(); // the Send button is disabled now (nothing to send): focus goes to the empty box, not to the page

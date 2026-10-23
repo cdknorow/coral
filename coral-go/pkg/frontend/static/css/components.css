@@ -4240,7 +4240,7 @@ body[data-saved-scope="all"] .saved-view .saved-scope { display: none; }
 .ibx-error { margin: 4px 0; color: var(--error-text, var(--error)); font-size: var(--fs-sm, 0.8125rem); }
 .ibx-reply { display: flex; flex-direction: column; gap: 6px; margin: 0; }
 .ibx-reply-label { font-weight: 600; font-size: var(--fs-sm, 0.8125rem); }
-.ibx-reply-input { width: 100%; box-sizing: border-box; resize: vertical; padding: 8px; border-radius: var(--radius-md); border: 1px solid var(--border); background: var(--bg-primary); color: var(--text-primary); font: inherit; }
+.ibx-reply-input { width: 100%; box-sizing: border-box; resize: vertical; overflow-y: auto; max-height: 240px; padding: 8px; border-radius: var(--radius-md); border: 1px solid var(--border); background: var(--bg-primary); color: var(--text-primary); font: inherit; }
 .ibx-reply-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .ibx-reply-status { margin: 0; color: var(--text-secondary); font-size: var(--fs-sm, 0.8125rem); overflow-wrap: anywhere; }
 .ibx-open { margin: 0; font-size: var(--fs-sm, 0.8125rem); font-weight: 400; }
