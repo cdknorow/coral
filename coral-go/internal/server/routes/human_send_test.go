@@ -113,10 +113,10 @@ func TestHumanSendIsSubmittedOrSaysSo(t *testing.T) {
 		}
 		term := &agentTerm{mockSessionTerminal: mock}
 		handler.terminal = term
-		old := []any{humanSendReadyWait, humanSendPollEvery, humanSendEnterWait, humanSendConfirmWait}
-		humanSendReadyWait, humanSendPollEvery, humanSendEnterWait, humanSendConfirmWait = 400*time.Millisecond, 5*time.Millisecond, 30*time.Millisecond, 80*time.Millisecond
+		old := []any{humanSendReadyWait, humanSendPollEvery, humanSendEnterWait, humanSendConfirmWait, humanSendSlowCommandWait}
+		humanSendReadyWait, humanSendPollEvery, humanSendEnterWait, humanSendConfirmWait, humanSendSlowCommandWait = 400*time.Millisecond, 5*time.Millisecond, 30*time.Millisecond, 80*time.Millisecond, 400*time.Millisecond
 		t.Cleanup(func() {
-			humanSendReadyWait, humanSendPollEvery, humanSendEnterWait, humanSendConfirmWait = old[0].(time.Duration), old[1].(time.Duration), old[2].(time.Duration), old[3].(time.Duration)
+			humanSendReadyWait, humanSendPollEvery, humanSendEnterWait, humanSendConfirmWait, humanSendSlowCommandWait = old[0].(time.Duration), old[1].(time.Duration), old[2].(time.Duration), old[3].(time.Duration), old[4].(time.Duration)
 		})
 		r := chi.NewRouter()
 		r.Post("/api/sessions/live/{name}/send", handler.Send)
@@ -715,6 +715,63 @@ func TestHumanSendIsSubmittedOrSaysSo(t *testing.T) {
 		assert.Equal(t, http.StatusConflict, rec.Code)
 		assert.Equal(t, "not_confirmed", code(rec))
 		assert.Less(t, time.Since(start), 2*time.Second, "not an attachment's wait")
+	})
+	// #6258: a slow command (/compact) leaves the box at once and shows nothing for a while; Codex answered 409 "may not have been sent" 6 s before its compaction finished. It is waited for a little longer for any
+	// // sign that it ran (the screen moved, an event), and with none it is still not confirmed and never typed again.
+	t.Run("a slow command is waited for before it is not confirmed", func(t *testing.T) {
+		for _, c := range []struct {
+			name, agentType string
+			ready           func(t *testing.T, inBox string) string
+		}{
+			{"claude", "claude", func(t *testing.T, inBox string) string {
+				ready := claudeUnnumbered(t, "ready.txt")
+				const placeholder = "❯\u00a0Try \"fix typecheck errors\""
+				return strings.Replace(ready, placeholder, "❯\u00a0"+inBox, 1)
+			}},
+			{"codex", "codex", codexReady},
+		} {
+			t.Run(c.name+": the screen shows it ran only after the ordinary wait: sent, typed once", func(t *testing.T) {
+				h := setup(t, c.agentType, false) // an agent whose hooks send no event for a command (Codex's, untrusted): the case that was 409
+				h.term.show(c.ready(t, ""))
+				h.term.onType = func(string) {
+					go func() {
+						time.Sleep(3 * humanSendConfirmWait)
+						h.term.show(c.ready(t, "") + "\n✻ Compacting conversation… (6s)")
+					}()
+				}
+				rec := h.send("/compact")
+				assert.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+				typed, enters := h.term.counts()
+				assert.Equal(t, []string{"/compact"}, typed, "typed once")
+				assert.Zero(t, enters)
+			})
+			t.Run(c.name+": an event after the ordinary wait: sent", func(t *testing.T) {
+				h := setup(t, c.agentType, false) // an agent whose hooks send no event for a command (Codex's, untrusted): the case that was 409
+				h.term.show(c.ready(t, ""))
+				h.term.onType = func(string) { go func() { time.Sleep(3 * humanSendConfirmWait); h.event("session_reset") }() }
+				rec := h.send("/compact")
+				assert.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+			})
+			t.Run(c.name+": no sign at all: not confirmed after the longer wait, typed once", func(t *testing.T) {
+				h := setup(t, c.agentType, false) // an agent whose hooks send no event for a command (Codex's, untrusted): the case that was 409
+				h.term.show(c.ready(t, ""))
+				start := time.Now()
+				rec := h.send("/compact")
+				assert.Equal(t, http.StatusConflict, rec.Code, rec.Body.String())
+				assert.Equal(t, "not_confirmed", code(rec))
+				assert.GreaterOrEqual(t, time.Since(start), humanSendConfirmWait+humanSendSlowCommandWait-50*time.Millisecond, "a slow command waits longer than an ordinary message before it is called not confirmed")
+				typed, _ := h.term.counts()
+				assert.Equal(t, []string{"/compact"}, typed)
+			})
+		}
+		t.Run("an ordinary command is not waited for longer", func(t *testing.T) {
+			h := setup(t, "claude", false)
+			h.term.show(claudeUnnumbered(t, "ready.txt"))
+			start := time.Now()
+			rec := h.send("/status")
+			_ = rec
+			assert.Less(t, time.Since(start), humanSendConfirmWait+humanSendSlowCommandWait-100*time.Millisecond)
+		})
 	})
 }
 
