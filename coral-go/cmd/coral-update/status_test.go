@@ -106,7 +106,7 @@ func TestStatusSaysWhatTheUpdaterKnows(t *testing.T) {
 		wantFeature = "off"
 	}
 	assert.Equal(t, wantFeature, m["feature"])
-	assert.Equal(t, false, m["apply_enabled"])
+	assert.Equal(t, applyEnabled, m["apply_enabled"], "what the switch of this platform says")
 	assert.Equal(t, "present", m["state_file"])
 	assert.Equal(t, "present", m["run_record"])
 	assert.Equal(t, map[string]any{"version": "1.4.129", "sequence": float64(7)}, m["accepted"])
@@ -122,8 +122,12 @@ func TestStatusSaysWhatTheUpdaterKnows(t *testing.T) {
 		assert.NotContains(t, string(b), bad, "the run record's content is not shown, only that it is there")
 	}
 
+	wantApply := "Installing an update: not enabled yet"
+	if applyEnabled {
+		wantApply = "Installing an update: enabled"
+	}
 	_, out := statusRun(t, nil, "status")
-	for _, want := range []string{"Automatic updates: " + wantFeature, "not enabled yet", "Installed version: 1.4.130", "accepted: 1.4.129 (promote sequence 7)", "Versions revoked: 2",
+	for _, want := range []string{"Automatic updates: " + wantFeature, wantApply, "Installed version: 1.4.130", "accepted: 1.4.129 (promote sequence 7)", "Versions revoked: 2",
 		"Ready to install: 1.4.131", "Last check: 2026-10-20T11:00:00Z", "Last refusal: version 1.4.131 stopped at sums_signature", "the release was not signed by the pinned identity", "Waiting before trying version 1.4.132 again until " + future,
 		"Last install attempt: 1.4.129 -> 1.4.131, refused", "Last roll-back: version 1.4.130 did not come up", "stopped at: not_healthy", ": present"} {
 		assert.Contains(t, out, want)

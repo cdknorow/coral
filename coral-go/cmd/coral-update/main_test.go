@@ -51,10 +51,11 @@ func TestOnlyAProdBuildWithAVersionChecks(t *testing.T) {
 	}
 }
 
+// A platform whose switch is off answers not_enabled and installs nothing (Windows, today; the others are on since #6290, so the test stands for an off switch).
 func TestApplyIsNotBuiltYet(t *testing.T) {
-	old := config.Version
-	t.Cleanup(func() { config.Version = old })
-	config.Version = "1.4.130"
+	old, oldApply := config.Version, applyEnabled
+	t.Cleanup(func() { config.Version, applyEnabled = old, oldApply })
+	config.Version, applyEnabled = "1.4.130", false
 	if !config.TierChecksForUpdates {
 		t.Skip("a build of another tier answers off")
 	}

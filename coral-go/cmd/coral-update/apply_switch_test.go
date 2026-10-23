@@ -8,18 +8,28 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/subgentic/coral/internal/updater/verify"
 )
 
-// #5879: the apply is switched per platform; this commit turns none on.
-func TestNoPlatformHasTheApplyOnInThisChange(t *testing.T) {
-	assert.False(t, applyEnabledDarwin, "Mac stays off until the operator turns it on, in a change of its own")
-	assert.False(t, applyEnabledLinux, "Linux stays off until the operator turns it on, in a change of its own")
-	assert.False(t, applyEnabledWindows, "Windows stays off")
+// #6290: Mac and Linux are on, Windows stays off until its rehearsal passes. A switch is on only in a build whose pins are all set: the apply answers "pins not set" and installs
+// nothing without them, and this fails the build that turns a platform on before the pins are there.
+func TestMacAndLinuxAreOnAndWindowsIsOffAndAnOnSwitchNeedsThePins(t *testing.T) {
+	assert.True(t, applyEnabledDarwin)
+	assert.True(t, applyEnabledLinux)
+	assert.False(t, applyEnabledWindows, "Windows stays off until its rehearsal passes")
 	assert.True(t, windowsApplyBuilt, "the Windows apply exists (#162), and stays off by applyEnabledWindows")
-	for _, goos := range []string{"darwin", "linux", "windows", "freebsd"} {
+	assert.True(t, applyOn("darwin", applyEnabledDarwin, applyEnabledLinux, applyEnabledWindows, windowsApplyBuilt))
+	assert.True(t, applyOn("linux", applyEnabledDarwin, applyEnabledLinux, applyEnabledWindows, windowsApplyBuilt))
+	for _, goos := range []string{"windows", "freebsd", "plan9"} {
 		assert.False(t, applyOn(goos, applyEnabledDarwin, applyEnabledLinux, applyEnabledWindows, windowsApplyBuilt), goos)
 	}
-	assert.False(t, applyEnabled, "the switch this build reads")
+	p := verify.DefaultPins()
+	assert.NotEmpty(t, p.MacTeamIDs, "Mac is on: its signer is pinned")
+	assert.NotEmpty(t, p.PromoteRepoID, "the promote identity is pinned")
+	assert.Equal(t, ".github/workflows/promote.yml", p.PromoteWorkflow)
+	assert.Equal(t, "refs/heads/promote", p.PromoteRef)
+	assert.NotEmpty(t, p.RepoID)
 }
 
 func TestEachPlatformReadsItsOwnSwitch(t *testing.T) {

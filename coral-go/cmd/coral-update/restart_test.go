@@ -171,6 +171,9 @@ func TestAnApplyThatStopsAtItsOffSwitchesStartsCoralAgain(t *testing.T) {
 		if !config.TierChecksForUpdates {
 			t.Skip("a build of another tier answers off")
 		}
+		old := applyEnabled
+		t.Cleanup(func() { applyEnabled = old })
+		applyEnabled = false // a platform whose switch is off (Windows, today)
 		started := fakeStart(t, nil)
 		data, install := t.TempDir(), installFolder(t)
 		t.Setenv("CORAL_DATA_DIR", data)
