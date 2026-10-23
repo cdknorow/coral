@@ -25,7 +25,11 @@ func runApply(ctx context.Context, stdout io.Writer, dataDir string, trust root.
 	// one-time marker (internal/updater/trigger) and this run consumes it before anything else. Run by hand, from a script or stale, it answers and asks nothing (#166, N5).
 	if runtime.GOOS == "windows" {
 		if res := installRequest(dataDir, time.Now()); res != "" {
-			print(stdout, output{Result: res, Installed: config.Version, Trust: string(source)})
+			o := output{Result: res, Installed: config.Version, Trust: string(source)}
+			if res == resultRequestExpired || res == resultRequestInvalid { // a click was made and the server quit for it: Coral is started again (#332)
+				o.RestartFailed = !restartFromMarker(dataDir, clickedInstallDir)
+			}
+			print(stdout, o)
 			return 0
 		}
 	}
@@ -87,6 +91,7 @@ func installRequest(dataDir string, now time.Time) string {
 	case errors.Is(err, trigger.ErrNoMarker):
 		return resultNotRequested
 	case errors.Is(err, trigger.ErrMarkerExpired):
+		clickedInstallDir = m.InstallDir
 		return resultRequestExpired
 	default:
 		return resultRequestInvalid

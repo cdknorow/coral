@@ -82,6 +82,12 @@ type MSI interface {
 	// Start starts Coral (coral-tray) from the install folder as this user; Healthy waits until it is up.
 	Start(ctx context.Context, install string) error
 	Healthy(ctx context.Context, install string) error
+	// ApplyProcessRunning reports whether another apply is running: a live coral-update.exe in the install folder, or a live coral-update-*.exe in copies (the folder
+	// trigger.Launch copies the updater to) whose bytes are the installed updater's. The deciding check for "another apply is replacing the install", made from the processes, not
+	// from a lock file (which can be planted, or unreadable while a live apply moves it).
+	ApplyProcessRunning(install, copies string) bool
+	// NotifyBrief tells the person something with a short wait (the apply is about to end; a long one would hold its lock open and make the next click busy too).
+	NotifyBrief(title, text string)
 	// Notify tells the person something while Coral is down (a message box).
 	Notify(title, text string)
 }
@@ -161,12 +167,22 @@ func RunMSI(ctx context.Context, mc MSIConfig) Result {
 		return res
 	}
 	if stage.CheckRunning(dir, now) {
-		res.Result = ResultBusy
+		res.Result, res.FailedStage = ResultBusy, BusyCheck
 		return res
 	}
 	release, err := stage.TakeLock(dir, stage.ApplyLockFile, now)
 	if err != nil {
-		res.Result = ResultBusy
+		// Busy only when a real updater is running, the install's own or a copy Launch made (checked from the processes, whatever the lock says or whether it can be read).
+		// Otherwise (a lock that cannot be made, a planted or dead one) nobody is applying, the server has quit for the click, and Coral is started again.
+		if errors.Is(err, stage.ErrBusy) {
+			inst, _ := mc.MSI.Install()
+			if mc.MSI.ApplyProcessRunning(inst, filepath.Join(dir, "apply")) {
+				res.Result, res.FailedStage = ResultBusy, BusyApply // a real apply is replacing the install: nothing may start Coral under it
+				mc.MSI.NotifyBrief("Coral update", "Another update may be running; start Coral from the Start menu when it's done.")
+				return res
+			}
+		}
+		res.Result, res.FailedStage = ResultFailed, "apply_lock"
 		return res
 	}
 	defer release()

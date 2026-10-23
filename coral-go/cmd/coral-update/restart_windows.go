@@ -10,6 +10,7 @@ import (
 )
 
 func init() {
+	registeredInstall = func() (string, error) { return (&apply.WindowsMSI{DataDir: dataDirForRestart()}).Install() }
 	startCoralFrom = func(dataDir, dir string) error {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
