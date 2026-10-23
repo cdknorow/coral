@@ -11,9 +11,10 @@ import { hubBlocksKeystrokes, applyHubReadOnlyFrame } from './hub_access.js';
 import { feedRetryDelay } from './feed_pacing.js';
 import { isSignedOut } from './overload.js';
 import { browserLocal } from './safe_storage.js';
-import { cellHeight, clearRenderer, onUserInput, screenElement } from './xterm_internals.js'; // the only place that reads what xterm does not document (#5411)
+import { cellHeight, clearRenderer, onUserInput, screenElement, watchCanvasScale } from './xterm_internals.js'; // the only place that reads what xterm does not document (#5411)
 
 let terminal = null;
+let _stopCanvasScale = null; // ends the canvas-scale watch of the terminal above (#6596)
 let fitAddon = null;
 let terminalWs = null;
 let _selectionDisposable = null;
@@ -584,7 +585,7 @@ function _openTerminal(containerEl) {
     // Hub's `style-src 'self'` policy blocks (the terminal then renders in a fallback font with wrong cell sizes).
     // The canvas renderer paints into a canvas and needs no injected style. It must load after open().
     if (typeof CanvasAddon !== 'undefined') {
-        try { terminal.loadAddon(new CanvasAddon.CanvasAddon()); } catch (e) { console.warn('xterm canvas renderer unavailable, using the DOM renderer:', e.message); }
+        try { terminal.loadAddon(new CanvasAddon.CanvasAddon()); _stopCanvasScale = watchCanvasScale(terminal); } catch (e) { console.warn('xterm canvas renderer unavailable, using the DOM renderer:', e.message); }
     }
     // Clicking into a viewer window's terminal takes interactive control.
     containerEl.addEventListener('mousedown', () => claimOwnership());
@@ -956,6 +957,7 @@ export function disposeTerminal() {
         _resizeObserver = null;
     }
     _bottomWhenHidden = null;
+    if (_stopCanvasScale) { _stopCanvasScale(); _stopCanvasScale = null; }
     if (terminal) {
         terminal.dispose();
         terminal = null;

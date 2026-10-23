@@ -324,6 +324,33 @@ function assertFits(v, what) {
         } finally { await put({ terminal_font_size: '' }); }
         console.log('   ✓ 14 and a chosen 13 hold on a phone; the desktop steps above keep 13');
 
+        console.log('11. The canvas is drawn at CSS size x pixel ratio, so text is not 2-3x too large at DPR 2 and 3 (#6596)');
+        // Chrome's device-metrics emulation tells xterm's own observer that the canvas is its CSS size at DPR 2 and 3, so the backing store stayed at 480 px with 18 px cells.
+        const CANVAS = `(() => { const sc = document.querySelector('#xterm-container .xterm-screen'); const cs = [...document.querySelectorAll('#xterm-container canvas')];
+            return { dpr: window.devicePixelRatio, cssW: sc.getBoundingClientRect().width, backing: cs.map(c => c.width), count: cs.length }; })()`;
+        const scaled = async (tab, what) => {
+            const c = await tab.waitFor(`(() => { const c = ${CANVAS}; return c.count > 0 && c.cssW > 0 ? c : null; })()`, `${what}: the canvases`);
+            // a canvas's backing store is its CSS width x the pixel ratio (within one device pixel per column of xterm's own rounding)
+            const bad = c.backing.filter(w => Math.abs(w - c.cssW * c.dpr) > 80);
+            assert.deepEqual(bad, [], `${what}: every canvas is CSS ${c.cssW} px x DPR ${c.dpr} wide in device pixels (${JSON.stringify(c)})`);
+            return c;
+        };
+        const sizes = {};
+        for (const [label, w, h, mobile, dpr] of [['phone DPR 2', 390, 844, true, 2], ['phone DPR 3', 390, 844, true, 3], ['desktop DPR 2', 1280, 800, false, 2], ['phone DPR 1', 390, 844, true, 1]]) {
+            const ctx = await newContext(); contexts.push(ctx);
+            const tab = await openTab({ contextId: ctx, width: w, height: h, mobile, dpr });
+            tabs.push(tab);
+            await show(tab, A, eighty);
+            sizes[label] = (await scaled(tab, label)).backing[0];
+            if (mobile) { // a font change redraws the canvas: the fit button shrinks the font, and the canvas stays at its device size
+                await click(tab);
+                await settled(tab, `${label}: fitted`, `v.btn.pressed === 'true' && v.font < ${PHONE_BASE}`);
+                await scaled(tab, `${label} after the font changed`);
+            }
+            await tab.close(); tabs.pop();
+        }
+        console.log(`   ✓ the canvas backing store follows the pixel ratio, on load and after a font change: ${JSON.stringify(sizes)}`);
+
         console.log('\nAll terminal fit-to-width checks passed');
     } finally {
         for (const t of tabs) await t.close();

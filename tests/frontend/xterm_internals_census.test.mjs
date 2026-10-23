@@ -28,5 +28,5 @@ assert.equal(version, written, `the vendored xterm is ${version} but xterm_inter
 // and still contains the names the four reads use
 for (const name of ['_renderService', 'coreService', 'onUserInput', 'xterm-screen', 'css', 'cell']) assert.ok(vendor.includes(name), `the vendored xterm no longer contains "${name}", which xterm_internals.js reads`);
 // the adapter's own list of reads is what it does: each name it uses is in its header table
-for (const name of ['screenElement', 'cellHeight', 'clearRenderer', 'onUserInput']) assert.ok(new RegExp(`export function ${name}\\b`).test(adapter) && adapter.includes(`${name}(`), `xterm_internals.js exports ${name} and documents it`);
+for (const name of ['screenElement', 'cellHeight', 'clearRenderer', 'onUserInput', 'watchCanvasScale']) assert.ok(new RegExp(`export function ${name}\\b`).test(adapter) && adapter.includes(`${name}(`), `xterm_internals.js exports ${name} and documents it`);
 console.log(`xterm_internals_census: ok (xterm ${version}; no module but xterm_internals.js reads an xterm internal)`);
