@@ -339,3 +339,71 @@ func TestSendDefusesMentionsInEverythingQuoted(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, got, 1, "the recipient was mentioned once: by the message's own greeting")
 }
+
+// #6462: the owner's comment list carries each thread's asks (agent, open, replies), so the page can say "already asked" after a reload. Nobody else's list has them.
+func TestTheOwnersListCarriesEachThreadsAsksAndNobodyElsesDoes(t *testing.T) {
+	rig := newCmtRig(t)
+	rig.agent(1, "Dev", false)
+	rig.agent(2, "QA", false)
+	cid := rig.ownerComment("hello")
+	other := rig.ownerComment("not asked")
+	_, out := rig.send(cid, "Dev", "QA")
+	require.Equal(t, 200, rig.mustCode(out))
+	code, rep := rig.reply(cid, asAgentSession(1), "done")
+	require.Equal(t, 201, code, fmt.Sprint(rep))
+
+	asks := func(h map[string]string, id int64) []any {
+		code, out := rig.do("GET", cp(cmtDoc), h, nil)
+		require.Equal(t, 200, code, fmt.Sprint(out))
+		for _, c := range out["comments"].([]any) {
+			if m := c.(map[string]any); m["id"] == float64(id) {
+				a, _ := m["asks"].([]any)
+				return a
+			}
+		}
+		return nil
+	}
+	got := asks(cmtAsOwner, cid)
+	require.Len(t, got, 2)
+	byAgent := map[string]map[string]any{}
+	for _, a := range got {
+		m := a.(map[string]any)
+		byAgent[m["agent"].(string)] = m
+	}
+	assert.Equal(t, map[string]any{"agent": "Dev", "open": true, "replies": float64(1)}, byAgent["Dev"])
+	assert.Equal(t, map[string]any{"agent": "QA", "open": true, "replies": float64(0)}, byAgent["QA"])
+	assert.Empty(t, asks(cmtAsOwner, other), "a thread nobody was asked into has none")
+	// the reply (a comment of Dev's) carries none either
+	code, list := rig.do("GET", cp(cmtDoc), cmtAsOwner, nil)
+	require.Equal(t, 200, code)
+	for _, c := range list["comments"].([]any) {
+		if m := c.(map[string]any); m["parent_id"] != nil {
+			assert.Nil(t, m["asks"])
+		}
+	}
+	// resolved: closed
+	code, _ = rig.do("POST", fmt.Sprintf("%s/%d/resolve", cp(cmtDoc), cid), cmtAsOwner, nil)
+	require.Equal(t, 200, code)
+	for _, a := range asks(cmtAsOwner, cid) {
+		assert.Equal(t, false, a.(map[string]any)["open"], "a resolved thread's asks are closed")
+	}
+	// not a viewer's, an agent's, or through Coral Hub
+	rig.hubOn()
+	for name, h := range map[string]map[string]string{"a hub viewer": cmtAsHub, "an agent": cmtAsAgent, "the owner's key through the tunnel": cmtAsOwnerThroughTunnel, "the hub-signed-in owner": cmtAsHubOwner} {
+		code, out := rig.do("GET", cp(cmtDoc), h, nil)
+		if code != 200 {
+			continue // refused outright: nothing was shown
+		}
+		for _, c := range out["comments"].([]any) {
+			assert.Nil(t, c.(map[string]any)["asks"], name)
+		}
+	}
+}
+
+// mustCode reads the status out of a send's answer helper result: the helper returns (code, body); this is for a body already in hand.
+func (rig *cmtRig) mustCode(out map[string]any) int {
+	if out["ok"] == true {
+		return 200
+	}
+	return 0
+}

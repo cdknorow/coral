@@ -19,10 +19,12 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/subgentic/coral/internal/cloud"
 	"github.com/subgentic/coral/internal/httputil"
 	"github.com/subgentic/coral/internal/secrets"
 	setreg "github.com/subgentic/coral/internal/settings"
 	"github.com/subgentic/coral/internal/store"
+	"github.com/subgentic/coral/pkg/tunnel"
 )
 
 // Comments on an artifact (#5176, phase 1). Routes under /api/artifacts/{id}/comments, id the artifact's 64-hex digest; every decision about who may do what is commentPolicy's, and who is
@@ -132,6 +134,15 @@ type commentView struct {
 	FromVersion   *int           `json:"from_version,omitempty"`
 	Carried       string         `json:"carried,omitempty"` // found, ambiguous, gone or unchecked
 	CarriedAnchor *commentAnchor `json:"carried_anchor,omitempty"`
+	// The owner's list only (#6462): the agents this thread was sent to. Never in a viewer's, an agent's or a Coral Hub answer.
+	Asks []commentAskView `json:"asks,omitempty"`
+}
+
+// commentAskView is one agent asked into a thread: who, whether the ask is still open, and how many replies it has left.
+type commentAskView struct {
+	Agent   string `json:"agent"`
+	Open    bool   `json:"open"`
+	Replies int    `json:"replies"`
 }
 
 type commentAuthor struct {
@@ -369,6 +380,9 @@ func (h *SessionsHandler) listArtifactComments(w http.ResponseWriter, r *http.Re
 			v.FromVersion, v.Carried, v.CarriedAnchor = &from, c.state, c.anchor
 			out = append(out, v)
 		}
+	}
+	if caller.Kind == commentCallerOwner && r.Header.Get(tunnel.ViaHeader) == "" && !cloud.Tunneled(r) { // the owner at this computer, never a viewer, an agent or Coral Hub (#6462)
+		h.attachAsks(r.Context(), out)
 	}
 	canCreate, why := commentPolicy(caller, commentCreate, nil, locked, hubWrite)
 	writeJSON(w, http.StatusOK, map[string]any{"comments": out, "locked": locked, "you": map[string]any{"kind": caller.Kind, "name": viewerName(caller), "can_comment": canCreate, "reason": why, "can_lock": caller.Kind == commentCallerOwner},
@@ -752,5 +766,30 @@ func (h *SessionsHandler) lockArtifactComments(on bool) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"locked": on, "scope": scope})
+	}
+}
+
+// attachAsks fills in the asks of each thread's first comment from the store, so the owner's page can say "already asked" after a reload (#6462). An ask is the agent's name as the board knew it
+// when the ask was made, whether it is still open, and how many replies the agent has made; nothing of the comment text or the message.
+func (h *SessionsHandler) attachAsks(ctx context.Context, views []commentView) {
+	byArtifact := map[string][]int{}
+	for i := range views {
+		if views[i].ParentID == nil {
+			byArtifact[views[i].ArtifactID] = append(byArtifact[views[i].ArtifactID], i)
+		}
+	}
+	now := time.Now()
+	for artifact, idx := range byArtifact {
+		asks, err := h.ss.ListArtifactAsks(ctx, artifact)
+		if err != nil || len(asks) == 0 {
+			continue
+		}
+		byComment := map[int64][]commentAskView{}
+		for _, a := range asks {
+			byComment[a.CommentID] = append(byComment[a.CommentID], commentAskView{Agent: a.AgentName, Open: a.OpenAt(now), Replies: a.Replies})
+		}
+		for _, i := range idx {
+			views[i].Asks = byComment[views[i].ID]
+		}
 	}
 }
