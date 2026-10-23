@@ -2205,8 +2205,9 @@
 .composer-queued-note { color: var(--text-primary); }
 @media (pointer: coarse) { .composer-queued-cancel { min-height: 44px; min-width: 44px; display: inline-flex; align-items: center; } }
 
-/* A small phone (up to 400 px): the header's 44 px targets (the view toggle, Find, Open Agent Tab, the side panel) left the agent name 46 px at 320 and 35 px at 370 beside the branch (#6756). The header's side padding and the gaps between the buttons give the name 16 px more; the targets stay 44 px. */
+/* A small phone (up to 400 px): the header's 44 px targets (the view toggle, Find, Open Agent Tab, the side panel) left the agent name 46 px at 320 and 35 px at 370 beside the branch (#6756). The header's side padding is 2 px and the branch is cut to 3 em
+   (a hint; the name is what the header is for): the name has 54 px at 320 and more where the branch shows, and the buttons keep their gaps. The targets stay 44 px. */
 @media (max-width: 400px) {
     html body .terminal-header { padding-left: 2px; padding-right: 2px; }
-    html body .terminal-header-actions { gap: 0; }
+    html body .terminal-header-actions > .terminal-branch { max-width: 3em; }
 }
