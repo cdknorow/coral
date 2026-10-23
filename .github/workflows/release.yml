@@ -219,6 +219,9 @@ jobs:
           $buildTags = $env:BUILD_TAGS
           # The exes' version information (what the taskbar and Task Manager name the app by): this release's version and the tier's product name.
           $product = if (",$buildTags," -like "*,dropboxers,*") { "Coral For Dropbox" } else { "Coral" }
+          # This rewrites the four TRACKED rsrc_windows_amd64.syso files (Go links a .syso only from the package's own folder), so the Windows programs' build info
+          # says vcs.modified=true. That is true and stays true (#6184); tools/verify-release.sh accepts it for GOOS=windows only, with vcs.revision still equal
+          # to the tag's commit, and Windows leans on the signature and the attestation for the rest.
           bash ../tools/gen_windows_resources.sh $version $product
           if ($LASTEXITCODE -ne 0) { throw "gen_windows_resources.sh failed" }
           New-Item -ItemType Directory -Force -Path ..\dist\windows\bin | Out-Null

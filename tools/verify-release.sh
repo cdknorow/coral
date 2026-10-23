@@ -410,6 +410,10 @@ check_programs() { # subject folder ext want-target
     f="$dir/$c$ext"
     [ -f "$f" ] || { bad="$bad $c(missing)"; continue; }
     n=$((n + 1))
+    # A Windows program's build info says vcs.modified=true on purpose (#6184): release.yml runs tools/gen_windows_resources.sh, which rewrites the four tracked
+    # rsrc_windows_amd64.syso files with the release version before compiling. bi_verdict lets that through for GOOS=windows only, with vcs.revision still
+    # required to be the tag's commit; on Windows the revision therefore does not prove the tracked files unchanged, and the Authenticode signature when the
+    # build is signed (the signing secrets are optional), and always the attestation and Sigstore checks above, are what bind those files to us. The build info is not made to say "clean" (skip-worktree would): it must not lie.
     info="$(buildinfo "$f")"; IFS='|' read -r v t tg trim rev mod <<<"$info"
     if [ -z "$TAG_COMMIT" ]; then bad="$bad $c(the tag's commit could not be read from $REPO)"
     elif ! verdict="$(bi_verdict "$want_ver" "$TAG_COMMIT" "$v" "$trim" "$rev" "$mod" "$tg")"; then bad="$bad $c(${verdict#fail|})"; fi
