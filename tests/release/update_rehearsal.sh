@@ -234,12 +234,14 @@ if setup ask; then
   pid0=$srv
   # the update is staged by an earlier run of the rehearsal program, which then ends: what the server's status shows is the real updater's reading of that state
   "${CENV[@]}" "$work/bin/rehearsal-update" --data-dir "$dd" --install "$inst" --parent "$srv" --installed "$N" --package "$work/pkg/n1.tar.gz" --version "$N1" --mode check > "$s/stage.out" 2> "$s/stage.err"
-  mv "$inst/coral-update" "$inst/coral-update.real"
+  # The status is the real coral-update's, run from a copy of the install (it describes the folder it runs in, and a folder holding a renamed or extra file is "shared_folder", not a
+  # supported install); the install itself keeps only the stand-in, named coral-update as in a real one.
+  cp -a "$inst" "$s/statusinst"
   cat > "$inst/coral-update" <<SHIM
 #!/bin/sh
 # the ask rehearsal's stand-in for coral-update (tests/release/update_rehearsal.sh): never released
 case "\$1" in
-  status) exec "$inst/coral-update.real" "\$@" ;;
+  status) exec "$s/statusinst/coral-update" "\$@" ;;
   check) echo '{"result":"up_to_date"}'; exit 0 ;;
   apply) exec env -i PATH=/usr/bin:/bin:/usr/sbin:/sbin HOME="$hh" CORAL_DATA_DIR="$dd" CORAL_CLOUD_URL=off CORAL_TELEMETRY_DISABLED=1 CORAL_NO_DEMO_SEED=1 CORAL_URL="http://127.0.0.1:$PORT" "$work/bin/rehearsal-update" --data-dir "$dd" --install "$inst" --parent "$srv" --installed "$N" --package "$work/pkg/n1.tar.gz" --version "$N1" --mode both --restage ;;
 esac
