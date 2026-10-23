@@ -55,6 +55,13 @@ const BASE = require('./test_base').BASE;
             assert.equal(await ev('window.__marker'), 1, `a ${status} on the sign-in check does not reload the page`);
             assert.ok(await ev(`!!document.getElementById('signed-out-panel')`), `and keeps its panel (${status})`);
         }
+        // With no usable sessionStorage the unprompted path never reloads (it could not be limited): the check says signed in, and the page still stays.
+        await load();
+        await waitFor(feedReady, 'the feed ready (no storage case)', 15000);
+        await ev(`window.__marker = 1; Storage.prototype.getItem = () => { throw new Error('storage unavailable'); }; import((window.__coralStatic || '/static/') + 'signed_out.js').then(m => m.enterSignedOut()); true`);
+        await waitFor(`!!document.getElementById('signed-out-panel')`, 'the signed-out panel (no storage)');
+        await sleep(7000);
+        assert.equal(await ev('window.__marker'), 1, 'with no storage the unprompted reload does not happen');
         console.log('PASS the live feed always starts and retries');
     } finally { await client.close(); }
 })().catch(e => { console.error(e); process.exit(1); });

@@ -32,7 +32,7 @@ async function stillSignedOut() {
 
 // at most one unprompted reload a minute
 function mayAutoReload() {
-    try { const n = Date.now(); if (n - +sessionStorage.getItem('so') < 6e4) return false; sessionStorage.setItem('so', n); } catch { /* no storage */ }
+    try { const n = Date.now(); if (n - +sessionStorage.getItem('so') < 6e4) return false; sessionStorage.setItem('so', n); } catch { return false; } // no storage: never unprompted
     return true;
 }
 
