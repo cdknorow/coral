@@ -68,10 +68,17 @@ const DETAIL = {
 
 function _show(kind) {
     const b = _banner();
-    if (!b) return;
-    b.hidden = false;
-    const d = document.getElementById('update-banner-detail');
-    if (d) d.textContent = DETAIL[kind];
+    const t = document.getElementById('update-banner-text');
+    if (!b || !t) return;
+    // The status is always in the page and only its words change (a status that appears with its words is often not read); the Reload button comes with them.
+    if (t.dataset.kind !== kind) {
+        const bold = document.createElement('b'); bold.textContent = 'Coral was updated.';
+        const d = document.createElement('span'); d.id = 'update-banner-detail'; d.textContent = DETAIL[kind];
+        t.replaceChildren(bold, ' ', d);
+        t.dataset.kind = kind;
+    }
+    const r = b.querySelector('button');
+    if (r && r.hidden) r.hidden = false;
 }
 
 function _delay() { return Number(window.__coralUpdateReloadDelay) > 0 ? Number(window.__coralUpdateReloadDelay) : RELOAD_DELAY_MS; }
