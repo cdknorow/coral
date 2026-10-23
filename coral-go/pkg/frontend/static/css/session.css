@@ -91,7 +91,7 @@
 .empty-launch-list > .empty-launch:first-child .empty-launch-icon { background: var(--accent-dim, var(--accent)); color: var(--text-on-accent); }
 .empty-launch-list > .empty-launch:first-child .empty-launch-copy span { color: var(--text-secondary); }
 .session-list li.empty-welcome:hover { background: transparent; }
-@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) { .session-list li.empty-plain { display: none; } .session-list li.empty-welcome { display: block; } }
+@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) and (max-width: 950px) { .session-list li.empty-plain { display: none; } .session-list li.empty-welcome { display: block; } }
 
 .session-list li.empty-state:hover {
     background: transparent;
@@ -504,7 +504,7 @@
     margin-right: 3px;
 }
 /* The team card is inset 8px from the list's right edge; its header's and its agents' kebabs sit in the folder and server headers' column (#4185). */
-@media (min-width: 768px) and (min-height: 501px), (min-width: 768px) and (pointer: fine) {
+@media (min-width: 768px) and (min-height: 501px), (min-width: 768px) and (pointer: fine), (min-width: 951px) {
     .session-team-group > .board-card-header .group-kebab { margin-right: -8px; }
 }
 .board-card-agents .session-name-row .sidebar-kebab-wrapper { margin-right: -8px; }

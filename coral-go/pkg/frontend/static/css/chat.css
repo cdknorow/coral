@@ -1405,7 +1405,7 @@ h3.cni-question { margin-bottom: 4px; } /* a heading with its text under it (#30
 }
 
 /* Chat mode: the composer card narrows to the transcript's reading column */
-@media (min-width: 768px) and (min-height: 501px), (min-width: 768px) and (pointer: fine) {
+@media (min-width: 768px) and (min-height: 501px), (min-width: 768px) and (pointer: fine), (min-width: 951px) {
     #command-pane.chat-mode {
         width: calc(100% - 56px);
         max-width: 780px;
@@ -1582,7 +1582,7 @@ h3.cni-question { margin-bottom: 4px; } /* a heading with its text under it (#30
 /* Terminal view: the xterm accepts input directly, so the bottom command bar
    is redundant on desktop. Mobile keeps it (no hardware keyboard to type into
    the terminal). */
-@media (min-width: 768px) and (min-height: 501px), (min-width: 768px) and (pointer: fine) {
+@media (min-width: 768px) and (min-height: 501px), (min-width: 768px) and (pointer: fine), (min-width: 951px) {
     /* A sleeping or archived agent keeps its pane: the Wake / Restart / Unarchive bar lives in it,
        and without it the Terminal view is an empty box with no way back (#3735). */
     #command-pane:not(.chat-mode):not(.agent-sleeping) {
@@ -1674,7 +1674,7 @@ h3.cni-question { margin-bottom: 4px; } /* a heading with its text under it (#30
 [data-theme="light"] .hljs-deletion { color: #82071e; background-color: #ffebe9; }
 
 /* The copy button on a code block is a 44 px target on a phone */
-@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) {
+@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) and (max-width: 950px) {
     .code-block .code-copy-btn { width: 44px; height: 44px; }
 }
 

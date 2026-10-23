@@ -150,14 +150,14 @@ body.panel-dragging .preview-pane {
     border-top: 0;
 }
 
-@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) {
+@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) and (max-width: 950px) {
     .preview-dock-btn:not(.preview-max-btn):not(.preview-full-back) { display: none; }
 }
 
 /* A phone's preview, full screen (#5173): the pane leaves the sheet's lower half for a fixed layer over the page, inside the safe-area insets; the tab bar, the toolbar and the body stack in it and
    the body scrolls. A height the person saved by dragging the handle is set inline on the pane (preview_pane.js), so height is !important here: without it the layer drew only that many px from the top (#6237). The side panel it sits in is lifted above the top bar while it is open (z-index 90: under the dialogs, 100 and up). */
 .preview-full-back { display: none; }
-@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) {
+@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) and (max-width: 950px) {
     .preview-pane.preview-phone-full {
         position: fixed; inset: 0; z-index: 90; height: auto !important; min-height: 0; width: auto; max-width: none; border-top: 0;
         padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
@@ -878,7 +878,7 @@ body.panel-dragging .xterm-container {
     white-space: nowrap;
     max-width: 32vw;
 }
-@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) { .terminal-folder { display: none; } }
+@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) and (max-width: 950px) { .terminal-folder { display: none; } }
 
 /* Chat/Terminal toggle sits at the left of the header, before the agent name */
 .terminal-header > .live-view-toggle { flex-shrink: 0; margin-right: 10px; }

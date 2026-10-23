@@ -385,9 +385,9 @@ function assertFits(v, what) {
             assert.equal(view.sent + view.http, 0, `${label}: no resize was sent (${JSON.stringify(view)})`);
             // the phone's layout, not the desktop's (#6683): the same sidebar, side panel and top navigation as a portrait phone, and the Fit width button
             const layout = await tab.ev(`(() => { const d = id => { const e = document.getElementById(id) || document.querySelector(id); return e ? getComputedStyle(e).display : 'none'; };
-                return { sidebar: d('.sidebar'), nav: d('.top-nav-tabs'), phone: matchMedia('(max-width: 767px), (pointer: coarse) and (max-height: 500px)').matches, desktopRows: d('#sidebar-summary-btn'), dockOpen: !!(document.getElementById('agentic-state') && document.getElementById('agentic-state').getClientRects().length && !document.getElementById('agentic-state').classList.contains('collapsed') && getComputedStyle(document.getElementById('agentic-state')).display !== 'none') }; })()`);
+                return { sidebar: d('.sidebar'), nav: d('.top-nav-tabs'), phone: matchMedia('(max-width: 767px), (pointer: coarse) and (max-height: 500px) and (max-width: 950px)').matches, desktopRows: d('#sidebar-summary-btn'), dockOpen: !!(document.getElementById('agentic-state') && document.getElementById('agentic-state').getClientRects().length && !document.getElementById('agentic-state').classList.contains('collapsed') && getComputedStyle(document.getElementById('agentic-state')).display !== 'none') }; })()`);
             if (!portraitLayout) portraitLayout = await portrait.ev(`(() => { const d = id => { const e = document.getElementById(id) || document.querySelector(id); return e ? getComputedStyle(e).display : 'none'; };
-                return { sidebar: d('.sidebar'), nav: d('.top-nav-tabs'), phone: matchMedia('(max-width: 767px), (pointer: coarse) and (max-height: 500px)').matches, desktopRows: d('#sidebar-summary-btn'), dockOpen: !!(document.getElementById('agentic-state') && document.getElementById('agentic-state').getClientRects().length && !document.getElementById('agentic-state').classList.contains('collapsed') && getComputedStyle(document.getElementById('agentic-state')).display !== 'none') }; })()`);
+                return { sidebar: d('.sidebar'), nav: d('.top-nav-tabs'), phone: matchMedia('(max-width: 767px), (pointer: coarse) and (max-height: 500px) and (max-width: 950px)').matches, desktopRows: d('#sidebar-summary-btn'), dockOpen: !!(document.getElementById('agentic-state') && document.getElementById('agentic-state').getClientRects().length && !document.getElementById('agentic-state').classList.contains('collapsed') && getComputedStyle(document.getElementById('agentic-state')).display !== 'none') }; })()`);
             assert.deepEqual(layout, portraitLayout, `${label}: it has the phone's layout, as a portrait phone does (${JSON.stringify(layout)} against ${JSON.stringify(portraitLayout)})`);
             landscape[label] = { pane: `${after.cols}x${after.rows}`, font: view.font };
             await tab.close(); tabs.pop();
@@ -404,6 +404,15 @@ function assertFits(v, what) {
         assert.deepEqual(paneSize(A.name), wideCols, 'a landscape phone does not set a wideCols pane either');
         console.log(`   ✓ the Fit width button shows for a ${wideCols.cols}-column pane in landscape (${wv.screenW} px of text in ${wv.clientW})`);
         await wtab.close(); tabs.splice(tabs.indexOf(wtab), 1);
+        setPane(A.name, eighty.cols, eighty.rows);
+        // a touch laptop with a short, wide browser window (1280x400, a coarse pointer) is not a phone: the desktop layout and the desktop's pane rules (the sideways clause stops at 950 px)
+        const lctx = await newContext(); contexts.push(lctx);
+        const lap = await openTab({ contextId: lctx, width: 1280, height: 400, mobile: true });
+        tabs.push(lap);
+        await show(lap, A, null);
+        const lay = await lap.ev(`({ phone: matchMedia('(max-width: 767px), (pointer: coarse) and (max-height: 500px) and (max-width: 950px)').matches, sidebar: getComputedStyle(document.querySelector('.sidebar')).display })`);
+        assert.deepEqual(lay, { phone: false, sidebar: 'flex' }, `a touch window of 1280x400 keeps the desktop layout (${JSON.stringify(lay)})`);
+        await lap.close(); tabs.splice(tabs.indexOf(lap), 1);
         setPane(A.name, eighty.cols, eighty.rows);
         console.log(`   ✓ the pane stays 80x24 for a phone in landscape: ${JSON.stringify(landscape)}`);
 

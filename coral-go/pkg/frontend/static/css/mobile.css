@@ -210,7 +210,7 @@
 
 /* ── Mobile: ≤ 767px ──────────────────────────────────────── */
 
-@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) {
+@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) and (max-width: 950px) {
     body {
         height: 100vh;
         height: 100dvh;
@@ -993,7 +993,7 @@
 
 /* ── Mobile Panel Overlay ─────────────────────────────────── */
 
-@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) {
+@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) and (max-width: 950px) {
     .agentic-state.mobile-panel-overlay {
         display: flex !important;
         flex-direction: column !important;
@@ -1124,7 +1124,7 @@
 
 }
 
-@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) {
+@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) and (max-width: 950px) {
     .welcome { padding: 30px 18px; }
     .welcome-header { margin-bottom: 22px; }
     .welcome-launch-list { grid-template-columns: 1fr; }
@@ -1226,7 +1226,7 @@
 
 /* ── Medium screens: 768px–1023px refinements ─────────────── */
 
-@media (min-width: 768px) and (max-width: 1023px) and (min-height: 501px), (min-width: 768px) and (max-width: 1023px) and (pointer: fine) {
+@media (min-width: 768px) and (max-width: 1023px) and (min-height: 501px), (min-width: 768px) and (max-width: 1023px) and (pointer: fine), (min-width: 951px) and (max-width: 1023px) {
     /* Modal: better sizing for tablets */
     .modal-content,
     .modal-content-wide {
@@ -1345,7 +1345,7 @@
 .mobile-list-title { font-size: 1rem; font-weight: 600; color: var(--text-primary); margin: 0; }
 
 /* The artifacts table scrolls sideways; on a phone the default scrollbar is a thick grey bar under the header. */
-@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) {
+@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) and (max-width: 950px) {
     .team-artifacts-scroll { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
 }
 
@@ -1357,7 +1357,7 @@
 }
 
 /* Text on a phone is at least 13px (coral-hub's Mobile probe found 10 to 12px in the Servers view and the agent list). Desktop sizes are unchanged. */
-@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) {
+@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) and (max-width: 950px) {
     body .session-group-count,
     body #mobile-session-list .session-goal,
     body #mobile-session-list .session-status-chip,
@@ -1369,14 +1369,14 @@
 }
 
 /* Close buttons and the "Who can read this" disclosure are 44px targets on a phone-width window on any pointer (the touch rule covers a coarse pointer only) (#5681). */
-@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) {
+@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) and (max-width: 950px) {
     .modal-close-btn, .artifact-viewer-close { min-width: 44px; min-height: 44px; }
     .artifact-readers > summary { min-height: 44px; }
 }
 
 /* Jobs on phones: the Jobs list lives in the page above the job's detail, as History's does (#6139). */
 #mobile-jobs-list { display: none; }
-@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) {
+@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) and (max-width: 950px) {
     #mobile-jobs-list { display: block; width: 100%; min-height: 0; }
     #mobile-jobs-list .sidebar-section { padding: 12px 0; } /* the rows start where the page heading does (#6521) */
     #mobile-jobs-list .sidebar-section-header { display: none; } /* the page already says "Jobs" */
@@ -1388,7 +1388,7 @@
 #mobile-history-list,
 .mobile-history-back { display: none; }
 #chats-empty-view > .welcome-shell { margin-top: auto; }
-@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) {
+@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) and (max-width: 950px) {
     #chats-empty-view { padding: 0; align-items: stretch; text-align: left; }
     #chats-empty-view > .welcome-shell { display: none; }
     #mobile-history-list { display: block; width: 100%; margin: 0; min-height: 0; }

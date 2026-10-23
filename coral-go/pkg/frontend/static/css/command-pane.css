@@ -343,7 +343,7 @@ body.popout-mode.popout-terminal-blocked .attach-image-btn { pointer-events: non
    input bar (mobile.css). */
 
 /* The team board's composer (#6239) is the same card: the :is() lists below carry #board-chat-input-pane beside #command-pane, so its box, its text, its buttons and its focus ring are the chat's rules, not copies. */
-@media (min-width: 768px) and (min-height: 501px), (min-width: 768px) and (pointer: fine) {
+@media (min-width: 768px) and (min-height: 501px), (min-width: 768px) and (pointer: fine), (min-width: 951px) {
     :is(#command-pane, #board-chat-input-pane) {
         height: auto !important;
         min-height: 0;
@@ -446,7 +446,7 @@ body.popout-mode.popout-terminal-blocked .attach-image-btn { pointer-events: non
 
 
 /* On a phone the chat keeps its compact bar (mobile.css); the board's composer stays this card, as it has no inline Send to move. */
-@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) {
+@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) and (max-width: 950px) {
     #board-chat-input-pane {
         height: auto; min-height: 0; max-height: none;
         width: calc(100% - 16px);
@@ -548,7 +548,7 @@ body.popout-mode.popout-terminal-blocked .attach-image-btn { pointer-events: non
     font-size: 1rem;
     cursor: pointer;
 }
-@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) {
+@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) and (max-width: 950px) {
     .composer-error { margin: 0 8px 6px; }
     .composer-error-restart, .composer-error-dismiss { min-height: 44px; min-width: 44px; }
 }
@@ -606,7 +606,7 @@ body.popout-mode.popout-terminal-blocked .attach-image-btn { pointer-events: non
 .model-chip-add-err { margin: 0; font-size: 0.8125rem; color: var(--error-text, var(--fx-red-hot)); }
 .model-chip-add-actions { display: flex; gap: 6px; }
 
-@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) {
+@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) and (max-width: 950px) {
     /* A phone: the menu is a sheet over the bottom of the screen, with room for 44 px targets. */
     .model-chip-menu { position: fixed; left: 8px; right: 8px; bottom: 8px; max-width: none; max-height: 60vh; }
     .model-chip-item { min-height: 44px; }
