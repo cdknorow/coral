@@ -103,6 +103,19 @@ class Command(unittest.TestCase):
         self.assertNotIn(wrong, r.stderr)
         self.assertNotIn(SEED, r.stdout + r.stderr)
 
+    def test_a_code_with_line_breaks_cannot_put_a_workflow_command_in_the_log(self):
+        # the code is an input of the workflow: whatever it holds, the only lines starting with :: are add-mask commands for pieces of it, never a command of its own
+        for code in ("123456\n::error::injected\n::stop-commands::x", "::error::x\r::warning::y", "12\x0b::stop-commands::z"):
+            r = run(["verify"], {"RELEASE_CODE": code, "RELEASE_CODE_SEED": SEED})
+            self.assertEqual(r.returncode, 2, r.stdout)
+            for line in r.stdout.splitlines():
+                self.assertTrue(line.startswith("::add-mask::"), "a log line that is not an add-mask: %r" % line)
+            self.assertEqual(r.stdout.splitlines()[0][:12], "::add-mask::")
+
+    def test_a_clock_before_the_first_step_is_a_refusal_not_a_crash(self):
+        self.assertFalse(rc.check("123456", SEED, 10))
+        self.assertFalse(rc.check("123456", SEED, 0))
+
     def test_nothing_that_cannot_be_checked_passes(self):
         good = rc.totp(rc.decode_seed(SEED), time.time())
         for env in ({}, {"RELEASE_CODE": good}, {"RELEASE_CODE_SEED": SEED}, {"RELEASE_CODE": "", "RELEASE_CODE_SEED": SEED}, {"RELEASE_CODE": good, "RELEASE_CODE_SEED": "AAAA"}, {"RELEASE_CODE": "12345", "RELEASE_CODE_SEED": SEED}):
