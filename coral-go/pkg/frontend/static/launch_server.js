@@ -58,7 +58,7 @@ export function serverLabel(server, servers) {
 }
 
 /** Why `server` cannot be launched on right now, or "" when it can. */
-export const CONNECT_FIRST = 'Connect a machine first';
+export const CONNECT_FIRST = 'Connect a computer first';
 
 /** What the hub's owned-machine list says, once it has loaded (a list that has not loaded, or failed, is null: never read as an empty account):
  *  'none' (no machine is connected, the first run), 'offline' (machines, but none can be used) or 'ready' (one can). Null off the hub. */
@@ -74,7 +74,7 @@ export function noMachine(servers = state.servers) {
     return machineState(servers) === 'none';
 }
 
-const MACHINES_OFFLINE = 'Your machines are offline';
+const MACHINES_OFFLINE = 'Your computers are offline';
 /** What a machine-dependent action (Browse) says when there is nothing to run it on, or '' when there is. */
 export function machineBlock(servers = state.servers) {
     const m = machineState(servers);

@@ -1,6 +1,6 @@
-// Coral Hub's first run (#4586, coral-hub's copy): an account whose machine list loaded and is empty gets "Connect your first machine" with a Connect a machine button (the hub's /enroll)
-// instead of launch cards that go nowhere, and the empty agent list says so too (it is the phone's Agents page); machines that are all offline get "Your machines are offline"; a usable
-// machine with no agents gets "No agents yet"; a list that failed to load is never shown as a first run. A folder Browse says "Connect a machine first" instead of "Failed to load".
+// Coral Hub's first run (#4586, coral-hub's copy): an account whose machine list loaded and is empty gets "Connect your computers" (install Coral on each, then Settings > Network and Hub > Connect to Coral Hub) with an Add a computer link (the hub's /machines/add, same tab, #6351)
+// instead of launch cards that go nowhere, and the empty agent list says so too (it is the phone's Agents page); computers that are all offline get "Your computers are offline"; a usable
+// machine with no agents gets "No agents yet"; a list that failed to load is never shown as a first run. A folder Browse says "Connect a computer first" instead of "Failed to load".
 // A local Coral never shows any of it. Served as the hub would serve it (the boot flag says mode
 // "cloud", as in hub_nav_browser) with the list of servers answered by the test.
 //
@@ -24,14 +24,14 @@ const { settle } = require('./helpers/wait');
         await Promise.all([Page.enable(), Runtime.enable(), Network.enable()]);
         await Network.setCacheDisabled({ cacheDisabled: true });
         await Fetch.enable({ patterns: [{ urlPattern: `${BASE}/`, resourceType: 'Document', requestStage: 'Response' }, { urlPattern: `${BASE}/auth/session`, requestStage: 'Request' },
-            { urlPattern: `${BASE}/api/servers*`, requestStage: 'Request' }, { urlPattern: `${BASE}/api/sessions/live*`, requestStage: 'Request' }, { urlPattern: `${BASE}/enroll*`, requestStage: 'Request' }] });
+            { urlPattern: `${BASE}/api/servers*`, requestStage: 'Request' }, { urlPattern: `${BASE}/api/sessions/live*`, requestStage: 'Request' }, { urlPattern: `${BASE}/machines/add*`, requestStage: 'Request' }] });
         const json = (id, status, body) => Fetch.fulfillRequest({ requestId: id, responseCode: status, responseHeaders: [{ name: 'Content-Type', value: 'application/json' }], body: Buffer.from(JSON.stringify(body)).toString('base64') });
         safePaused(client, async e => {
             const u = e.request.url;
             if (u.endsWith('/auth/session')) return json(e.requestId, 200, { authenticated: true, email: 'tester@example.com', csrf: 'x' });
             if (/\/api\/servers(\?|$)/.test(u)) return json(e.requestId, 200, { servers: machines.map(m => ({ id: m.id, label: m.label, online: m.status === 'online', created_at: '2026-10-01T00:00:00Z', last_seen: '2026-10-18T00:00:00Z' })) });
             if (/\/api\/sessions\/live(\?|$)/.test(u)) return listFails ? json(e.requestId, 500, { error: 'boom' }) : json(e.requestId, 200, cloud ? { sessions: [], servers: machines } : []);
-            if (/\/enroll(\?|$)/.test(u)) { enrollHit++; return Fetch.fulfillRequest({ requestId: e.requestId, responseCode: 200, responseHeaders: [{ name: 'Content-Type', value: 'text/html' }], body: Buffer.from('<!doctype html><title>enroll</title>').toString('base64') }); }
+            if (/\/machines\/add(\?|$)/.test(u)) { enrollHit++; return Fetch.fulfillRequest({ requestId: e.requestId, responseCode: 200, responseHeaders: [{ name: 'Content-Type', value: 'text/html' }], body: Buffer.from('<!doctype html><title>add</title>').toString('base64') }); }
             if (e.responseStatusCode !== 200) return Fetch.continueRequest({ requestId: e.requestId });
             const { body, base64Encoded } = await Fetch.getResponseBody({ requestId: e.requestId });
             let html = base64Encoded ? Buffer.from(body, 'base64').toString('utf8') : body;
@@ -53,21 +53,24 @@ const { settle } = require('./helpers/wait');
         assert.equal(await ev(`document.body.classList.contains('hub-no-machine')`), true);
         assert.equal(await ev(shown('.welcome-first-run')), true, 'the connect card');
         assert.equal(await ev(shown('.welcome-launch-list')), false, 'the launch cards that go nowhere are gone');
-        assert.equal(await ev(`document.querySelector('.welcome-connect-btn').textContent.trim()`), 'Connect a machine');
-        assert.equal(await ev(`document.querySelector('.welcome-first-run h2').textContent`), 'Connect your first machine');
-        assert.deepEqual(await ev(`[...document.querySelectorAll('.welcome-first-run p')].map(p => p.textContent)`), ['Run Coral on your machine, then connect it to see your agents here.', 'Start the connection in Coral on your machine, then enter its code here.']);
+        assert.equal(await ev(`document.querySelector('.welcome-connect-btn').textContent.trim()`), 'Add a computer');
+        assert.equal(await ev(`document.querySelector('.welcome-connect-btn').getAttribute('href')`), '/machines/add', 'a real link, same tab (no target)');
+        assert.equal(await ev(`document.querySelector('.welcome-connect-btn').target`), '');
+        assert.equal(await ev(shown('.welcome-connect-another')), false, 'no Connect another computer link with none connected');
+        assert.equal(await ev(`document.querySelector('.welcome-first-run h2').textContent`), 'Connect your computers');
+        assert.deepEqual(await ev(`[...document.querySelectorAll('.welcome-first-run p')].map(p => p.textContent)`), ['Install Coral on each computer. In Coral, go to Settings > Network and Hub > Connect to Coral Hub, and the computer appears here.']);
         assert.equal(await ev(shown('.welcome-offline')), false);
         const side = await ev(`({ text: document.getElementById('live-sessions-list').innerText.replace(/\\s+/g, ' ').trim(), open: !document.querySelector('[data-section="live-sessions"]').classList.contains('collapsed') })`);
-        assert.deepEqual(side, { text: 'Connect your first machine Run Coral on your machine, then connect it to see your agents here. Connect a machine Start the connection in Coral on your machine, then enter its code here.', open: true }, 'the empty list carries the action and stays open');
+        assert.deepEqual(side, { text: 'Connect your computers Install Coral on each computer. In Coral, go to Settings > Network and Hub > Connect to Coral Hub, and the computer appears here. Add a computer', open: true }, 'the empty list carries the action and stays open');
         await shot('hub-first-run-desktop');
 
-        console.log('2. Connect a machine goes to the hub\'s short-code page, from the card and from the empty list');
+        console.log('2. Add a computer goes to the hub\'s /machines/add, in this tab, from the panel and from the empty list');
         await ev(`document.querySelector('.welcome-connect-btn').click(); true`);
-        await waitFor(`location.pathname === '/enroll'`, 'the enroll page', { timeout: 8000 });
+        await waitFor(`location.pathname === '/machines/add'`, 'the add page', { timeout: 8000 });
         assert.equal(enrollHit, 1);
         await open(1280, 756);
-        await ev(`document.querySelector('#live-sessions-list .hub-connect-empty button').click(); true`);
-        await waitFor(`location.pathname === '/enroll'`, 'the enroll page from the empty list', { timeout: 8000 });
+        await ev(`document.querySelector('#live-sessions-list .hub-connect-empty a.btn').click(); true`);
+        await waitFor(`location.pathname === '/machines/add'`, 'the add page from the empty list', { timeout: 8000 });
         assert.equal(enrollHit, 2);
         await open(1280, 756);
 
@@ -75,13 +78,13 @@ const { settle } = require('./helpers/wait');
         await ev(`document.querySelector('[data-on-click^="m-show-launch-modal"]').click(); true`);
         await waitFor(`!!document.getElementById('launch-modal') && getComputedStyle(document.getElementById('launch-modal')).display !== 'none'`, 'the launch dialog', { timeout: 6000 });
         await ev(`document.querySelector('#launch-modal [data-on-click="m-toggle-browser"]').click(); true`);
-        await waitFor(`[...document.querySelectorAll('#launch-modal .empty-state')].some(e => e.textContent === 'Connect a machine first')`, 'the message', { timeout: 6000 });
+        await waitFor(`[...document.querySelectorAll('#launch-modal .empty-state')].some(e => e.textContent === 'Connect a computer first')`, 'the message', { timeout: 6000 });
         assert.equal(await ev(`[...document.querySelectorAll('#launch-modal .empty-state')].some(e => /Failed to load/.test(e.textContent))`), false);
         await shot('hub-first-run-browse');
 
         console.log('4. A phone (390 px): the Agents page has the same empty state, the action is a 44 px target and nothing scrolls sideways');
         await open(390, 756);
-        const phone = await ev(`(() => { const b = document.querySelector('#mobile-agent-list .hub-connect-empty button, #live-sessions-list .hub-connect-empty button'); const r = b && b.getBoundingClientRect();
+        const phone = await ev(`(() => { const b = document.querySelector('#mobile-agent-list .hub-connect-empty a.btn, #live-sessions-list .hub-connect-empty a.btn'); const r = b && b.getBoundingClientRect();
             return { has: !!b, h: r ? Math.round(r.height) : 0, inside: r ? r.right <= innerWidth && r.left >= 0 : false, page: document.documentElement.scrollWidth - document.documentElement.clientWidth }; })()`);
         assert.ok(phone.has && phone.h >= 44 && phone.inside && phone.page <= 0, JSON.stringify(phone));
         await shot('hub-first-run-phone');
@@ -92,23 +95,25 @@ const { settle } = require('./helpers/wait');
         assert.equal(await ev(`document.body.classList.contains('hub-no-machine')`), false, 'not a first run');
         assert.equal(await ev(`document.body.classList.contains('hub-machines-offline')`), true);
         assert.equal(await ev(shown('.welcome-offline')), true); assert.equal(await ev(shown('.welcome-first-run')), false); assert.equal(await ev(shown('.welcome-launch-list')), false);
-        assert.equal(await ev(`document.querySelector('.welcome-offline h2').textContent`), 'Your machines are offline');
-        assert.equal(await ev(`document.querySelector('.welcome-offline p').textContent`), 'Keep Coral running on a connected machine to see its agents here.');
-        assert.equal(await ev(`document.getElementById('live-sessions-list').innerText.replace(/\\s+/g, ' ').trim()`), 'Your machines are offline Keep Coral running on a connected machine to see its agents here.');
+        assert.equal(await ev(`document.querySelector('.welcome-offline h2').textContent`), 'Your computers are offline');
+        assert.equal(await ev(`document.querySelector('.welcome-offline p').textContent`), 'Keep Coral running on a connected computer to see its agents here.');
+        assert.equal(await ev(`document.getElementById('live-sessions-list').innerText.replace(/\\s+/g, ' ').trim()`), 'Your computers are offline Keep Coral running on a connected computer to see its agents here.');
         await shot('hub-machines-offline');
         await ev(`document.querySelector('[data-on-click^="m-show-launch-modal"]').click(); true`);
         await waitFor(`!!document.getElementById('launch-modal') && getComputedStyle(document.getElementById('launch-modal')).display !== 'none'`, 'the launch dialog', { timeout: 6000 });
         await ev(`document.querySelector('#launch-modal [data-on-click="m-toggle-browser"]').click(); true`);
-        await waitFor(`[...document.querySelectorAll('#launch-modal .empty-state')].some(e => e.textContent === 'Your machines are offline')`, 'the offline message in Browse', { timeout: 6000 });
+        await waitFor(`[...document.querySelectorAll('#launch-modal .empty-state')].some(e => e.textContent === 'Your computers are offline')`, 'the offline message in Browse', { timeout: 6000 });
         machines = [{ id: 'box-b', label: 'Box B', status: 'online' }];
         await open(1280, 756);
         assert.equal(await ev(`document.body.classList.contains('hub-no-machine') || document.body.classList.contains('hub-machines-offline')`), false);
         assert.equal(await ev(shown('.welcome-launch-list')), true); assert.equal(await ev(shown('.welcome-first-run')), false); assert.equal(await ev(shown('.welcome-offline')), false);
-        assert.equal(await ev(`document.getElementById('live-sessions-list').innerText.replace(/\\s+/g, ' ').trim()`), 'No agents yet Start an agent on your machine to see it here.');
+        assert.equal(await ev(`(() => { const a = document.querySelector('.welcome-connect-another'); return a && a.getClientRects().length > 0 && a.getAttribute('href') + '|' + a.textContent.trim(); })()`), '/machines/add|Connect another computer', 'with a computer connected: the normal home and a small Connect another computer link (same tab)');
+        await shot('hub-machines-ready');
+        assert.equal(await ev(`document.getElementById('live-sessions-list').innerText.replace(/\\s+/g, ' ').trim()`), 'No agents yet Start an agent on a connected computer to see it here.');
         machines = []; listFails = true;
         await open(1280, 756);
         assert.equal(await ev(`document.body.classList.contains('hub-no-machine') || document.body.classList.contains('hub-machines-offline')`), false, 'a list that failed to load is not a first run');
-        assert.equal(await ev(`/Connect your first machine|Your machines are offline|No agents yet/.test(document.getElementById('live-sessions-list').innerText)`), false);
+        assert.equal(await ev(`/Connect your computers|Your computers are offline|No agents yet/.test(document.getElementById('live-sessions-list').innerText)`), false);
         assert.equal(await ev(shown('.welcome-first-run')), false);
         listFails = false;
 
@@ -117,6 +122,7 @@ const { settle } = require('./helpers/wait');
         await open(1280, 756);
         assert.equal(await ev(`document.body.classList.contains('hub-no-machine')`), false);
         assert.equal(await ev(shown('.welcome-connect')), false); assert.equal(await ev(shown('.welcome-launch-list')), true);
+        assert.equal(await ev(shown('.welcome-connect-another')), false, 'a local Coral has no Connect another computer link (Hub mode only)');
         console.log('   ✓');
     } finally { await client.close(); }
 })().catch(e => { console.error(e); process.exit(1); });

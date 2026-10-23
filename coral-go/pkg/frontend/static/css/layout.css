@@ -870,6 +870,11 @@ body.hub-no-machine .welcome-launch-list, body.hub-no-machine .welcome-header p,
 .welcome-connect-copy h2 { margin: 0 0 4px; font-size: 0.9375rem; color: var(--text-primary); }
 .welcome-connect-copy p + p { margin-top: 4px; }
 .welcome-connect-copy p { margin: 0; font-size: 0.8125rem; line-height: 1.45; color: var(--text-secondary); }
+.welcome-connect-another { display: none; justify-self: start; font-size: 0.8125rem; color: var(--link-text, var(--accent)); text-decoration: underline; }
+body.cloud-mode:not(.hub-no-machine) .welcome-connect-another { display: inline-block; margin-top: 6px; }
+@media (pointer: coarse), (max-width: 767px) { body.cloud-mode:not(.hub-no-machine) .welcome-connect-another { display: inline-flex; align-items: center; min-height: var(--control-touch-height, 44px); } }
+.welcome-connect-btn, .hub-connect-empty a.btn { text-decoration: none; }
+.hub-connect-empty, .hub-connect-empty * { font-style: normal; }
 .hub-connect-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 16px 12px; font-style: normal; }
 .hub-connect-empty strong { color: var(--text-primary); font-size: 0.8125rem; }
 .session-list li.hub-connect-empty { font-style: normal; }

@@ -273,17 +273,16 @@
                     <section class="welcome-connect welcome-first-run" aria-labelledby="welcome-connect-title">
                         <span class="welcome-connect-icon material-icons" aria-hidden="true">device_hub</span>
                         <div class="welcome-connect-copy">
-                            <h2 id="welcome-connect-title">Connect your first machine</h2>
-                            <p>Run Coral on your machine, then connect it to see your agents here.</p>
-                            <p class="welcome-connect-hint">Start the connection in Coral on your machine, then enter its code here.</p>
+                            <h2 id="welcome-connect-title">Connect your computers</h2>
+                            <p>Install Coral on each computer. In Coral, go to Settings &gt; Network and Hub &gt; Connect to Coral Hub, and the computer appears here.</p>
                         </div>
-                        <button type="button" class="btn btn-primary welcome-connect-btn" data-on-click="hub-connect-machine">Connect a machine</button>
+                        <a class="btn btn-primary welcome-connect-btn" href="/machines/add">Add a computer</a>
                     </section>
                     <section class="welcome-connect welcome-offline" aria-labelledby="welcome-offline-title">
                         <span class="welcome-connect-icon material-icons" aria-hidden="true">cloud</span>
                         <div class="welcome-connect-copy">
-                            <h2 id="welcome-offline-title">Your machines are offline</h2>
-                            <p>Keep Coral running on a connected machine to see its agents here.</p>
+                            <h2 id="welcome-offline-title">Your computers are offline</h2>
+                            <p>Keep Coral running on a connected computer to see its agents here.</p>
                         </div>
                     </section>
                     <div class="welcome-launch-list">
@@ -304,6 +303,8 @@
                             <span class="material-icons welcome-launch-arrow" aria-hidden="true">arrow_forward</span>
                         </button>
                     </div>
+                    <!-- Coral Hub with a computer connected (#6351): the way to add another, small; body.cloud-mode without body.hub-no-machine -->
+                    <a class="welcome-connect-another" href="/machines/add">Connect another computer</a>
                     <!-- Coral Hub (#3221): hidden until settings load; the user can hide it -->
                     <section id="editions-home" class="editions-home" aria-labelledby="editions-home-title" hidden>
                         <div class="editions-home-head">
