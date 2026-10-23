@@ -24,7 +24,7 @@ const BASE = require('./test_base').BASE;
             await sleep(600); // sleep-ok: the first live list renders from several answers; no single completion event
             await ev(`window.selectLiveSession('held-agent', 'claude', 'held-agent-id', 'local'); true`);
             await sleep(500); // sleep-ok: a selection settles over frames
-            const feed = held => ev(`(() => { const rows = window._coralGetLiveSessions().map(r => r.session_id === 'held-agent-id' ? { ...r, held_inputs: ${held} } : r); window._coralSetLiveSessions(rows);
+            const feed = (held, since) => ev(`(() => { const rows = window._coralGetLiveSessions().map(r => r.session_id === 'held-agent-id' ? { ...r, held_inputs: ${held}, held_since: ${since === undefined ? 'null' : JSON.stringify(since)} } : r); window._coralSetLiveSessions(rows);
                 return import(${S} + 'render.js').then(m => { m.updateWaitingIndicator(rows.find(r => r.session_id === 'held-agent-id')); return true; }); })()`);
             const view = () => ev(`(() => { const n = document.getElementById('composer-held-notice'), b = n && n.querySelector('button');
                 const row = document.querySelector('[data-session-id="held-agent-id"] .session-held-line, .session-item[data-name="held-agent"] .session-held-line, .session-held-line');
@@ -60,7 +60,17 @@ const BASE = require('./test_base').BASE;
             await feed(3);
             v = await view();
             check(`${tag}: holding again starts the minute over (no notice at once)`, !v.shown && v.row === null, JSON.stringify(v));
-            await ev(`window.__shot && 0; true`);
+            // the server's held_since (the oldest held send's start) is the start of the minute: a page that opens late has the real one
+            await feed(0);
+            await ev(`window.__coralHeldAfterMs = 60000; true`); // the real minute again: only the server's time can show a notice now
+            await feed(2, new Date(Date.now() - 120000).toISOString());
+            v = await view();
+            check(`${tag}: held since two minutes ago (the row's held_since): the notice shows at once on a page that has just seen it`, v.shown && /^2 messages waiting/.test(v.text) && /^2 messages waiting/.test(v.row || ''), JSON.stringify([v.text, v.row]));
+            await feed(0, null);
+            await feed(2, new Date(Date.now() - 5000).toISOString());
+            v = await view();
+            check(`${tag}: held since five seconds ago: nothing yet`, !v.shown && v.row === null, JSON.stringify(v));
+            await feed(0, null);
         }
     } finally { await client.close(); }
     if (results.some(r => !r)) { console.error(`${results.filter(r => !r).length} of ${results.length} failed`); process.exit(1); }
