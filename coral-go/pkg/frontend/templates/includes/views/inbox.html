@@ -7,20 +7,20 @@
             <h2 id="inbox-title" class="inbox-title">Inbox</h2>
         </header>
         <div class="inbox-tabs" role="tablist" aria-label="Inbox" id="inbox-tablist">
-            <button type="button" class="inbox-tab" role="tab" id="inbox-tab-needs" aria-controls="inbox-panel-needs" aria-selected="true" tabindex="0">Needs you</button>
-            <button type="button" class="inbox-tab" role="tab" id="inbox-tab-tasks" aria-controls="inbox-panel-tasks" aria-selected="false" tabindex="-1">Tasks for you</button>
-            <button type="button" class="inbox-tab" role="tab" id="inbox-tab-saved" aria-controls="inbox-panel-saved" aria-selected="false" tabindex="-1">Saved for later</button>
+            <button type="button" class="inbox-tab" role="tab" id="inbox-tab-needs" aria-controls="inbox-panel-needs" aria-selected="true" tabindex="0"><span class="inbox-tab-label" id="inbox-tab-needs-label">Needs you</span><span class="inbox-tab-count" id="inbox-tab-needs-count" hidden></span></button>
+            <button type="button" class="inbox-tab" role="tab" id="inbox-tab-tasks" aria-controls="inbox-panel-tasks" aria-selected="false" tabindex="-1"><span class="inbox-tab-label" id="inbox-tab-tasks-label">Tasks</span><span class="inbox-tab-count" id="inbox-tab-tasks-count" hidden></span></button>
+            <button type="button" class="inbox-tab" role="tab" id="inbox-tab-saved" aria-controls="inbox-panel-saved" aria-selected="false" tabindex="-1"><span class="inbox-tab-label" id="inbox-tab-saved-label">Saved</span><span class="inbox-tab-count" id="inbox-tab-saved-count" hidden></span></button>
         </div>
-        <section id="inbox-panel-needs" class="inbox-panel" role="tabpanel" aria-labelledby="inbox-tab-needs">
+        <section id="inbox-panel-needs" class="inbox-panel" role="tabpanel" aria-labelledby="inbox-tab-needs-label">
             <div id="inbox-needs" class="inbox-needs"><!-- not a named section: the tab panel already is the "Needs you" region, and a second one of the same name is listed twice by a screen reader (#6570) -->
                 <ul id="inbox-needs-list" class="inbox-needs-list"></ul>
                 <p id="inbox-needs-empty" class="inbox-needs-empty">Nothing needs your input.</p>
             </div>
         </section>
-        <section id="inbox-panel-tasks" class="inbox-panel" role="tabpanel" aria-labelledby="inbox-tab-tasks" hidden>
+        <section id="inbox-panel-tasks" class="inbox-panel" role="tabpanel" aria-labelledby="inbox-tab-tasks-label" hidden>
             <div id="inbox-tasks-host" class="inbox-tasks-host"></div>
         </section>
-        <section id="inbox-panel-saved" class="inbox-panel" role="tabpanel" aria-labelledby="inbox-tab-saved" hidden>
+        <section id="inbox-panel-saved" class="inbox-panel" role="tabpanel" aria-labelledby="inbox-tab-saved-label" hidden>
             <div id="saved-view" class="saved-view"></div><!-- the panel is the "Saved for later" region (#6570); the hub names its own copy itself -->
         </section>
     </div>

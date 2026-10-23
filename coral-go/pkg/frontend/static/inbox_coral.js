@@ -6,6 +6,7 @@ import { build as buildRoute } from './routes.js';
 import { onAccountForgotten } from './local_store.js';
 import { loadSafeMarkdown } from './vendor_loader.js';
 import { keyLabel, pathId, serverFetch } from './server_base.js';
+import { setInboxCount } from './inbox_tab.js'; // the count on the Tasks tab
 const { mountInbox, clearInboxDrafts, INBOX_CONTRACT } = await importOnce('./inbox_panel.js'); // the component (shared with the hub); this file is the one that is Coral's
 
 const OPEN_STATUSES = ['pending', 'in_progress', 'review_pending', 'blocked'];
@@ -69,7 +70,7 @@ export function coralInbox() {
     if (_inbox) return _inbox;
     const host = document.getElementById('inbox-tasks-host');
     if (!host) return null;
-    _inbox = mountInbox(host, coralInboxAdapter, { load: false, region: false });
+    _inbox = mountInbox(host, coralInboxAdapter, { load: false, region: false, onCount: n => setInboxCount('tasks', n) });
     return _inbox;
 }
 

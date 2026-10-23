@@ -83,8 +83,9 @@ const SAVED_WORDS = {
  *   savedExpand(item, which)    the "Read the whole message" control for one saved item: { root, button, region } (the host puts `root` in the item)
  *   destroy()            removes what was mounted and forgets the drafts
  * options.load === false: do not read the tasks at once (the host calls refresh() when the list is shown).
+ * options.onCount(n): told how many tasks the list holds after each read (the host shows it on its tab).
  * options.region === false: the root is a plain div, not a region named "Tasks for you" (the host's own panel is named already).
- * @param {HTMLElement} host @param {object} adapter @param {{ load?: boolean, region?: boolean }} [options]
+ * @param {HTMLElement} host @param {object} adapter @param {{ load?: boolean, region?: boolean, onCount?: (n: number) => void }} [options]
  */
 export function mountInbox(host, adapter, options) {
     checkAdapter(adapter);
@@ -239,6 +240,7 @@ export function mountInbox(host, adapter, options) {
             if (kept) list.querySelector(`.ibx-task[data-key="${CSS.escape(kept)}"] .ibx-task-head`)?.focus(); // a refresh does not take the focus from the task being read
             empty.hidden = rows.length > 0;
             empty.textContent = rows.length ? '' : 'No assigned tasks.';
+            if (options && typeof options.onCount === 'function') options.onCount(rows.length);
         } catch (e) {
             if (gone) return;
             list.replaceChildren();

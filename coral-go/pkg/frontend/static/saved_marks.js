@@ -8,6 +8,7 @@ import { isCloud, sessionServer, normServer, splitKey, serverFetch, LOCAL_SERVER
 import { onBuilt } from './lazy_dom.js';
 import { dockKind, boardOfPage, onDockPage } from './dock_page.js';
 import { scopeOf, withScope, ALL } from './saved_scope.js';
+import { setInboxCount } from './inbox_tab.js'; // the count on the Inbox's Saved tab
 
 // The bookmark is an inline SVG (the shape the Team Artifacts' Keep button uses), filled when saved: the Material Icons subset has no bookmark.
 const BOOKMARK_SVG = '<svg class="bm" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 2.5h8v11L8 10.5l-4 3z"/></svg>';
@@ -184,6 +185,7 @@ export function setSavedCount(n) {
     const b = document.getElementById('saved-btn');
     if (!b) return;
     savedCount = n;
+    setInboxCount('saved', n);
     document.querySelectorAll('#saved-btn .saved-count, .saved-menu-item .saved-count').forEach(paintCount);
     b.setAttribute('aria-label', n > 0 ? `Saved for later, ${n} open` : 'Saved for later');
     b.classList.toggle('on', n > 0);

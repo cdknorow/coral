@@ -33,8 +33,25 @@ export function updateInboxTab() {
     if (badge.hidden !== (n === 0)) badge.hidden = n === 0;
     const label = n > 0 ? `Inbox, ${n} waiting for input` : null;
     if (tab.getAttribute('aria-label') !== label) { if (label) tab.setAttribute('aria-label', label); else tab.removeAttribute('aria-label'); }
+    setInboxCount('needs', n);
     renderNeedsYou();
     announceNewlyWaiting(tab);
+}
+
+// The count on each of the Inbox's three tabs (Needs you, Tasks, Saved), in the tab's name as well as drawn beside it: a screen reader hears "Needs you, 2 waiting" with the tab, not a grey number after it.
+// Only what changed is written (this runs for every message of the feed). A count that is not known yet (the tasks before the first read) or is 0 shows nothing.
+const COUNT_NAMES = { needs: n => `Needs you, ${n} waiting`, tasks: n => `Tasks, ${n}`, saved: n => `Saved, ${n}` };
+const _counts = {};
+export function setInboxCount(kind, n) {
+    const tab = document.getElementById(`inbox-tab-${kind}`), box = document.getElementById(`inbox-tab-${kind}-count`);
+    if (!tab || !box || !COUNT_NAMES[kind]) return;
+    n = Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+    _counts[kind] = n;
+    const text = n > 99 ? '99+' : n > 0 ? String(n) : '';
+    if (box.textContent !== text) box.textContent = text;
+    if (box.hidden !== (n === 0)) box.hidden = n === 0;
+    const name = n > 0 ? COUNT_NAMES[kind](n) : null;
+    if (tab.getAttribute('aria-label') !== name) { if (name) tab.setAttribute('aria-label', name); else tab.removeAttribute('aria-label'); }
 }
 
 let _announced = null; // the agents that were waiting at the last look (null before the first)
@@ -53,9 +70,13 @@ function announceNewlyWaiting(tab) {
     const fresh = rows.filter(s => !before.has(waitingKey(s)));
     if (!shown || !fresh.length) return;
     const span = document.createElement('span'); // a new node each time: the same words for the same agent waiting again are said again
-    span.textContent = fresh.map(s => `${resolveSessionIdentity(s)} needs you: ${sessionStateInfo(s).label}`).join('. ');
+    span.textContent = fresh.map(s => `${resolveSessionIdentity(s)} needs you: ${needsWords(s)}`).join('. ');
     live.replaceChildren(span);
 }
+
+/** What a Needs you row says an agent waits for, in one string: the state's words, then the agent's own ask when it has one (the same words as the row's two lines, so the announcement never differs from the row). */
+const askOf = s => String(s.waiting_summary || '').replace(/\s+/g, ' ').trim();
+const needsWords = s => { const why = sessionStateInfo(s).label, ask = askOf(s); return ask && ask !== why ? `${why}. ${ask}` : why; };
 
 let _needsKey = null;
 /** The Needs you list of the dashboard's own Inbox: the agents waiting for input, each a button that opens that agent. Drawn only while that Inbox is on screen, and only when the list changed. */
@@ -64,7 +85,7 @@ function renderNeedsYou(force = false) {
     const list = document.getElementById('inbox-needs-list');
     if (!local || local.hidden || !list) return;
     const rows = (state.liveSessions || []).filter(s => s && s.waiting_for_input);
-    const key = JSON.stringify(rows.map(s => [sessionServer(s), s.session_id, s.name, s.display_name, s.waiting_kind, s.board_project]));
+    const key = JSON.stringify(rows.map(s => [sessionServer(s), s.session_id, s.name, s.display_name, s.waiting_kind, s.board_project, askOf(s)]));
     if (!force && key === _needsKey) return;
     _needsKey = key;
     const empty = document.getElementById('inbox-needs-empty');
@@ -76,10 +97,16 @@ function renderNeedsYou(force = false) {
         b.type = 'button';
         b.className = 'inbox-needs-item';
         b.dataset.sessionId = String(s.session_id || '');
+        // One control per row, named "Open <agent> ...": the visible Open is its last word, not a second button inside it.
+        const lead = document.createElement('span'); lead.className = 'sr-only'; lead.textContent = 'Open ';
         const name = document.createElement('span'); name.className = 'inbox-needs-name'; name.textContent = resolveSessionIdentity(s);
         const why = document.createElement('span'); why.className = 'inbox-needs-why'; why.textContent = sessionStateInfo(s).label;
-        b.append(name, why);
-        if (s.board_project) { const t = document.createElement('span'); t.className = 'inbox-needs-team'; t.textContent = splitKey(s.board_project).name; b.append(t); }
+        const head = document.createElement('span'); head.className = 'inbox-needs-head'; head.append(lead, name, why);
+        if (s.board_project) { const t = document.createElement('span'); t.className = 'inbox-needs-team'; t.textContent = splitKey(s.board_project).name; head.append(t); }
+        b.append(head);
+        const ask = askOf(s); // the agent's own request, as text (never markup): one line, cut by the CSS to the row's width
+        if (ask && ask !== why.textContent) { const a = document.createElement('span'); a.className = 'inbox-needs-ask'; a.textContent = ask; a.title = ask; b.append(a); }
+        const go = document.createElement('span'); go.className = 'inbox-needs-open'; go.setAttribute('aria-hidden', 'true'); go.textContent = 'Open'; b.append(go);
         b.addEventListener('click', () => {
             window.switchNavTab?.('agents');
             window.selectLiveSession?.(s.name, s.agent_type, s.session_id, sessionServer(s));
@@ -138,6 +165,7 @@ export function showInboxTabContent() {
         const local = document.getElementById('inbox-local');
         if (local) local.hidden = false;
         wireTabs();
+        if (inboxTab() !== 'tasks') importOnce('./inbox_coral.js').then(m => m.refreshTasks()).catch(() => {}); // the Tasks tab's count is known without opening it
         selectInboxTab(inboxTab()); // the tab it was on (this browser's last choice at first): that panel only is loaded and shown
         return;
     }

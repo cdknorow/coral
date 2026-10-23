@@ -55,13 +55,22 @@ const BASE = require('./test_base').BASE;
             await waitFor(`document.getElementById('inbox-needs-list').getClientRects().length > 0`, 'Needs you', 8000);
             // roles and names
             const roles = await ev(`(() => { const l = document.getElementById('inbox-tablist'); const tabs = [...l.querySelectorAll('[role=tab]')]; const panel = id => document.getElementById(id);
-                return { list: l.getAttribute('role'), name: l.getAttribute('aria-label'), tabs: tabs.map(t => t.textContent.trim()), panels: tabs.map(t => { const p = panel(t.getAttribute('aria-controls')); return !!p && p.getAttribute('role') === 'tabpanel' && p.getAttribute('aria-labelledby') === t.id; }),
+                return { list: l.getAttribute('role'), name: l.getAttribute('aria-label'), tabs: tabs.map(t => t.querySelector('.inbox-tab-label').textContent.trim()), names: tabs.map(t => t.getAttribute('aria-label') || t.textContent.trim()), tops: tabs.map(t => Math.round(t.getBoundingClientRect().top)), heights: tabs.map(t => Math.round(t.getBoundingClientRect().height)),
+                    panels: tabs.map(t => { const p = panel(t.getAttribute('aria-controls')); return !!p && p.getAttribute('role') === 'tabpanel' && p.getAttribute('aria-labelledby') === t.id + '-label'; }),
                     title: document.getElementById('inbox-title').textContent.trim(), sub: !!document.querySelector('.inbox-sub') }; })()`);
-            check(`${dev}: a tablist named Inbox with the hub's tab names (and Tasks for you, #5754), each controlling the tabpanel it labels`, roles.list === 'tablist' && roles.name === 'Inbox' && roles.tabs.join('|') === 'Needs you|Tasks for you|Saved for later' && roles.panels.every(Boolean), JSON.stringify(roles));
+            check(`${dev}: a tablist named Inbox with short tab names (Needs you, Tasks, Saved, #6580), each controlling the tabpanel it labels`, roles.list === 'tablist' && roles.name === 'Inbox' && roles.tabs.join('|') === 'Needs you|Tasks|Saved' && roles.panels.every(Boolean), JSON.stringify(roles));
+            check(`${dev}: each tab's name carries its count (read with the tab), and a tab with none says only its name`, roles.names[0] === 'Needs you, 1 waiting' && roles.names[1] === 'Tasks' && roles.names[2] === 'Saved, 1', JSON.stringify(roles.names));
+            check(`${dev}: the three tabs sit on one line and none is taller than two lines of text (#6580)`, new Set(roles.tops).size === 1 && Math.max(...roles.heights) <= 56, JSON.stringify([roles.tops, roles.heights]));
             check(`${dev}: the page has one Inbox heading without a repeated overview`, roles.title === 'Inbox' && !roles.sub, JSON.stringify([roles.title, roles.sub]));
             let s = await look();
             check(`${dev}: it opens on Needs you, and only that section is on screen`, s.sel.join() === 'needs' && s.panels.join() === 'true,false,false' && s.list && !s.savedView && !(await shown('saved-scope')), JSON.stringify(s));
             check(`${dev}: Needs you lists the waiting agent`, (await ev(`document.querySelectorAll('#inbox-needs-list .inbox-needs-item').length`)) === 1);
+            // the row says what the agent asks (its own text, one line) and has one control named "Open <agent>"
+            await ev(`window.__qaState.liveSessions.forEach(s => { if (s.waiting_for_input) s.waiting_summary = 'Claude needs your permission to use Bash: npm test -- --ci <b>x</b>'; }); import((window.__coralStatic || '/static/') + 'inbox_tab.js').then(m => m.updateInboxTab()); true`);
+            await waitFor(`!!document.querySelector('#inbox-needs-list .inbox-needs-ask')`, 'the ask line', 6000);
+            const row = await ev(`(() => { const b = document.querySelector('#inbox-needs-list .inbox-needs-item'), a = b.querySelector('.inbox-needs-ask'), o = b.querySelector('.inbox-needs-open'), ar = a.getBoundingClientRect(), br = b.getBoundingClientRect();
+                return { buttons: b.querySelectorAll('button, a').length, name: b.textContent.replace(/\s+/g, ' ').trim(), ask: a.textContent, html: a.innerHTML === a.textContent.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'), twoLines: ar.height < 40, open: o.textContent, openHidden: o.getAttribute('aria-hidden'), inside: ar.right <= br.right && o.getBoundingClientRect().right <= br.right + 1 }; })()`);
+            check(`${dev}: a Needs you row shows the agent's ask as text on two lines at most, one control named "Open <agent> ..." with a visible Open (#6580)`, row.buttons === 0 && /^Open \S/.test(row.name) && /npm test -- --ci/.test(row.ask) && row.html && row.twoLines && row.open === 'Open' && row.openHidden === 'true' && row.inside, JSON.stringify(row));
 
             // keyboard
             await ev(`document.getElementById('inbox-tab-needs').focus(); true`);
