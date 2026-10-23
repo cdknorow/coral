@@ -278,6 +278,7 @@ registerActions({
     'wf-back': () => workflowsBackToList(),
     'wf-build-agent': () => launchWorkflowAgent(),
     'wf-create': () => showWorkflowCreateModal(),
+    'job-create-workflow': () => { hideJobModal(); showWorkflowCreateModal(); }, // New job with no workflow to run
     'wf-modal-backdrop': (el, event) => { if (event.target === el) hideWorkflowCreateModal(); },
     'wf-modal-close': () => hideWorkflowCreateModal(),
     'wf-add-step': () => workflowAddStep(),

@@ -385,7 +385,6 @@
 1	sandbox_frame.js	content
 2	saved_marks.js	BOOKMARK_SVG
 1	scheduler.js	cls
-1	scheduler.js	data.next_fire_times.slice(0, 3).map(t => new Date(t).toLocaleString()).join(', ')
 1	scheduler.js	doesHtml
 1	scheduler.js	dot
 1	scheduler.js	failBadge
@@ -402,7 +401,6 @@
 1	scheduler.js	sessionLink
 1	scheduler.js	settingsRows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')
 1	scheduler.js	v
-1	scheduler.js	workflows.map(w => `<option value="${Number(w.id)}">${escapeHtml(w.name)}${w.description ? ' — ' + escapeHtml(
 1	server_status.js	count
 1	server_status.js	dd(r)
 1	server_status.js	extraClass ? ' ' + extraClass : ''

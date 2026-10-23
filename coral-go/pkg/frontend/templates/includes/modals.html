@@ -1252,85 +1252,104 @@
                     </button>
                 </div>
 
-                <label>Name:
-                    <input type="text" id="job-modal-name" placeholder="e.g. Nightly Tests">
+                <label class="job-field">Name <span class="job-required">(required)</span>
+                    <input type="text" id="job-modal-name" placeholder="e.g. nightly-tests" aria-required="true">
                 </label>
-                <label>Description <span class="text-muted-sm">(optional)</span>:
-                    <input type="text" id="job-modal-description" placeholder="e.g. Runs the full test suite">
-                </label>
-                <!-- Schedule picker -->
-                <label id="sched-label">Schedule:</label>
-                <div class="sched-picker" id="sched-picker" role="group" aria-labelledby="sched-label">
-                    <div class="sched-presets">
-                        <button type="button" class="sched-preset active" aria-pressed="true" data-cron="0 * * * *" data-on-click="m-pick-schedule-preset">Every hour</button>
-                        <button type="button" class="sched-preset" aria-pressed="false" data-cron="0 */6 * * *" data-on-click="m-pick-schedule-preset">Every 6 hours</button>
-                        <button type="button" class="sched-preset" aria-pressed="false" data-cron="0 2 * * *" data-on-click="m-pick-schedule-preset">Daily at 2am</button>
-                        <button type="button" class="sched-preset" aria-pressed="false" data-cron="0 9 * * 1" data-on-click="m-pick-schedule-preset">Weekly Mon 9am</button>
-                        <button type="button" class="sched-preset" aria-pressed="false" data-cron="" data-on-click="m-pick-schedule-preset">Custom</button>
-                    </div>
-                    <div class="sched-custom-row" id="sched-custom-row" style="display:none">
-                        <input type="text" id="job-modal-cron" class="sched-cron-input" aria-label="Cron expression" placeholder="0 2 * * *" value="0 * * * *" aria-describedby="cron-preview" data-on-input="m-validate-cron-preview">
-                    </div>
-                    <div class="sched-picker-meta">
-                        <div id="cron-preview" class="sched-preview" role="status"></div>
-                        <label class="sched-tz-label">Timezone:
-                            <input type="text" id="job-modal-timezone" class="sched-tz-input" placeholder="UTC" value="UTC" data-on-input="m-validate-cron-preview">
-                        </label>
-                    </div>
-                </div>
 
                 <!-- Workflow selector (shown when job_type=workflow) -->
                 <div id="job-modal-workflow-fields">
-                    <label>Workflow:
-                        <select id="job-modal-workflow">
-                            <option value="">Select a workflow...</option>
+                    <label class="job-field">Workflow <span class="job-required">(required)</span>
+                        <select id="job-modal-workflow" aria-required="true" aria-describedby="job-modal-no-workflows">
+                            <option value="">Select a workflow…</option>
                         </select>
                     </label>
+                    <div id="job-modal-no-workflows" class="job-no-workflows" hidden>
+                        <span>No workflows yet. A job runs a workflow on a schedule.</span>
+                        <button type="button" class="btn btn-small" data-on-click="job-create-workflow">Create a workflow</button>
+                    </div>
                 </div>
 
                 <!-- Agent prompt fields (shown when job_type=prompt) -->
                 <div id="job-modal-prompt-fields" style="display:none">
-                    <label>Repository Path:
-                        <input type="text" id="job-modal-repo" placeholder="/path/to/repo" data-coral-root="{{ .CoralRoot }}" value="{{ .CoralRoot }}">
+                    <label class="job-field">Repository path <span class="job-required">(required)</span>
+                        <input type="text" id="job-modal-repo" placeholder="/path/to/repo" data-coral-root="{{ .CoralRoot }}" value="{{ .CoralRoot }}" aria-required="true">
                     </label>
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-                        <label>Base branch:
-                            <input type="text" id="job-modal-branch" placeholder="main" value="main">
-                        </label>
-                        <label>Agent:
-                            <select id="job-modal-agent" data-on-change="flag-agent-change">
-                                <option value="claude">Claude</option>
-                                <option value="agy">Antigravity (agy)</option>
-                                <option value="codex">Codex</option>
-                                <option value="pi">Pi</option>
-                            </select>
-                        </label>
-                    </div>
-                    <label>Prompt:
-                        <textarea id="job-modal-prompt" rows="4" placeholder="Run the full test suite and report failures..." style="width:100%;resize:vertical"></textarea>
+                    <label class="job-field">Agent
+                        <select id="job-modal-agent" data-on-change="flag-agent-change">
+                            <option value="claude">Claude</option>
+                            <option value="agy">Antigravity (agy)</option>
+                            <option value="codex">Codex</option>
+                            <option value="pi">Pi</option>
+                        </select>
                     </label>
-                    <label>Flags <span class="text-muted-sm">(optional)</span>:
-                        <input type="text" id="job-modal-flags" placeholder="e.g. --verbose">
+                    <label class="job-field">Prompt <span class="job-required">(required)</span>
+                        <textarea id="job-modal-prompt" rows="4" placeholder="Run the full test suite and report failures..." aria-required="true"></textarea>
                     </label>
-                    <div class="flag-shortcuts">
-                        <button class="btn btn-small flag-shortcut-btn" data-on-click="flag-toggle" data-flag-input="job-modal-flags" data-flag="--chrome">--chrome</button>
-                        <button class="btn btn-small flag-shortcut-btn" data-on-click="flag-toggle" data-flag-input="job-modal-flags" data-flag="--dangerously-skip-permissions">--dangerously-skip-permissions</button>
-                    </div>
                 </div>
 
-                <div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end">
-                    <label>Timeout (seconds):
-                        <input type="number" id="job-modal-timeout" value="3600" min="60">
-                    </label>
-                    <label class="job-cleanup-option" style="display:flex;align-items:center;gap:6px;padding-bottom:6px">
-                        <input type="checkbox" id="job-modal-cleanup" checked>
-                        Cleanup worktree
-                    </label>
+                <!-- Schedule picker -->
+                <div class="job-field" id="sched-label">When</div>
+                <div class="sched-picker" id="sched-picker" role="group" aria-labelledby="sched-label">
+                    <div class="sched-presets">
+                        <button type="button" class="sched-preset active" aria-pressed="true" data-cron="0 * * * *" data-on-click="m-pick-schedule-preset">Every hour</button>
+                        <button type="button" class="sched-preset" aria-pressed="false" data-cron="0 */6 * * *" data-on-click="m-pick-schedule-preset">Every 6 hours</button>
+                        <button type="button" class="sched-preset" aria-pressed="false" data-cron="0 2 * * *" data-on-click="m-pick-schedule-preset">Every day at 02:00</button>
+                        <button type="button" class="sched-preset" aria-pressed="false" data-cron="0 9 * * 1" data-on-click="m-pick-schedule-preset">Mondays at 09:00</button>
+                        <button type="button" class="sched-preset" aria-pressed="false" data-cron="" data-on-click="m-pick-schedule-preset">Custom</button>
+                    </div>
+                    <div class="sched-custom-row" id="sched-custom-row" hidden>
+                        <label class="job-field">Cron expression
+                            <input type="text" id="job-modal-cron" class="sched-cron-input" placeholder="0 2 * * *" value="0 * * * *" aria-describedby="sched-cron-help cron-preview" data-on-input="m-validate-cron-preview">
+                        </label>
+                        <div id="sched-cron-help" class="job-help">Five fields: minute, hour, day of month, month, day of week. <code>0 2 * * *</code> is every day at 02:00.</div>
+                    </div>
+                    <div id="cron-preview" class="sched-preview" role="status"></div>
                 </div>
+
+                <details class="disclosure job-more" id="job-modal-more">
+                    <summary>More options</summary>
+                    <label class="job-field">Description <span class="job-optional">(optional)</span>
+                        <input type="text" id="job-modal-description" placeholder="e.g. Runs the full test suite">
+                    </label>
+                    <div class="job-row">
+                        <label class="job-field job-zone">Time zone
+                            <input type="text" id="job-modal-timezone" class="sched-tz-input" placeholder="UTC" value="UTC" aria-describedby="job-modal-zone-msg" data-on-input="m-validate-cron-preview">
+                        </label>
+                        <div class="job-field job-limit" role="group" aria-labelledby="job-modal-limit-label">
+                            <span id="job-modal-limit-label">Time limit</span>
+                            <span class="job-limit-fields">
+                                <input type="number" id="job-modal-timeout" value="1" min="1" step="1" inputmode="numeric" aria-label="Time limit" aria-describedby="job-modal-limit-msg" data-on-input="job-limit-check">
+                                <select id="job-modal-timeout-unit" aria-label="Time limit unit" data-on-change="job-limit-check">
+                                    <option value="3600" selected>hours</option>
+                                    <option value="60">minutes</option>
+                                    <option value="1">seconds</option>
+                                </select>
+                            </span>
+                        </div>
+                    </div>
+                    <div id="job-modal-zone-msg" class="field-error" role="alert" hidden></div>
+                    <div id="job-modal-limit-msg" class="field-error" role="alert" hidden></div>
+                    <div id="job-modal-prompt-more" hidden>
+                        <label class="job-field">Base branch
+                            <input type="text" id="job-modal-branch" placeholder="main" value="main">
+                        </label>
+                        <label class="job-field">Flags <span class="job-optional">(optional)</span>
+                            <input type="text" id="job-modal-flags" placeholder="e.g. --verbose">
+                        </label>
+                        <div class="flag-shortcuts">
+                            <button class="btn btn-small flag-shortcut-btn" data-on-click="flag-toggle" data-flag-input="job-modal-flags" data-flag="--chrome">--chrome</button>
+                            <button class="btn btn-small flag-shortcut-btn" data-on-click="flag-toggle" data-flag-input="job-modal-flags" data-flag="--dangerously-skip-permissions">--dangerously-skip-permissions</button>
+                        </div>
+                        <label class="job-cleanup-option">
+                            <input type="checkbox" id="job-modal-cleanup" checked>
+                            Remove the worktree when the run ends
+                        </label>
+                    </div>
+                </details>
             </div>
             <div class="modal-actions modal-footer">
                 <button class="btn" data-on-click="m-hide-job-modal">Cancel</button>
-                <button class="btn btn-primary" id="job-modal-submit" data-on-click="m-save-scheduled-job">Create Job</button>
+                <button class="btn btn-primary" id="job-modal-submit" data-on-click="m-save-scheduled-job">Create job</button>
             </div>
         </div>
     </div>

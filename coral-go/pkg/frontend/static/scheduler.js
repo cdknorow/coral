@@ -10,6 +10,7 @@ import { formatDuration as fmtDuration } from './format.js';
 import { runFailure, runFailureTag } from './run_failure.js';
 import { cronWords, atWords, awayWords, whenWords, resultWords, reasonWords, lastWords, limitWords } from './job_words.js';
 import { updateJobsSectionCount } from './live_jobs.js';
+import { limitSeconds, limitParts } from './time_limit.js';
 
 let scheduledJobs = [];
 let selectedJobId = null;
@@ -274,10 +275,10 @@ export function pickSchedulePreset(btn) {
     const customRow = document.getElementById('sched-custom-row');
     if (cron === '') {
         // Custom — show cron input
-        if (customRow) customRow.style.display = '';
+        if (customRow) customRow.hidden = false;
         if (cronInput) cronInput.focus();
     } else {
-        if (customRow) customRow.style.display = 'none';
+        if (customRow) customRow.hidden = true;
         if (cronInput) cronInput.value = cron;
     }
     validateCronPreview();
@@ -292,6 +293,45 @@ export function switchJobType(type) {
     const promptFields = document.getElementById('job-modal-prompt-fields');
     if (wfFields) wfFields.style.display = type === 'workflow' ? '' : 'none';
     if (promptFields) promptFields.style.display = type === 'prompt' ? '' : 'none';
+    const promptMore = document.getElementById('job-modal-prompt-more'); // branch, flags and cleanup: an agent job's, behind More options
+    if (promptMore) promptMore.hidden = type !== 'prompt';
+}
+
+// ── The time limit and the zone, in words ────────────────────────────────
+
+/** The time limit field(s) as seconds, or the sentence for what is wrong. */
+export function limitFromFields() {
+    return limitSeconds(document.getElementById('job-modal-timeout').value, document.getElementById('job-modal-timeout-unit').value);
+}
+
+/** The limit in seconds as the number and unit the form shows ("1 hour", "90 minutes", "45 seconds"). */
+function showLimit(seconds) {
+    const { n, unit } = limitParts(seconds);
+    document.getElementById('job-modal-timeout').value = String(n);
+    document.getElementById('job-modal-timeout-unit').value = String(unit);
+}
+
+/** Whether the browser knows this name as a time zone (the server falls back to UTC for one it does not know, so a typo would run the job at the wrong hour). */
+function zoneKnown(tz) {
+    try { new Intl.DateTimeFormat('en', { timeZone: tz }); return true; } catch { return false; }
+}
+
+/** aria-invalid is "true" or absent: an empty attribute reads as false to a screen reader. */
+function markInvalid(el, bad) { if (bad) el.setAttribute('aria-invalid', 'true'); else el.removeAttribute('aria-invalid'); }
+
+function say(id, text) {
+    const e = document.getElementById(id);
+    if (!e) return;
+    e.textContent = text;
+    e.hidden = !text;
+}
+
+/** Show or clear the limit's sentence; mark the field. True when the limit is fine. */
+export function checkLimit() {
+    const r = limitFromFields();
+    say('job-modal-limit-msg', r.error || '');
+    markInvalid(document.getElementById('job-modal-timeout'), !!r.error);
+    return !r.error;
 }
 
 async function _loadWorkflowOptions() {
@@ -301,7 +341,9 @@ async function _loadWorkflowOptions() {
         const resp = await fetch('/api/workflows');
         const data = await resp.json();
         const workflows = data.workflows || [];
-        select.innerHTML = '<option value="">Select a workflow...</option>' +
+        const none = document.getElementById('job-modal-no-workflows');
+        if (none) none.hidden = workflows.length > 0;
+        select.innerHTML = `<option value="">${workflows.length ? 'Select a workflow…' : 'No workflows yet'}</option>` +
             workflows.map(w => `<option value="${Number(w.id)}">${escapeHtml(w.name)}${w.description ? ' — ' + escapeHtml(w.description) : ''}</option>`).join('');
     } catch (e) {
         select.innerHTML = '<option value="">Failed to load workflows</option>';
@@ -313,7 +355,7 @@ export function showJobModal() {
     editingJobId = null;
     openedJob = null;
     document.getElementById('job-modal-title').textContent = 'New job';
-    document.getElementById('job-modal-submit').textContent = 'Create Job';
+    document.getElementById('job-modal-submit').textContent = 'Create job';
     document.getElementById('job-modal').style.display = 'flex';
     document.getElementById('job-modal-name').value = '';
     document.getElementById('job-modal-description').value = '';
@@ -322,17 +364,20 @@ export function showJobModal() {
     // Reset schedule picker to first preset
     document.querySelectorAll('.sched-preset').forEach((b, i) => press(b, i === 0));
     const customRow = document.getElementById('sched-custom-row');
-    if (customRow) customRow.style.display = 'none';
+    if (customRow) customRow.hidden = true;
     document.getElementById('job-modal-repo').value = document.getElementById('job-modal-repo').dataset.coralRoot || '';
     document.getElementById('job-modal-branch').value = 'main';
     document.getElementById('job-modal-agent').value = 'claude';
     document.getElementById('job-modal-prompt').value = '';
-    document.getElementById('job-modal-timeout').value = '3600';
+    showLimit(3600);
     document.getElementById('job-modal-cleanup').checked = true;
     switchJobType('workflow');
     _loadWorkflowOptions();
     document.getElementById('job-modal-flags').value = '';
-    document.getElementById('cron-preview').innerHTML = '';
+    document.getElementById('cron-preview').textContent = '';
+    document.getElementById('job-modal-more').open = false;
+    for (const id of ['job-modal-name', 'job-modal-workflow', 'job-modal-cron', 'job-modal-repo', 'job-modal-prompt', 'job-modal-timeout', 'job-modal-timezone']) document.getElementById(id).removeAttribute('aria-invalid');
+    say('job-modal-limit-msg', ''); say('job-modal-zone-msg', '');
     validateCronPreview();
 }
 
@@ -348,7 +393,7 @@ export async function editScheduledJob(jobId) {
     editingJobId = jobId;
     ensureBuilt('job-modal');
     document.getElementById('job-modal-title').textContent = 'Edit job';
-    document.getElementById('job-modal-submit').textContent = 'Save Changes';
+    document.getElementById('job-modal-submit').textContent = 'Save changes';
     document.getElementById('job-modal').style.display = 'flex';
     document.getElementById('job-modal-name').value = job.name;
     document.getElementById('job-modal-description').value = job.description || '';
@@ -358,10 +403,13 @@ export async function editScheduledJob(jobId) {
     document.getElementById('job-modal-branch').value = job.base_branch || 'main';
     document.getElementById('job-modal-agent').value = job.agent_type || 'claude';
     document.getElementById('job-modal-prompt').value = job.prompt;
-    document.getElementById('job-modal-timeout').value = String(job.max_duration_s || 3600);
+    showLimit(job.max_duration_s || 3600);
     document.getElementById('job-modal-cleanup').checked = !!job.cleanup_worktree;
     document.getElementById('job-modal-flags').value = job.flags || '';
-    document.getElementById('cron-preview').innerHTML = '';
+    document.getElementById('cron-preview').textContent = '';
+    say('job-modal-limit-msg', ''); say('job-modal-zone-msg', '');
+    // Nothing a job already has is hidden: More options opens when it holds something other than the defaults.
+    document.getElementById('job-modal-more').open = !!(job.description || (job.timezone && job.timezone !== 'UTC') || (job.max_duration_s && job.max_duration_s !== 3600) || job.flags || (job.base_branch && job.base_branch !== 'main'));
     // Sync flag button active states
     document.getElementById('job-modal-flags').dispatchEvent(new Event('input'));
     // The job's own type, and its workflow selected (the editor kept whatever the last one left).
@@ -371,6 +419,9 @@ export async function editScheduledJob(jobId) {
         await _loadWorkflowOptions();
         document.getElementById('job-modal-workflow').value = job.workflow_id ? String(job.workflow_id) : '';
     }
+    const isPreset = [...document.querySelectorAll('.sched-preset')].some(b => b.dataset.cron === job.cron_expr);
+    document.querySelectorAll('.sched-preset').forEach(b => press(b, isPreset ? b.dataset.cron === job.cron_expr : b.dataset.cron === ''));
+    document.getElementById('sched-custom-row').hidden = isPreset;
     openedJob = jobFormValues();
     validateCronPreview();
 }
@@ -383,7 +434,7 @@ function jobFormValues() {
         description: v('job-modal-description').trim(),
         cron_expr: v('job-modal-cron').trim(),
         timezone: v('job-modal-timezone').trim() || 'UTC',
-        max_duration_s: parseInt(v('job-modal-timeout')) || 3600,
+        max_duration_s: limitFromFields().seconds || 3600,
         cleanup_worktree: document.getElementById('job-modal-cleanup').checked ? 1 : 0,
         job_type: currentJobType,
     };
@@ -405,28 +456,41 @@ export function hideJobModal() {
     if (modal) modal.style.display = 'none';
 }
 
+/** "Runs every day at 02:00 (UTC). Next: tomorrow 02:00, your time." The schedule as the Jobs page says it. */
+export function previewWords(expr, tz, nextIso) {
+    const words = cronWords(expr);
+    const runs = words.startsWith('Schedule:') ? `Runs on the schedule ${expr}` : 'Runs ' + words.charAt(0).toLowerCase() + words.slice(1);
+    const next = nextIso ? ` Next: ${atWords(nextIso)}, your time.` : '';
+    return `${runs} (${tz}).${next}`;
+}
+
 export async function validateCronPreview() {
     const expr = document.getElementById('job-modal-cron').value.trim();
     const tz = document.getElementById('job-modal-timezone').value.trim() || 'UTC';
     const preview = document.getElementById('cron-preview');
-    if (!expr) { preview.innerHTML = ''; return; }
+    const zoneOk = zoneKnown(tz);
+    say('job-modal-zone-msg', zoneOk ? '' : `"${tz}" is not a time zone name. Use one like UTC or Europe/Berlin.`);
+    markInvalid(document.getElementById('job-modal-timezone'), !zoneOk);
+    if (!expr) { preview.textContent = ''; return; }
 
     try {
         const resp = await fetch('/api/scheduled/validate-cron', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ cron_expr: expr, timezone: tz }),
+            body: JSON.stringify({ cron_expr: expr, timezone: zoneOk ? tz : 'UTC' }),
         });
         const data = await resp.json();
-        document.getElementById('job-modal-cron').toggleAttribute('aria-invalid', !data.valid);
+        markInvalid(document.getElementById('job-modal-cron'), !data.valid);
         if (data.valid) {
-            preview.innerHTML = '<span style="color:var(--green)">Valid</span> — Next: ' +
-                data.next_fire_times.slice(0, 3).map(t => new Date(t).toLocaleString()).join(', ');
+            preview.textContent = previewWords(expr, tz, (data.next_fire_times || [])[0]);
+            preview.classList.remove('sched-preview-bad');
         } else {
-            preview.innerHTML = `<span style="color:var(--red)">Invalid:</span> ${escapeHtml(data.error || 'bad expression')}`;
+            preview.textContent = 'That is not a schedule Coral can read. Check the five fields.';
+            preview.classList.add('sched-preview-bad');
         }
     } catch (e) {
-        preview.innerHTML = '<span style="color:var(--red)">Error validating</span>';
+        preview.textContent = 'Could not check the schedule just now.';
+        preview.classList.add('sched-preview-bad');
     }
 }
 
@@ -435,25 +499,36 @@ export async function saveScheduledJob() {
     const cron = document.getElementById('job-modal-cron').value.trim();
 
     if (!name || !cron) {
-        showToast('Name and cron expression are required', true);
         // the field that is missing is marked and has focus; typing clears the mark (#6348)
         const field = document.getElementById(!name ? 'job-modal-name' : 'job-modal-cron');
         const custom = document.querySelector('.sched-preset[data-cron=""]');
         if (name && custom) pickSchedulePreset(custom); // the cron field is behind the Custom choice: choose it, which shows the field
+        showToast(!name ? 'Give the job a name.' : 'Enter a schedule, or pick one above.', true);
         field.setAttribute('aria-invalid', 'true');
         field.addEventListener('input', () => field.removeAttribute('aria-invalid'), { once: true });
         field.focus();
         return;
     }
+    const moreFail = (id, msg) => { document.getElementById('job-modal-more').open = true; showToast(msg, true); document.getElementById(id).focus(); };
+    if (!checkLimit()) { moreFail('job-modal-timeout', limitFromFields().error); return; }
+    if (!zoneKnown(document.getElementById('job-modal-timezone').value.trim() || 'UTC')) { moreFail('job-modal-timezone', 'Check the time zone name.'); return; }
 
     const values = jobFormValues();
     if (currentJobType === 'workflow') {
         if (!values.workflow_id) {
-            showToast('Please select a workflow', true);
+            const wf = document.getElementById('job-modal-workflow');
+            showToast('Pick the workflow this job runs.', true);
+            wf.setAttribute('aria-invalid', 'true');
+            wf.addEventListener('change', () => wf.removeAttribute('aria-invalid'), { once: true });
+            wf.focus();
             return;
         }
     } else if (!values.repo_path || !values.prompt) {
-        showToast('Repo path and prompt are required for agent jobs', true);
+        const field = document.getElementById(!values.repo_path ? 'job-modal-repo' : 'job-modal-prompt');
+        showToast(!values.repo_path ? 'Enter the repository path.' : 'Write the prompt the agent runs.', true);
+        field.setAttribute('aria-invalid', 'true');
+        field.addEventListener('input', () => field.removeAttribute('aria-invalid'), { once: true });
+        field.focus();
         return;
     }
 
@@ -513,6 +588,7 @@ export function initScheduler() {
 // Ids are checked (idOf, uuidOf) before use: a bad one does nothing. Deleting still asks first.
 registerActions({
     'job-new': () => showJobModal(),
+    'job-limit-check': () => checkLimit(),
     'job-select': el => withId(el.dataset.jobId, selectScheduledJob),
     'job-edit': el => withId(el.dataset.jobId, editScheduledJob),
     'job-toggle': el => withId(el.dataset.jobId, toggleScheduledJob),
