@@ -44,6 +44,7 @@ const (
 	AutoWakeAfterRestart     = "auto_wake_after_restart"
 	AutoWakeCap              = "auto_wake_cap"
 	GateSignalsClaude        = "gate_signals_claude"
+	NudgeClaudeArtifacts     = "nudge_claude_artifacts"
 	BoardAutoAttach          = "board_auto_attach"
 	CrossTeamAllowlist       = "cross_team_allowlist"
 	TurnEndHandoff           = "turn_end_handoff"
@@ -139,6 +140,7 @@ func init() {
 	boolOn(BoardHealthMonitor, ApplyRestart, "Team health checks for every team.")
 	boolOff(AutoSummarize, ApplyRestart, "Summarise sessions automatically.")
 	boolOn(GateSignalsClaude, ApplyLive, "Phase 2 of the paste gate for Claude.")
+	boolOn(NudgeClaudeArtifacts, ApplyLive, "Remind an agent that published a claude.ai artifact to make a Coral artifact instead (once per artifact).")
 	register(Spec{Key: UpdateChannel, Kind: KindEnum, Values: []string{"approved", "agentic"}, Default: "approved", Apply: ApplyLive, Doc: "Which releases the update notice and the tray offer: approved (the release marked latest) or agentic (every published release, approved or not). Notice only: the updater installs approved releases whatever this says (#5557)."})
 	register(Spec{Key: TurnEndHandoff, Kind: KindEnum, Values: []string{"off", "on"}, Default: "on", Apply: ApplyLive, Doc: "Hand the turn on at its end."})
 	boolOn(AutoGoals, ApplyLive, "Run the goals service.")

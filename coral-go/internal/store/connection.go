@@ -500,6 +500,16 @@ CREATE TABLE IF NOT EXISTS artifact_comment_asks (
 );
 CREATE INDEX IF NOT EXISTS idx_artifact_comment_asks_artifact ON artifact_comment_asks(artifact_id);
 
+-- Agents that published a claude.ai artifact (#6583): one reminder per artifact. key is the kind and the sha256 of the rest (never a path or url): "tool:<session>:<artifact key>" for a publish seen in an agent's tool call,
+-- or "link:<claude.ai artifact id>" for a link on the board or in an agent's reply (one row for the whole board, so a link passed along nudges nobody twice).
+-- No text of the page or the link beyond its id is kept; rows are deleted after 30 days.
+CREATE TABLE IF NOT EXISTS claude_artifact_nudges (
+	key        TEXT PRIMARY KEY,
+	session_id TEXT NOT NULL DEFAULT '',
+	seen_at    TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_claude_artifact_nudges_seen ON claude_artifact_nudges(seen_at);
+
 CREATE TABLE IF NOT EXISTS session_index (
 	session_id      TEXT PRIMARY KEY,
 	source_type     TEXT NOT NULL,

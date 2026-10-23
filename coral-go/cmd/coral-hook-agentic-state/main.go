@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/subgentic/coral/internal/claudeartifact"
 	"github.com/subgentic/coral/internal/hooks"
 	"github.com/subgentic/coral/internal/safefs"
 	"github.com/subgentic/coral/internal/transcriptlink"
@@ -376,11 +377,18 @@ func parseAgenticEvent(d map[string]any, hookType, sessionID string) map[string]
 		if reason == "" {
 			reason = "unknown"
 		}
-		return map[string]any{
+		event := map[string]any{
 			"event_type": "stop",
 			"summary":    "Agent stopped: " + reason,
 			"session_id": sessionID,
 		}
+		// A claude.ai artifact link in the reply this turn ended with (#6583): only the ids, read from the end of the agent's own transcript.
+		if hookType == "Stop" && strings.HasPrefix(os.Getenv("CORAL_SESSION_NAME"), "claude-") {
+			if ids := claudeartifact.LastAssistantIDs(hooks.StrVal(d, "transcript_path")); len(ids) > 0 {
+				event["detail_json"] = map[string]any{"claude_artifact_ids": ids}
+			}
+		}
+		return event
 	}
 
 	// Notification
@@ -573,6 +581,18 @@ func makeToolDetail(tool string, inp map[string]any) map[string]any {
 	case "Agent", "Task":
 		detail["description"], _ = inp["description"].(string)
 		detail["subagent_type"], _ = inp["subagent_type"].(string)
+	case "Artifact":
+		// What Coral needs to tell a publish from a read, and one artifact from another (#6583): the action, the file it was made from, and a claude.ai
+		// page's url (an update). Nothing of the page itself.
+		if a, _ := inp["action"].(string); len(a) <= 16 {
+			detail["action"] = a
+		}
+		if fp, _ := inp["file_path"].(string); len(fp) <= 1024 {
+			detail["file_path"] = fp
+		}
+		if u, _ := inp["url"].(string); strings.HasPrefix(u, "https://claude.ai/") && len(u) <= 300 {
+			detail["url"] = u
+		}
 	default:
 		return hooks.AgyToolDetail(tool, inp)
 	}

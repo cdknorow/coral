@@ -37,6 +37,8 @@ import (
 
 // SessionsHandler handles all live session API endpoints.
 type SessionsHandler struct {
+	// artifactNudge reminds an agent that published a claude.ai artifact to make a Coral one (#6583); nil: never.
+	artifactNudge *ClaudeArtifactNudger
 	// indexKick asks the history indexer for a pass soon (set by SetIndexKick): an agent's reply has just been written to its transcript (#6198).
 	indexKick func()
 	// newUUID, when set, makes this handler's new session ids (a test that compares two handlers gives both the same ones without

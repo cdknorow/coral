@@ -4,6 +4,7 @@ package routes
 
 import (
 	"fmt"
+	"github.com/subgentic/coral/internal/claudeartifact"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -246,6 +247,14 @@ func (h *BoardHandler) postMessageCore(w http.ResponseWriter, r *http.Request, p
 	// A message from an assignee is evidence of progress on its active task.
 	// Keep this separate from task state so posting never completes work.
 	_ = h.bs.TouchActiveTask(r.Context(), project, subscriberID)
+
+	// A claude.ai artifact link in an agent's own post reminds that agent once; in anyone else's it is only recorded as seen (#6583).
+	if h.artifactNudge != nil && !cloud.Tunneled(r) {
+		if ids := claudeartifact.LinkIDs(body.Content); len(ids) > 0 {
+			owner, _ := VerifiedSession(r.Context())
+			h.artifactNudge.FromLinks(r.Context(), owner, ids)
+		}
+	}
 
 	// Trigger immediate board notification so subscribers get nudged right away
 	if h.notifyFn != nil {
