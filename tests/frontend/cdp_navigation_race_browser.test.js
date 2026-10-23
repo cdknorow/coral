@@ -41,6 +41,12 @@ const heard = (p, ms) => Promise.race([p.then(() => true), sleep(ms).then(() => 
         await sleep(500); // sleep-ok: the second page loads before it is asked for
         const second = await heard(Page.loadEventFired(), 4000);
         check('two navigates, each waited for (the second one late), both heard', first && second);
+
+        // 5. a reload whose load came before it was asked for is heard too (`await Page.reload(); await Page.loadEventFired();`, #6528)
+        await Page.navigate({ url: BASE + '/static/theme_init.js?f' }); await Page.loadEventFired();
+        await Page.reload({});
+        await sleep(500); // sleep-ok: the reloaded page has loaded before loadEventFired is asked for: the race itself
+        check('a reload\'s load that came before loadEventFired() was asked for is still heard', await heard(Page.loadEventFired(), 4000));
     } finally { await client.close(); }
     if (results.some(r => !r)) { console.error(`${results.filter(r => !r).length} of ${results.length} failed`); process.exit(1); }
     console.log(`\nAll ${results.length} navigation race checks passed`);

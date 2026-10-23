@@ -29,6 +29,8 @@ function rememberLoads(client) {
     client.on('Page.frameStartedLoading', () => { if (mark !== null && loads > mark) mark = null; }); // the navigate's load came and nobody asked: this is another load, and that is the one to wait for
     const navigate = Page.navigate, load = Page.loadEventFired;
     Page.navigate = function (...args) { mark = loads; return navigate.apply(this, args); };
+    // A reload is a navigation too (eight suites write `await Page.reload(); await Page.loadEventFired();`): its load, heard late, is kept the same way.
+    if (typeof Page.reload === 'function') { const reload = Page.reload; Page.reload = function (...args) { mark = loads; return reload.apply(this, args); }; }
     Page.loadEventFired = function (...args) {
         if (args.length === 0 && mark !== null && loads > mark && Date.now() - loadAt <= LATE_MS) { mark = null; return Promise.resolve({ timestamp: Date.now() / 1000 }); }
         if (args.length === 0) mark = null;
