@@ -9,6 +9,7 @@ import { note, currentRoute } from './nav.js';
 import { KILL_LOG_NOTE } from './render.js';
 import { formatDuration as fmtDuration } from './format.js';
 import { runFailureHtml, runFailureTag } from './run_failure.js';
+import { whenWords, resultWords, limitWords } from './job_words.js'; // the Jobs pages' words: one set for both
 
 let workflows = [];
 let selectedWorkflowId = null;
@@ -257,29 +258,6 @@ export async function selectWorkflow(id) {
     renderWorkflowDetail(wf, runs);
 }
 
-
-const pad2 = (n) => String(n).padStart(2, '0');
-
-/** A moment as "today 06:36", "yesterday 02:00", "Oct 21 23:44", in the viewer's own time. */
-function whenWords(iso, now = new Date()) {
-    const t = new Date(iso);
-    if (!iso || isNaN(t)) return '';
-    const hm = `${pad2(t.getHours())}:${pad2(t.getMinutes())}`;
-    const day = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-    const dd = Math.round((day(now) - day(t)) / 86400000);
-    return dd === 0 ? `today ${hm}` : dd === 1 ? `yesterday ${hm}` : `${t.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${hm}`;
-}
-
-/** A time limit in seconds as "1 hour", "10 minutes", "90 seconds". */
-function limitWords(s) {
-    const n = Number(s);
-    if (n % 3600 === 0) return `${n / 3600} hour${n === 3600 ? '' : 's'}`;
-    if (n % 60 === 0) return `${n / 60} minute${n === 60 ? '' : 's'}`;
-    return `${n} seconds`;
-}
-
-const RESULT = { completed: 'Passed', running: 'Running', pending: 'Waiting to start', killed: 'Stopped', failed: 'Failed' };
-const resultWords = (r) => RESULT[r.status] || r.status || '';
 
 /** A run's result for the runs table and the last-run line: "Passed", "Failed: step 2 (Test)", with the one-line reason from the server underneath. Step numbers come from 1 (#6530). */
 function runResult(r) {
