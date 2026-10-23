@@ -136,7 +136,7 @@ const GOLD = n => fs.readFileSync(path.join(__dirname, '../../coral-go/internal/
         await submit('signin-form');
         await waitFor(`document.getElementById('lock') && !document.getElementById('lock').hidden`, 'the lockout notice');
         assert.ok(await visible('lock'), 'the lockout notice shows');
-        assert.equal(await text('count'), '0:02'); assert.equal(await $('password', 'disabled'), true); assert.equal(await $('submit', 'disabled'), true);
+        assert.match(await text('count'), /^0:0[12]$/, 'the countdown shows (a slow runner reads it a second in)'); assert.equal(await $('password', 'disabled'), true); assert.equal(await $('submit', 'disabled'), true);
         await waitFor(`document.getElementById('lock').hidden && !document.getElementById('password').disabled`, 'the form opening again', 5000);
         // success: keep = true goes to return_to
         replies = [json(200, { ok: true })];
