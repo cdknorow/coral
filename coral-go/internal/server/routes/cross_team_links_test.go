@@ -398,6 +398,48 @@ func TestTheOwnersStateShowsTheLinksTheirFreshnessAndTheOldPathUntilAHubAdvertis
 	assert.Len(t, links, 1)
 }
 
+// #6377 (coral-hub's ask): the owner's status says "stale" only when an old table PAUSED something. A last applied table with no link in it admitted nothing while fresh either, so past the TTL the team is
+// "waiting" (for a link), not stale; a non-empty old table stays stale; a process with no table yet (a hub was seen before) stays stale.
+func TestAnOldEmptyLinkTableIsWaitingNotStale(t *testing.T) {
+	e := newLinksEnv(t)
+	state := func(h *BoardHandler) string {
+		req := httptest.NewRequest(http.MethodGet, "/api/board/"+e.target+"/cross-team-state", nil)
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("project", e.target)
+		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+		rec := httptest.NewRecorder()
+		h.GetCrossTeamState(rec, req)
+		require.Equal(t, 200, rec.Code, rec.Body.String())
+		var out map[string]any
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &out))
+		return out["status"].(map[string]any)["state"].(string)
+	}
+	_, err := e.bs.UpdateBoardSettings(context.Background(), e.target, board.BoardSettingsUpdate{CrossTeamMessaging: ptrBool(true)})
+	require.NoError(t, err)
+
+	// empty and old: waiting, fresh or not
+	require.Equal(t, 200, e.post(e.snapshot(1), stamped(linkSessionA, true)).Code)
+	assert.Equal(t, statusWaiting, state(e.h), "an empty table, fresh")
+	e.advance(linkTTL + time.Hour)
+	assert.Equal(t, statusWaiting, state(e.h), "an empty table past the TTL admitted nothing before either: waiting, not stale")
+
+	// a table with a link in it, old: stale (the link it held is paused)
+	require.Equal(t, 200, e.post(e.snapshot(2, e.link("lab2", srcTeam1, e.target)), stamped(linkSessionA, true)).Code)
+	assert.Equal(t, statusReady, state(e.h))
+	e.advance(linkTTL + time.Minute)
+	assert.Equal(t, statusStale, state(e.h), "a non-empty table past the TTL stays stale")
+
+	// a table that links some OTHER team is non-empty too: the rule is about the table, as the ask says
+	require.Equal(t, 200, e.post(e.snapshot(3, e.link("lab2", srcTeam1, e.target2)), stamped(linkSessionA, true)).Code)
+	e.advance(linkTTL + time.Minute)
+	assert.Equal(t, statusStale, state(e.h), "non-empty for another team: still stale")
+
+	// none yet in this process (a restart) after a hub was seen: stale, as before
+	e.seen = true
+	fresh := e.handler(e.bs)
+	assert.Equal(t, statusStale, state(fresh), "no snapshot applied since this process started: stale")
+}
+
 // Labels are optional display text (an empty one is fine and decides nothing), and the version is a whole int64 (Coral Hub sends milliseconds, about 1.8e12).
 func TestLabelsAreOptionalAndTheVersionIsAWholeInt64(t *testing.T) {
 	e := newLinksEnv(t)

@@ -355,7 +355,7 @@ func (h *BoardHandler) GetCrossTeamState(w http.ResponseWriter, r *http.Request)
 		// A hub that keeps the link table (#5572): who is linked comes from its last snapshot. A snapshot older than the TTL, or none yet since this process started, is stale: the rows shown are
 		// the last known ones, and nothing is admitted (the door says the same).
 		now := h.linkNow()
-		stale = !h.links.fresh(now)
+		stale = !h.links.fresh(now) && !h.links.appliedEmpty() // an old EMPTY table paused nothing: no link was admitted before it aged either, so the team is waiting for a link, not for Coral Hub (#6377)
 		live := map[teamLink]bool{}
 		for _, l := range h.links.linkedTo(project, now) {
 			live[l] = true

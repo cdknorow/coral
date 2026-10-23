@@ -178,6 +178,13 @@ func (h *BoardHandler) DoorMode(ctx context.Context, r *http.Request) doorMode {
 
 func (t *linkTable) everApplied() bool { t.mu.Lock(); defer t.mu.Unlock(); return t.applied }
 
+// appliedEmpty says the last snapshot applied in this process had no link in it: with it nothing is admitted whether it is fresh or not, so an old one has nothing to say is paused (#6377).
+func (t *linkTable) appliedEmpty() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.applied && len(t.set) == 0
+}
+
 func (h *BoardHandler) linkNow() time.Time {
 	if h.linkClock != nil {
 		return h.linkClock()
