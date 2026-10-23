@@ -161,12 +161,12 @@ func RunMSI(ctx context.Context, mc MSIConfig) Result {
 		return res
 	}
 	if stage.CheckRunning(dir, now) {
-		res.Result = ResultBusy
+		res.Result, res.FailedStage = ResultBusy, BusyCheck
 		return res
 	}
 	release, err := stage.TakeLock(dir, stage.ApplyLockFile, now)
 	if err != nil {
-		res.Result = ResultBusy
+		res.Result, res.FailedStage = ResultBusy, BusyApply // another apply is replacing the install: nothing may start Coral under it
 		return res
 	}
 	defer release()

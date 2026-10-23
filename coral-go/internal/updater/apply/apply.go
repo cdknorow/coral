@@ -40,6 +40,8 @@ const (
 	ResultRolledBack    = "failed_rolled_back"  // the swap happened, the new one was not healthy, the old one is back
 	ResultFailed        = "failed"              // nothing was changed (or the rollback itself failed: FailedStage says so)
 	ResultNothingStaged = "nothing_staged"      //
+	BusyCheck           = "check_running"       // FailedStage of a busy answer from the MSI apply: a check held the lock (the server had quit, Coral is started again)
+	BusyApply           = "apply_running"       // ...or another apply did (it is replacing the install: Coral is not started under it)
 	ResultBusy          = "busy"                // another apply or a check is running
 	ResultCoralRunning  = "coral_running"       // Coral did not end in time: nothing was changed
 	ResultUnsupported   = "unsupported_install" // Homebrew, a package manager, a volume without an atomic swap

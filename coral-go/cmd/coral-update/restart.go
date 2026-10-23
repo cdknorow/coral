@@ -57,8 +57,10 @@ func restartFromMarker(dataDir, dir string) bool {
 // the click into "Coral is down".
 func installedNothingAndLeftNoCoral(res apply.Result) bool {
 	switch res.Result {
-	case apply.ResultUnsupported, apply.ResultBusy, apply.ResultCoralRunning:
+	case apply.ResultUnsupported, apply.ResultCoralRunning:
 		return true
+	case apply.ResultBusy:
+		return res.FailedStage != apply.BusyApply // another apply is replacing the install right now: starting Coral in it would be the one wrong restart
 	}
 	return res.Result == apply.ResultFailed && res.FailedStage == "updates_folder"
 }

@@ -599,3 +599,15 @@ func TestARollbackToARevokedVersionIsRefusedAndThePersonIsTold(t *testing.T) {
 	assert.Contains(t, r.msi.notes[len(r.msi.notes)-1], "didn't pass its checks", "the person is told")
 	assert.Empty(t, r.state().Version, "the new version isn't accepted either")
 }
+
+// #323 / Security's note on #145: the busy answer says which lock was held, so the restart after a click is made only when a check held it; another apply is replacing the install.
+func TestTheBusyAnswerSaysWhichLockWasHeld(t *testing.T) {
+	live, _ := json.Marshal(map[string]any{"pid": os.Getpid(), "taken": msiTestNow.Unix()})
+	for lock, want := range map[string]string{stage.CheckLockFile: BusyCheck, stage.ApplyLockFile: BusyApply} {
+		r := newMSIRig(t)
+		require.NoError(t, os.WriteFile(filepath.Join(r.data, stage.UpdatesDir, lock), live, 0o600))
+		res := r.run()
+		assert.Equal(t, ResultBusy, res.Result, lock)
+		assert.Equal(t, want, res.FailedStage, lock)
+	}
+}
