@@ -55,3 +55,13 @@ export const resolveComment = (hex, server, id) => requestJson('POST', `${base(h
 export const reopenComment = (hex, server, id) => requestJson('POST', `${base(hex, server)}/${id}/reopen`, {}).then(normalizeComment);
 /** The owner's lock: this artifact's comments read only for everyone (reads stay open). */
 export const setLocked = (hex, server, locked) => requestJson(locked ? 'PUT' : 'DELETE', `${base(hex, server)}/lock`, { scope: 'artifact' });
+
+/** Send to agent (#6357, #6456): ask 1 to 10 agents of the comment's board into its thread; the server posts one board message to each from the owner. `agents` are the names the board knows them by (their roles).
+ *  Resolves { ok, status, results: [{agent, state, reason}], error }: a 409 with results (nobody was asked) is an answer to show, not a throw. Local only: through Coral Hub the route is refused, and the UI never offers it there. */
+export async function sendComment(hex, server, id, agents) {
+    const resp = await fetch(`${base(hex, server)}/${id}/send`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ agents }) });
+    let data = {};
+    try { data = await resp.json(); } catch { /* an answer that is not JSON has no results */ }
+    const results = Array.isArray(data.results) ? data.results.map(r => ({ agent: String(r.agent || ''), state: String(r.state || ''), reason: String(r.reason || '') })) : [];
+    return { ok: resp.ok && !!data.ok, status: resp.status, results, error: typeof data.error === 'string' ? data.error : (resp.ok ? '' : `HTTP ${resp.status}`) };
+}

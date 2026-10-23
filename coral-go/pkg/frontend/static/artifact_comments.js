@@ -4,12 +4,13 @@
 import { importOnce } from './import_once.js';
 const { buildAnchor, locateQuote, indexText } = await importOnce('./artifact_anchor.js');
 const api = await importOnce('./artifact_comments_api.js');
+const askUi = await importOnce('./artifact_comment_send.js');
 import { showToast } from './utils.js';
 import { scrollBehavior } from './motion.js';
 import { pushOverlay, popOverlay } from './overlay_history.js';
 import { state } from './state.js';
 import { boardOfPage } from './dock_page.js';
-import { boardKeyName, sessionTeamKey, contextServer } from './server_base.js';
+import { boardKeyName, sessionTeamKey, contextServer, isCloud } from './server_base.js';
 import { browserLocal } from './safe_storage.js';
 
 const OPEN_KEY = 'coral-artifact-comments-open'; // explicit choice shared by the viewer and docked preview, at every width
@@ -58,6 +59,7 @@ function avatar(c) {
 let panelSeq = 0; // one id per panel (the viewer's and the docked pane's)
 export function attachComments(dialog, body, host, opts = {}) {
     const st = { hex: null, server: undefined, board: undefined, source: '', text: false, data: null, showResolved: false, active: null, composing: null, busy: false, error: '', ranges: new Map(), orphan: new Set(), gone: false };
+    const askedBy = new Map(); // comment id -> Map(agent role, lowercase -> words): who was asked into a thread from this panel (the server refuses a second ask of an open one, and says so)
     const panel = el('aside', 'ac-panel'); panel.setAttribute('aria-label', 'Comments'); panel.hidden = true;
     panel.id = `ac-panel-${++panelSeq}`; // the toggle names it (aria-controls): where the opened comments are
     const toggle = btn('ac-toggle', 'Comments', 'Comments: show the comments'); toggle.hidden = true; toggle.setAttribute('aria-expanded', 'false');
@@ -263,6 +265,7 @@ export function attachComments(dialog, body, host, opts = {}) {
         li.append(q);
         li.append(entry(c, true));
         for (const r of replies) li.append(entry(r, false));
+        if (st.ask && st.ask.id === c.id) li.append(askBlock());
         // The reply box at the foot of the card, where Docs has it; it opens the composer in place.
         if (!c.deleted && c.can.reply && !(st.composing && st.composing.parentId === c.id)) {
             const rb = btn('ac-replybox', 'Reply…', `Reply to the comment by ${c.authorName || c.authorId || 'unknown'}`);
@@ -270,7 +273,7 @@ export function attachComments(dialog, body, host, opts = {}) {
             li.append(rb);
         }
         if (st.composing && st.composing.parentId === c.id) li.append(composer());
-        li.addEventListener('click', (e) => { if (e.target.closest('button, textarea')) return; activate(c.id, true); });
+        li.addEventListener('click', (e) => { if (e.target.closest('button, textarea, .ac-ask')) return; activate(c.id, true); }); // the picker's own clicks (a checkbox) are not a click on the card: drawing it again would drop the box that was ticked
         // The card and its highlight light each other while the pointer is on either (a click makes them current).
         li.addEventListener('pointerenter', () => hover(c.id)); li.addEventListener('pointerleave', () => hover(null));
         return li;
@@ -280,11 +283,62 @@ export function attachComments(dialog, body, host, opts = {}) {
         if (c.deleted) return row;
         if (c.can.edit) row.append(act('Edit', () => { st.composing = { editId: c.id }; st.error = ''; render(); panel.querySelector('.ac-input')?.focus(); }));
         if (c.can.delete) row.append(act('Delete', () => confirmThen('Delete this comment?', () => run(() => api.deleteComment(st.hex, st.server, c.id), 'Comment deleted'))));
+        // Send to agent (#6357, #6456): the owner, on this computer, for a thread of this board that is open; never through Coral Hub
+        if (top && canAsk(c)) { const b = act('Send to agent', () => openAsk(c)); b.classList.add('ac-ask-open'); b.setAttribute('aria-label', `Send the comment by ${c.authorName || c.authorId || 'unknown'} to an agent`); b.setAttribute('aria-expanded', String(!!st.ask && st.ask.id === c.id)); row.append(b); }
         // not an .ac-act: it writes nothing, so a read-only viewer has it too
         if (top && st.ranges.has(c.id)) { const j = btn('ac-jump', 'Show in text', 'Show this comment\'s text in the document'); j.addEventListener('click', () => jumpTo(c.id)); row.append(j); }
         return row;
     }
     const act = (text, fn) => { const b = btn('ac-act', text); b.addEventListener('click', fn); return b; };
+
+    // ── Send to agent: the picker inside the card, and what came of the ask
+    const canAsk = (c) => !isCloud() && !!st.board && !!st.data?.canLock && !c.deleted && !c.resolved && c.parentId == null;
+    const askedOf = (id) => askedBy.get(id) || (askedBy.set(id, new Map()), askedBy.get(id));
+    function askBlock() {
+        const k = st.ask;
+        return askUi.buildSendBlock({ id: k.id, board: st.board, agents: k.agents, picked: k.picked, asked: askedOf(k.id), results: k.results, busy: k.busy, error: k.error,
+            onToggle: (role) => { if (k.picked.has(role)) k.picked.delete(role); else if (k.picked.size < askUi.MAX_AGENTS) k.picked.add(role); redrawAsk(role); },
+            onCancel: () => { st.ask = null; render(); panel.querySelector(`.ac-card[data-id="${k.id}"] .ac-ask-open`)?.focus(); },
+            onSend: () => sendAsk() });
+    }
+    // The block is drawn again in place (not the whole panel), so a checkbox keeps its focus while it is ticked.
+    function redrawAsk(focusRole) {
+        const old = panel.querySelector('.ac-ask'); if (!old || !st.ask) return;
+        old.replaceWith(askBlock());
+        if (focusRole) [...panel.querySelectorAll('.ac-ask input[type="checkbox"]')].find(i => i.value === focusRole)?.focus();
+    }
+    async function openAsk(c) {
+        const k = st.ask = { id: c.id, agents: null, picked: new Set(), results: null, busy: false, error: '' };
+        render();
+        panel.querySelector('.ac-ask')?.scrollIntoView({ block: 'nearest', behavior: scrollBehavior() });
+        try {
+            const { refreshTeamAvailability } = await importOnce('./team_availability.js');
+            const data = await refreshTeamAvailability(st.board, true);
+            if (st.ask !== k) return;
+            k.agents = askUi.pickableAgents(data && data.agents);
+        } catch { if (st.ask !== k) return; k.agents = 'error'; }
+        redrawAsk();
+        panel.querySelector('.ac-ask input[type="checkbox"]:not(:disabled)')?.focus();
+    }
+    async function sendAsk() {
+        const k = st.ask; if (!k || k.busy || !k.picked.size) return;
+        k.busy = true; k.error = ''; redrawAsk();
+        const hex = st.hex;
+        let res;
+        try { res = await api.sendComment(hex, st.server, k.id, [...k.picked]); } catch { res = { ok: false, status: 0, results: [], error: 'Coral could not be reached.' }; }
+        if (st.ask !== k) return;
+        k.busy = false;
+        if (res.results.length) {
+            k.results = res.results;
+            const asked = askedOf(k.id);
+            for (const r of res.results) if (r.state === 'sent' || r.state === 'already_asked') asked.set(r.agent.toLowerCase(), r.state === 'sent' ? 'Asked just now' : 'Already asked');
+            const n = res.results.filter(r => r.state === 'sent').length;
+            announce(n ? `Asked ${n} agent${n === 1 ? '' : 's'}. Their replies come into this thread.` : 'Nobody was asked.');
+            if (n) for (const ms of [10000, 30000, 90000]) setTimeout(() => { if (hex === st.hex) refresh(); }, ms); // the agents' replies are replies in the thread: fetched a few times while they work
+        } else { k.error = res.error || 'The comment was not sent.'; }
+        redrawAsk();
+        panel.querySelector('.ac-ask .ac-cancel')?.focus();
+    }
     function confirmThen(msg, fn) { if (window.showConfirmModal) window.showConfirmModal('Delete comment', msg, fn); else fn(); }
     async function run(fn, said) {
         if (st.busy) return;
