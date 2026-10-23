@@ -7,7 +7,7 @@ import { groupTaskQueueRuns, renderTaskQueueRun } from './board_system_lines.js'
 import { messageAttachmentAttrs, messageAttachmentsHtml } from './board_attachments.js';
 import { pollEvery } from './overload.js';
 import { resolveBoardArtifacts } from './board_artifacts.js';
-import { browserLocal } from './safe_storage.js';
+import { initGrowingTextarea } from './growing_textarea.js';
 import { paintPauseButton as _paintPauseButton } from './board_pause_button.js';
 
 // ── Board Chat (right-panel tab) ──────────────────────────────────────
@@ -81,36 +81,27 @@ export function showBoardChatTab(boardName) {
             <div class="board-paused-banner" id="board-chat-paused-banner" style="display:none">Board reads are paused — agents cannot see new messages</div>
             <div class="board-chat-messages" id="board-panel-msgs"></div>
             <div class="board-chat-input-pane" id="board-chat-input-pane">
-                <div class="board-chat-resize-handle" id="board-chat-resize-handle"></div>
-                <div class="command-pane-toolbar board-chat-toolbar">
-                    <div class="toolbar-group">
-                        <button class="btn-nav" data-on-click="board-chat-all" title="Notify all agents">@all</button>
-                    </div>
-                    <span class="toolbar-spacer"></span>
-                    <div class="toolbar-group">
-                        <button class="btn-nav" data-on-click="board-chat-send" data-board="${escapeAttr(boardName)}" title="Send message">
-                            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="2" y1="8" x2="14" y2="8"/><polyline points="9 3 14 8 9 13"/></svg>
-                        </button>
+                <div class="command-pane-body">
+                    <div class="command-editor board-chat-editor-wrap">
+                        <textarea class="board-chat-textarea" id="board-panel-input" rows="1" placeholder="Message the team... (@ to mention)" aria-label="Message the team"
+                            role="combobox" aria-haspopup="listbox" aria-expanded="false" aria-controls="board-mention-dropdown"
+                            data-on-keydown="board-chat-key" data-on-input="board-chat-mention" data-board="${escapeAttr(boardName)}"></textarea>
+                        <div class="board-mention-dropdown" id="board-mention-dropdown" role="listbox" aria-label="Mention an agent" style="display:none"></div>
                     </div>
                 </div>
-                <div class="board-chat-editor-wrap">
-                    <textarea class="board-chat-textarea" id="board-panel-input" placeholder="Message the team... (@ to mention)" aria-label="Message the team"
-                        role="combobox" aria-haspopup="listbox" aria-expanded="false" aria-controls="board-mention-dropdown"
-                        data-on-keydown="board-chat-key" data-on-input="board-chat-mention" data-board="${escapeAttr(boardName)}"></textarea>
-                    <div class="board-mention-dropdown" id="board-mention-dropdown" role="listbox" aria-label="Mention an agent" style="display:none"></div>
+                <!-- After the text box in the DOM so Tab reaches the box first, then @all, then Send; CSS order draws them under it, as the chat's composer does -->
+                <div class="command-pane-toolbar board-chat-toolbar">
+                    <button type="button" class="btn-nav board-mention-chip" data-on-click="board-chat-all" title="Notify all agents">@all</button>
+                    <span class="toolbar-spacer"></span>
+                    <button type="button" class="btn-nav btn-send" data-on-click="board-chat-send" data-board="${escapeAttr(boardName)}" aria-label="Send message" title="Send message (Enter)">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                    </button>
                 </div>
             </div>`;
 
         if (carried) document.getElementById('board-panel-msgs').replaceWith(carried);
 
-        // Restore saved input pane height
-        const savedH = browserLocal.get('coral-boardchat-height');
-        if (savedH) {
-            const pane = document.getElementById('board-chat-input-pane');
-            const h = parseInt(savedH, 10);
-            if (pane && h >= 80) pane.style.height = h + 'px';
-        }
-
+        initGrowingTextarea(document.getElementById('board-panel-input'));
 
     panel.dataset.board = boardName;
     }

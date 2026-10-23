@@ -2,7 +2,7 @@
 //   - the message box has a name and is a combobox for the @mention list;
 //   - typing @ opens the list; ArrowDown/ArrowUp move the highlight (aria-activedescendant follows), Enter and Tab pick the
 //     highlighted name, Escape closes the list without sending or leaving the box (the list was reachable by mouse only);
-//   - Ctrl+Enter and Cmd+Enter send the message; a plain Enter with the list closed adds a line.
+//   - Enter sends the message (Ctrl+Enter and Cmd+Enter too); Shift+Enter with the list closed adds a line (#6239: as the chat).
 // Run against an isolated dev server.
 const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
@@ -67,17 +67,20 @@ const { removeBoards } = require('./helpers/board_cleanup');
         assert.equal(await ev(`${box}.value`), 'hi @Back Office @QA @b', 'Escape leaves the text alone');
         console.log('   ✓ arrows move, Enter and Tab pick, Escape closes; focus stays in the box');
 
-        console.log('2. Ctrl+Enter and Cmd+Enter send; Enter adds a line');
+        console.log('2. Enter sends, Shift+Enter adds a line (as in the chat, #6239); Ctrl+Enter and Cmd+Enter send too');
         await ev(`${box}.value = 'first'; ${box}.setSelectionRange(5, 5); true`);
+        await press('Enter', 'Enter', 13, 8);
+        assert.equal(await ev(`${box}.value`), 'first\n', 'Shift+Enter adds a line and does not send');
+        await ev(`${box}.value = ''; true`);
         await press('Enter', 'Enter', 13);
-        assert.equal(await ev(`${box}.value.startsWith('first')`), true, 'a plain Enter does not send');
-        for (const [name, mod, text] of [['Ctrl', 2, 'sent by ctrl'], ['Cmd', 4, 'sent by cmd']]) {
+        assert.equal(await ev(`${box}.value`), '', 'an Enter on an empty box sends nothing and adds no line');
+        for (const [name, mod, text] of [['Enter', 0, 'sent by enter'], ['Ctrl+Enter', 2, 'sent by ctrl'], ['Cmd+Enter', 4, 'sent by cmd']]) {
             await ev(`${box}.value = ${JSON.stringify(text)}; true`);
             await press('Enter', 'Enter', 13, mod);
-            await waitFor(`[...document.querySelectorAll('#board-panel-msgs .mb-message')].some(m => m.textContent.includes(${JSON.stringify(text)}))`, `${name}+Enter sends`, 8000);
-            assert.equal(await ev(`${box}.value`), '', `${name}+Enter clears the box`);
+            await waitFor(`[...document.querySelectorAll('#board-panel-msgs .mb-message')].some(m => m.textContent.includes(${JSON.stringify(text)}))`, `${name} sends`, 8000);
+            assert.equal(await ev(`${box}.value`), '', `${name} clears the box`);
         }
-        console.log('   ✓ Ctrl+Enter and Cmd+Enter send');
+        console.log('   ✓ Enter, Ctrl+Enter and Cmd+Enter send; Shift+Enter adds a line');
         console.log('\nPASS board panel by keyboard');
     } finally { await removeBoards(ev, [board]); await client.close(); }
 })().catch(e => { console.error(e); process.exitCode = 1; });

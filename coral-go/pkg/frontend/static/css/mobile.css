@@ -141,8 +141,7 @@
 
 @media (max-width: 1023px) {
     /* Hide agentic state panel + resize handles on tablet */
-    .task-bar-resize-handle,
-.board-chat-resize-handle {
+    .task-bar-resize-handle {
         display: none !important;
     }
 
@@ -156,12 +155,6 @@
 
     .agentic-state-tabs::-webkit-scrollbar {
         display: none;
-    }
-
-    /* Board chat input pane: shorter on tablet */
-    .board-chat-input-pane {
-        height: 160px;
-        min-height: 80px;
     }
 
     /* Sidebar collapsible overlay on tablet */
@@ -410,31 +403,31 @@
     }
 
     /* Hide the toolbar's buttons (macros, nav keys, mode buttons) on mobile; the model chip stays, as a row under the input (#5116) */
-    .command-pane-toolbar > :not(.model-chip-bar) {
+    .command-pane .command-pane-toolbar > :not(.model-chip-bar) {
         display: none !important;
     }
-    .command-pane-toolbar {
+    .command-pane .command-pane-toolbar {
         order: 1;
         padding: 4px 8px 8px;
         border-bottom: none;
         min-height: 0;
     }
-    .command-pane-toolbar:not(:has(> .model-chip-bar:not([hidden]))) {
+    .command-pane .command-pane-toolbar:not(:has(> .model-chip-bar:not([hidden]))) {
         display: none !important;
     }
 
     /* Compact input body: single row with send button inline */
-    .command-pane-body {
+    .command-pane .command-pane-body {
         padding: 6px 8px !important;
         gap: 6px;
         align-items: flex-end;
     }
     /* Pending image chips are their own row above the box (#6137): beside it they left the box a one-character strip. The box and the send buttons stay on one row under them. */
-    .command-pane-body { flex-wrap: wrap; }
-    .command-pane-body > .image-attachments { flex: 0 0 100%; min-width: 0; box-sizing: border-box; }
-    .command-pane-body > .command-editor { min-width: 0; }
-    .command-pane-body .image-attachment-remove { min-width: var(--control-touch-height, 44px); min-height: var(--control-touch-height, 44px); }
-    .command-pane-body .image-attachment img { width: var(--control-touch-height, 44px); height: var(--control-touch-height, 44px); } /* the thumbnail is as tall as its remove button */
+    .command-pane .command-pane-body { flex-wrap: wrap; }
+    .command-pane .command-pane-body > .image-attachments { flex: 0 0 100%; min-width: 0; box-sizing: border-box; }
+    .command-pane .command-pane-body > .command-editor { min-width: 0; }
+    .command-pane .command-pane-body .image-attachment-remove { min-width: var(--control-touch-height, 44px); min-height: var(--control-touch-height, 44px); }
+    .command-pane .command-pane-body .image-attachment img { width: var(--control-touch-height, 44px); height: var(--control-touch-height, 44px); } /* the thumbnail is as tall as its remove button */
 
     .command-pane textarea {
         min-height: 2.25rem !important;   /* 36px; rem, so the box grows with the text size (#4086) */
@@ -447,27 +440,6 @@
     /* Send buttons: ensure they show on mobile */
     .command-pane .mobile-send-btn {
         display: flex !important;
-    }
-
-    /* Board chat: compact on mobile */
-    .board-chat-input-pane {
-        height: auto !important;
-        min-height: 80px;
-        max-height: 40vh;
-    }
-
-    .board-chat-textarea {
-        min-height: 60px;
-        max-height: 100px;
-        font-size: 0.875rem !important;
-    }
-
-    .board-chat-editor-wrap {
-        padding: 6px 10px 8px;
-    }
-
-    .board-chat-resize-handle {
-        display: none !important;
     }
 
     .board-chat-messages {
@@ -669,8 +641,7 @@
     /* Hide resize handles */
     .sidebar-resize-handle,
     .task-bar-resize-handle,
-    .agentic-block-resize-handle,
-    .board-chat-resize-handle {
+    .agentic-block-resize-handle {
         display: none !important;
     }
 

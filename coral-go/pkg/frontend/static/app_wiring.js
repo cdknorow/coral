@@ -16,7 +16,7 @@ import { initFileMention } from './file_mention.js';
 import { initCommandMention } from './command_mention.js';
 import { initNotesMd } from './agent_notes.js';
 import { initChatFind } from './chat_find.js';
-import { initSidebarResize, initTaskBarResize, initBoardChatResize, initSidebarCollapse, initAgenticPanelCollapse, initAgenticBlockResize, initAgenticBlockCollapse, initSidebarRail } from './sidebar.js';
+import { initSidebarResize, initTaskBarResize, initSidebarCollapse, initAgenticPanelCollapse, initAgenticBlockResize, initAgenticBlockCollapse, initSidebarRail } from './sidebar.js';
 import { restoreAgenticTabs } from './agentic_state.js';
 import { initPreviewPane } from './preview_pane.js';
 import { syncPaneWidth, refreshCapture } from './capture.js';
@@ -165,7 +165,6 @@ export function initPanels() {
     initSidebarResize();
     initSidebarRail();
     initTaskBarResize();
-    initBoardChatResize();
     initPreviewPane();
     restoreAgenticTabs();
 }

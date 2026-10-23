@@ -342,8 +342,9 @@ body.popout-mode.popout-terminal-blocked .attach-image-btn { pointer-events: non
    (live_chat.js autosizes it, capped at 40vh). Mobile keeps its compact
    input bar (mobile.css). */
 
+/* The team board's composer (#6239) is the same card: the :is() lists below carry #board-chat-input-pane beside #command-pane, so its box, its text, its buttons and its focus ring are the chat's rules, not copies. */
 @media (min-width: 768px) {
-    #command-pane {
+    :is(#command-pane, #board-chat-input-pane) {
         height: auto !important;
         min-height: 0;
         max-height: none;
@@ -355,21 +356,21 @@ body.popout-mode.popout-terminal-blocked .attach-image-btn { pointer-events: non
         box-shadow: 0 4px 18px rgba(var(--black-rgb), 0.18);
         transition: border-color 0.15s;
     }
-    #command-pane:focus-within {
+    :is(#command-pane, #board-chat-input-pane):focus-within {
         border-color: var(--accent);   /* a 55% mix was 2.7:1 on the light card, under the 3:1 a focus indicator needs (#4023) */
     }
-    #command-pane .command-pane-body {
+    :is(#command-pane, #board-chat-input-pane) .command-pane-body {
         order: 0;
         flex-direction: column;
         gap: 6px;
         padding: 12px 16px 0;
     }
-    #command-pane .image-attachments {
+    :is(#command-pane, #board-chat-input-pane) .image-attachments {
         border: none;
         background: none;
         padding: 0;
     }
-    #command-pane textarea {
+    :is(#command-pane, #board-chat-input-pane) textarea {
         flex: none;
         min-height: 2.75rem;   /* 44px; rem, so the box grows with the text size */
         max-height: 40vh;
@@ -381,19 +382,19 @@ body.popout-mode.popout-terminal-blocked .attach-image-btn { pointer-events: non
         font-size: 0.875rem;
         overflow-y: auto;
     }
-    #command-pane .command-pane-toolbar {
+    :is(#command-pane, #board-chat-input-pane) .command-pane-toolbar {
         order: 1;
         gap: 4px;
         border-bottom: none;
         padding: 6px 10px 10px;
     }
-    #command-pane .toolbar-divider {
+    :is(#command-pane, #board-chat-input-pane) .toolbar-divider {
         height: 16px;
         margin: 0 4px;
     }
 
     /* Toolbar buttons read as quiet icons inside the card */
-    #command-pane .command-pane-toolbar .btn-nav:not(.btn-send) {
+    :is(#command-pane, #board-chat-input-pane) .command-pane-toolbar .btn-nav:not(.btn-send) {
         height: var(--control-compact-height);
         background: transparent;
         border: 1px solid transparent;
@@ -401,33 +402,33 @@ body.popout-mode.popout-terminal-blocked .attach-image-btn { pointer-events: non
         color: var(--text-secondary);
         font-weight: 500;
     }
-    #command-pane .command-pane-toolbar .btn-nav:not(.btn-send):hover {
+    :is(#command-pane, #board-chat-input-pane) .command-pane-toolbar .btn-nav:not(.btn-send):hover {
         background: var(--bg-hover);
         color: var(--text-primary);
     }
     /* Macros keep an outline so they read as chips */
-    #command-pane .command-pane-toolbar .macro-btn-wrap .btn-nav,
-    #command-pane .command-pane-toolbar .btn-nav.btn-add-macro {
+    :is(#command-pane, #board-chat-input-pane) .command-pane-toolbar .macro-btn-wrap .btn-nav,
+    :is(#command-pane, #board-chat-input-pane) .command-pane-toolbar .btn-nav.btn-add-macro {
         border-color: var(--control-border);
         padding: 0 12px;
     }
-    #command-pane .command-pane-toolbar .btn-nav.btn-add-macro {
+    :is(#command-pane, #board-chat-input-pane) .command-pane-toolbar .btn-nav.btn-add-macro {
         border-style: dashed;
         padding: 0;
         min-width: 30px;
     }
 
-    #command-pane .toolbar-send-split {
+    :is(#command-pane, #board-chat-input-pane) .toolbar-send-split {
         align-items: center;
         gap: 2px;
         margin-left: 4px;
     }
-    #command-pane .command-pane-toolbar .btn-send-dropdown {
+    :is(#command-pane, #board-chat-input-pane) .command-pane-toolbar .btn-send-dropdown {
         order: -1;
         min-width: 24px;
         border-radius: 15px !important;
     }
-    #command-pane .btn-send {
+    :is(#command-pane, #board-chat-input-pane) .btn-send {
         width: 32px;
         min-width: 32px;
         height: 32px;
@@ -435,13 +436,45 @@ body.popout-mode.popout-terminal-blocked .attach-image-btn { pointer-events: non
         border-radius: 50%;
         box-shadow: none;
     }
-    #command-pane .btn-send:hover {
+    :is(#command-pane, #board-chat-input-pane) .btn-send:hover {
         transform: none;
     }
-    #command-pane .drop-overlay {
+    :is(#command-pane, #board-chat-input-pane) .drop-overlay {
         border-radius: 16px;
     }
 }
+
+
+/* On a phone the chat keeps its compact bar (mobile.css); the board's composer stays this card, as it has no inline Send to move. */
+@media (max-width: 767px) {
+    #board-chat-input-pane {
+        height: auto; min-height: 0; max-height: none;
+        width: calc(100% - 16px);
+        margin: 4px auto 8px;
+        padding: 0;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        box-shadow: 0 4px 18px rgba(var(--black-rgb), 0.18);
+        transition: border-color 0.15s;
+    }
+    #board-chat-input-pane:focus-within { border-color: var(--accent); }
+    #board-chat-input-pane .command-pane-body { order: 0; flex-direction: column; gap: 6px; padding: 10px 12px 0; }
+    #board-chat-input-pane textarea {
+        flex: none; min-height: 2.75rem; max-height: 40vh; padding: 0;
+        background: transparent; border: none; border-radius: 0;
+        font-family: var(--font-sans); font-size: 1rem; /* 16px at the default size: no iOS zoom on focus, and it follows the text size */
+        overflow-y: auto;
+    }
+    #board-chat-input-pane .command-pane-toolbar { order: 1; gap: 4px; border-bottom: none; padding: 6px 8px 8px; }
+    #board-chat-input-pane .command-pane-toolbar .btn-nav:not(.btn-send) { height: var(--control-compact-height); background: transparent; border: 1px solid transparent; border-radius: 15px; color: var(--text-secondary); font-weight: 500; }
+    #board-chat-input-pane .btn-send { width: 32px; min-width: 32px; height: 32px; padding: 0; border-radius: 50%; box-shadow: none; }
+    #board-chat-input-pane .btn-send:hover { transform: none; }
+}
+/* @all is an outlined chip in the bottom row, as the chat's macros are */
+#board-chat-input-pane .command-pane-toolbar .btn-nav.board-mention-chip:not(.btn-send) { border-color: var(--control-border); padding: 0 12px; } /* beats the quiet-icon rule above, as the chat's macro chips do */
+/* The card's accent border is the focus indicator, as in the chat; the text keeps no ring of its own inside it */
+#board-chat-input-pane textarea:focus, #board-chat-input-pane textarea:focus-visible { outline: none; box-shadow: none; }
 
 /* Size composer glyphs independently of the established control boxes. */
 #command-pane .btn-nav svg { width: var(--icon-inline-size); height: var(--icon-inline-size); }

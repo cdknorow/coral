@@ -435,8 +435,8 @@ registerActions({
     'board-chat-select': () => window.__coral._toggleBoardChatSelect(),
     'board-chat-all': () => { const i = document.getElementById('board-panel-input'); if (i) { i.value = '@all ' + i.value; i.focus(); } },
     'board-chat-send': el => { const b = textOf(el.dataset.board); if (b) window.__coral._sendBoardChat(b); },
-    // Ctrl+Enter (or Cmd+Enter) sends; while the @mention list is open the arrow keys, Enter, Tab and Escape drive it.
-    'board-chat-key': (el, event) => { if (_boardMentionKey(event)) return; if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); const b = textOf(el.dataset.board); if (b) window.__coral._sendBoardChat(b); } },
+    // Enter sends and Shift+Enter adds a line, as in the chat (#6239; Ctrl/Cmd+Enter still sends); while the @mention list is open the arrow keys, Enter, Tab and Escape drive it. Enter that confirms an IME composition is not a send.
+    'board-chat-key': (el, event) => { if (_boardMentionKey(event)) return; if (event.key === 'Enter' && !event.isComposing && (!event.shiftKey || event.ctrlKey || event.metaKey)) { event.preventDefault(); const b = textOf(el.dataset.board); if (b) window.__coral._sendBoardChat(b); } },
     'board-chat-mention': (el, event) => { const b = textOf(el.dataset.board); if (b) _boardMentionInput(event, b); },
     'board-mention-pick': (el, event) => { event.preventDefault(); const n = textOf(el.dataset.name); if (n) _insertBoardMention(n); },
     'board-chat-earlier': () => window.__coral._loadEarlierBoardChat(),

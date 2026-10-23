@@ -1418,58 +1418,25 @@
     padding: 8px;
 }
 
+/* The board's composer card is the chat's (command-pane.css, #6239): this keeps what is the board's own. */
 .board-chat-input-pane {
-    border-top: 1px solid var(--border);
-    background: var(--bg-secondary);
     flex-shrink: 0;
     display: flex;
     flex-direction: column;
-    height: 300px;
-    min-height: 120px;
-    max-height: 60vh;
-    padding-bottom: 12px;
-}
-
-.board-chat-resize-handle {
-    height: 4px;
-    cursor: row-resize;
-    background: var(--border);
-    transition: background 0.15s;
-}
-
-.board-chat-resize-handle:hover {
-    background: var(--accent);
+    min-width: 0;
 }
 
 .board-chat-editor-wrap {
-    flex: 1;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
     position: relative;
-    padding: 8px 20px 12px;
 }
 
 .board-chat-textarea {
-    flex: 1;
     width: 100%;
     box-sizing: border-box;
-    padding: 8px 12px;
-    font-size: 0.8125rem;
-    font-family: var(--font-mono);
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
     color: var(--text-primary);
     outline: none;
     resize: none;
-    min-height: 0;
     line-height: 1.5;
-    transition: border-color 0.15s;
-}
-
-.board-chat-textarea:focus {
-    border-color: var(--accent);
 }
 
 .board-mention-dropdown {

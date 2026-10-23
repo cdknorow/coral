@@ -1,17 +1,11 @@
 /* Sidebar drag-to-resize functionality */
 
 import { fitTerminal } from './xterm_renderer.js';
-import { makeDraggable, makeDelegatedDraggable } from './draggable.js';
+import { makeDraggable } from './draggable.js';
 import { browserLocal } from './safe_storage.js';
 import { dockKey, dockOpenByDefault, onDockPage } from './dock_page.js';
 import { machineState } from './launch_server.js';
 import { setText, setAttr } from './dom_write.js';
-
-/* Layout persistence is scoped per entry mode: a narrow popout window must
-   never overwrite the dashboard's saved panel sizes. */
-function layoutKey(base) {
-    return document.body.classList.contains('popout-mode') ? `${base}:popout` : base;
-}
 
 export function initSidebarResize() {
     const handle = document.getElementById("sidebar-resize-handle");
@@ -72,29 +66,6 @@ function applyDockWidth() {
     const saved = browserLocal.get(dockKey('coral-taskbar-width'));
     const w = saved ? parseInt(saved, 10) : 0;
     taskBar.style.width = w >= AGENTIC_MIN_WIDTH ? Math.min(w, maxAgenticWidth(document.querySelector(".main-row"))) + "px" : '';
-}
-
-/* Board chat input pane resize */
-
-export function initBoardChatResize() {
-    makeDelegatedDraggable(document, '.board-chat-resize-handle', {
-        cursor: 'row-resize',
-        resolve: (handle) => {
-            const pane = handle.closest('.board-chat-input-pane');
-            return pane ? { pane } : null;
-        },
-        onStart: (handle) => { handle.style.background = 'var(--accent)'; },
-        onMove: (e, { pane }) => {
-            const rect = pane.parentElement.getBoundingClientRect();
-            const newHeight = rect.bottom - e.clientY;
-            return Math.min(Math.max(newHeight, 80), rect.height * 0.6);
-        },
-        onFlush: (v, { pane }) => { pane.style.height = v + "px"; },
-        onEnd: (handle, _v, { pane }) => {
-            handle.style.background = '';
-            browserLocal.set(layoutKey('coral-boardchat-height'), pane.offsetHeight);
-        },
-    });
 }
 
 /* Agentic block resize (top/bottom split) */
