@@ -146,6 +146,9 @@ func (h *SessionsHandler) launchSession(ctx context.Context, spec launchSpec) (_
 			if m := agent.PermissionModeFromFlags(spec.Flags); m != "" {
 				return m
 			}
+			if carried, _ := agent.SplitPermissionFlags(spec.Flags); len(carried) > 0 {
+				return "default" // permission flags nobody here can read as a mode: never widened to a saved default or Auto (#6423)
+			}
 			if def := setreg.Enum(userSettings, "default_permission_mode"); def != "" {
 				return def
 			}

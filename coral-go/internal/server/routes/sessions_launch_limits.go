@@ -164,33 +164,10 @@ func teamAgentKey(name, prompt, agentType, model string, flags []string, caps *a
 }
 
 func stripAgentPermissionFlags(flags []string) []string {
-	agentPermFlags := map[string]bool{
-		"--full-auto": true, "--dangerously-skip-permissions": true,
-		"--dangerously-bypass-approvals-and-sandbox": true,
-		"--sandbox": true, "--search": true,
-		"--approval-mode": true, "--permission-mode": true, "--yolo": true,
-		"--mode": true,
-	}
-
+	_, rest := agent.SplitPermissionFlags(flags)
 	var cleanFlags []string
-	skipNext := false
-	for _, f := range flags {
-		if skipNext {
-			skipNext = false
-			continue
-		}
-		if strings.HasPrefix(f, "--permission-mode=") || strings.HasPrefix(f, "--mode=") || strings.HasPrefix(f, "--sandbox=") || strings.HasPrefix(f, "--approval-mode=") {
-			continue
-		}
-		if agentPermFlags[f] {
-			// Some flags take a value argument (e.g. --sandbox workspace-write, -a untrusted, --mode plan).
-			if f == "--sandbox" || f == "--approval-mode" || f == "--permission-mode" || f == "-a" || f == "--mode" {
-				skipNext = true
-			}
-			continue
-		}
-		if f == "-a" {
-			skipNext = true
+	for _, f := range rest {
+		if f == "--search" {
 			continue
 		}
 		cleanFlags = append(cleanFlags, f)

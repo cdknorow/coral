@@ -155,7 +155,9 @@ func (h *SessionsHandler) ResetTeam(w http.ResponseWriter, r *http.Request) {
 			storedPermMode = *cfg.PermissionMode
 		}
 		cleanFlags := stripAgentPermissionFlags(flags)
-		if caps.IsEmpty() && storedPermMode != "" && storedPermMode != "default" {
+		if carried, _ := agent.SplitPermissionFlags(flags); caps.IsEmpty() && len(carried) > 0 {
+			cleanFlags = append(cleanFlags, carried...) // what the agent was started with, as it was (#6423)
+		} else if caps.IsEmpty() && storedPermMode != "" && storedPermMode != "default" {
 			cleanFlags = append(cleanFlags, agent.PermissionFlagsForAgent(cfg.AgentType, storedPermMode)...)
 		}
 		tools := store.UnmarshalFlags(cfg.Tools)

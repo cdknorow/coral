@@ -235,6 +235,67 @@ func TranslateToAgyPermissions(caps *Capabilities) *AgyPermissions {
 // PermissionModeFromFlags extracts generic permission mode ("bypassPermissions", "plan", "acceptEdits", "auto", "dontAsk")
 // from CLI flags if present.
 func PermissionModeFromFlags(flags []string) string {
+	if m := permissionModeFromEntries(flags); m != "" {
+		return m
+	}
+	return codexModeFromSandboxFlags(flags)
+}
+
+// SplitPermissionFlags divides flags into those that say what an agent may do without asking, in any spelling (the sandbox, approval and permission-mode flags with their values,
+// --flag=value, -c sandbox_mode=... and -c approval_policy=..., and the bypass, full-auto and skip-permissions switches), and the rest, both in their order (#6423). A wake, a
+// restart and a team reset use it to hand on what the agent was started with and never add a mode's flags after it: fail closed, even for a value nobody here can read.
+func SplitPermissionFlags(flags []string) (permission, rest []string) {
+	for i := 0; i < len(flags); i++ {
+		f := flags[i]
+		switch {
+		case f == "--full-auto" || f == "--dangerously-skip-permissions" || f == "--dangerously-bypass-approvals-and-sandbox" || f == "--yolo":
+			permission = append(permission, f)
+		case f == "--sandbox" || f == "-s" || f == "-a" || f == "--ask-for-approval" || f == "--approval-mode" || f == "--permission-mode" || f == "--mode":
+			permission = append(permission, f)
+			if i+1 < len(flags) {
+				i++
+				permission = append(permission, flags[i])
+			}
+		case strings.HasPrefix(f, "--sandbox=") || strings.HasPrefix(f, "--ask-for-approval=") || strings.HasPrefix(f, "--approval-mode=") ||
+			strings.HasPrefix(f, "--permission-mode=") || strings.HasPrefix(f, "--mode=") || strings.HasPrefix(f, "-s=") || strings.HasPrefix(f, "-a="):
+			permission = append(permission, f)
+		case (f == "-c" || f == "--config") && i+1 < len(flags) && isCodexPermissionConfig(flags[i+1]):
+			permission = append(permission, f, flags[i+1])
+			i++
+		case (strings.HasPrefix(f, "-c=") || strings.HasPrefix(f, "--config=")) && isCodexPermissionConfig(f[strings.Index(f, "=")+1:]):
+			permission = append(permission, f)
+		default:
+			rest = append(rest, f)
+		}
+	}
+	return permission, rest
+}
+
+func isCodexPermissionConfig(kv string) bool {
+	key, _, _ := strings.Cut(kv, "=")
+	key = strings.TrimSpace(key)
+	return key == "sandbox_mode" || key == "approval_policy"
+}
+
+// codexModeFromSandboxFlags is the mode Codex's own sandbox and approval flags stand for, for the one narrow pair (#6417): a launch that typed --sandbox read-only -a on-request is
+// Plan, not the default Auto. Every other pair is "" (never read as a wider mode).
+func codexModeFromSandboxFlags(flags []string) string {
+	var sandbox, approval string
+	for i := 0; i+1 < len(flags); i++ {
+		switch flags[i] {
+		case "--sandbox", "-s":
+			sandbox = flags[i+1]
+		case "-a", "--ask-for-approval":
+			approval = flags[i+1]
+		}
+	}
+	if sandbox == "read-only" && approval == "on-request" {
+		return "plan"
+	}
+	return "" // a wider pair is no mode here: the flags themselves are carried as they are (SplitPermissionFlags), never widened or narrowed on the way
+}
+
+func permissionModeFromEntries(flags []string) string {
 	for i := 0; i < len(flags); i++ {
 		f := flags[i]
 		switch {

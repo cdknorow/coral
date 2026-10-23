@@ -274,10 +274,10 @@ func (h *SessionsHandler) wakeExistingSession(ctx context.Context, ls *store.Liv
 			permMode = setreg.Enum(userSettings, "default_permission_mode")
 		}
 	}
-	if caps.IsEmpty() && permMode != "" && permMode != "default" {
-		if agent.PermissionModeFromFlags(flags) == "" {
-			flags = append(flags, agent.PermissionFlagsForAgent(ls.AgentType, permMode)...)
-		}
+	// The mode's flags are added only when the stored flags carry no permission flag at all, in any spelling (#6423): a Plan agent started with its own sandbox flags
+	// woke with Auto's after them, and Codex takes the last.
+	if carried, _ := agent.SplitPermissionFlags(flags); caps.IsEmpty() && permMode != "" && permMode != "default" && len(carried) == 0 {
+		flags = append(flags, agent.PermissionFlagsForAgent(ls.AgentType, permMode)...)
 	}
 
 	launchParams := agent.LaunchParams{

@@ -639,7 +639,9 @@ func (p *restartPlan) restartSettings() {
 		}
 	}
 	cleanFlags := restartFlags(storedFlags, p.model, p.req.ExtraFlags)
-	if p.caps.IsEmpty() && p.permMode != "" && p.permMode != "default" {
+	if carried, _ := agent.SplitPermissionFlags(storedFlags); p.caps.IsEmpty() && len(carried) > 0 {
+		cleanFlags = append(cleanFlags, carried...) // what the agent was started with, as it was (#6423)
+	} else if p.caps.IsEmpty() && p.permMode != "" && p.permMode != "default" {
 		cleanFlags = append(cleanFlags, agent.PermissionFlagsForAgent(p.agentType, p.permMode)...)
 	}
 	p.flags = append(cleanFlags, agentmodels.ThinkingArgs(p.agentType, p.thinking)...)
@@ -1046,7 +1048,9 @@ func (h *SessionsHandler) resumeResolve(ctx context.Context, name string, body *
 	storedFlags := store.UnmarshalFlags(ls.Flags)
 	cleanFlags := stripAgentPermissionFlags(storedFlags)
 	cleanFlags = agentmodels.StripThinkingFlags(cleanFlags)
-	if p.caps.IsEmpty() && p.permMode != "" && p.permMode != "default" {
+	if carried, _ := agent.SplitPermissionFlags(storedFlags); p.caps.IsEmpty() && len(carried) > 0 {
+		cleanFlags = append(cleanFlags, carried...) // what the agent was started with, as it was (#6423)
+	} else if p.caps.IsEmpty() && p.permMode != "" && p.permMode != "default" {
 		cleanFlags = append(cleanFlags, agent.PermissionFlagsForAgent(agentType, p.permMode)...)
 	}
 	if t := ptr.Value(ls.Thinking); agentmodels.ValidThinking(agentType, t) { // the resumed agent keeps its level (a resume starts with no other stored flag)

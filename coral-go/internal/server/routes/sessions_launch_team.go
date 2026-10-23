@@ -525,7 +525,9 @@ func (h *SessionsHandler) launchTeamMember(ctx context.Context, body launchTeamR
 	if len(agentFlags) == 0 {
 		permMode := agent.PermissionModeFromFlags(body.Flags)
 		cleanFlags := stripAgentPermissionFlags(body.Flags)
-		if def.Capabilities.IsEmpty() && permMode != "" && permMode != "default" {
+		if carried, _ := agent.SplitPermissionFlags(body.Flags); def.Capabilities.IsEmpty() && permMode == "" && len(carried) > 0 {
+			cleanFlags = append(cleanFlags, carried...) // flags nobody here can read as a mode are handed on, never dropped (#6423)
+		} else if def.Capabilities.IsEmpty() && permMode != "" && permMode != "default" {
 			cleanFlags = append(cleanFlags, agent.PermissionFlagsForAgent(agentType, permMode)...)
 			memberPermMode = permMode
 		}

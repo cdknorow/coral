@@ -494,8 +494,13 @@ func codexUserFlags(parts, flags []string, bypass, applied bool) ([]string, bool
 			applied = true
 		case claudeOnlyFlags[flag]:
 			slog.Warn("dropping Claude-specific flag for Codex agent", "flag", flag)
+		case (flag == "-c" || flag == "--config") && i+1 < len(flags) && isCodexPermissionConfig(flags[i+1]):
+			// -c sandbox_mode=... and -c approval_policy=... set what Codex may do without asking: a mode's flags are not added after them (#6423).
+			parts = append(parts, flag, flags[i+1])
+			i++
+			applied = true
 		default:
-			if flag == "--sandbox" || strings.HasPrefix(flag, "--sandbox=") {
+			if flag == "--sandbox" || flag == "-s" || strings.HasPrefix(flag, "--sandbox=") || strings.HasPrefix(flag, "-s=") {
 				applied = true
 			}
 			parts = append(parts, flag)
