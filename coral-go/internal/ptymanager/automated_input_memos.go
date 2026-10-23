@@ -60,6 +60,23 @@ func HeldCount(name string) int {
 	return n
 }
 
+// HeldSince is when the oldest automated send held for a session was first held (the one the retry loop is trying now included), the zero time when none is: the live list's held_since, so a
+// page that opens late can say how long a send has waited (#6503). It starts again when the count returns to zero.
+func HeldSince(name string) time.Time {
+	gate.mu.Lock()
+	defer gate.mu.Unlock()
+	var oldest time.Time
+	for _, h := range gate.held[name] {
+		if oldest.IsZero() || h.heldAt.Before(oldest) {
+			oldest = h.heldAt
+		}
+	}
+	if in := gate.inflight[name]; in != nil && (oldest.IsZero() || in.heldAt.Before(oldest)) {
+		oldest = in.heldAt
+	}
+	return oldest
+}
+
 // deliveredKeysPerSession bounds LastDelivered's record for one session.
 const deliveredKeysPerSession = 64
 

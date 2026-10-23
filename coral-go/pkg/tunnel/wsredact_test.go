@@ -491,3 +491,18 @@ func TestRedactHoldsOnlyWordStarts(t *testing.T) {
 	assert.Equal(t, "g.", held("go"), "a word-initial 'g' could start ghp_")
 	assert.Equal(t, ".....s", held("\x1b[32ms"), "after a colour code a letter starts a word")
 }
+
+// #6503: a live row's held_since (an RFC 3339 time) goes to Coral Hub as it is, through the production redactor, like the row's other fields; a secret in a neighbouring field is still replaced.
+func TestTheLiveRowsHeldSinceSurvivesTheFeedRedactor(t *testing.T) {
+	tok := fake("ghp_", 36, alnum)
+	frame, _ := json.Marshal(map[string]any{"type": "coral_update", "sessions": []map[string]any{{"session_id": "s1", "held_inputs": 2, "held_since": "2026-10-23T12:45:59Z", "waiting_summary": "token " + tok}}})
+	dst := &wsRecorder{}
+	w := newWSRedact(context.Background(), dst, secrets.Redactor(), func() bool { return true }, false)
+	require.NoError(t, w.write(websocket.MessageText, frame))
+	f := dst.got()
+	require.NotEmpty(t, f)
+	out := f[len(f)-1].data
+	assert.Contains(t, out, `"held_since":"2026-10-23T12:45:59Z"`, "the time is untouched")
+	assert.Contains(t, out, `"held_inputs":2`)
+	assert.NotContains(t, out, tok, "the redactor still works on the same row")
+}
