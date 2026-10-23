@@ -196,23 +196,41 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 	}
 	dbcrypt.SetUnlockSurface(opts.UnlockSurface)
 	backendFlag := opts.BackendType // resolved against the saved setting once the database is open
-	logStartup(opts)
 
+	// The instance lock comes before anything this start would write (#6379, from #6370's stray start): a second start that loses it creates no folder, tightens no mode, opens no file and logs
+	// nothing about itself in the data folder. Only the read-only encryption check precedes it (a refused start leaves the home untouched, as before). A folder that does not exist yet has no
+	// server to lose to: it is made first, since the lock file lives in it.
 	coralDir := cfg.CoralDir()
-	if err := prepareDataDirs(cfg, coralDir); err != nil {
+	if err := rejectUnsupportedEncryption(cfg, coralDir); err != nil {
 		return nil, err
 	}
 	lockPath := filepath.Join(coralDir, "coral-server.lock")
-	instance, err := acquireInstanceLock(lockPath)
-	if err != nil {
-		return nil, fmt.Errorf("cannot start Coral: %w (stop the existing server or use a different data directory)", err)
+	lockErr := func(err error) error {
+		return fmt.Errorf("cannot start Coral: %w (stop the existing server or use a different data directory)", err)
+	}
+	var instance *instanceLock
+	if fi, statErr := os.Lstat(coralDir); statErr == nil && fi.IsDir() {
+		var err error
+		if instance, err = acquireInstanceLock(lockPath); err != nil {
+			return nil, lockErr(err)
+		}
 	}
 	releaseOnError := true
 	defer func() {
-		if releaseOnError {
+		if releaseOnError && instance != nil {
 			instance.close(lockPath)
 		}
 	}()
+	logStartup(opts)
+	if err := prepareDataDirs(cfg, coralDir); err != nil {
+		return nil, err
+	}
+	if instance == nil {
+		var err error
+		if instance, err = acquireInstanceLock(lockPath); err != nil {
+			return nil, lockErr(err)
+		}
+	}
 
 	boardPath := filepath.Join(coralDir, "messageboard.db")
 	security, dbKey, err := resolveDatabaseKey(cfg, coralDir, boardPath, opts)

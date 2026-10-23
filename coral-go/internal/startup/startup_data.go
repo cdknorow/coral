@@ -20,12 +20,17 @@ import (
 	"github.com/subgentic/coral/internal/store"
 )
 
+// rejectUnsupportedEncryption is the read-only first check of a start (see prepareDataDirs): nothing is created, saved or locked before it passes.
+func rejectUnsupportedEncryption(cfg *config.Config, coralDir string) error {
+	return dbcrypt.RejectUnsupportedEncryption(coralDir, cfg.DBPath, filepath.Join(coralDir, "messageboard.db"))
+}
+
 // prepareDataDirs makes the Coral home (this user only, #3637) and the database's folder (it may be elsewhere).
 // A standard (non-sqlcipher) build cannot use database encryption: a requested or existing encrypted setup is
 // refused first, before anything is created, saved, locked or opened, so a rejected start leaves the Coral home
 // untouched.
 func prepareDataDirs(cfg *config.Config, coralDir string) error {
-	if err := dbcrypt.RejectUnsupportedEncryption(coralDir, cfg.DBPath, filepath.Join(coralDir, "messageboard.db")); err != nil {
+	if err := rejectUnsupportedEncryption(cfg, coralDir); err != nil {
 		return err
 	}
 	if err := config.EnsureDataDir(coralDir); err != nil {
