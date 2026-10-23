@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"testing"
@@ -87,5 +88,19 @@ func TestLaunchCLISaysWhenPathHoldsAnUntrustedMount(t *testing.T) {
 	UntrustedMountDir = func(string) (string, bool) { return "X:\\Codex\\bin", true }
 	if _, err := LaunchCLI(map[string]string{CLIPathSettingKey("codex"): filepath.Join(t.TempDir(), "missing.exe")}, "codex"); err == nil || errors.As(err, &um) {
 		t.Fatalf("a configured path that cannot be run is its own error: %v", err)
+	}
+}
+
+// QA's note on #150: a saved path through the junctions says why it is refused, not "no file".
+func TestValidateCLIPathExplainsAnUntrustedMount(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("untrusted mount points are Windows'")
+	}
+	err := &fs.PathError{Op: "CreateFile", Path: "x", Err: syscall.Errno(448)}
+	if !isUntrustedMount(err) {
+		t.Fatal("448 is an untrusted mount point")
+	}
+	if isUntrustedMount(fs.ErrNotExist) || isUntrustedMount(nil) {
+		t.Fatal("an ordinary miss is not")
 	}
 }

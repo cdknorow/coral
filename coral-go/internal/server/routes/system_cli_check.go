@@ -115,6 +115,8 @@ func (h *SystemHandler) CLICheck(w http.ResponseWriter, r *http.Request) {
 				result["install_note"] = installNote
 			}
 			if dir, bad := agent.UntrustedMountDir(binaryPath); bad { // the CLI-paths row says why, before a launch (#340)
+				delete(result, "install_command") // the CLI is installed; npm would not fix a folder Windows will not open
+				delete(result, "install_url")
 				um := &agent.CLIUntrustedMountError{AgentType: agentType, Binary: binaryPath, Dir: dir}
 				result["install_note"] = um.Error()
 				if cloud.Tunneled(r) {

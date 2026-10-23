@@ -61,3 +61,16 @@ func TestCLICheckShowsAnUntrustedMountBeforeALaunch(t *testing.T) {
 	note, _ = out["install_note"].(string)
 	assert.NotContains(t, note, "untrusted mount point")
 }
+
+func TestCLICheckDropsTheInstallCommandForAnUntrustedMount(t *testing.T) {
+	prevLook, prevCommon, prevMount := cliLookPath, cliCommonPath, agent.UntrustedMountDir
+	t.Cleanup(func() { cliLookPath, cliCommonPath, agent.UntrustedMountDir = prevLook, prevCommon, prevMount })
+	cliLookPath = func(string) (string, error) { return "", assert.AnError }
+	cliCommonPath = func(string) string { return "" }
+	agent.UntrustedMountDir = func(string) (string, bool) { return `C:\Codex\bin`, true }
+	out := cliCheck(t, newSystemHandlerForTest(t), "type=codex")
+	assert.NotContains(t, out, "install_command", "npm would not fix a folder Windows will not open")
+	agent.UntrustedMountDir = func(string) (string, bool) { return "", false }
+	out = cliCheck(t, newSystemHandlerForTest(t), "type=codex")
+	assert.Contains(t, out, "install_command")
+}
