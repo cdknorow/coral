@@ -28,6 +28,12 @@ const heard = (p, ms) => Promise.race([p.then(() => true), sleep(ms).then(() => 
         await sleep(300); // sleep-ok: the first page has loaded and nobody asked: the load the preload remembers
         await heard(Page.navigate({ url: STALL + '?2' }), 5000);
         check('an unasked load, then a navigate to a page that never loads: the wait is not answered', !(await heard(Page.loadEventFired(), 3000)));
+
+        // 3. a load a wait already heard is not kept for the next wait: the pattern `const loaded = Page.loadEventFired(); await Page.navigate(...); await loaded;` (servers_table's open(): about:blank, then the page)
+        const blank = Page.loadEventFired(); await Page.navigate({ url: 'about:blank' }); await blank;
+        const next = Page.loadEventFired(); // asked before its navigate, straight after a load that was heard: it is for the page that follows
+        await heard(Page.navigate({ url: STALL + '?4' }), 5000);
+        check('a wait made before its navigate is not answered by the load the last wait heard', !(await heard(next, 3000)));
     } finally { await client.close(); for (const s of sockets) s.destroy(); stall.close(); }
     if (results.some(r => !r)) { console.error(`${results.filter(r => !r).length} of ${results.length} failed`); process.exit(1); }
     console.log(`\nAll ${results.length} never-loads checks passed`);
