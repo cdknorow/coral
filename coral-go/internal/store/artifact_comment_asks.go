@@ -143,3 +143,10 @@ func (s *SessionStore) CloseArtifactAsk(ctx context.Context, commentID int64, ag
 	_, err := s.db.ExecContext(ctx, `UPDATE artifact_comment_asks SET closed_at = ? WHERE comment_id = ? AND agent_session = ? AND closed_at IS NULL`, now.UTC().Format(ISOFormat), commentID, agentSession)
 	return err
 }
+
+// ListArtifactAsks are the asks of an artifact's comments, oldest first (the owner's comment list shows them).
+func (s *SessionStore) ListArtifactAsks(ctx context.Context, artifactID string) ([]ArtifactAsk, error) {
+	var out []ArtifactAsk
+	err := s.reader().SelectContext(ctx, &out, "SELECT "+artifactAskCols+" FROM artifact_comment_asks WHERE artifact_id = ? ORDER BY id", artifactID)
+	return out, err
+}
