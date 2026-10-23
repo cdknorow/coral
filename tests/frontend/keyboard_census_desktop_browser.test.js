@@ -112,6 +112,8 @@ const BUBBLES = [{ type: 'user', content: 'Is the build green?', key: 'c1', time
         await sc('inbox: saved for later', async () => { await tap('#inbox-tab-saved'); await waitFor(`document.querySelectorAll('#saved-list .saved-item').length === 4`, 'four saved items', 10000); }, { min: 8, expect: `document.querySelectorAll('#saved-list .saved-item').length === 4` });
         await sc('inbox: saved, filters open', async () => { await tap('#saved-view .list-bar-filter-btn'); }, { min: 8, expect: `!document.getElementById('sv-menu').hidden` });
         await ev(`localStorage.removeItem('coral.inbox.tab'); window.switchNavTab('agents'); true`);
+        // a Docs topic opened (#6586): its headings, links and code, and the topics list with the open one marked
+        await sc('docs: a topic opened', async () => { await ev(`window.switchNavTab('docs'); true`); await waitFor(`document.querySelectorAll('#docs-nav-list [data-on-click="doc-open"]').length >= 3`, 'the topics', 15000); await tap('#docs-nav-list [data-on-click="doc-open"]'); await waitFor(`document.querySelectorAll('#docs-content h1, #docs-content h2').length >= 1`, 'the topic', 15000); }, { expect: `document.querySelectorAll('#docs-content h1, #docs-content h2').length >= 1` });
         await sc('analytics, with data', async () => { await ev(`window.switchNavTab('tokens'); true`); await waitFor(`['cost-by-provider', 'cost-by-model', 'cost-by-thinking', 'cost-by-agent', 'cost-by-team', 'cost-by-branch'].every(id => document.querySelectorAll('#' + id + ' tbody tr').length > 0) && !!document.querySelector('#cost-spend-chart svg')`, 'the analytics data', 15000); }, { expect: `document.getElementById('cost-total-cost').textContent.includes('6.4')` });
         await ev(`window.switchNavTab('agents'); true`);
         // the update prompt (#6292, #6306): the ready notice, the confirmation it opens, and Settings > Updates below (the flag is on from here)
@@ -167,6 +169,11 @@ const BUBBLES = [{ type: 'user', content: 'Is the build green?', key: 'c1', time
             await ev(`document.querySelector('.ac-panel .ac-ask-open').click(); true`);
             await waitFor(`document.querySelectorAll('.ac-ask .ac-ask-agent').length >= 3`, 'the agents', 10000);
         }, { expect: `document.querySelectorAll('.ac-ask input[aria-disabled="true"]').length === 2 && document.querySelectorAll('.ac-ask input[aria-describedby]').length === 2` });
+        // the plain artifact viewer, the dialog a coral://artifacts link opens (#6586): Download and Close, then its Comments panel
+        await keyEsc(); // the send-to-agent scene's own state
+        await sc('artifact dialog', async () => { await ev(`import(${S} + 'artifact_viewer.js').then(m => m.openArtifactViewer('${HEX}', { filename: 'release-notes.md' })).then(() => true)`); await waitFor(`!document.getElementById('artifact-viewer').hidden && /Release notes/.test(document.querySelector('#artifact-viewer .artifact-viewer-body').textContent)`, 'the artifact', 15000); }, { expect: `!document.getElementById('artifact-viewer').hidden` });
+        await sc('artifact dialog: comments', async () => { await tap('#artifact-viewer .ac-toggle'); }, { expect: `!!document.querySelector('#artifact-viewer .ac-panel') && /Please check/.test(document.querySelector('#artifact-viewer .ac-panel').textContent)` });
+        await keyEsc();
         // dialogs: focus goes in, Tab and Shift+Tab stay in, Escape closes, focus goes back to what opened it
         const tagVisibleModal = () => ev(`(() => { document.querySelectorAll('[data-census-box]').forEach(e => e.removeAttribute('data-census-box')); const m = [...document.querySelectorAll('dialog[open], .modal')].filter(e => e.getClientRects().length && getComputedStyle(e).display !== 'none').pop(); if (m) m.setAttribute('data-census-box', ''); return !!m; })()`);
         const dlg = async (name, { opener, open }) => { try { const bad = await kb.dialogCheck(ev, client.Input, { opener, box: '[data-census-box]', open: async () => { await open(); for (let i = 0; i < 30 && !(await tagVisibleModal()); i++) await new Promise(r => setTimeout(r, 100)); } }); results.push({ name, stops: 0, path: '' }); found.push(...bad.map(b => `${name}: ${b}`)); } catch (e) { results.push({ name, error: String(e && e.message || e).replace(/.*description":"/, '').slice(0, 400) }); } };
@@ -190,6 +197,9 @@ const BUBBLES = [{ type: 'user', content: 'Is the build green?', key: 'c1', time
         await dlg('dialog: default prompts', { opener: '#saved-btn', open: () => ev(`window.showDefaultPromptsModal(); true`) });
         await dlg('dialog: confirmation', { opener: '#saved-btn', open: () => ev(`import(${S} + 'confirm_dialog.js').then(m => m.showConfirmModal('Delete the example?', 'This cannot be undone.', () => {})).then(() => true)`) });
         await dlg('dialog: mobile link', { opener: '#saved-btn', open: () => ev(`window._showMobileConnectModal(); true`) });
+        await load(); await ev(`window.switchNavTab('agents'); true`);
+        await ev(STUB({ filename: 'release-notes.md', content: '# Release notes\n\nThe build is green.\n', mediaType: 'text/markdown', comments: [] }));
+        await dlg('dialog: artifact viewer', { opener: '#saved-btn', open: () => ev(`import(${S} + 'artifact_viewer.js').then(m => m.openArtifactViewer('${HEX}', { filename: 'release-notes.md' })).then(() => true)`) });
     } finally { await httpJson('DELETE', `/api/board/${TEAM}`).catch(() => {}); if (standIn) await standIn.stop().catch(() => {}); await guard.restore().catch(() => {}); await client.close(); }
     const bad = results.filter(r => r.error).map(r => `${r.name}: the scene did not open (${r.error})`).concat(found, required(results, requiredScenes('keyboard')));
     if (process.env.KEYBOARD_REPORT) { require('node:fs').writeFileSync(process.env.KEYBOARD_REPORT, results.map(r => `${r.name}: ${r.error || r.stops + ' stops'}${process.env.KEYBOARD_PATHS ? '\n    ' + r.path : ''}`).join('\n') + '\n--\n' + bad.join('\n') + '\n'); process.exit(0); }
