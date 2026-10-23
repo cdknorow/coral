@@ -12,6 +12,11 @@ const BASE = require('./test_base').BASE;
 // Windows has its own: Coral runs there on pty with no tmux choice, so the Terminal section (and its sha) is not the one recorded where tmux is the default.
 const GOLDEN = path.join(__dirname, 'fixtures', process.platform === 'win32' ? 'settings_modal_trace.windows.json' : 'settings_modal_trace.json');
 const sha = t => require('node:crypto').createHash('sha256').update(t).digest('hex');
+// The default folder's placeholder is the server's home folder. Elsewhere the runner points HOME into the run folder (so it reads
+// <run folder>/home); on Windows the home folder is USERPROFILE, this computer's own (C:\Users\<name>), which the server and this
+// suite share. It is written <home>, so the Windows golden holds on any computer, not only the one that recorded it.
+const HOME_JSON = JSON.stringify(require('node:os').homedir()).slice(1, -1); // as it appears inside the trace's JSON text
+const atHome = json => (process.platform === 'win32' && HOME_JSON ? json.split(HOME_JSON).join('<home>') : json);
 
 const FULL = { theme: 'light', default_renderer: 'xterm', default_agent_type: 'codex', default_permission_mode: 'acceptEdits', default_working_dir: '/work/dir', cli_path_claude: '/bin/claude', cli_path_codex: '/bin/codex', cli_path_agy: '/bin/agy', cli_path_pi: '/bin/pi',
     default_model_claude: 'opus', default_model_codex: 'gpt', default_model_agy: 'gem', default_model_pi: 'p1', terminal_font_size: '16', terminal_scrollback: '50000', fit_pane_width: true, notify_needs_input: true, show_scrollbars: false,
@@ -95,7 +100,7 @@ const SCEN = [
             })()`);
             void out;
             const snap = await ev(SNAP);
-            trace[name] = JSON.parse(JSON.stringify(snap).replace(/[^"\s|,]*coral-cdp-[A-Za-z0-9]+((?:\\\\|\/)shard\d+(-\d+)?)?/g, '<run folder>').replace(/<run folder>(?:\\\\|\/)mock-agent(?:\.exe)?/g, '<run folder>/mock-agent')); // the run's own temporary folder is in some placeholders, with the shard's folder under it (shard1, or shard1-1 once a shard was replaced) when a path runs through it
+            trace[name] = JSON.parse(atHome(JSON.stringify(snap)).replace(/[^"\s|,]*coral-cdp-[A-Za-z0-9]+((?:\\\\|\/)shard\d+(-\d+)?)?/g, '<run folder>').replace(/<run folder>(?:\\\\|\/)mock-agent(?:\.exe)?/g, '<run folder>/mock-agent')); // the run's own temporary folder is in some placeholders, with the shard's folder under it (shard1, or shard1-1 once a shard was replaced) when a path runs through it
         };
         for (const [name, settings, answers, group, local] of SCEN) await run(name, settings, answers, group, local);
         cloud = true;
