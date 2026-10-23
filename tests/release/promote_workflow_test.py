@@ -205,6 +205,21 @@ class Workflow(unittest.TestCase):
             self.assertNotEqual(text, WF, name)
             self.assertNotEqual(publish_problems(text), [], name)
 
+    def test_the_release_name_is_the_shape_the_client_looks_for(self):
+        # The client (internal/updater/stage, #6393) lists releases and keeps only promote-<product tag>-<sequence>: this is its pattern, with the tag a plain version
+        # (the client's own file holds the same expression; a change there is a change here).
+        client = re.compile(r"^promote-(v[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,4})-([0-9]{1,12})$")
+        line = re.search(r'(?m)^\s*name="(promote-[^"]*)"$', WF).group(1)
+        self.assertEqual(line, "promote-${PROMOTE_TAG}-${seq}")
+        manifest = pm.build(env(), now=1761200000)
+        name = line.replace("${PROMOTE_TAG}", manifest["tag"]).replace("${seq}", str(manifest["sequence"]))
+        m = client.match(name)
+        self.assertIsNotNone(m, name)
+        self.assertEqual("v" + manifest["version"], m.group(1))
+        self.assertEqual(manifest["sequence"], int(m.group(2)))
+        # a sequence is epoch seconds: ten digits today, well inside the client's twelve
+        self.assertLessEqual(len(str(manifest["sequence"])), 12)
+
     def test_no_release_listing_can_pick_a_promote_release(self):
         # A published promote-<tag>-<sequence> release is a pre-release that is newer than the product it promotes: any place that takes "the newest release"
         # from a list must filter to product tags (v and a digit), or to non-pre-releases, or it would pick a release with no packages in it.
