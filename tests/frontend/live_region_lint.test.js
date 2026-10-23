@@ -19,11 +19,8 @@ const FRONTEND = path.resolve(__dirname, '../../coral-go/pkg/frontend');
 const STATIC = path.join(FRONTEND, 'static');
 const TEMPLATES = path.join(FRONTEND, 'templates');
 
-// Reviewed, still in the page (file:region id). All of them are offenders to fix: none is accepted as not needing its words read. (#6637 fixed the five the first version of this lint found.)
+// Reviewed, still in the page (file:region id). Empty since #6637 and #6656 fixed every offender: a new one fails the lint, and a listed one that stops matching fails it too.
 const KNOWN = {
-  // shown and filled, through a descendant or a wrapper (#6638)
-  // shown with its words already in the template (#6638)
-  'terminal_backend.js:default-notice-banner': 'the tmux notice appears with its words already in it',
 };
 
 function walk(dir, ext, out = []) {
