@@ -15,10 +15,6 @@
                         <a id="history-session-board-link" href="javascript:void(0)" class="badge board-badge" style="display:none;cursor:pointer;text-decoration:none" title="View Group Chat"></a>
                         <div id="history-session-tags" class="tag-list"></div>
                         <button class="btn btn-small" data-history-local-only data-on-click="tag-dropdown-show" title="Add tag">+ Tag</button>
-                        <button data-history-local-only id="history-generate-summary-btn" class="btn btn-small btn-primary"
-                          data-on-click="summary-generate" title="Generate an AI summary for this session">
-                          Generate Summary
-                        </button>
                         <button data-history-local-only id="btn-resume-session" class="btn btn-small btn-primary"
                           data-on-click="resume-show" title="Resume this session in a live agent"
                           style="display:none">Resume</button>
@@ -63,6 +59,10 @@
                 <div id="history-tab-notes" class="history-tab-content">
                     <div class="notes-view">
                         <div class="notes-header">
+                            <button data-history-local-only id="history-generate-summary-btn" class="btn btn-small"
+                              data-on-click="summary-generate" title="Generate an AI summary for this session">
+                              Generate Summary
+                            </button>
                             <button data-history-local-only id="notes-edit-btn" class="btn btn-small" data-on-click="notes-edit">Edit</button>
                         </div>
                         <div id="notes-spinner" class="notes-spinner" style="display:none">

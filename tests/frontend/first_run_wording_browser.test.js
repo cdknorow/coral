@@ -67,6 +67,10 @@ const HISTORY = `(() => {
         await ev(`document.getElementById('history-session-details').click(); true`);
         const o = await ev(`(() => { const id = document.getElementById('history-session-id'), b = document.getElementById('history-session-details'); return { text: id.textContent, shown: id.getClientRects().length > 0, expanded: b.getAttribute('aria-expanded'), label: b.textContent }; })()`);
         check('Details shows the id (and says Hide details); the button has aria-expanded', o.shown && o.text === SID && o.expanded === 'true' && o.label === 'Hide details', JSON.stringify(o));
+        // the chat's header has one loud button at most (Resume), and Generate Summary is a button of the Summary tab (#6580)
+        const hd = await ev(`(() => { const g = document.getElementById('history-generate-summary-btn'); const prim = [...document.querySelectorAll('#history-session-view .session-header .btn-primary')].filter(b => getComputedStyle(b).display !== 'none' && b.getClientRects().length > 0 && !b.closest('#tag-dropdown'));
+            return { inNotes: !!g && !!g.closest('#history-tab-notes'), inHeader: !!g && !!g.closest('.session-header'), primaries: prim.map(b => b.id || b.textContent.trim()) }; })()`);
+        check('Generate Summary is in the Summary tab, not the header, and the header has no more than one primary button', hd.inNotes && !hd.inHeader && hd.primaries.length <= 1, JSON.stringify(hd));
     } finally { /* the harness closes the page */ }
     const failed = results.filter(r => !r).length;
     console.log(`first_run_wording: ${results.length - failed}/${results.length} passed`);
