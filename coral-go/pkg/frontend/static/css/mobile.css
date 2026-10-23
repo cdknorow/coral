@@ -1427,7 +1427,7 @@
 }
 
 /* The on-screen keyboard is open in the Terminal view (#6694): the terminal needs the rows more than the banner, the chips and the status bar; the key bar and a one-line message box stay. keyboard_open.js sets kb-open. */
-@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) {
+@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) and (max-width: 950px) {
     html.kb-open #local-auth-banner,
     html.kb-open #terminal-statusbar,
     html.kb-open #command-pane:not(.chat-mode) .command-pane-toolbar,
