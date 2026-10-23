@@ -169,7 +169,7 @@ async function run() {
             await load();
             await until(`!!document.querySelector('#editions-modal [data-cloud="connect"]:not([hidden])')`, 'the Connect button');
             let s = await screen();
-            check(`${label}: first launch opens "Connect to Coral Hub", ready to connect, asking what Coral Hub may do (Launch preselected, auto-accept on)`, !!s && s.title === 'Connect to Coral Hub' && s.connect && /Nothing is sent until you connect/.test(s.status) && s.skip && !s.done && s.own && s.mode && s.asked === 'What may Coral Hub do on this computer?' && s.modeValue === 'launch' && s.autoRow && s.autoOn, JSON.stringify(s));
+            check(`${label}: first launch opens "Connect to Coral Hub", ready to connect, asking what Coral Hub may do (View preselected, no auto-accept switch, #6370)`, !!s && s.title === 'Connect to Coral Hub' && s.connect && /Nothing is sent until you connect/.test(s.status) && s.skip && !s.done && s.own && s.mode && s.asked === 'What may Coral Hub do on this computer?' && s.modeValue === 'view' && !s.autoRow, JSON.stringify(s));
             // The question's words hold 4.5:1 in both themes (and are looked at: CORAL_SCREENSHOT_DIR keeps the shots).
             { const { setTheme, installAudit, auditRegion } = require('./helpers/contrast'); const fs = require('node:fs');
               for (const theme of ['dark', 'light']) {
@@ -179,12 +179,12 @@ async function run() {
                 if (process.env.CORAL_SCREENSHOT_DIR) { fs.mkdirSync(process.env.CORAL_SCREENSHOT_DIR, { recursive: true }); fs.writeFileSync(`${process.env.CORAL_SCREENSHOT_DIR}/connect-question-${label}-${theme}.png`, Buffer.from((await Page.captureScreenshot({ format: 'png' })).data, 'base64')); }
               }
               await setTheme(ev, 'dark'); }
-            check(`${label}: an accessible dialog, focused on the question's chosen answer (Launch), on screen`, !!s && s.role === 'dialog' && s.modal === 'true' && s.labelled && s.focus && s.inView && (await ev(`(() => { const a = document.activeElement; return a.type === 'radio' && a.checked && a.value === 'launch' && a.hasAttribute('data-cloud-mode'); })()`)) === true, JSON.stringify(s));
+            check(`${label}: an accessible dialog, focused on the question's chosen answer (View), on screen`, !!s && s.role === 'dialog' && s.modal === 'true' && s.labelled && s.focus && s.inView && (await ev(`(() => { const a = document.activeElement; return a.type === 'radio' && a.checked && a.value === 'view' && a.hasAttribute('data-cloud-mode'); })()`)) === true, JSON.stringify(s));
             await click('#editions-modal [data-cloud="connect"]');
             await until(`!!document.querySelector('#editions-modal [data-cloud="code"]:not([hidden])')`, 'the code');
             s = await screen();
             check(`${label}: Connect shows the hub's link (code prefilled) and the code, and waits`, !!s && s.code === 'ABCD-EFGH' && s.link === VERIFY && s.status === 'Waiting for you to approve…' && !s.connect && s.skip, JSON.stringify(s));
-            check(`${label}: Connect went to this server's /api/cloud/connect`, JSON.stringify(await ev('window.__cloudCalls')) === '["POST /api/cloud/connect {\\"mode\\":\\"launch\\",\\"allow_auto_accept\\":true}"]', JSON.stringify(await ev('window.__cloudCalls')));
+            check(`${label}: Connect went to this server's /api/cloud/connect`, JSON.stringify(await ev('window.__cloudCalls')) === '["POST /api/cloud/connect {\\"mode\\":\\"view\\"}"]', JSON.stringify(await ev('window.__cloudCalls')));
             check(`${label}: while the code is shown, Cancel is offered`, s.cancel, JSON.stringify(s));
             // Cancel (#3285): stops the enrollment; Connect comes back.
             await click('#editions-modal [data-cloud="cancel"]');
@@ -197,7 +197,7 @@ async function run() {
             s = await screen();
             check(`${label}: before Connect a choice is held (no request), and auto-accept is shown only with Launch`, s.modeValue === 'interact' && !s.autoRow && (await ev('window.__cloudCalls')).length === 0, JSON.stringify({ s, calls: await ev('window.__cloudCalls') }));
             await click('#editions-modal [data-cloud-mode][value="launch"]');
-            await click('#editions-modal [data-cloud="allow-auto-accept"]');
+            await click('#editions-modal [data-cloud="allow-auto-accept"]'); // after the first Connect the install has saved its answer (auto-accept on), so a held Off is a click
             // The switch means something only with Launch: away from Launch it is gone, and its saved value comes back with Launch.
             await click('#editions-modal [data-cloud-mode][value="view"]');
             check(`${label}: the auto-accept switch is shown only with Launch`, !(await screen()).autoRow);
@@ -232,7 +232,7 @@ async function run() {
             await ev(`Object.assign(window.__cloud, { state: 'retrying', last_error: 'the hub is unreachable; retrying', user_code: '', verification_url: '' }); true`);
             await until(`/Not connected right now/.test(document.querySelector('#editions-modal [data-cloud="status"]').textContent)`, 'not connected', 6000);
             s = await screen();
-            check(`${label}: retrying without an enrollment: not connected, Skip, the question still answerable`, !!s && /^Not connected right now/.test(s.status) && s.skip && !s.done && s.mode && s.modeValue === 'launch', JSON.stringify(s));
+            check(`${label}: retrying without an enrollment: not connected, Skip, the question still answerable`, !!s && /^Not connected right now/.test(s.status) && s.skip && !s.done && s.mode && s.modeValue === 'view', JSON.stringify(s));
             await ev(`Object.assign(window.__cloud, { label: 'e2e-box', server_id: 'srv-e2e' }); true`);
             await until(`!!document.querySelector('#editions-modal [data-editions="done"]:not([hidden])')`, 'connected (reconnecting)', 6000);
             s = await screen();

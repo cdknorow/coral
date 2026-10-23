@@ -238,12 +238,12 @@ class CloudPanel {
         this.last = st;
         let mode = st.max_mode || 'view';
         // The Connect screen's one question, "What may Coral Hub do on this computer?" (ask-row, radios named by data-cloud-mode): before the connection the answer is held here and goes with Connect
-        // in the same call (Launch preselected for an install that never chose; an install keeps what it saved); once connecting or connected it is the saved cap and a change saves at once.
+        // in the same call (View preselected for an install that never chose, the lowest mode: nobody hands Coral Hub launch rights by pressing Enter, #6370; an install keeps what it saved); once connecting or connected it is the saved cap and a change saves at once.
         const ask = this.part('ask-row');
         this.asking = false;
         if (ask) {
             this.asking = st.state === 'idle' || st.state === 'revoked';
-            if (this.asking) { if (!this.pick) this.pick = st.max_mode_saved ? mode : 'launch'; mode = this.pick; } else this.pick = null;
+            if (this.asking) { if (!this.pick) this.pick = st.max_mode_saved ? mode : 'view'; mode = this.pick; } else this.pick = null;
             ask.hidden = !st.configured || st.state === 'off' || st.state === 'enrolling' || st.state === 'connecting'; // waiting for the approval: the answer was given before Connect and went with it, so only the code, the link and Cancel are on the screen (#6323)
             for (const r of ask.querySelectorAll('input[data-cloud-mode]')) r.checked = r.value === mode;
         }
@@ -269,7 +269,7 @@ class CloudPanel {
         // on unless the owner turned it off here. Only changeable on this computer.
         show('auto-accept-row', mode === 'launch');
         const allow = this.part('allow-auto-accept');
-        if (allow) allow.checked = this.asking && this.pickAuto !== undefined ? this.pickAuto : st.allow_hub_auto_accept !== false;
+        if (allow) allow.checked = this.asking && this.pickAuto !== undefined ? this.pickAuto : this.asking && !st.max_mode_saved ? false : st.allow_hub_auto_accept !== false; // a first choice starts unticked: auto-accept is the person's opt-in (#6370)
         // Who last changed it (#5847, from status allow_hub_auto_accept_changed {by: hub|local, user, at}): a local Off that Coral Hub turned on again is visible to the person at this computer. Nothing is said until it was changed.
         const changed = this.part('auto-accept-changed');
         if (changed) { const t = autoAcceptChangedText(st); changed.textContent = t; show('auto-accept-changed', mode === 'launch' && !!t); }

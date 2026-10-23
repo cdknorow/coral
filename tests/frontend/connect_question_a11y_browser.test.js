@@ -29,11 +29,11 @@ const BASE = require('./test_base').BASE;
 
             const s = await ev(`(() => { const m = document.getElementById('editions-modal'); const fs = m.querySelector('fieldset.editions-ask'); const radios = [...m.querySelectorAll('input[data-cloud-mode]')]; const aa = m.querySelector('[data-cloud="auto-accept-row"]');
                 return { legend: fs.querySelector('legend').textContent, checked: radios.filter(r => r.checked).map(r => r.value), described: radios.every(r => { const d = document.getElementById(r.getAttribute('aria-describedby')); return !!d && d.textContent.trim().length > 10; }), autoShown: !aa.hidden && aa.getClientRects().length > 0, nothingSent: (m.textContent.match(/Nothing is sent until you connect/g) || []).length }; })()`);
-            assert.deepEqual(s.checked, ['launch'], `${tag}: Launch is preselected`);
-            assert.equal(await ev(`(() => { const a = document.activeElement; return a.type === 'radio' && a.checked ? a.value : (a.dataset && a.dataset.cloud) || a.tagName; })()`), 'launch', `${tag}: the first focus is on the chosen answer, so the question is read before Connect`);
+            assert.deepEqual(s.checked, ['view'], `${tag}: View is preselected, the lowest mode (#6370)`);
+            assert.equal(await ev(`(() => { const a = document.activeElement; return a.type === 'radio' && a.checked ? a.value : (a.dataset && a.dataset.cloud) || a.tagName; })()`), 'view', `${tag}: the first focus is on the chosen answer, so the question is read before Connect`);
             assert.equal(s.legend, 'What may Coral Hub do on this computer?', `${tag}: the group is named by the question`);
             assert.ok(s.described, `${tag}: each choice says what it lets Coral Hub do`);
-            assert.ok(s.autoShown, `${tag}: the auto-accept switch is shown with Launch`);
+            assert.ok(!s.autoShown, `${tag}: no auto-accept switch with View (it is for Launch, and starts unticked)`);
             assert.equal(s.nothingSent, 1, `${tag}: "Nothing is sent until you connect" is said once`);
 
             const au = await auditRegion(ev, ['#editions-modal .modal-content']);
