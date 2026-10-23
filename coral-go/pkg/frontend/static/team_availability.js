@@ -153,7 +153,7 @@ export function showTeamAvailability(team, options = {}) {
                 const button = document.createElement('button');
                 button.type = 'button'; button.className = 'btn'; button.textContent = agent.reminder ? 'Edit reminder' : 'Remind agent';
                 button.setAttribute('aria-label', `${button.textContent} for ${agent.name}`); // three cards, three buttons of the same words: each says whose
-                button.onclick = () => remindAgent(team, agent.subscriber_id || agent.name, agent);
+                button.onclick = () => remindAgent(team, agent.subscriber_id || agent.name, agent, load);
                 card.append(button);
                 if (agent.reminder) {
                     const stop = document.createElement('button');
@@ -181,15 +181,25 @@ export function showTeamAvailabilityWorkspace(team, options = {}) {
     return importOnce('./team_context.js').then(m => m.enterTeamContext(team, { restore: options.restore }));
 }
 
-const remindAgent = async (team, subscriber, existing = null) => {
-    const message = window.prompt('Reminder instruction for this agent:');
-    if (!message?.trim()) return;
-    const defaultMinutes = existing?.reminder_interval_seconds ? Math.round(existing.reminder_interval_seconds / 60) : 5;
-    const minutes = Number(window.prompt('Send it every how many minutes?', String(defaultMinutes)));
-    if (!Number.isFinite(minutes) || minutes * 60 < 30 || minutes * 60 > 86400) return;
-    const response = await boardFetch(team, `/reminder`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({subscriber_id:subscriber,message:message.trim(),interval_seconds:Math.round(minutes*60)}) });
-    const data = await response.json().catch(() => ({}));
-    window.showToast?.(response.ok ? 'Agent reminder started' : (data.error || 'Could not start reminder'), !response.ok);
+const remindAgent = async (team, subscriber, existing = null, onChanged = null) => {
+    // Its own dialog (#6329): window.prompt is not available in the native app
+    const { openReminderDialog } = await importOnce('./reminder_dialog.js');
+    const name = existing?.name || subscriber;
+    openReminderDialog({
+        title: existing?.reminder ? `Edit the reminder for ${name}` : `Remind ${name}`,
+        intro: (every) => `Sends this instruction to ${name} ${every} until you stop it.`,
+        askMessage: true,
+        minutes: existing?.reminder_interval_seconds ? Math.round(existing.reminder_interval_seconds / 60) : 5,
+        submitLabel: existing?.reminder ? 'Save reminder' : 'Start reminder',
+        onSubmit: async ({ message, seconds }) => {
+            const response = await boardFetch(team, `/reminder`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({subscriber_id:subscriber,message,interval_seconds:seconds}) });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) return { ok: false, error: data.error || 'Could not start the reminder' };
+            window.showToast?.('Agent reminder started');
+            if (typeof onChanged === 'function') await onChanged();
+            return { ok: true };
+        },
+    });
 };
 
 const stopAgentReminder = async (team, subscriber, onChanged = null) => {

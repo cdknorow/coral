@@ -130,8 +130,10 @@ const { removeBoards } = require('./helpers/board_cleanup');
         await load();
         await ev(`(async () => { ${MODS} tasks.showTaskDetailModal(${made.claimed}); return true; })()`);
         await until(`!!${foot('task-nudge')}`, "the claimed task's Nudge");
-        // Remind asks for its interval with window.prompt, which would block the page: answer 5.
-        await ev(`window.prompt = () => '5'; window.__req.length = 0; ${foot('task-nudge')}.click(); ${foot('task-remind')}.click(); true`);
+        // Remind asks for its interval in its own dialog (#6329; window.prompt would block the page and does not exist in the native app): accept the 5 minutes it offers.
+        await ev(`window.prompt = () => { throw new Error('window.prompt must not be used'); }; window.__req.length = 0; ${foot('task-nudge')}.click(); ${foot('task-remind')}.click(); true`);
+        await until(`document.getElementById('reminder-dialog')?.open === true`, 'the reminder dialog', 5000);
+        await ev(`document.querySelector('#reminder-dialog .reminder-go').click(); true`);
         await until(`window.__req.some(r => r.includes('/nudge')) && window.__req.some(r => r.startsWith('POST') && r.includes('/reminder'))`, 'nudge and remind', 5000);
         await ev(`${foot('task-remind-stop')} && ${foot('task-remind-stop')}.click(); true`);
         await until(`window.__req.some(r => r.startsWith('DELETE') && r.includes('/reminder'))`, 'stop', 5000);

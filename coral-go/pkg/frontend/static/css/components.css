@@ -4724,3 +4724,12 @@ body:has(#launch-modal[style*="flex"] :is(#launch-tmux-slot, #team-tmux-slot)[da
 #launch-agent-pick .launch-agent-opt { color: var(--text-primary); } /* the dialog's labels are the secondary colour: 4.4:1 on this chip in the light theme */
 #launch-agent-pick .launch-agent-missing { color: var(--text-secondary); font-size: var(--fs-sm); }
 @media (pointer: coarse), (max-width: 767px) { .launch-agent-opt { min-height: var(--control-touch-height, 44px); } }
+
+/* the reminder dialog (#6329): a native dialog (top layer, so it sits above the Team view dialog it opens from) that is the dashboard's own dialog card (.modal-content), so its fields look like every other form */
+dialog.reminder-dialog { position: fixed; inset: 0; margin: auto; height: fit-content; color: var(--text-primary); }
+dialog.reminder-dialog:not([open]) { display: none; }
+dialog.reminder-dialog::backdrop { background: rgba(var(--black-rgb), 0.5); }
+.reminder-intro { margin: 0 0 var(--space-md, 8px); }
+.reminder-form [aria-invalid="true"] { border-color: var(--error); }
+.reminder-hint { margin: 4px 0 var(--space-md, 8px); color: var(--text-secondary); font-size: var(--fs-sm, 0.8125rem); }
+@media (pointer: coarse), (max-width: 767px) { .reminder-form input, .reminder-form .btn { min-height: var(--control-touch-height, 44px); } }

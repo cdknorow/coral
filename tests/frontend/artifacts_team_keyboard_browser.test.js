@@ -36,7 +36,7 @@ const HEX = n => String(n).repeat(64).slice(0, 64);
                     { name: 'QA', subscriber_id: 'qa', agent_type: 'claude', role: 'QA Engineer', availability: 'busy', available: false, reason: 'Working on a task.', reminder: true, reminder_interval_seconds: 300, tasks: [{ scope: 'board', id: 7, status: 'in_progress', title: 'Review the patch' }] }],
                     summary: { available: 1, busy: 1 }, unassigned_tasks: [], health_report: ['All good.'], observed_at: new Date().toISOString() });
                 return R(u, o); };
-            window.__prompts = []; window.prompt = (q) => { window.__prompts.push(q); return null; };
+            window.__prompts = []; window.prompt = (q) => { window.__prompts.push(q); return null; }; // the browser's own dialog must never open (#6329): the reminder has its dialog
             return true; })()`);
         await ev(`window.__m.add('kb-bot', 'A', 4, { sleeping: false }); true`); await sleep(800); // sleep-ok: a redraw and a layout settle over frames; no completion event
         await ev(`window.selectLiveSession('kb-bot', 'claude', 'kb-bot-id', 'local'); true`); await sleep(1500); // sleep-ok: a redraw and a layout settle over frames; no completion event
@@ -99,7 +99,13 @@ const HEX = n => String(n).repeat(64).slice(0, 64);
         a = await active(); assert.equal(a.label, 'Refresh', 'Refresh keeps the focus: ' + JSON.stringify(a));
         await ev(`[...document.querySelectorAll('#team-availability-dialog .availability-agent button')].find(b => b.textContent === 'Remind agent').focus(); true`);
         await press('Enter', 'Enter', 13); await sleep(300); // sleep-ok: a redraw and a layout settle over frames; no completion event
-        assert.equal(await ev(`window.__prompts.length`), 1, 'Enter on Remind agent asks for the instruction');
+        assert.equal(await ev(`window.__prompts.length`), 0, 'Remind agent never opens the browser\'s own prompt');
+        assert.equal(await ev(`document.getElementById('reminder-dialog')?.open === true`), true, 'Enter on Remind agent opens the reminder dialog');
+        assert.equal(await ev(`document.activeElement && document.activeElement.id`), 'reminder-message', 'focus is in the instruction box');
+        await press('Escape', 'Escape', 27); await sleep(300); // sleep-ok: the dialog closes over a frame; no completion event
+        assert.equal(await ev(`document.getElementById('reminder-dialog').open`), false, 'Escape closes the reminder dialog');
+        assert.equal(await ev(`!!document.getElementById('team-availability-dialog')`), true, 'and leaves the Team view open');
+        assert.equal(await ev(`document.activeElement && document.activeElement.textContent`), 'Remind agent', 'focus goes back to the button that opened it');
         await press('Escape', 'Escape', 27); await sleep(400); // sleep-ok: a redraw and a layout settle over frames; no completion event
         assert.equal(await ev(`!document.getElementById('team-availability-dialog')`), true, 'Escape closes the Team view');
         console.log('\nPASS artifacts and team view by keyboard');
