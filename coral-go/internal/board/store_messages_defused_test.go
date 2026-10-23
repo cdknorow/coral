@@ -16,8 +16,8 @@ func TestPostDefusedMessageKeepsTheDefusing(t *testing.T) {
 	a, err := s.PostDefusedMessage(ctx, "p", "Operator", text)
 	require.NoError(t, err)
 	assert.Equal(t, text, a.Content)
-	assert.Contains(t, a.Content, "@​Orchestrator")
+	assert.Contains(t, a.Content, "@\u200bOrchestrator")
 	b, err := s.PostMessageWithOrigin(ctx, "p", "Operator", text, nil, "")
 	require.NoError(t, err)
-	assert.NotContains(t, b.Content, "​", "an ordinary post cleans it, which is why the defused path exists")
+	assert.NotContains(t, b.Content, "\u200b", "an ordinary post cleans it, which is why the defused path exists")
 }
