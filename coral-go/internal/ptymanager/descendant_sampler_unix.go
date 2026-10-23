@@ -33,6 +33,7 @@ type descendantSampler struct {
 	stop    chan struct{}             // non-nil while the loop runs; closed to end it
 
 	inPaneLoop func() // a test's hook, called for each pane while its tree is computed (d.mu is not held)
+	afterSnap  func() // a test's hook, called right after the process table is read (what a terminal records now is newer than the table)
 }
 
 var sampler = &descendantSampler{pty: map[member]*seen{}, clients: map[*tmux.Client]struct{}{}, panes: map[member]*seen{}}
@@ -139,10 +140,24 @@ func (d *descendantSampler) sample() {
 	if len(pty) == 0 && len(paneShells) == 0 {
 		return // nothing to look at: no scan of the process table
 	}
+	// What each set holds is taken before the process table is: only those members are judged by it (a member recorded while the table was read is newer than
+	// the table, so it is not "ended" because the table lacks it, #6584).
+	before := map[*seen][]member{}
+	for _, set := range pty {
+		before[set] = set.all()
+	}
+	d.mu.Lock()
+	for _, set := range d.panes {
+		before[set] = set.all()
+	}
+	d.mu.Unlock()
 	snap := takeSnap()
+	if d.afterSnap != nil {
+		d.afterSnap()
+	}
 	for root, set := range pty {
-		set.pruneBy(snap.has)        // what has ended first, so it does not count against the cap (read from the snapshot: nothing is asked per member)
-		set.add(snap.tree(root, "")) // descent only: the tag is read at the kill, never here
+		set.pruneAmong(before[set], snap.has) // what has ended first, so it does not count against the cap (read from the snapshot: nothing is asked per member)
+		set.add(snap.tree(root, ""))          // descent only: the tag is read at the kill, never here
 	}
 	d.mu.Lock()
 	known := make(map[member]*seen, len(d.panes))
@@ -164,7 +179,7 @@ func (d *descendantSampler) sample() {
 		if set == nil {
 			set = &seen{}
 		}
-		set.pruneBy(snap.has)
+		set.pruneAmong(before[set], snap.has)
 		set.add(snap.tree(root, ""))
 		next[root] = set
 	}
