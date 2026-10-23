@@ -9,6 +9,7 @@
  * tab ids (unknown and repeated ids dropped, missing ones last). The locked tab (Chat when the agent is on a
  * board, else the context's first tab) can be put anywhere but can't be hidden, so the row is never empty, and a hidden tab
  * that is open falls back to it. */
+import { PHONE_QUERY } from './phone_layout.js';
 import { registerActions } from './actions.js';
 import { escapeHtml, escapeAttr } from './utils.js';
 import { browserLocal } from './safe_storage.js';
@@ -162,7 +163,7 @@ const nameOf = id => document.getElementById(`agentic-tab-${id}`)?.getAttribute(
 
 function place(pop) {
     const btn = document.getElementById('agentic-tab-customize');
-    if (!btn || window.matchMedia('(max-width: 767px)').matches) return; // the sheet is fixed to the bottom by CSS
+    if (!btn || window.matchMedia(PHONE_QUERY).matches) return; // the sheet is fixed to the bottom by CSS
     const r = btn.getBoundingClientRect();
     pop.style.top = `${Math.round(r.bottom + 4)}px`;
     pop.style.right = `${Math.max(8, Math.round(window.innerWidth - r.right))}px`;

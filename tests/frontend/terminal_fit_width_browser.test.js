@@ -366,6 +366,11 @@ function assertFits(v, what) {
         console.log('12. A phone turned to landscape follows the pane at its size and never sets it (#6675)');
         // 844x390 and 800x360 are above the 767 px breakpoint, so they drew the desktop layout and sized the shared pane to themselves (80x24 became 53x15, and 53x3 with the keyboard up) for everyone watching.
         const landscape = {};
+        let portraitLayout = null;
+        const pctx = await newContext(); contexts.push(pctx);
+        const portrait = await openTab({ contextId: pctx, width: 390, height: 844, mobile: true });
+        tabs.push(portrait);
+        await show(portrait, A, null);
         for (const [label, w, h] of [['844x390', 844, 390], ['800x360', 800, 360], ['844x200 (keyboard open)', 844, 200]]) {
             setPane(A.name, eighty.cols, eighty.rows);
             const ctx = await newContext(); contexts.push(ctx);
@@ -378,9 +383,28 @@ function assertFits(v, what) {
             const view = await tab.waitFor(`(async () => { const v = await ${VIEW}; return v && v.following && v.cols === ${eighty.cols} && v.rows === ${eighty.rows} ? v : null; })()`, `${label}: the xterm following the pane at 80x24`, 15000); // it catches up with the pane within a few seconds
             assert.deepEqual(paneSize(A.name), eighty, `${label}: and the pane is still 80x24 once it has`);
             assert.equal(view.sent + view.http, 0, `${label}: no resize was sent (${JSON.stringify(view)})`);
+            // the phone's layout, not the desktop's (#6683): the same sidebar, side panel and top navigation as a portrait phone, and the Fit width button
+            const layout = await tab.ev(`(() => { const d = id => { const e = document.getElementById(id) || document.querySelector(id); return e ? getComputedStyle(e).display : 'none'; };
+                return { sidebar: d('.sidebar'), nav: d('.top-nav-tabs'), phone: matchMedia('(max-width: 767px), (pointer: coarse) and (max-height: 500px)').matches, desktopRows: d('#sidebar-summary-btn'), dockOpen: !!(document.getElementById('agentic-state') && document.getElementById('agentic-state').getClientRects().length && !document.getElementById('agentic-state').classList.contains('collapsed') && getComputedStyle(document.getElementById('agentic-state')).display !== 'none') }; })()`);
+            if (!portraitLayout) portraitLayout = await portrait.ev(`(() => { const d = id => { const e = document.getElementById(id) || document.querySelector(id); return e ? getComputedStyle(e).display : 'none'; };
+                return { sidebar: d('.sidebar'), nav: d('.top-nav-tabs'), phone: matchMedia('(max-width: 767px), (pointer: coarse) and (max-height: 500px)').matches, desktopRows: d('#sidebar-summary-btn'), dockOpen: !!(document.getElementById('agentic-state') && document.getElementById('agentic-state').getClientRects().length && !document.getElementById('agentic-state').classList.contains('collapsed') && getComputedStyle(document.getElementById('agentic-state')).display !== 'none') }; })()`);
+            assert.deepEqual(layout, portraitLayout, `${label}: it has the phone's layout, as a portrait phone does (${JSON.stringify(layout)} against ${JSON.stringify(portraitLayout)})`);
             landscape[label] = { pane: `${after.cols}x${after.rows}`, font: view.font };
             await tab.close(); tabs.pop();
         }
+        await portrait.close(); tabs.splice(tabs.indexOf(portrait), 1);
+        // a pane wider than the landscape window (150 columns at 10 px is 900 px, the window 844 px): the Fit width button shows, as on a portrait phone, and fitting does not set the pane
+        const wideCols = { cols: 150, rows: 24 };
+        setPane(A.name, wideCols.cols, wideCols.rows);
+        const wctx = await newContext(); contexts.push(wctx);
+        const wtab = await openTab({ contextId: wctx, width: 844, height: 390, mobile: true });
+        tabs.push(wtab);
+        await show(wtab, A, null);
+        const wv = await wtab.waitFor(`(async () => { const v = await ${VIEW}; return v && v.following && v.cols === ${wideCols.cols} && v.btn && v.btn.shown ? v : null; })()`, 'the Fit width button for a 150-column pane in landscape', 15000);
+        assert.deepEqual(paneSize(A.name), wideCols, 'a landscape phone does not set a wideCols pane either');
+        console.log(`   ✓ the Fit width button shows for a ${wideCols.cols}-column pane in landscape (${wv.screenW} px of text in ${wv.clientW})`);
+        await wtab.close(); tabs.splice(tabs.indexOf(wtab), 1);
+        setPane(A.name, eighty.cols, eighty.rows);
         console.log(`   ✓ the pane stays 80x24 for a phone in landscape: ${JSON.stringify(landscape)}`);
 
         console.log('\nAll terminal fit-to-width checks passed');

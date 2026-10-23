@@ -1,6 +1,7 @@
 /* Save for Later (#4510), the buttons on messages: a bookmark button on each message of an agent's Chat view (live or in History) and of a board, filled when
  * the message is saved. The Saved list and the jump back are in saved.js, which loads when the list is opened. Bookmarks live on the server that has the conversation (the
  * Operator's own, GET/POST/PATCH/DELETE /api/saved there): this server's, or a registered remote server's through the hub's proxy (#4551, serverFetch). */
+import { isPhoneLayout } from './phone_layout.js';
 import { state } from './state.js';
 import { importOnce } from './import_once.js';
 import { showToast, escapeAttr } from './utils.js';
@@ -147,7 +148,7 @@ export function savedShowing() {
     if (currentScope().kind === 'all') return false; // the sidebar has no Saved tab for everything, hidden or not (#4811)
     const dock = document.getElementById('agentic-state');
     if (!dock) return false;
-    const open = window.innerWidth <= 767 ? dock.classList.contains('mobile-panel-overlay') : !dock.classList.contains('collapsed');
+    const open = isPhoneLayout() ? dock.classList.contains('mobile-panel-overlay') : !dock.classList.contains('collapsed');
     return open && !!document.getElementById('agentic-tab-saved')?.classList.contains('active');
 }
 export function syncSavedButton() {
@@ -284,7 +285,7 @@ document.addEventListener('click', async (e) => {
 // On a phone at large text the top bar has no room for the Saved button without cutting the view selector to "Age...": there it is an entry of the settings
 // menu (with its count) instead. Decided from the real layout, so both ways of making text large (the browser's setting and the page's) count.
 function fitSavedButton() {
-    const big = window.innerWidth <= 767 && parseFloat(getComputedStyle(document.documentElement).fontSize) >= 24;
+    const big = isPhoneLayout() && parseFloat(getComputedStyle(document.documentElement).fontSize) >= 24;
     document.body.classList.toggle('saved-in-menu', big);
 }
 if (typeof ResizeObserver === 'function') {

@@ -1,5 +1,6 @@
 /* Sidebar drag-to-resize functionality */
 
+import { isPhoneLayout } from './phone_layout.js';
 import { fitTerminal } from './xterm_renderer.js';
 import { makeDraggable } from './draggable.js';
 import { browserLocal } from './safe_storage.js';
@@ -261,7 +262,7 @@ onDockPage(kind => {
 export function toggleAgenticPanel(forceState) {
     const panel = document.getElementById('agentic-state');
     if (!panel) return;
-    if (window.innerWidth <= 767) {
+    if (isPhoneLayout()) {
         let isOverlay;
         if (typeof forceState === 'boolean') {
             isOverlay = forceState;

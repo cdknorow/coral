@@ -1,10 +1,11 @@
 /* The command box grows with what is typed (moved out of live_chat.js, #5065; no behaviour change). */
+import { DESKTOP_QUERY } from './phone_layout.js';
 import { state } from './state.js';
 import { fitTerminal } from './xterm_renderer.js';
 
 // On desktop the command box grows with its text, like a chat composer
 // (CSS caps it at 40vh). Mobile keeps its own compact input bar.
-const desktopComposer = window.matchMedia("(min-width: 768px)");
+const desktopComposer = window.matchMedia(DESKTOP_QUERY);
 
 // What the last autosize measured for: the text, the box's width (a ResizeObserver keeps it; 0 while the box is hidden), the window
 // height (the 40vh cap) and the mode. Measuring forces layout several times (#3866: 112 ms over five agent switches), so

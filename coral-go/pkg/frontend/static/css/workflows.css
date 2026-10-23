@@ -738,7 +738,7 @@
 .wf-limit-msg { color: var(--error-text, var(--error)); font-size: var(--fs-sm, 0.8125rem); margin-top: 6px; overflow-wrap: anywhere; }
 
 /* A phone: the dialog has its own 16 px edge; the body's 24 px made the fields start 41 px in. A step's name takes a row of its own, and every target is 44 px. */
-@media (max-width: 767px) {
+@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) {
     #wf-create-modal .modal-body, #wf-create-modal .modal-footer { padding-left: 0; padding-right: 0; }
     .wf-step-editor-top { flex-wrap: wrap; }
     .wf-step-editor-top .wf-step-num { flex: 1; }

@@ -69,7 +69,7 @@
 }
 
 /* On a phone the columns sit closer, so more of them fit before the card scrolls (#5056). */
-@media (max-width: 767px) {
+@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) {
     .cost-table thead th, .cost-table tbody td { padding-left: 4px; padding-right: 4px; }
 }
 

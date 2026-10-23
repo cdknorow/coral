@@ -28,7 +28,7 @@
 .update-agent-name { font-weight: 600; overflow-wrap: anywhere; }
 .update-agent-state { color: var(--text-secondary); white-space: nowrap; }
 .update-keep, .update-later-note, .update-calm { color: var(--text-secondary); font-size: var(--fs-sm, 0.8125rem); }
-@media (max-width: 767px) { .update-confirm { max-width: none; width: 100%; } .update-confirm .modal-actions { flex-direction: column-reverse; } .update-confirm .modal-actions .btn { width: 100%; min-height: 44px; } }
+@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) { .update-confirm { max-width: none; width: 100%; } .update-confirm .modal-actions { flex-direction: column-reverse; } .update-confirm .modal-actions .btn { width: 100%; min-height: 44px; } }
 
 /* Settings > Updates */
 .update-status { display: flex; align-items: flex-start; gap: var(--space-lg, 12px); padding: var(--space-lg, 12px); margin: 0 0 var(--space-lg, 12px); border-radius: var(--radius-lg, 8px); border: 1px solid var(--border); background: var(--bg-secondary); }
@@ -44,20 +44,20 @@
 .update-managed > div, .update-cmd { min-width: 0; } /* so the command can scroll inside the pane instead of widening the page */
 .update-cmd code { font-family: var(--font-mono, monospace); white-space: nowrap; overflow-x: auto; min-width: 0; } /* the command stays on one line (scrolls sideways on a phone): a wrapped command is copied wrong by eye */
 .update-link { color: var(--accent); } .update-privacy { margin-top: var(--space-lg, 12px); }
-@media (max-width: 767px) { .update-status { flex-wrap: wrap; } .update-status-text { flex-basis: calc(100% - 28px); } .update-act { margin-left: 22px; min-height: 44px; } .update-dismiss { min-width: 44px; min-height: 44px; } }
+@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) { .update-status { flex-wrap: wrap; } .update-status-text { flex-basis: calc(100% - 28px); } .update-act { margin-left: 22px; min-height: 44px; } .update-dismiss { min-width: 44px; min-height: 44px; } }
 .update-dismiss { background: none; border: 0; color: var(--text-secondary); }
 
 /* the failure notice: the dashboard's own banner (leftover-tmux-banner), in the error colour, dismissible; on a phone the buttons go under the text */
 .leftover-tmux-banner.update-fail { border-color: color-mix(in srgb, var(--error) 55%, var(--border)); background: color-mix(in srgb, var(--error) 8%, var(--bg-secondary)); }
 .leftover-tmux-banner.update-fail .material-icons { color: var(--error); }
 .leftover-tmux-banner.update-fail .update-fail-acts { display: flex; align-items: center; gap: 8px; flex: none; }
-@media (max-width: 767px) { .leftover-tmux-banner.update-fail .leftover-tmux-text { flex: 1 1 calc(100% - 44px); min-width: 0; } .leftover-tmux-banner.update-fail .update-fail-acts { flex: 1 1 100%; justify-content: flex-end; } .leftover-tmux-banner.update-fail .btn { min-height: 44px; } }
+@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) { .leftover-tmux-banner.update-fail .leftover-tmux-text { flex: 1 1 calc(100% - 44px); min-width: 0; } .leftover-tmux-banner.update-fail .update-fail-acts { flex: 1 1 100%; justify-content: flex-end; } .leftover-tmux-banner.update-fail .btn { min-height: 44px; } }
 
 /* the ready notice (#6292): the same banner in the accent colour; on a phone the buttons go under the text, 44 px */
 .leftover-tmux-banner.update-ready { border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); background: color-mix(in srgb, var(--accent) 8%, var(--bg-secondary)); }
 .leftover-tmux-banner.update-ready .material-icons { color: var(--accent); }
 .leftover-tmux-banner.update-ready .update-ready-acts { display: flex; align-items: center; gap: 8px; flex: none; }
-@media (max-width: 767px) { .leftover-tmux-banner.update-ready .leftover-tmux-text { flex: 1 1 calc(100% - 44px); min-width: 0; } .leftover-tmux-banner.update-ready .update-ready-acts { flex: 1 1 100%; justify-content: flex-end; } }
+@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) { .leftover-tmux-banner.update-ready .leftover-tmux-text { flex: 1 1 calc(100% - 44px); min-width: 0; } .leftover-tmux-banner.update-ready .update-ready-acts { flex: 1 1 100%; justify-content: flex-end; } }
 @media (pointer: coarse) { .leftover-tmux-banner.update-ready .btn { min-height: 44px; min-width: 44px; } }
 
 /* what the build adds to the mockup: a long list of agents scrolls (the heading and the buttons stay), a note and an error line in the dialog, the facts under the switches, a 44 px dismiss on a touch screen */
@@ -78,7 +78,7 @@
 /* the source address inside the confirmation's first sentence (#6292): inline, so the sentence reads as one line on a phone too (.update-link is a 44 px block there) */
 .update-source-link { color: var(--accent); text-decoration: underline; overflow-wrap: anywhere; }
 [data-theme="light"] .update-source-link { color: var(--accent-dim); }
-@media (max-width: 767px) { .update-link { display: inline-flex; align-items: center; min-height: 44px; } }
+@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) { .update-link { display: inline-flex; align-items: center; min-height: 44px; } }
 
 /* The update channel and the releases waiting for approval (#5558) */
 .update-channel { margin: 0 0 var(--space-lg, 12px); }

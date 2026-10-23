@@ -1,5 +1,6 @@
 /* Bottom preview pane — tabbed file/artifact viewer below the terminal/chat area */
 
+import { isPhoneLayout } from './phone_layout.js';
 import { state } from './state.js';
 import { registerUnsavedWork } from './update_banner.js';
 import { escapeHtml, escapeAttr, showToast, isImagePath, isMediaPath, renderImagePanes, renderMediaPanes, DOMPURIFY_CONFIG, sanitizeHtml, renderMarkdownStrict, highlightCodeIn, keepFragmentsInside } from './utils.js';
@@ -101,7 +102,7 @@ function _clampPaneHeight(h) {
 }
 const _savedNumber = key => { const n = parseInt(browserLocal.get(key), 10); return Number.isFinite(n) && n > 0 ? n : null; };
 
-const _isMobile = () => window.innerWidth <= 767;
+const _isMobile = () => isPhoneLayout();
 const _effectiveDock = () => (_isMobile() ? 'bottom' : _dock);
 let _cmView = null;        // editor or merge view for the active tab
 let _fallbackEditor = null;

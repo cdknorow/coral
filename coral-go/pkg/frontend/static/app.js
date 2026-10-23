@@ -1,3 +1,4 @@
+import { isPhoneLayout } from './phone_layout.js';
 import './update_banner.js'; // first: it wraps fetch before the other modules ask for anything (#3751)
 import { importOnce } from './import_once.js';
 import { loadUpdatesFlag } from './update_flag.js';
@@ -516,7 +517,7 @@ function switchNavTab(tab, opts = {}) {
         } else {
             showView('chats-empty-view');
         }
-    } else if (tab === 'agents' && window.innerWidth <= 767) {
+    } else if (tab === 'agents' && isPhoneLayout()) {
         syncMobileAgentList();
         showView('mobile-agent-list');
     } else if (tab === 'agents') {
@@ -534,7 +535,7 @@ function switchNavTab(tab, opts = {}) {
 function tabRoute(tab, view) {
     const cur = state.currentSession;
     if (tab === 'agents' && state.selectedTeam) return keyRoute('team', state.selectedTeam);
-    if (tab === 'agents' && cur && cur.type === 'live' && window.innerWidth > 767) return liveRoute(sessionServer(cur), cur.session_id);
+    if (tab === 'agents' && cur && cur.type === 'live' && !isPhoneLayout()) return liveRoute(sessionServer(cur), cur.session_id);
     if (tab === 'history') return historyRoute(cur?.type === 'history' ? cur.name : null, currentChatsQuery());
     return { view };
 }
@@ -699,7 +700,7 @@ function registerRouteHandlers() {
         const cur = state.currentSession;
         const shown = cur && cur.type === 'live' && cur.session_id === s.session_id && sessionServer(cur) === sessionServer(s);
         if (!shown) await window.selectLiveSession(s.name, s.agent_type, s.session_id, sessionServer(s));
-        else if (window.innerWidth <= 767) showView('live-session-view'); // the phone's Agents tab showed the list
+        else if (isPhoneLayout()) showView('live-session-view'); // the phone's Agents tab showed the list
         if (r.sub) switchAgenticTab(r.sub, 'top');
     });
 
@@ -804,7 +805,7 @@ function registerRouteHandlers() {
 
 /** The Agents home: the welcome screen (the agent list on a phone), no agent highlighted. */
 function showHome() {
-    showView(window.innerWidth <= 767 ? "mobile-agent-list" : "welcome-screen");
+    showView(isPhoneLayout() ? "mobile-agent-list" : "welcome-screen");
     // Deselect sidebar items
     document.querySelectorAll('.sidebar .session-item.active, .sidebar .session-item.selected').forEach(el => {
         el.classList.remove('active', 'selected');
@@ -877,7 +878,7 @@ function startRoute(popout) {
 
 document.addEventListener("DOMContentLoaded", async () => {
     beginDashboardAnalytics();
-    if (window.innerWidth > 767) buildWelcome(); // a phone starts on the agent list and builds the welcome screen only if it is shown (#4497)
+    if (!isPhoneLayout()) buildWelcome(); // a phone starts on the agent list and builds the welcome screen only if it is shown (#4497)
     try {
     initPlatform();
     installUnauthorizedRedirect();

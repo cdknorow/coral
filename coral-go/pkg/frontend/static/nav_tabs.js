@@ -5,13 +5,14 @@
  *  - Phone (<= 767 px): the row is replaced by one current-view dropdown in the top bar (44 px tall): it names the view you are
  *    on and opens the list of all views. Escape and a click outside close it.
  * The buttons drawn here carry the same data-on-click as the tabs, so switching a tab is still the one action. */
+import { PHONE_QUERY } from './phone_layout.js';
 import { registerActions } from './actions.js';
 
 const ICONS = { agents: 'smart_toy', history: 'chat_bubble_outline', workflows: 'account_tree', jobs: 'schedule', tokens: 'insights',
     docs: 'menu_book', servers: 'dns', 'hub-inbox': 'notifications', board: 'forum', artifacts: 'inventory_2' };
 
 const tabsEl = () => document.querySelector('.top-nav-tabs');
-const isPhone = () => window.matchMedia('(max-width: 767px)').matches;
+const isPhone = () => window.matchMedia(PHONE_QUERY).matches;
 
 /** The tabs that exist right now, in order: {id, arg, label, active, el}. */
 function availableTabs() {
@@ -155,7 +156,7 @@ if (typeof document !== 'undefined') {
         _obs = new MutationObserver(syncNav);
         _obs.observe(nav, { attributes: true, subtree: true, attributeFilter: ['class', 'hidden', 'style', 'aria-current'] });
         window.addEventListener('resize', syncNav);
-        window.matchMedia('(max-width: 767px)').addEventListener('change', syncNav);
+        window.matchMedia(PHONE_QUERY).addEventListener('change', syncNav);
         document.addEventListener('click', e => {
             if (!_menuFor) return;
             if (e.target.closest('#nav-more-menu .nav-more-item') || !e.target.closest('#nav-more-menu, [data-on-click="m-nav-more"]')) closeMenu();

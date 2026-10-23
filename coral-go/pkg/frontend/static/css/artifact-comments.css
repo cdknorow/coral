@@ -19,8 +19,8 @@
 .ac-toggle { display: none; }
 /* The viewer's Comments (N) button is on at every width; its panel is a column only while it is open (a phone's sheet has its own rules below). */
 .artifact-viewer-header .ac-toggle:not([hidden]) { display: inline-flex; align-items: center; }
-@media (min-width: 768px) { .artifact-viewer-header .ac-toggle:not([hidden]) { min-height: 28px; } }
-@media (min-width: 768px) { .artifact-viewer-main > .ac-panel:not(.ac-sheet-open) { display: none; } }
+@media (min-width: 768px) and (min-height: 501px), (min-width: 768px) and (pointer: fine) { .artifact-viewer-header .ac-toggle:not([hidden]) { min-height: 28px; } }
+@media (min-width: 768px) and (min-height: 501px), (min-width: 768px) and (pointer: fine) { .artifact-viewer-main > .ac-panel:not(.ac-sheet-open) { display: none; } }
 .ac-note { margin: 0; padding: 6px 10px; border-radius: var(--radius-md); background: var(--bg-tertiary); color: var(--text-secondary); font-size: var(--fs-sm, 0.8125rem); }
 .ac-list { display: flex; flex-direction: column; gap: var(--space-sm); list-style: none; margin: 0; padding: 0; }
 .ac-empty { margin: 0; color: var(--text-muted); font-size: var(--fs-sm, 0.8125rem); }
@@ -76,7 +76,7 @@
 .ac-selbtn { position: fixed; z-index: 120; }
 .ac-selbtn[hidden] { display: none; }
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) {
     /* The viewer follows what the keyboard leaves of the screen (--visual-viewport-height, mobile.js), and the sheet is anchored to the viewer's own bottom, so a composer is never under the keyboard (#5219). */
     .artifact-viewer { height: var(--visual-viewport-height, 100dvh); bottom: auto; }
     .artifact-viewer.ac-on .artifact-viewer-content { width: 100vw; max-height: 100%; height: 100%; border-radius: 0; }
@@ -128,7 +128,7 @@
 }
 /* The toolbar toggle remains available beside the document and above its sheet. */
 .preview-toolbar .ac-toggle:not([hidden]) { display: inline-flex; align-items: center; min-height: 28px; margin-left: auto; flex: 0 0 auto; }
-@media (max-width: 767px) { .preview-toolbar .ac-toggle:not([hidden]) { min-height: 44px; min-width: 44px; } } /* a touch target (the rule above is more specific than the phone's own) */
+@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) { .preview-toolbar .ac-toggle:not([hidden]) { min-height: 44px; min-width: 44px; } } /* a touch target (the rule above is more specific than the phone's own) */
 
 /* "Who can read this" (artifact_readers.js): a small disclosure under the viewer's header and in an Artifacts row's details. */
 .artifact-viewer-readers { flex: none; padding: 0 16px; }
@@ -214,7 +214,7 @@
 .ac-group[open] > summary { border-bottom: 1px solid var(--border); }
 .ac-group > .ac-card { border: 0; border-top: 1px solid var(--border); border-radius: 0; }
 .ac-group > .ac-card:first-of-type { border-top: 0; }
-@media (max-width: 767px) {
+@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) {
     .artifact-viewer.av-keep-wide .artifact-viewer-content { width: 100vw; max-height: 100%; height: 100%; border-radius: 0; }
     .av-bar { padding: 6px 8px; }
     .av-bar .btn, .av-icon, .av-seg .btn { min-height: var(--control-touch-height, 44px); }

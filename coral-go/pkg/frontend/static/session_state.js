@@ -1,4 +1,5 @@
 /* Moved out of render.js as it was (#3795): no behaviour change. */
+import { isPhoneLayout } from './phone_layout.js';
 import { modelDisplayName } from './model_names.js';
 import { sessionLevel, typeName } from './model_labels.js';
 import { escapeHtml, escapeAttr } from './utils.js';
@@ -42,14 +43,14 @@ const GOAL_LINE_MAX = 140;
 // Placeholder of the command box: who it goes to, and that an image can be pasted. The agent's type is in the header and the board's name in the sidebar, so neither is repeated here
 // (the board's generated id used to be, #5991); a phone gets the target only, as the full text is cut off mid-word in its box.
 export function commandPlaceholder(identity, agentType) {
-    if (window.innerWidth <= 767) return `Message ${identity}\u2026`;
+    if (isPhoneLayout()) return `Message ${identity}\u2026`;
     if (agentType === 'terminal') return `Type a command in ${identity}`;
     return `Message ${identity}, or paste an image`;
 }
 
 /** The box's words while a new agent's CLI is not up yet (#6382): it says so, and that a message typed now is held for it. */
 export function startingPlaceholder(identity) {
-    return window.innerWidth <= 767 ? `Starting ${identity}\u2026` : `Starting ${identity}\u2026 you can type now, it is sent when ready`;
+    return isPhoneLayout() ? `Starting ${identity}\u2026` : `Starting ${identity}\u2026 you can type now, it is sent when ready`;
 }
 
 /** Shared identity resolver used by row label, avatar, header, terminal label and placeholder. */

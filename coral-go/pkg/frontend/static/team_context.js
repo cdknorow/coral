@@ -7,6 +7,7 @@
  * Selecting an agent leaves the team context. The agent's chat stays mounted
  * underneath, so closing the team view returns to it unchanged.
  */
+import { isPhoneLayout } from './phone_layout.js';
 import { importOnce } from './import_once.js';
 import { state } from './state.js';
 import { sessionTeamKey, splitKey } from './server_base.js';
@@ -115,7 +116,7 @@ export async function enterTeamContext(team, opts = {}) {
     syncFilesSourceTeam();
     window.switchAgenticTab?.(tab, 'top');
     // On a phone the side panel is an overlay that starts shut: a team page that asks for one of its panel's tabs (Team settings, Knowledge) opens it, or the tab is drawn at no size behind the chat (#5131).
-    if (tab !== 'team-view' && window.innerWidth <= 767) window.toggleAgenticPanel?.(true);
+    if (tab !== 'team-view' && isPhoneLayout()) window.toggleAgenticPanel?.(true);
     refreshSessionList();
     contextChanged();
     return true;

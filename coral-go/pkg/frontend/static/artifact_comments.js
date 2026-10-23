@@ -1,6 +1,7 @@
 /* Comments in the artifact viewer (#5182, phase 1): a side panel (a bottom sheet on a phone) of the artifact's threads, highlights of what each is about, a Comment button by a text selection,
  * a composer, and the actions the server says this viewer may use. Everything shown is text (textContent, never HTML). The server is the gate: a control the viewer cannot use is hidden, a write
  * it refuses shows the server's one-line reason. Where a comment sits is artifact_anchor.js; the routes are artifact_comments_api.js. */
+import { isPhoneLayout, PHONE_QUERY } from './phone_layout.js';
 import { importOnce } from './import_once.js';
 const { buildAnchor, locateQuote, indexText } = await importOnce('./artifact_anchor.js');
 const api = await importOnce('./artifact_comments_api.js');
@@ -74,7 +75,7 @@ export function attachComments(dialog, body, host, opts = {}) {
     const announce = (msg) => { liveFlip = !liveFlip; live.textContent = msg + (liveFlip ? '' : '\u00a0'); }; // the same words twice are still a change
     // The document is a region a keyboard reaches; ] and [ step through the comments from it. (While an artifact is on show: the docked pane's body also draws files and images.)
     const region = (on) => { if (on) { body.tabIndex = 0; body.setAttribute('role', 'region'); body.setAttribute('aria-label', 'Document'); body.setAttribute('aria-keyshortcuts', '] ['); } else { for (const a of ['tabindex', 'role', 'aria-label', 'aria-keyshortcuts']) body.removeAttribute(a); } };
-    const phone = window.matchMedia('(max-width: 767px)');
+    const phone = window.matchMedia(PHONE_QUERY);
     const sheet = opts.sheet || (() => phone.matches); // the panel is a bottom sheet over the document
     const isOpen = () => panel.classList.contains('ac-sheet-open');
     const remember = (open) => browserLocal.set(OPEN_KEY, open ? 'open' : 'closed');
@@ -501,7 +502,7 @@ export function attachComments(dialog, body, host, opts = {}) {
         syncInert();
         syncOn();
         paintToggle();
-        if (open && !sheetOverlay && window.innerWidth <= 767) sheetOverlay = pushOverlay(() => setSheet(false, { popped: true }));
+        if (open && !sheetOverlay && isPhoneLayout()) sheetOverlay = pushOverlay(() => setSheet(false, { popped: true }));
         else if (!open && sheetOverlay) { const id = sheetOverlay; sheetOverlay = 0; if (!popped) popOverlay(id); }
     }
     function paintToggle() {

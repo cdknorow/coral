@@ -4,6 +4,7 @@
  * the preview pane's renderArtifact (images, media, sandboxed HTML, a download for binaries),
  * and Markdown by the strict renderer (raw HTML shown as text, then the sanitizer). The
  * Download button keeps the original bytes one click away, through Coral Hub too. */
+import { isPhoneLayout } from './phone_layout.js';
 import { escapeHtml, renderMarkdownStrict, highlightCodeIn, keepFragmentsInside } from './utils.js';
 import { serverUrl, artifactPath, isCloud } from './server_base.js';
 import { renderArtifact } from './artifact_preview.js';
@@ -108,7 +109,7 @@ export function openArtifactViewer(hex, opts = {}) {
     const body = d.querySelector('.artifact-viewer-body');
     const wasOpen = !d.hidden;
     d.hidden = false;
-    if (!wasOpen && window.innerWidth <= 767 && !_overlay) _overlay = pushOverlay(() => closeArtifactViewer({ popped: true })); // Back closes it, above the preview's full screen, under its comments sheet
+    if (!wasOpen && isPhoneLayout() && !_overlay) _overlay = pushOverlay(() => closeArtifactViewer({ popped: true })); // Back closes it, above the preview's full screen, under its comments sheet
     _comments.open(hex, opts.server, commentBoard(opts), true); // true: the comments of earlier versions of a series too (the server answers the plain list for an artifact in none)
     _versions.open(hex, opts.server, { switched: !!opts.switched });
     // "Who can read this", for the Operator (the owner through Coral Hub): drawn only when the machine answers it; anyone else sees nothing.

@@ -1,4 +1,5 @@
 /* Moved out of modals.js as it was (#4684): The pieces every launch dialog shares: the launch steps, the working-directory resets, the 'cannot launch here' check, the request to the server (with its CLI-not-found and invalid-field outcomes), and what a launch refreshes and says. No behaviour change. */
+import { isPhoneLayout } from './phone_layout.js';
 import { importOnce } from './import_once.js';
 import { state } from './state.js';
 import { showToast, escapeHtml } from './utils.js';
@@ -13,7 +14,7 @@ const { _showCLINotFoundModal } = await importOnce('./cli_dialogs.js');
 const { revealField } = await importOnce('./section_dialog.js');
 
 function _syncMobileLaunchSections(step) {
-    const isMobile = window.innerWidth <= 767;
+    const isMobile = isPhoneLayout();
     const root = step ? document.getElementById(`launch-step-${step}`) : document.getElementById("launch-modal");
     if (!root) return;
     root.querySelectorAll(".mobile-launch-section").forEach(section => {

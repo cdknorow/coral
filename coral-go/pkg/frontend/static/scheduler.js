@@ -1,5 +1,6 @@
 /* Scheduler: scheduled jobs sidebar list, job detail view, and CRUD operations */
 
+import { isPhoneLayout } from './phone_layout.js';
 import { state } from './state.js';
 import { escapeHtml, escapeAttr, showToast, showView } from './utils.js';
 import { registerActions, withId, uuidOf } from './actions.js';
@@ -129,7 +130,7 @@ export async function selectScheduledJob(jobId) {
 
     const [runs] = await Promise.all([fetchJobRuns(jobId), job.workflow_id ? loadWorkflowsById() : null]);
     renderJobDetail(job, runs);
-    if (window.innerWidth <= 767) document.getElementById('scheduler-detail')?.scrollIntoView({ block: 'start' }); // the list is above it on a phone: show the job that was picked (#6139)
+    if (isPhoneLayout()) document.getElementById('scheduler-detail')?.scrollIntoView({ block: 'start' }); // the list is above it on a phone: show the job that was picked (#6139)
 }
 
 function renderJobDetail(job, runs) {
