@@ -13,7 +13,7 @@ const BASE = require('./test_base').BASE;
     const boxes = () => ev(`(() => { const g = s => { const e = document.querySelector(s); return !e || !e.checkVisibility() ? null : Math.round(e.getBoundingClientRect().height); }; return { cls: document.documentElement.classList.contains('kb-open'), banner: g('#local-auth-banner'), chips: g('#model-chip-bar'), status: g('#terminal-statusbar'), xterm: g('#xterm-container'), keys: g('#terminal-key-bar'), input: g('#command-input') }; })()`);
     try {
         await Page.enable(); await Page.addScriptToEvaluateOnNewDocument({ source: PRELOAD });
-        for (const [label, touch, w, h, kb] of [['a phone', true, 390, 844, 464], ['a small phone', true, 360, 800, 440], ['a desktop window', false, 1280, 800, 440], ['a narrow window with a mouse', false, 390, 844, 464]]) {
+        for (const [label, touch, w, h, kb] of [['a phone', true, 390, 844, 464], ['a small phone', true, 360, 800, 440], ['a desktop window', false, 1280, 800, 440], ['a narrow window with a mouse', false, 390, 844, 464], ['a phone turned sideways', true, 844, 390, 200]]) {
             const at = `${label}: `;
             await size(w, h, touch); await Emulation.setTouchEmulationEnabled({ enabled: touch });
             await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired(); await install();
@@ -28,13 +28,14 @@ const BASE = require('./test_base').BASE;
             await size(w, kb, touch);
             await new Promise(r => setTimeout(r, 700)); // sleep-ok: the viewport change reaches the page's resize listener
             const open = await boxes();
-            if (!(touch && w <= 767)) { assert.equal(open.cls, false, at + 'not a phone with a keyboard: nothing changes: ' + JSON.stringify(open)); continue; }
+            if (!touch && w <= 767 || w > 767 && !touch) { assert.equal(open.cls, false, at + 'not a phone with a keyboard: nothing changes: ' + JSON.stringify(open)); continue; }
             assert.equal(open.cls, true, at + 'the keyboard is open: the layout is compact: ' + JSON.stringify(open));
             assert.equal(open.banner, null, at + 'the sign-in banner steps aside');
             assert.equal(open.chips, null, at + 'the model chips step aside');
             assert.equal(open.status, null, at + 'the status bar steps aside');
             assert.ok(open.input && open.input <= 48, at + 'the message box is one line: ' + open.input);
             assert.ok(open.keys >= 44, at + 'the key bar stays: ' + JSON.stringify(open));
+            if (w > 767) { await shot(`terminal-keyboard-landscape`); await size(w, h, touch); await new Promise(r => setTimeout(r, 700)); /* sleep-ok: the viewport change reaches the resize listener */ assert.equal((await boxes()).cls, false, at + 'the keyboard closed: the layout is back'); continue; }
             const rows = await ev(`(async () => (await import((window.__coralStatic||'/static/')+'xterm_renderer.js')).getTerminal().rows)()`);
             assert.ok(open.xterm >= 170 && rows >= 13, at + `the terminal keeps its rows (it had 10 rows in 130 px before): ${rows} rows in ${open.xterm} px`);
             await shot(`terminal-keyboard-${w}`);

@@ -29,6 +29,13 @@ const BASE = require('./test_base').BASE;
         await ev(`document.getElementById('terminal-copy-screen-btn').click(); true`);
         await waitFor(`window.__copied !== null`, 'the copy', 5000);
         assert.equal(await ev(`window.__copied`), 'first line\n\nthird line', 'the screen text: trailing spaces and blank rows dropped, inner blank row kept');
+        // a line the terminal wrapped at its width is one line again in the copy; a line that ended is not joined to the next
+        const cols = await ev(`(async () => ${XT}.getTerminal().cols)()`);
+        const long = 'word '.repeat(Math.ceil(cols * 1.6 / 5)).trim();
+        await ev(`(async () => { const t = ${XT}.getTerminal(); await new Promise(r => t.write('\\x1b[2J\\x1b[H' + ${JSON.stringify(long)} + '\\r\\nnext line\\r\\n', r)); window.__copied = null; return true; })()`);
+        await ev(`document.getElementById('terminal-copy-screen-btn').click(); true`);
+        await waitFor(`window.__copied !== null`, 'the second copy', 5000);
+        assert.equal(await ev(`window.__copied`), long + '\nnext line', 'a wrapped line is copied whole');
         assert.ok(/Terminal text copied/.test(await ev(`document.body.innerText`)), 'a toast says it was copied');
         console.log('PASS terminal copy screen');
     } finally { await client.close(); }
