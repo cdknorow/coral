@@ -1537,7 +1537,7 @@
 /* The branch is dropped where the header is narrow for its text: under 22.25 rem of header content, which is 356 px at normal text: a phone up to 368 px wide, since the header has 6 px of padding each side and the
    container is its content box (UX measured two rows from 350 to 365 px with it at 21 rem; 370 px and up keep the branch on one row) and any phone once the text is large (390 px at 200% is 12 rem). A container query: rem here is the root font size, which
    follows the text size (a media query's em would not follow a root font override, and this way a test can) (#4327, #4360 follow-up). */
-@container agent-header (max-width: 22.25rem) { .terminal-header-actions > .terminal-branch { display: none; } }
+@container agent-header (max-width: 22.85rem) { .terminal-header-actions > .terminal-branch { display: none; } } /* the header's content box is 4 px under the viewport up to 400 px (#6756): the branch shows from 370 px as before */
 /* 200 percent zoom on a phone is a page under 260 px wide: the header's buttons wrap to a second row instead of leaving the screen. */
 @media (max-width: 260px) {
     .terminal-header { flex-wrap: wrap; height: auto; }
@@ -2204,3 +2204,9 @@
 .composer-queued:empty { position: absolute; width: 1px; height: 1px; margin: 0; padding: 0; border: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; } /* in the page with nothing to say: out of the layout (no room, no flex gap), still a live region (#6679) */ /* always in the page, so what is put into it is read (#6611); nothing queued takes no room */
 .composer-queued-note { color: var(--text-primary); }
 @media (pointer: coarse) { .composer-queued-cancel { min-height: 44px; min-width: 44px; display: inline-flex; align-items: center; } }
+
+/* A small phone (up to 400 px): the header's 44 px targets (the view toggle, Find, Open Agent Tab, the side panel) left the agent name 46 px at 320 and 35 px at 370 beside the branch (#6756). The header's side padding and the gaps between the buttons give the name 16 px more; the targets stay 44 px. */
+@media (max-width: 400px) {
+    html body .terminal-header { padding-left: 2px; padding-right: 2px; }
+    html body .terminal-header-actions { gap: 0; }
+}
