@@ -113,3 +113,18 @@ func TestBranchMissingTextIsCleanedAndCapped(t *testing.T) {
 	assert.Contains(t, err.Error(), "and 6 more") // 25 + master, minus the 20 shown
 	assert.NotContains(t, err.Error(), "\u202e")
 }
+
+// QA's #6722 wording: a bare repository and a folder git cannot read are not "no commits yet".
+func TestResolveBaseSaysWhyThereIsNothingToStartFrom(t *testing.T) {
+	bare := t.TempDir()
+	out, err := exec.Command("git", "init", "-q", "--bare", bare).CombinedOutput()
+	require.NoError(t, err, string(out))
+	_, err = ResolveBase(context.Background(), bare, "")
+	assert.ErrorIs(t, err, ErrBareRepo)
+
+	_, err = ResolveBase(context.Background(), t.TempDir(), "")
+	assert.ErrorIs(t, err, ErrNotARepo, "a folder that is no repository")
+
+	_, err = ResolveBase(context.Background(), baseRepo(t, "master", false), "")
+	assert.ErrorIs(t, err, ErrNoCommits, "a repository with no commit says so")
+}

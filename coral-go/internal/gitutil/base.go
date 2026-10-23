@@ -12,6 +12,11 @@ import (
 // ErrNoCommits: a repository with no commit has no branch to start a worktree from.
 var ErrDetached = errors.New("the repository is on a detached HEAD, which is no branch to start from: name the base branch")
 
+var ErrBareRepo = errors.New("the repository is bare: it has no working folder to start a worktree from; use a clone")
+
+// ErrNotARepo: git could not read the folder as a repository (not one, or a path git cannot open).
+var ErrNotARepo = errors.New("git cannot read this folder as a repository: check the path")
+
 var ErrNoCommits = errors.New("the repository has no commits yet: make a first commit, or launch without a worktree")
 
 // ResolveBase is the branch a team's or a job's worktree starts from (#6701). A branch the caller names is used as it is, except "main": that is what a request, a stored team and a stored job
@@ -33,6 +38,12 @@ func ResolveBase(ctx context.Context, repoDir, requested string) (string, error)
 		return "main", nil
 	}
 	if !refExists(ctx, repoDir, "HEAD") {
+		// "No commits yet" is said only of a repository git can read: a bare one or an unreadable path (Windows' 260-character limit) are not that (QA's #6722).
+		if bare, err := git(ctx, repoDir, "rev-parse", "--is-bare-repository"); err == nil && bare == "true" {
+			return "", ErrBareRepo
+		} else if err != nil {
+			return "", ErrNotARepo
+		}
 		return "", ErrNoCommits
 	}
 	if branch, err := git(ctx, repoDir, "symbolic-ref", "--short", "-q", "HEAD"); err == nil && branch != "" {
