@@ -301,12 +301,12 @@
 1	group_cards.js	wfKebab
 1	group_cards.js	wfRunId ? ' · Run #' + wfRunId : ''
 1	group_cards.js	wfSubline
-1	history_list.js	bottomMeta
-1	history_list.js	bottomMeta ? `<div class="session-row-bottom">${bottomMeta}</div>` : ""
-1	history_list.js	durTag
+1	history_list.js	facts
+1	history_list.js	facts ? `<div class="session-row-bottom chat-row-facts">${facts}</div>` : ""
 1	history_list.js	page
+1	history_list.js	reminderTag
 1	history_list.js	tagDots
-2	history_list.js	timeTag
+1	history_list.js	timeTag
 2	history_list.js	total
 1	history_list.js	totalPages
 1	history_list.js	typeTag

@@ -3,14 +3,43 @@ import { historyServer } from './history_source.js';
 import { identityKey } from './server_base.js';
 import { state } from './state.js';
 import { scrollBehavior } from './motion.js';
-import { formatDurationSec as formatDuration, escapeHtml, escapeAttr } from './utils.js';
+import { escapeHtml, escapeAttr } from './utils.js';
 import { renderSidebarTagDots } from './tags.js';
 import { updateSectionVisibility } from './sidebar.js';
 import { getCachedAgentAvailability } from './team_availability.js';
-import { _repoBranch, formatShortTime } from './session_state.js';
+import { formatShortTime } from './session_state.js';
 import { renderTranscript } from './live_chat.js';
 import { historyLabel } from './history_label.js';
 
+
+/** The usual branches say nothing: only another one is worth a word in a row. */
+const unusualBranch = b => !!b && !/^(main|master|trunk|develop)$/.test(b);
+/** The provider as a text badge (never colour alone), only where it is not the usual Claude. */
+function providerBadge(src) {
+    const t = String(src || '').toLowerCase();
+    if (!t || t === 'claude') return '';
+    const word = t === 'gemini' || t === 'antigravity' ? 'agy' : t;
+    return `<span class="badge agy">${escapeHtml(word)}</span>`;
+}
+// capitalised: the word in lower case and quoted is read by the icon scanner as the Material icon of that name (icon_subset)
+const DAY_WORDS = ['Today', 'Yesterday'];
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+/** How long a chat went on, in words that cannot be taken for an age: "ran 21 min", "ran 2 h 5 min". */
+function ranFor(sec) {
+    if (sec == null || !(sec >= 0)) return '';
+    const m = Math.round(sec / 60);
+    if (m < 1) return 'ran under a minute';
+    return m < 60 ? `ran ${m} min` : `ran ${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ''}`;
+}
+/** When a chat last spoke, in words (today, yesterday, "Oct 21", with the year when it is not this one), the full value for a tooltip and the time element, and "ran 21 min" for how long it went on. */
+export function chatWhen(iso, durationSec, now = new Date()) {
+    const d = new Date(iso);
+    if (!iso || isNaN(d)) return null;
+    const day0 = x => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+    const days = Math.round((day0(now) - day0(d)) / 86400000);
+    const day = days === 0 || days === 1 ? DAY_WORDS[days].toLowerCase() : `${MONTHS[d.getMonth()]} ${d.getDate()}${d.getFullYear() !== now.getFullYear() ? `, ${d.getFullYear()}` : ''}`;
+    return { day, iso: d.toISOString(), full: d.toLocaleString(), ran: ranFor(durationSec) };
+}
 
 export function renderHistorySessions(sessions, total, page, pageSize) {
     const list = document.getElementById("history-sessions-list");
@@ -45,27 +74,21 @@ export function renderHistorySessions(sessions, total, page, pageSize) {
         const label = historyLabel(s);
         const truncated = label.length > 40 ? label.substring(0, 40) + "..." : label;
         const isActive = state.currentSession && state.currentSession.type === "history" && state.currentSession.name === s.session_id;
-        const typeTag = (s.source_type === "gemini" || s.source_type === "agy" || s.source_type === "antigravity")
-            ? `<span class="badge agy">agy</span>`
-            : "";
+        // A chat is its title, then one line of facts: who, which branch (not the usual one), when, and how long it ran (#6580). The provider is a badge only where it is not Claude.
+        const typeTag = providerBadge(s.source_type);
         const agentName = s.display_name || s.agent_name || "";
         const agentTag = agentName ? `<span class="sidebar-agent-name">${escapeHtml(agentName)}</span>` : "";
         const reminderTag = getCachedAgentAvailability(s)?.reminder
             ? `<span class="agent-reminder-icon" title="Periodic reminder active" aria-label="Periodic reminder active">⏰</span>`
             : "";
-        const sourceTypeTag = s.source_type ? `<span class="sidebar-source-type">${escapeHtml(s.source_type)}</span>` : "";
-        const branchDisplay = _repoBranch(s.repo_name, s.branch);
-        const branchTag = branchDisplay ? `<span class="sidebar-branch">${escapeHtml(branchDisplay)}</span>` : "";
+        const branchTag = unusualBranch(s.branch) ? `<span class="sidebar-branch">${escapeHtml(s.branch)}</span>` : "";
         const tagDots = s.tags ? renderSidebarTagDots(s.tags) : "";
-        const timeStr = s.last_timestamp ? formatShortTime(s.last_timestamp) : "";
-        const timeTag = timeStr ? `<span class="session-time">${escapeHtml(timeStr)}</span>` : "";
-        const durStr = s.duration_sec != null ? formatDuration(s.duration_sec) : '';
-        const durTag = durStr ? `<span class="session-dur">${escapeHtml(durStr)}</span>` : '';
-        const bottomMeta = [agentTag, reminderTag, sourceTypeTag, branchTag].filter(Boolean).join('');
+        const when = chatWhen(s.last_timestamp, s.duration_sec);
+        const whenTag = when ? `<span class="session-time"><time datetime="${escapeAttr(when.iso)}" title="${escapeAttr(when.full)}">${escapeHtml(when.day)}</time>${when.ran ? `, ${escapeHtml(when.ran)}` : ''}</span>` : '';
+        const facts = [agentTag, branchTag, whenTag].filter(Boolean).join('<span class="chat-sep" aria-hidden="true"> · </span>');
         return `<li class="${escapeAttr(isActive ? 'active' : '')}" data-on-click="history-open" data-session-id="${escapeAttr(s.session_id)}">
-            <div class="session-row-top">${timeTag}${durTag}${typeTag}${tagDots}</div>
-            <div class="session-row-mid"><span class="session-label" title="${escapeHtml(label)}">${escapeHtml(truncated)}</span></div>
-            ${bottomMeta ? `<div class="session-row-bottom">${bottomMeta}</div>` : ""}
+            <div class="session-row-mid chat-row-title"><span class="session-label" title="${escapeHtml(label)}">${escapeHtml(truncated)}</span>${typeTag}${tagDots}${reminderTag}</div>
+            ${facts ? `<div class="session-row-bottom chat-row-facts">${facts}</div>` : ""}
         </li>`;
     }).join("");
 
