@@ -197,7 +197,9 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 			categories = append(categories, "")
 			continue
 		}
-		entry, category := h.launchTeamMember(ctx, body, agentDef, userSettings, workingDir, worktreePath, teamID, (!fromAgent || inSavedTeamTemplate(userSettings, agentDef, memberType)) && autoDefaultAllowed(ctx, r, h.ss)) // an agent's own member is not started in Auto (#4032), a saved template's is; the Hub's rule is read now, as the member's own check is (#5839)
+		// A member that names no mode, flags or capabilities starts in the CLI's normal confirm mode, the "Default" the team form shows (#6415, Codex Test's #6412): the server no longer
+		// widens an empty member to Auto (#5836 still applies to a single launch). What the person chose (flags, capabilities, a saved default) is used as before.
+		entry, category := h.launchTeamMember(ctx, body, agentDef, userSettings, workingDir, worktreePath, teamID, false)
 		if category != "" && firstFailure == "" {
 			firstFailure = category
 		}
