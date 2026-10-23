@@ -6,7 +6,9 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -235,4 +237,32 @@ func TestWorktreeListProbesInParallelAndWithinABudget(t *testing.T) {
 	for _, e := range list {
 		assert.Equal(t, false, e["checked"], "not answered in time is not checked, never clean")
 	}
+}
+
+// Security's #6757 LOW (#6760): a git that answers the status read and then stalls on the unmerged-commits read leaves the entry not checked (the unmerged count is a cautious guess, not an answer), never
+// checked: true.
+func TestWorktreeEntryIsNotCheckedWhenTheUnmergedReadStalls(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake git is a shell script")
+	}
+	realGit, err := exec.LookPath("git")
+	require.NoError(t, err)
+	url, cfg := teamServer(t)
+	_, id, wt := launchWorktreeTeam(t, url, cfg, "stalls")
+	require.NoError(t, os.WriteFile(filepath.Join(wt, "unsaved.txt"), []byte("mine"), 0o644))
+
+	// the fake git: every command goes to the real one, except the branch listing the unmerged count reads, which never answers
+	fakeDir := t.TempDir()
+	script := "#!/bin/sh\nfor a in \"$@\"; do\n  if [ \"$a\" = for-each-ref ]; then exec sleep 30; fi\ndone\nexec " + realGit + " \"$@\"\n"
+	require.NoError(t, os.WriteFile(filepath.Join(fakeDir, "git"), []byte(script), 0o755))
+	t.Setenv("PATH", fakeDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	defer func(b time.Duration) { worktreeListBudget = b }(worktreeListBudget)
+	worktreeListBudget = 1500 * time.Millisecond
+
+	start := time.Now()
+	list := listWorktrees(t, url)
+	require.Len(t, list, 1, id)
+	assert.Less(t, time.Since(start), 5*time.Second, "the list returns at its budget")
+	assert.Equal(t, true, list[0]["dirty"], "the status read answered")
+	assert.Equal(t, false, list[0]["checked"], "the unmerged read did not: not checked")
 }
