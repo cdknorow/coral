@@ -157,7 +157,7 @@ export function startUpdateUi() {
     banner?.querySelector('.update-fail-close')?.addEventListener('click', () => { browserLocal.set(DISMISSED_KEY, banner.dataset.key || ''); banner.hidden = true; });
     timer = pollEvery(refreshUpdateStatus, POLL_MS); // skips a hidden tab and an overloaded server (overload.js)
     phone.addEventListener('change', placePill);
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshUpdateStatus(); });
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) { renderReadyNotice(); refreshUpdateStatus(); } }); // the notice waiting for a tab to be seen shows at once, from the last status; the read after it brings the newest
     document.addEventListener('coral-settings-group', (e) => { if (e.detail && e.detail.id === 'updates') importOnce('./update_settings.js').then((m) => m.showUpdatesPane()).catch(() => {}); });
     refreshUpdateStatus().then(resumeAfterSignIn);
 }

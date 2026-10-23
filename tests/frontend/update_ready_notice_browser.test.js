@@ -28,7 +28,7 @@ const stagedFrom = (source, relaunch = {}) => { const st = staged('1.4.160', {},
             if (url.includes('/api/cloud/status')) return json({ connected: false, hub_relaunch_updates: false });
             if (url.includes('/api/system/update')) {
                 window.__upd.calls.push({ method, url: url.replace(/^.*\\/api\\/system\\/update/, '') || '/status' });
-                if (url.endsWith('/api/system/update')) return window.__upd.status ? json(window.__upd.status) : json({ error: 'none' }, 404);
+                if (url.endsWith('/api/system/update')) { const answer = () => (window.__upd.status ? json(window.__upd.status) : json({ error: 'none' }, 404)); return window.__upd.delay ? new Promise(r => setTimeout(() => r(answer()), window.__upd.delay)) : answer(); }
                 return json({ ok: true });
             }
             return real(u, o);
@@ -106,6 +106,17 @@ const stagedFrom = (source, relaunch = {}) => { const st = staged('1.4.160', {},
             check(`${tag}: and nothing was sent but status reads`, (await calls()).slice(b2.length).every(c => c === 'GET /status'));
         }
 
+        console.log('\na notice waiting for a hidden tab shows the moment the tab is seen');
+        await load({ name: 'desktop', w: 1280, h: 900, phone: false, theme: 'dark' });
+        await ev(`Object.defineProperty(document, 'hidden', { configurable: true, get: () => true }); true`); // a tab nobody is looking at
+        await setStatus(staged('1.4.170'));
+        check('while the tab is hidden nothing is drawn', !(await notice()).shown);
+        await ev(`window.__upd.delay = 3000; Object.defineProperty(document, 'hidden', { configurable: true, get: () => false }); document.dispatchEvent(new Event('visibilitychange')); true`); // the status read that follows takes 3 s
+        await settle(200);
+        const seen = await notice();
+        check('seen again: the notice is there at once, not after the next read (the read is 3 s away)', seen && seen.shown && seen.text.includes('Coral 1.4.170 is ready.'), seen && seen.text);
+        await ev(`window.__upd.delay = 0; true`);
+
         console.log('\nthe confirmation says what is installed, from where, what restarts and that nothing installs without a yes');
         const RELEASES = 'https://github.com/subgentic/coral';
         const dialogWords = async (st) => {
@@ -127,11 +138,11 @@ const stagedFrom = (source, relaunch = {}) => { const st = staged('1.4.160', {},
         check('no claim that it installs at the next start, and none that the page comes back by itself', !/next time Coral starts|installs when|installed automatically|comes back by itself/i.test(dw.text));
         // a repository the status names that is not this page's: shown as text, never a link; a hostile or absent field is ignored
         dw = await dialogWords(stagedFrom('other/repo'));
-        check('another repository is shown as text and is not linked', dw.links.length === 0 && /\(github\.com\/other\/repo\)/.test(dw.first), dw.first);
+        check('another repository is not named at all: just GitHub, no address, no link', dw.links.length === 0 && dw.first === "Coral 1.4.160 comes from Coral's releases on GitHub. It was downloaded and its signature was checked. You are on 1.4.159." && !/other|repo/.test(dw.first), dw.first);
         dw = await dialogWords(stagedFrom('<img src=x onerror=window.__pwned=1>'));
-        check('a hostile source is ignored: no link, no element, plain github.com', dw.links.length === 0 && dw.foreign === 0 && /\(github\.com\)/.test(dw.first) && (await ev('window.__pwned')) === undefined, dw.first);
+        check('a hostile source is ignored: no link, no element, just GitHub', dw.links.length === 0 && dw.foreign === 0 && !/\(/.test(dw.first) && /releases on GitHub\./.test(dw.first) && (await ev('window.__pwned')) === undefined, dw.first);
         dw = await dialogWords(staged('1.4.160', {}, { restarts: [] }));
-        check('no source and no agents: the line still reads and the button is Install and relaunch', /Coral's releases on GitHub \(github\.com\)\./.test(dw.first) && dw.buttons.join() === 'Later,Install and relaunch' && dw.warn === '', dw.buttons.join());
+        check('no source and no agents: the line still reads and the button is Install and relaunch', /Coral's releases on GitHub\. It was downloaded/.test(dw.first) && dw.buttons.join() === 'Later,Install and relaunch' && dw.warn === '', dw.buttons.join());
 
         console.log('\nSettings: the sentence under the Coral Hub relaunch switch');
         await load({ name: 'desktop', w: 1280, h: 900, phone: false, theme: 'dark' });

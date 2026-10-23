@@ -48,9 +48,14 @@ function draw(note) {
     const body = mk('div', 'modal-body'); body.id = 'update-confirm-body';
     const days = s.staged.days;
     // Where it comes from: Coral's releases on the one pinned repository. The status says the repository only after verification; the words and the link are this page's (RELEASES_URL), never built from the status's text.
-    const from = mk('p'); from.append(document.createTextNode(`Coral ${s.staged.version} comes from Coral's releases on GitHub (`));
-    if (s.source === RELEASES_REPO) { const a = mk('a', 'update-source-link', RELEASES_URL.replace('https://', '')); a.href = RELEASES_URL; a.target = '_blank'; a.rel = 'noopener noreferrer'; from.append(a); } else from.append(document.createTextNode(s.source ? `github.com/${s.source}` : 'github.com'));
-    from.append(document.createTextNode(`). It was downloaded and its signature was checked${days >= 1 ? ` (ready for ${plural(days, 'day')})` : ''}. You are on ${s.installed}.`));
+    const from = mk('p'); from.append(document.createTextNode(`Coral ${s.staged.version} comes from Coral's releases on GitHub`));
+    // the address and its link only for the one repository this page knows (RELEASES_URL); any other name the status sends is not shown at all
+    if (s.source === RELEASES_REPO) {
+        from.append(document.createTextNode(' ('));
+        const a = mk('a', 'update-source-link', RELEASES_URL.replace('https://', '')); a.href = RELEASES_URL; a.target = '_blank'; a.rel = 'noopener noreferrer'; from.append(a);
+        from.append(document.createTextNode(')'));
+    }
+    from.append(document.createTextNode(`. It was downloaded and its signature was checked${days >= 1 ? ` (ready for ${plural(days, 'day')})` : ''}. You are on ${s.installed}.`));
     body.append(from);
     if (note) { const p = mk('p', 'update-note', note); p.setAttribute('role', 'status'); body.append(p); }
     if (n > 0) {
