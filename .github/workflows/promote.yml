@@ -1,0 +1,176 @@
+name: Promote release
+
+# Promotes a published release: signs promote.json, the manifest Coral's updater checks, and uploads it with its Sigstore bundle to the release (#6274).
+# Run by the release owner from the browser (Actions > Promote release > Run workflow). Team rule: no agent dispatches this workflow.
+#
+# The updater's client pins this file at this ref: .github/workflows/promote.yml on refs/heads/promote of this repository, trigger workflow_dispatch. The file
+# and everything it runs (tools/release_code.py, tools/promote_manifest.py) live on the protected promote branch, so one rule protects them all.
+#
+# Two jobs, one per privilege. validate: read only, no environment, no secrets: it reads the release and checks what release.yml signed. promote: the
+# release-promote environment (its reviewer approves first), the only job with id-token: write and contents: write. Its first steps mask the release code, check
+# out THIS ref (never main), and verify the code; only then does anything sign or upload. The inputs are data: they go through env, never into script text.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "The release tag to promote (a plain vX.Y.Z; a release that is still a pre-release is signed as one, which the client refuses: that is the rehearsal)"
+        required: true
+        type: string
+      code:
+        description: "The release code (six digits)"
+        required: true
+        type: string
+      lifetime_days:
+        description: "How many days the promotion is valid (1 to 59)"
+        required: false
+        default: "30"
+        type: string
+      revoke:
+        description: "Versions to revoke with this promotion (comma separated, at most 20)"
+        required: false
+        default: ""
+        type: string
+      replace:
+        description: "Replace an existing promotion of this tag (a second promotion, for example to revoke)"
+        required: false
+        default: false
+        type: boolean
+
+permissions: {}
+
+concurrency:
+  group: promote
+  cancel-in-progress: false
+
+env:
+  CORAL_TELEMETRY_DISABLED: "1"
+
+jobs:
+  validate:
+    name: Validate the release
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      source_sha: ${{ steps.release.outputs.source_sha }}
+      sums_sha256: ${{ steps.release.outputs.sums_sha256 }}
+      prerelease: ${{ steps.release.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - name: Check the inputs
+        env:
+          PROMOTE_TAG: ${{ inputs.tag }}
+          PROMOTE_LIFETIME_DAYS: ${{ inputs.lifetime_days }}
+          PROMOTE_REVOKE: ${{ inputs.revoke }}
+        run: python3 -I tools/promote_manifest.py check
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: "v3.0.6"
+      - name: Read the release and check what release.yml signed
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PROMOTE_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          rel="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${PROMOTE_TAG}")"
+          [ "$(jq -r .draft <<<"$rel")" = false ] || { echo "the release is a draft"; exit 1; }
+          [ "$(jq -r .tag_name <<<"$rel")" = "${PROMOTE_TAG}" ] || { echo "the release is not for this tag"; exit 1; }
+          prerelease="$(jq -r .prerelease <<<"$rel")"
+          # The commit the tag points at, from the repository (an annotated tag is peeled to its commit), never from an input.
+          sha="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${PROMOTE_TAG}" --jq .sha)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "the tag's commit could not be read"; exit 1; }
+          gh release download "${PROMOTE_TAG}" --repo "${GITHUB_REPOSITORY}" --pattern SHA256SUMS.txt --pattern SHA256SUMS.txt.sigstore.json --dir sums
+          # Only what release.yml signed at this tag, from this commit, by a tag push, is promoted: the exact identity, not a pattern.
+          cosign verify-blob sums/SHA256SUMS.txt --bundle sums/SHA256SUMS.txt.sigstore.json \
+            --certificate-identity "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/.github/workflows/release.yml@refs/tags/${PROMOTE_TAG}" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-github-workflow-repository "${GITHUB_REPOSITORY}" \
+            --certificate-github-workflow-ref "refs/tags/${PROMOTE_TAG}" \
+            --certificate-github-workflow-sha "${sha}" \
+            --certificate-github-workflow-trigger push
+          digest="$(sha256sum sums/SHA256SUMS.txt | cut -d' ' -f1)"
+          {
+            echo "source_sha=${sha}"
+            echo "sums_sha256=${digest}"
+            echo "prerelease=${prerelease}"
+          } >> "$GITHUB_OUTPUT"
+          echo "validated ${PROMOTE_TAG}: commit ${sha}, sums ${digest}, prerelease ${prerelease}"
+
+  promote:
+    name: Promote
+    needs: validate
+    runs-on: ubuntu-24.04
+    environment: release-promote   # the reviewer approves first; the code seed is this environment's secret; deployment branch: promote only
+    permissions:
+      id-token: write   # the keyless signature of promote.json: this job and release.yml are the only ones that may
+      contents: write   # gh release upload of promote.json and its bundle, nothing else
+    steps:
+      - name: Mask the release code
+        env:
+          RELEASE_CODE: ${{ inputs.code }}
+        run: |
+          python3 -I - <<'PY'
+          import os, re
+          for part in re.split(r"[\r\n\v\f\x1c-\x1e\x85  ]", os.environ.get("RELEASE_CODE", "")):
+              if part:
+                  print("::add-mask::" + part)
+          PY
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - name: Check the release code
+        env:
+          RELEASE_CODE: ${{ inputs.code }}
+          RELEASE_CODE_SEED: ${{ secrets.PROMOTE_TOTP_SEED }}
+        run: python3 -I tools/release_code.py verify
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: "v3.0.6"
+      - name: Write promote.json
+        env:
+          PROMOTE_TAG: ${{ inputs.tag }}
+          PROMOTE_LIFETIME_DAYS: ${{ inputs.lifetime_days }}
+          PROMOTE_REVOKE: ${{ inputs.revoke }}
+          PROMOTE_PRERELEASE: ${{ needs.validate.outputs.prerelease }}
+          PROMOTE_SOURCE_SHA: ${{ needs.validate.outputs.source_sha }}
+          PROMOTE_SUMS_SHA256: ${{ needs.validate.outputs.sums_sha256 }}
+        run: |
+          python3 -I tools/promote_manifest.py build
+          cat promote.json
+      - name: Sign promote.json and check the signature
+        run: |
+          set -euo pipefail
+          cosign sign-blob --yes --bundle promote.json.sigstore.json promote.json
+          # The identity the client pins: this workflow, this ref, a workflow_dispatch run in this repository.
+          cosign verify-blob promote.json --bundle promote.json.sigstore.json \
+            --certificate-identity "${GITHUB_SERVER_URL}/${GITHUB_WORKFLOW_REF}" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-github-workflow-repository "${GITHUB_REPOSITORY}" \
+            --certificate-github-workflow-ref refs/heads/promote \
+            --certificate-github-workflow-trigger workflow_dispatch
+      - name: Upload to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PROMOTE_TAG: ${{ inputs.tag }}
+          PROMOTE_REPLACE: ${{ inputs.replace }}
+        run: |
+          set -euo pipefail
+          existing="$(gh release view "${PROMOTE_TAG}" --repo "${GITHUB_REPOSITORY}" --json assets --jq '[.assets[].name | select(. == "promote.json" or . == "promote.json.sigstore.json")] | length')"
+          if [ "$existing" != 0 ] && [ "${PROMOTE_REPLACE}" != true ]; then
+            echo "this tag already has a promotion; run again with replace on to replace it (the old one stays valid until then)"
+            exit 1
+          fi
+          if [ "${PROMOTE_REPLACE}" = true ]; then clobber=(--clobber); else clobber=(); fi
+          gh release upload "${PROMOTE_TAG}" promote.json promote.json.sigstore.json --repo "${GITHUB_REPOSITORY}" "${clobber[@]}"
+          {
+            echo "### Promoted ${PROMOTE_TAG}"
+            echo
+            echo '```json'
+            cat promote.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

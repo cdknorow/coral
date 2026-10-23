@@ -67,6 +67,8 @@ var notAStarter = map[string]string{
 	"tests/release/gate_check_test.py":           "unit-tests the required-check logic with fake run lists; the repository name subgentic/coral is only a string, no Coral starts",
 	"tests/release/release_provenance_test.py":   "unit-tests the release provenance record with fake run lists; the repository name subgentic/coral is only a string, no Coral starts",
 	"tests/release/verify_buildinfo_test.py":     "unit-tests verify_buildinfo.sh with fake build-info texts; subgentic/coral and coral-board are only strings in them, no Coral starts",
+	"tests/release/promote_workflow_test.py":     "reads promote.yml as text and runs the manifest builder; the repository name subgentic/coral is only a string, no Coral starts",
+	"tools/promote_manifest.py":                  "the promote workflow's manifest builder: writes a JSON file from the environment; the repository name subgentic/coral is only a string, no Coral starts",
 	"tests/release/windows_build_census_test.py": "reads windows-tests.yml and release.yml as text (their build lines name coral-tray); no Coral starts",
 	// Sourced by run_agent_tasks.sh / run.sh (the parent exports the opt-out); not a top-level runner.
 	"tests/stress/agent_task_assignment.sh":   "sourced by run_agent_tasks.sh",
