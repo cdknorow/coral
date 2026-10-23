@@ -69,7 +69,7 @@ export function coralInbox() {
     if (_inbox) return _inbox;
     const host = document.getElementById('inbox-tasks-host');
     if (!host) return null;
-    _inbox = mountInbox(host, coralInboxAdapter, { load: false });
+    _inbox = mountInbox(host, coralInboxAdapter, { load: false, region: false });
     return _inbox;
 }
 

@@ -83,12 +83,14 @@ const SAVED_WORDS = {
  *   savedExpand(item, which)    the "Read the whole message" control for one saved item: { root, button, region } (the host puts `root` in the item)
  *   destroy()            removes what was mounted and forgets the drafts
  * options.load === false: do not read the tasks at once (the host calls refresh() when the list is shown).
- * @param {HTMLElement} host @param {object} adapter @param {{ load?: boolean }} [options]
+ * options.region === false: the root is a plain div, not a region named "Tasks for you" (the host's own panel is named already).
+ * @param {HTMLElement} host @param {object} adapter @param {{ load?: boolean, region?: boolean }} [options]
  */
 export function mountInbox(host, adapter, options) {
     checkAdapter(adapter);
-    const root = el('section', 'ibx');
-    root.setAttribute('aria-label', 'Tasks for you');
+    const named = !options || options.region !== false; // a host whose tab panel already carries the name (Coral's Inbox tab) asks for a plain div, so a screen reader does not list it twice
+    const root = el(named ? 'section' : 'div', 'ibx');
+    if (named) root.setAttribute('aria-label', 'Tasks for you');
     const live = el('div', 'ibx-live'); live.setAttribute('role', 'status'); live.setAttribute('aria-live', 'polite'); live.setAttribute('aria-atomic', 'true');
     const list = el('ul', 'ibx-tasks');
     const empty = el('p', 'ibx-empty'); empty.hidden = true;
