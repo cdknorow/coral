@@ -1038,9 +1038,8 @@
                         <h4 class="settings-pane-title">Network and Hub</h4>
                         <div class="info-grid settings-grid net-groups">
                 <section class="settings-row net-group" id="net-group-access" aria-labelledby="net-access-title">
-                <div class="net-group-head"><h3 id="net-access-title" class="net-group-title">Remote access</h3></div>
+                <div class="net-group-head"><h3 id="net-access-title" class="net-group-title">Remote access</h3><label class="check-hit"><input type="checkbox" id="settings-remote-access-enabled" aria-labelledby="net-access-title" aria-describedby="settings-remote-access-status net-remote-note settings-remote-access-enabled-desc"></label></div>
                 <div class="net-body">
-                    <label class="check-hit"><input type="checkbox" id="settings-remote-access-enabled" aria-labelledby="net-access-title" aria-describedby="settings-remote-access-status net-remote-note settings-remote-access-enabled-desc"></label>
                     <div id="settings-remote-access-status" class="settings-hint" role="status">Loading effective access status…</div>
                     <div id="net-remote-note" class="settings-hint" role="status"></div>
                     <div class="settings-hint" id="settings-remote-access-enabled-desc" data-info>Allow connections from other devices. Plain HTTP (unencrypted) unless Coral was started with --tls-cert and --tls-key.</div>
@@ -1131,9 +1130,8 @@
                 </section>
                 <section class="settings-row settings-row-hub net-group" id="net-group-manage" aria-labelledby="settings-hub-mode-label">
                 <!-- Manage other computers from this one (#3460, hub_mode_setting.js): saved at once, applied at the next start -->
-                <div class="net-group-head"><h3 id="settings-hub-mode-label" class="net-group-title">Manage other computers from this one</h3></div>
+                <div class="net-group-head"><h3 id="settings-hub-mode-label" class="net-group-title">Manage other computers from this one</h3><label class="settings-hub-mode-toggle"><input type="checkbox" id="settings-hub-mode-enabled" aria-labelledby="settings-hub-mode-label" aria-describedby="settings-hub-mode-line settings-hub-mode-desc settings-hub-mode-status"></label></div>
                 <div class="net-body" id="settings-hub-mode">
-                    <label class="settings-hub-mode-toggle"><input type="checkbox" id="settings-hub-mode-enabled" aria-labelledby="settings-hub-mode-label" aria-describedby="settings-hub-mode-line settings-hub-mode-desc settings-hub-mode-status"></label>
                     <div id="settings-hub-mode-line" class="settings-hint">Adds a Servers tab, with full control of those computers.</div>
                     <div id="settings-hub-mode-desc" class="settings-hint" data-info>It uses this Coral's own address, port and sign-in: the API key from other computers, and Remote access above for who can reach it. Nothing new listens. Turning it off keeps the servers you added.</div>
                     <div id="settings-hub-mode-status" class="settings-hint" role="status" aria-live="polite"></div>

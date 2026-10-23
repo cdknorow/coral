@@ -81,7 +81,7 @@ function buildInfoButtons(root) {
         btn.setAttribute('aria-label', `About ${name}`);
         btn.innerHTML = '<span class="material-icons" aria-hidden="true">info</span>';
         btn.addEventListener('click', () => { const open = box.hidden; box.hidden = !open; btn.setAttribute('aria-expanded', String(open)); });
-        dt.append(btn);
+        if (label.classList && label.classList.contains('net-group-title')) label.after(btn); else dt.append(btn); // a group's title: the (i) is beside it, before the switch
         row.append(box);
     }
 }

@@ -47,7 +47,7 @@ const BASE = require('./test_base').BASE;
     assert.equal(elementsExist.statusFound, true, 'remote access status element must exist');
     assert.equal(elementsExist.helpFound, true, 'telemetry help element must exist');
     assert.equal(elementsExist.telemetryAria, 'settings-telemetry-enabled-desc settings-telemetry-help', 'telemetry aria-describedby: its description, then the help');
-    assert.equal(elementsExist.remoteAria, 'settings-remote-access-status settings-remote-access-enabled-desc', 'remote access aria-describedby: the state first, then its description');
+    assert.equal(elementsExist.remoteAria, 'settings-remote-access-status net-remote-note settings-remote-access-enabled-desc', 'remote access aria-describedby: the state first, then what a pending change does (#6619), then its description');
     assert.equal(elementsExist.statusRole, 'status', 'status role="status"');
 
     // 2. Open Settings modal and verify state loading against real server API

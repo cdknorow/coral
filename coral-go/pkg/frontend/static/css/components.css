@@ -4384,18 +4384,14 @@ a.ibx-open, a.ibx-open:visited { color: var(--link-text); }
 .settings-row > .net-group-head { display: flex; flex-wrap: wrap; align-items: center; gap: .1rem .4rem; align-self: start; padding-top: .35rem; min-width: 0; }
 .net-group-title { margin: 0; font-size: .875rem; font-weight: 600; color: var(--text-primary); }
 .settings-row > .net-body { min-width: 0; margin: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; color: var(--text-primary); word-break: normal; overflow-wrap: anywhere; font-size: .8125rem; }
-.settings-row > .net-body:has(> .check-hit) { align-items: flex-end; }
-.settings-row > .net-body:has(> .check-hit) .settings-hint { align-self: stretch; text-align: right; }
-.net-body > .check-hit > input[type="checkbox"] { width: auto; margin: 0; flex: none; }
+.net-group-head .check-hit > input[type="checkbox"] { width: auto; margin: 0; flex: none; }
+.net-group-head > .check-hit, .net-group-head > .settings-hub-mode-toggle { display: inline-flex; align-items: center; margin: 0 0 0 auto; } /* (the dialog's generic label leaves 12 px under itself: the switch is centred on the title and the (i)) */
 .net-group[hidden] { display: none; }
 .settings-modal-body .net-groups { width: 100%; }
-.net-groups > .net-group { width: 100%; box-sizing: border-box; }
-.settings-row > .net-body:has(> .settings-hub-mode-toggle) { align-items: flex-end; }
-.settings-row > .net-body:has(> .settings-hub-mode-toggle) .settings-hint { align-self: stretch; text-align: right; }
+.net-groups > .net-group { width: 100%; box-sizing: border-box; grid-template-columns: minmax(0, 1fr); } /* a group is its head (title, (i), the switch at the far end) and its body under it, at every width */
 #settings-cloud .settings-cloud-connect-row .btn { margin-left: 0; }
 .settings-row > .net-group-head { flex-wrap: nowrap; }
 .settings-row > .net-group-head .net-group-title { min-width: 0; }
-@media (max-width: 767px) { .net-groups > .net-group { grid-template-columns: minmax(0, 1fr); } } /* a long group title takes the row, its body under it */
 @media (max-width: 767px) { #net-group-hub { order: -1; } }
 .settings-info-btn { display: inline-flex; align-items: center; justify-content: center; width: 1.5rem; height: 1.5rem; padding: 0; flex: none; border: 1px solid var(--control-border); border-radius: 50%; background: none; color: var(--text-secondary); cursor: pointer; }
 .settings-info-btn .material-icons { font-size: 1rem; }

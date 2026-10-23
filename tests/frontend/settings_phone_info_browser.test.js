@@ -19,11 +19,11 @@ const { connect } = require('./agent_view_harness');
 
         const rows = () => ev(`(() => { const out = []; for (const row of document.querySelectorAll('#settings-modal .settings-pane:not([hidden]) .settings-row')) {
             const info = row.querySelector('.settings-info-btn'); if (!info || !info.getClientRects().length) continue;
-            const dt = row.querySelector('dt'), label = dt.querySelector('label'); let a;
+            const dt = row.querySelector('dt, :scope > .net-group-head'), label = dt.querySelector('label, .net-group-title'); let a; // (the Network and Hub groups are sections with a heading, #6619)
             if (label) a = label.getBoundingClientRect(); else { const t = [...dt.childNodes].find(n => n.nodeType === 3 && n.textContent.trim()) || dt.querySelector('span'); /* the Agent tools folder row (shown when the folder is not a place only an administrator can write, as a dev build's is) labels itself with a span */ const rg = document.createRange(); rg.selectNodeContents(t); a = rg.getBoundingClientRect(); } // a row whose title is bare text in the dt
             const b = info.getBoundingClientRect();
-            const tog = row.querySelector(':scope > dd > .check-hit input'), tb = tog && tog.getBoundingClientRect();
-            out.push({ label: dt.textContent.replace(/info/, '').trim().slice(0, 30), off: tb ? Math.round(Math.abs((tb.top + tb.bottom) / 2 - (b.top + b.bottom) / 2) * 10) / 10 : null, info: [Math.round(b.width), Math.round(b.height)], level: b.top < a.bottom && b.bottom > a.top, right: b.left >= a.right - 2, row: Math.round(row.getBoundingClientRect().height), dt: Math.round(dt.getBoundingClientRect().width), dd: row.querySelector('dd') ? Math.round(row.querySelector('dd').getBoundingClientRect().width) : 0, cols: getComputedStyle(row).gridTemplateColumns });
+            const tog = row.querySelector(':scope > dd > .check-hit input, :scope > .net-group-head > .check-hit input, :scope > .net-group-head > .settings-hub-mode-toggle input'), tb = tog && tog.getBoundingClientRect();
+            out.push({ label: dt.textContent.replace(/info/, '').trim().slice(0, 30), off: tb ? Math.round(Math.abs((tb.top + tb.bottom) / 2 - (b.top + b.bottom) / 2) * 10) / 10 : null, info: [Math.round(b.width), Math.round(b.height)], level: b.top < a.bottom && b.bottom > a.top, right: b.left >= a.right - 2, row: Math.round(row.getBoundingClientRect().height), dt: Math.round(dt.getBoundingClientRect().width), dd: row.querySelector('dd, :scope > .net-body') ? Math.round(row.querySelector('dd, :scope > .net-body').getBoundingClientRect().width) : 0, cols: getComputedStyle(row).gridTemplateColumns });
         } return out; })()`);
         let seen = 0, general = 0, toggles = 0;
         for (const g of groups) {
