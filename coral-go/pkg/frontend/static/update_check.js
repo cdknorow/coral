@@ -4,7 +4,7 @@ import { escapeHtml, showToast, escapeAttr } from './utils.js';
 import { registerActions, textOf } from './actions.js';
 import { browserLocal } from './safe_storage.js';
 import { reportUpdate } from './dashboard_analytics.js';
-import { placeNotices } from './notifications.js';
+import { noticeColumn } from './notifications.js';
 
 /**
  * Fetch update info from the backend and show a toast if a new version is available.
@@ -147,16 +147,10 @@ function showWarningToast(id, heading, message) {
     warningStack().appendChild(toast);
 }
 
-// The warnings (security, firewall, database) share one column at the bottom right: each used to sit at that same corner, so two at once were drawn over each other.
+// The warnings (security, firewall, database) and the update notice share the page's column of notices (notifications.js noticeColumn), so two at once are not drawn over each other.
 function warningStack() {
-    let stack = document.getElementById("warning-toasts");
-    if (!stack) {
-        stack = document.createElement("div");
-        stack.id = "warning-toasts";
-        document.body.appendChild(stack);
-    }
-    placeNotices(); // below the top bar on a phone
-    return stack;
+    noticeColumn();
+    return document.getElementById("warning-toasts");
 }
 
 // On a phone a notice is one line (its title and two buttons) until opened; this opens or folds it, and says so to a screen reader (css hides the details by clipping, so an announced alert still carries them).

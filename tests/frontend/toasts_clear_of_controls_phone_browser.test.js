@@ -51,6 +51,9 @@ async function httpJson(method, p, body) { const r = await fetch(BASE + p, { met
         check('phone: the column of notices is at the top, in the screen, and ends above the composer', geo.stack.t >= 0 && geo.stack.b < geo.composer.t && geo.stack.l >= 0 && geo.stack.r <= geo.vw, JSON.stringify(geo.stack));
         check('phone: the update notice is inside that column (not a second layer on top of it)', geo.update.t >= geo.stack.t - 1 && geo.update.b <= geo.stack.b + 1, JSON.stringify(geo.update));
         check('phone: the short toasts are at the top, inside the screen, above the composer', geo.toasts.length >= 2 && geo.toasts.every(t => t.t >= 0 && t.b < geo.composer.t && t.l >= 0 && t.r <= geo.vw), JSON.stringify(geo.toasts));
+        check('phone: the short toasts are below the notices, not over them', geo.toasts.every(t => t.t >= geo.stack.b - 1), JSON.stringify({ stack: geo.stack, toasts: geo.toasts }));
+        const noticeButtons = await ev(`[...document.querySelectorAll('#warning-toasts .update-toast-more, #warning-toasts .update-toast-close')].map(e => { const b = e.getBoundingClientRect(); const t = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2); return (t === e || e.contains(t)) ? 'ok' : (e.className + ' covered by ' + (t ? t.tagName + '.' + String(t.className).slice(0, 30) : 'nothing')); })`);
+        check('phone: every notice arrow and dismiss is hit-testable while short toasts are shown', noticeButtons.length >= 7 && noticeButtons.every(v => v === 'ok'), JSON.stringify(noticeButtons));
         const [a, b] = geo.toasts.slice().sort((x, y) => x.t - y.t);
         check('phone: two short toasts are one under the other, not on each other', !!b && a.b <= b.t + 1, JSON.stringify(geo.toasts));
         const seen = await hits({ toast: '.toast', errorToast: '.toast.error' });
@@ -85,8 +88,10 @@ async function httpJson(method, p, body) { const r = await fetch(BASE + p, { met
             return { toast: r(document.querySelector('.toast')), update: r(document.getElementById('update-toast')), warn: r(document.getElementById('security-warning-toast')), vw: innerWidth, vh: innerHeight, clickable: getComputedStyle(document.getElementById('update-toast')).pointerEvents }; })()`);
         const two = await ev(`[...document.querySelectorAll('.toast')].map(t => { const b = t.getBoundingClientRect(); return { t: Math.round(b.top), b: Math.round(b.bottom) }; }).sort((x, y) => x.t - y.t)`);
         check('desktop: two short toasts are one above the other, not on each other', two.length >= 2 && two[0].b <= two[1].t + 1, JSON.stringify(two));
+        const dd = await ev(`(() => { const r = e => { const b = e.getBoundingClientRect(); return { t: Math.round(b.top), b: Math.round(b.bottom) }; }; const w = document.getElementById('security-warning-toast'), t = [...document.querySelectorAll('.toast')]; return { warn: r(w), toasts: t.map(r) }; })()`);
+        check('desktop: the short toasts are below the warnings, not over them', dd.toasts.every(t => t.t >= dd.warn.b - 1), JSON.stringify(dd));
         check('desktop: the update notice is still at the top right and clickable', d.update.t < 60 && d.update.r > d.vw - 40 && d.clickable === 'auto', JSON.stringify(d.update));
-        check('desktop: the warnings and the short toasts are still at the bottom right', d.warn.b > d.vh - 60 && d.warn.r > d.vw - 40 && d.toast.b > d.vh - 60 && d.toast.r > d.vw - 40, JSON.stringify({ warn: d.warn, toast: d.toast }));
+        check('desktop: the warnings and the short toasts are still one column at the bottom right (the toasts at the very bottom, the warnings above them)', d.warn.r > d.vw - 40 && d.toast.b > d.vh - 60 && d.toast.r > d.vw - 40 && d.warn.b <= d.toast.t + 1, JSON.stringify({ warn: d.warn, toast: d.toast }));
     } finally { if (standIn) await standIn.stop().catch(() => {}); await guard.restore().catch(() => {}); }
     const failed = results.filter(r => !r).length;
     console.log(`toasts_clear_of_controls_phone: ${results.length - failed}/${results.length} passed`);

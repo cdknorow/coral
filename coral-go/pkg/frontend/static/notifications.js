@@ -66,24 +66,35 @@ export function showToast(message, isError = false, duration = 4000, opts = {}) 
     return toast;
 }
 
-// The short toasts share one column, so two at once do not sit on each other (the second hid the first, #6162): bottom right on a desktop, the top on a phone (css).
-function toastHost() {
-    let host = document.getElementById("toast-host");
-    if (!host) {
-        host = document.createElement("div");
-        host.id = "toast-host";
-        document.body.appendChild(host);
+// Everything that appears over the page shares one column, #notices: the warnings and the update notice first (#warning-toasts), the short toasts below them (#toast-host), so none sits on another (the second short
+// toast hid the first, and on a phone the toasts hid the notices' titles). Bottom right on a desktop, under the top bar on a phone (css).
+export function noticeColumn() {
+    let col = document.getElementById("notices");
+    if (!col) {
+        col = document.createElement("div");
+        col.id = "notices";
+        const warnings = document.createElement("div");
+        warnings.id = "warning-toasts";
+        const toasts = document.createElement("div");
+        toasts.id = "toast-host";
+        col.append(warnings, toasts);
+        document.body.appendChild(col);
     }
     placeNotices();
-    return host;
+    return col;
 }
 
-// On a phone the notices and the short toasts start below the top bar (the Agents picker, home, bookmarks, panel, settings), never over it: css reads --notice-top, set here from the bar's own bottom edge on the two
-// columns themselves (not on <html>, where the theme code treats every inline custom property as a theme colour) and kept current when the window changes.
+function toastHost() {
+    noticeColumn();
+    return document.getElementById("toast-host");
+}
+
+// On a phone the notices and the short toasts start below the top bar (the Agents picker, home, bookmarks, panel, settings), never over it: css reads --notice-top, set here from the bar's own bottom edge on the column
+// itself (not on <html>, where the theme code treats every inline custom property as a theme colour) and kept current when the window changes.
 export function placeNotices() {
     const bar = document.querySelector("header.top-bar");
     const top = `${Math.max(bar ? Math.round(bar.getBoundingClientRect().bottom) : 0, 0) + 8}px`;
-    for (const id of ["toast-host", "warning-toasts"]) document.getElementById(id)?.style.setProperty("--notice-top", top);
+    document.getElementById("notices")?.style.setProperty("--notice-top", top);
     if (!placeNotices._wired) { placeNotices._wired = true; window.addEventListener("resize", placeNotices); }
 }
 

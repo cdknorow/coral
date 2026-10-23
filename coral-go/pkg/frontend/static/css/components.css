@@ -1415,12 +1415,22 @@ button.subscriber-history-link {
     overflow-y: auto;
 }
 
-/* The warnings share one column (security, firewall, database), so two at once do not sit on each other (#5737). */
-#warning-toasts {
+/* One column for everything over the page (#notices): the warnings and the update notice (#warning-toasts), then the short toasts (#toast-host). Bottom right; a phone puts it under the top bar. */
+#notices {
     position: fixed;
     right: 20px;
     bottom: 20px;
     z-index: 300;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    align-items: flex-end;
+    max-width: calc(100vw - 40px);
+    max-height: calc(100vh - 40px);
+    pointer-events: none;
+}
+/* The warnings share one column (security, firewall, database), so two at once do not sit on each other (#5737). */
+#warning-toasts {
     display: flex;
     flex-direction: column-reverse;
     gap: 10px;
@@ -1429,18 +1439,20 @@ button.subscriber-history-link {
     overflow-y: auto;
     pointer-events: none;
 }
+#warning-toasts:has(.security-warning-toast) { margin-bottom: 10px; }
 #warning-toasts > .security-warning-toast { position: static; min-width: 0; pointer-events: auto; animation: none; }
 #warning-toasts .security-warning-text { max-height: 26vh; } /* three can show at once: each scrolls its own text before the column outgrows the window */
 /* The update notice is a child of the column too: on a desktop it stays fixed at the top right, as it was. */
 #warning-toasts > .update-toast:not(.security-warning-toast) { pointer-events: auto; }
 .update-toast-more { display: none; } /* the arrow that opens a notice is a phone's: a desktop shows them whole */
 /* The short toasts share one column (a second no longer hides the first): bottom right, as each was. */
-#toast-host { position: fixed; right: 20px; bottom: 20px; z-index: 200; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; max-width: min(520px, calc(100vw - 40px)); pointer-events: none; }
+#toast-host { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; max-width: min(520px, 100%); pointer-events: none; }
 #toast-host > .toast { position: static; pointer-events: auto; animation: slideIn 0.3s ease, fadeOut 0.3s ease 2.7s; }
 #toast-host > .toast.has-action { animation: slideIn 0.3s ease; }
 /* On a phone the notices and the short toasts are at the top: at the bottom they sat over the composer, Send, Wake and a dialog's buttons (#6162, found on a Windows run where the data-folder warning covered Wake). The column scrolls when several are open. */
 @media (max-width: 767px) {
-    #warning-toasts { top: var(--notice-top, calc(env(safe-area-inset-top, 0px) + 8px)); bottom: auto; left: 8px; right: 8px; width: auto; flex-direction: column; max-height: 45vh; gap: 6px; }
+    #notices { top: var(--notice-top, calc(env(safe-area-inset-top, 0px) + 8px)); bottom: auto; left: 8px; right: 8px; max-width: none; justify-content: flex-start; align-items: stretch; }
+    #warning-toasts { width: auto; flex-direction: column; max-height: 45vh; gap: 6px; }
     #warning-toasts > .update-toast { position: static; min-width: 0; max-width: none; animation: none; }
     /* A notice is one line (its title and two 44 px buttons); the details open on the arrow. Clipped, not display:none, so an announced alert still carries them. */
     #warning-toasts > .update-toast .update-toast-body { padding: 0 4px 0 14px; gap: 0; }
@@ -1454,7 +1466,7 @@ button.subscriber-history-link {
     #warning-toasts > .update-toast.expanded .update-toast-body { padding: 0 4px 12px 14px; gap: 8px; }
     #warning-toasts > .update-toast.expanded .update-toast-title { white-space: normal; }
     #warning-toasts > .update-toast.expanded .update-toast-current { display: inline; }
-    #toast-host { top: var(--notice-top, calc(env(safe-area-inset-top, 0px) + 8px)); bottom: auto; left: 8px; right: 8px; max-width: none; align-items: stretch; z-index: 310; } /* above the notices: a short toast must be seen */
+    #toast-host { max-width: none; align-items: stretch; } /* below the notices, in the same column: a short toast hides nothing */
     #toast-host > .toast { max-width: none; }
     /* A long toast is two lines, a tap shows the rest (it would otherwise cover a third of the screen). */
     #toast-host > .toast .toast-message { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
