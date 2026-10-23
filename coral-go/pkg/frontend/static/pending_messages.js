@@ -348,7 +348,7 @@ function syncPendingGroup(container, cls, items, label) {
     if (wrap.dataset.count !== String(items.length)) wrap.dataset.count = String(items.length); // a phone says "2 queued" once instead of a label on every bubble (#6737)
     const want = new Set(items.map(p => p.id));
     for (const el of Array.from(wrap.children)) {
-        if (!want.has(Number(el.dataset.pendingId))) el.remove();
+        if (!el.classList.contains("pending-count") && !want.has(Number(el.dataset.pendingId))) el.remove();
     }
     const have = new Set(Array.from(wrap.children).map(el => Number(el.dataset.pendingId)));
     for (const p of items) {
@@ -367,6 +367,15 @@ function syncPendingGroup(container, cls, items, label) {
         // Keep send order even when a message moves between groups
         const next = Array.from(wrap.children).find(c => Number(c.dataset.pendingId) > p.id);
         wrap.insertBefore(el, next || null);
+    }
+    // "2 queued" is a line of text in the list (a phone shows it; the per-message labels go then), not a ::before: assistive technology reads text, not generated content (#6737)
+    if (cls === "pending-queued") {
+        let c = wrap.querySelector(":scope > .pending-count");
+        const said = items.length > 1 ? `${items.length} queued` : "";
+        if (said) {
+            if (!c) { c = document.createElement("div"); c.className = "pending-count"; wrap.prepend(c); }
+            if (c.textContent !== said) c.textContent = said;
+        } else if (c) c.remove();
     }
     return wrap;
 }

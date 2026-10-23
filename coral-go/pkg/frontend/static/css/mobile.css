@@ -1447,11 +1447,12 @@
     .cni-answer:not(.btn):not(.cni-link) { min-height: var(--control-touch-height, 44px); align-items: center; }
 }
 
+.pending-messages > .pending-count { display: none; } /* a desktop's queued messages each say Queued; the count line is the phone's */
 /* Messages waiting to be sent are one line each on a phone (#6737): two queued messages took 103 px at 100% text and half the screen at 200%. With more than one, the list says its count once ("2 queued")
    and the per-message labels go (the count is in the page as text, the labels are the same word repeated). */
 @media (max-width: 767px), (pointer: coarse) and (max-height: 500px) and (max-width: 950px) {
     .pending-messages.pending-queued { display: flex; flex-direction: column; gap: 4px; }
-    .pending-messages.pending-queued:not([data-count="1"])::before { content: attr(data-count) " queued"; font-size: var(--fs-base); color: var(--text-secondary); font-family: var(--font-sans); }
+    .pending-messages.pending-queued > .pending-count { display: block; font-size: var(--fs-base); color: var(--text-secondary); font-family: var(--font-sans); }
     .pending-messages.pending-queued:not([data-count="1"]) .pending-label { display: none; }
     .pending-messages.pending-queued .chat-bubble.human.pending { display: flex; align-items: center; gap: 8px; margin: 0; padding: 6px 10px; }
     .pending-messages.pending-queued .chat-bubble.human.pending .message-text { flex: 1 1 auto; min-width: 0; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; }

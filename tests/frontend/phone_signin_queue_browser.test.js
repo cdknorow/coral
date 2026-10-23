@@ -22,7 +22,7 @@ const SIGNED_OUT = `(() => { const R = window.fetch; window.fetch = async functi
         const lineH = () => ev(`(() => { const b = document.getElementById('signin-line-btn'); const r = b.getBoundingClientRect(), fs = parseFloat(getComputedStyle(b).fontSize); return { shown: !document.getElementById('claude-signin-line').hidden && r.height > 0, h: r.height, fs, lines: Math.round(r.height / (fs * 1.2)), text: b.innerText.replace(/\\s+/g, ' ').trim() }; })()`);
         // a queued message is only queued while the agent is busy
         await ev(`import(${S} + 'state.js').then(st => { const r = st.state.liveSessions.find(s => s.session_id === 'rep-id'); r.working = true; r.awaiting_user = false; return true; })`);
-        const queue = n => ev(`import(${S} + 'pending_messages.js').then(m => { for (let i = 0; i < ${n}; i++) m.addPendingMessage('rep-id', 'Then also update the docs and the changelog for the release, number ' + i + ', and tell me when it is done', Date.now() + i); const w = document.querySelector('#live-history-messages .pending-queued'); const r = w.getBoundingClientRect(); const items = [...w.querySelectorAll('.chat-bubble.pending')].map(b => b.getBoundingClientRect().height); return { h: r.height, items, count: w.dataset.count || '', before: getComputedStyle(w, '::before').content }; })`);
+        const queue = n => ev(`import(${S} + 'pending_messages.js').then(m => { for (let i = 0; i < ${n}; i++) m.addPendingMessage('rep-id', 'Then also update the docs and the changelog for the release, number ' + i + ', and tell me when it is done', Date.now() + i); const w = document.querySelector('#live-history-messages .pending-queued'); const r = w.getBoundingClientRect(); const items = [...w.querySelectorAll('.chat-bubble.pending')].map(b => b.getBoundingClientRect().height); return { h: r.height, items, count: w.dataset.count || '', before: getComputedStyle(w, '::before').content, line: (w.querySelector(':scope > .pending-count') || {}).textContent || '', lineShown: !!w.querySelector(':scope > .pending-count') && w.querySelector(':scope > .pending-count').getClientRects().length > 0 }; })`);
         for (const [pct, fs] of [[100, 16], [200, 32]]) {
             await ev(`document.documentElement.style.fontSize = '${fs}px'; true`); await sleep(400); // sleep-ok: layout settles after the text size changes
             await ev(`import(${S} + 'signin_line.js').then(m => { m.setClaudeSignedIn(false); return true; })`);
@@ -42,7 +42,9 @@ const SIGNED_OUT = `(() => { const R = window.fetch; window.fetch = async functi
         const two = await queue(1);
         assert.ok(two.items.every(h => h <= 48), `each queued message is one line (${JSON.stringify(two.items)})`);
         assert.ok(two.h <= 140, `two queued messages with their count take little of the screen (${two.h} px)`);
-        assert.ok(/2/.test(two.count || two.before), `with more than one, the count is said (${JSON.stringify([two.count, two.before])})`);
+        assert.equal(two.line, '2 queued', `with more than one, the count is a line of text in the list, not generated content (${JSON.stringify([two.line, two.before])})`);
+        assert.ok(two.lineShown && (two.before === 'none' || two.before === 'normal'), `the count line is shown and nothing is drawn by ::before (${JSON.stringify(two)})`);
+        assert.equal(one.line, '', 'one queued message has no count line');
         await ev(`document.documentElement.style.fontSize = '32px'; true`); await sleep(400); // sleep-ok: layout settles after the text size changes
         const big = await ev(`(() => { const w = document.querySelector('#live-history-messages .pending-queued'); return { h: w.getBoundingClientRect().height, items: [...w.querySelectorAll('.chat-bubble.pending')].map(b => b.getBoundingClientRect().height) }; })()`);
         assert.ok(big.items.every(h => h <= 72), `at 200% each queued message is one line (${JSON.stringify(big.items)})`);
