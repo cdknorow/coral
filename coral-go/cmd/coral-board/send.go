@@ -110,7 +110,11 @@ func runSend(args []string, id sendIdentity, out io.Writer) error {
 		return fmt.Errorf("--reply-to and --message-id go with --address")
 	}
 	if target == "" || message == "" {
-		return fmt.Errorf(`usage: coral-board send --board <target> [--to <orchestrator>] [--attach coral://artifacts/<id> ...] "<message>"`)
+		return usageError(`usage: coral-board send --board <target> [--to <orchestrator>] [--attach coral://artifacts/<id> ...] "<message>"` + missingMessageHint(target, message))
+	}
+	// (1) a target of another Coral ("<server>/<team>", from 'targets') is not a board of this one
+	if strings.Contains(target, "/") {
+		return usageError(fmt.Sprintf("%s looks like a team on another Coral. Use --address %s (see coral-board targets); --board takes a board on this Coral.", target, target))
 	}
 	if len(attach) > 4 {
 		return fmt.Errorf("at most 4 --attach per send")
@@ -163,14 +167,31 @@ func cmdSend() {
 	}
 	if err := runSend(os.Args[2:], id, os.Stdout); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		if clierr.KindOf(err) == clierr.Usage {
+			os.Exit(clierr.ExitUsage) // nothing was sent
+		}
 		clierr.Exit1()
 	}
+}
+
+// usageError is an error of the command line (exit 2: nothing was sent).
+func usageError(msg string) error { return &clierr.Error{Kind: clierr.Usage, Msg: msg} }
+
+// missingMessageHint says what is missing when it is the message (not the target) that is.
+func missingMessageHint(target, message string) string {
+	if target != "" && message == "" {
+		return "\nA message is required: add quoted text, --file <UTF-8 path>, or - to read stdin (coral-board help send)."
+	}
+	return ""
 }
 
 // runRelaySend sends message to another Coral through Coral Hub (#3489).
 func runRelaySend(id sendIdentity, address, replyTo, messageID, message string, attach []string, out io.Writer) error {
 	if message == "" {
-		return fmt.Errorf(`usage: coral-board send --address <server>/<team> [--reply-to <message id>] [--message-id <id>] "<message>"`)
+		return usageError(`usage: coral-board send --address <server>/<team> [--reply-to <message id>] [--message-id <id>] [--attach coral://artifacts/<id> ...] "<message>"` + missingMessageHint("x", ""))
+	}
+	if !strings.Contains(address, "/") { // a board of this Coral given as an address
+		return usageError(fmt.Sprintf("--address needs <server>/<team> from coral-board targets. To message the board %s on this Coral, use --board %s.", address, address))
 	}
 	if id.Board == "" {
 		return fmt.Errorf("not subscribed to a board. Run: coral-board join <project> --as <role>")
@@ -227,6 +248,9 @@ func runRelaySend(id sendIdentity, address, replyTo, messageID, message string, 
 		}
 		msg := fmt.Sprintf("send to %q failed. Coral says: %s (HTTP %d)", address, words, status)
 		switch {
+		case result.Code == "not_linked" || strings.HasPrefix(result.Error, "not_linked"):
+			// Nothing was delivered, and a retry fails the same way until this Coral is connected: that is the Operator's step, not a wait.
+			msg += " (nothing was delivered; ask the Operator to connect this Coral to Coral Hub, then choose an address from coral-board targets: retrying before that will fail)"
 		case status == http.StatusNotImplemented:
 			// The hub doesn't relay (switched off, or too old): a retry fails the same way
 			// until whoever runs the hub turns it on or updates it (#3503).

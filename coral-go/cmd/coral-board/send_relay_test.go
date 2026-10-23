@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/subgentic/coral/internal/clierr"
 )
 
 // #3489: send --address goes to this board's relay-messages route with the sender's own
@@ -124,7 +126,7 @@ func TestSendAddressPrintsItsMessageIDOnFailure(t *testing.T) {
 		sent, _ = b["message_id"].(string)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusServiceUnavailable)
-		w.Write([]byte(`{"ok":false,"error":"not_linked"}`))
+		w.Write([]byte(`{"ok":false,"error":"hub busy"}`))
 	}))
 	defer ts.Close()
 	oldURL := serverURL
@@ -165,9 +167,48 @@ func TestSendAddressDoesNotSuggestARetryWhenTheHubDoesNotRelay(t *testing.T) {
 		t.Fatalf("the error says the hub doesn't relay: %v", err)
 	}
 
+	// A hub that is not connected at all (#334): nothing was delivered and a retry fails the same way, so the words send the person to the Operator, not to a retry.
 	status, reply = http.StatusServiceUnavailable, `{"ok":false,"error":"not_linked"}`
+	if err := send(); err == nil || strings.Contains(err.Error(), "retry later") || !strings.Contains(err.Error(), "ask the Operator to connect this Coral to Coral Hub") {
+		t.Fatalf("not_linked does not advise a retry: %v", err)
+	}
+	status, reply = http.StatusServiceUnavailable, `{"ok":false,"error":"hub busy"}`
 	if err := send(); err == nil || !strings.Contains(err.Error(), "retry later with --message-id") {
-		t.Fatalf("a 503 keeps the retry hint: %v", err)
+		t.Fatalf("any other 503 keeps the retry hint: %v", err)
+	}
+}
+
+// #334 (the Codex tester's #333): the wrong form of a target, and a missing message, are usage errors that say what to do and send nothing.
+func TestSendUsageErrorsSayWhatToDo(t *testing.T) {
+	requests := 0
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { requests++ }))
+	defer ts.Close()
+	oldURL := serverURL
+	serverURL = ts.URL
+	defer func() { serverURL = oldURL }()
+	id := sendIdentity{Board: "alpha", SubscriberID: "Orchestrator", SessionName: "s"}
+	for name, tc := range map[string]struct {
+		args []string
+		want []string
+	}{
+		"--board with a server/team form":   {[]string{"--board", "pro/b-4tt7u67wul", "hi"}, []string{"looks like a team on another Coral", "--address pro/b-4tt7u67wul", "coral-board targets"}},
+		"--address with a local board name": {[]string{"--address", "beta", "hi"}, []string{"--address needs <server>/<team>", "--board beta"}},
+		"a missing message, local":          {[]string{"--board", "beta"}, []string{"usage: coral-board send --board", "A message is required", "--file", "stdin"}},
+		"a missing message, address":        {[]string{"--address", "homelab/qa"}, []string{"usage: coral-board send --address", "--attach", "A message is required"}},
+	} {
+		err := runSend(tc.args, id, &bytes.Buffer{})
+		if err == nil || clierr.KindOf(err) != clierr.Usage {
+			t.Errorf("%s: want a usage error, got %v", name, err)
+			continue
+		}
+		for _, w := range tc.want {
+			if !strings.Contains(err.Error(), w) {
+				t.Errorf("%s: %q is missing %q", name, err.Error(), w)
+			}
+		}
+	}
+	if requests != 0 {
+		t.Errorf("a usage error sends nothing: %d requests", requests)
 	}
 }
 
