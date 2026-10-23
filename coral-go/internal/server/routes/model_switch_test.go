@@ -62,7 +62,7 @@ func newSwitchRig(t *testing.T, agentType string) *switchRig {
 	t.Setenv("CLAUDE_PROJECTS_DIR", dir)
 	server, h, term, ss := setupSessionsTestServer(t)
 	stubCLIPaths(t, ss)
-	setSwitchTiming(t, switchTimings{poll: 5 * time.Millisecond, idleWait: 400 * time.Millisecond, modelConfirm: 400 * time.Millisecond, levelConfirm: 600 * time.Millisecond})
+	setSwitchTiming(t, switchTimings{poll: 5 * time.Millisecond, idleWait: 400 * time.Millisecond, modelConfirm: 400 * time.Millisecond, levelConfirm: 600 * time.Millisecond, settle: 20 * time.Millisecond, landWait: 300 * time.Millisecond})
 	rig := &switchRig{server: &testServer{URL: server.URL}, sid: "abcdef01-2222-3333-4444-555555555555", ss: ss, h: h, term: term}
 	rig.name = agentType + "-" + rig.sid
 	work := t.TempDir()
@@ -625,4 +625,46 @@ func TestSwitchesAreConfirmedFromEitherTranscriptFormat(t *testing.T) {
 			})
 		})
 	}
+}
+
+// #6225: a quick second choice (High, then Extra high) was typed while Claude still showed the output of the first, and was lost without a trace: the text left the input box, which reads as "the
+// command ran", and the transcript never held it. The second now waits settle after the first was typed, and a command that is not in the transcript within landWait is typed once more.
+func TestAQuickSecondChoiceWaitsForTheFirstToSettleAndBothAreTyped(t *testing.T) {
+	r := newSwitchRig(t, "claude")
+	setSwitchTiming(t, switchTimings{poll: 5 * time.Millisecond, idleWait: 400 * time.Millisecond, modelConfirm: 400 * time.Millisecond, levelConfirm: 2 * time.Second, settle: 300 * time.Millisecond, landWait: 2 * time.Second})
+	_, _ = r.post(t, map[string]any{"thinking": "high"})
+	r.waitTyped(t, "/effort high")
+	typedHigh := time.Now()
+	code, m := r.post(t, map[string]any{"thinking": "xhigh"}) // 202, as the real case: no 409
+	require.Equal(t, http.StatusAccepted, code, m)
+	r.waitTyped(t, "/effort xhigh")
+	assert.GreaterOrEqual(t, time.Since(typedHigh), 250*time.Millisecond, "Extra high is typed only after the first command has settled")
+	assert.Equal(t, []string{"/effort high", "/effort xhigh"}, r.typed(), "both commands are typed, in order")
+	r.localCommand(t, "/effort", "xhigh", "Set effort level to xhigh (saved as your default for new sessions)")
+	r.waitState(t, switchDone)
+	_, th := r.storedModel(t)
+	assert.Equal(t, "xhigh", th, "confirmed at Extra high")
+}
+
+func TestACommandThatNeverReachesTheTranscriptIsTypedOnceMore(t *testing.T) {
+	r := newSwitchRig(t, "claude")
+	setSwitchTiming(t, switchTimings{poll: 5 * time.Millisecond, idleWait: 400 * time.Millisecond, modelConfirm: 400 * time.Millisecond, levelConfirm: 2 * time.Second, settle: 10 * time.Millisecond, landWait: 150 * time.Millisecond})
+	_, _ = r.post(t, map[string]any{"thinking": "xhigh"})
+	require.Eventually(t, func() bool { return len(r.typed()) == 2 }, 3*time.Second, 5*time.Millisecond, "a command Claude did not take (nothing in the transcript) is typed again")
+	assert.Equal(t, []string{"/effort xhigh", "/effort xhigh"}, r.typed())
+	r.localCommand(t, "/effort", "xhigh", "Set effort level to xhigh (saved as your default for new sessions)")
+	r.waitState(t, switchDone)
+	time.Sleep(60 * time.Millisecond) // sleep-ok: no third copy
+	assert.Len(t, r.typed(), 2, "once more, not for ever")
+
+	t.Run("a command that lands is typed once", func(t *testing.T) {
+		r := newSwitchRig(t, "claude")
+		setSwitchTiming(t, switchTimings{poll: 5 * time.Millisecond, idleWait: 400 * time.Millisecond, modelConfirm: 400 * time.Millisecond, levelConfirm: 2 * time.Second, settle: 10 * time.Millisecond, landWait: 300 * time.Millisecond})
+		_, _ = r.post(t, map[string]any{"thinking": "low"})
+		r.waitTyped(t, "/effort low")
+		r.localCommand(t, "/effort", "low", "Set effort level to low (saved as your default for new sessions)")
+		r.waitState(t, switchDone)
+		time.Sleep(350 * time.Millisecond) // sleep-ok: past landWait, nothing more is typed
+		assert.Equal(t, []string{"/effort low"}, r.typed())
+	})
 }

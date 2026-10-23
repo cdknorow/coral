@@ -50,10 +50,11 @@ type modelSwitch struct {
 // modelSwitchTracker holds the newest switch of each session. A finished one is kept for switchKeep so every open dashboard sees
 // its result, then forgotten.
 type modelSwitchTracker struct {
-	mu   sync.Mutex
-	m    map[string]*modelSwitch
-	seq  int64
-	runs sync.Map // session id -> *sync.Mutex: one switch types at a time, a replaced one finishes before the next starts
+	mu    sync.Mutex
+	m     map[string]*modelSwitch
+	seq   int64
+	typed sync.Map // session id -> when a switch command was last typed
+	runs  sync.Map // session id -> *sync.Mutex: one switch types at a time, a replaced one finishes before the next starts
 }
 
 // runLock is the session's lock for typing a switch's commands: a new choice waits for the one it replaced to stop, so two are never typed at once.
@@ -117,6 +118,16 @@ func (t *modelSwitchTracker) end(sessionID, message string) {
 	}
 }
 
+// noteTyped and lastTyped keep when a switch command was last typed into the session, so the next waits out settle.
+func (t *modelSwitchTracker) noteTyped(sessionID string) { t.typed.Store(sessionID, time.Now()) }
+
+func (t *modelSwitchTracker) lastTyped(sessionID string) time.Time {
+	if v, ok := t.typed.Load(sessionID); ok {
+		return v.(time.Time)
+	}
+	return time.Time{}
+}
+
 // current reports whether switch seq is still the session's newest.
 func (t *modelSwitchTracker) current(sessionID string, seq int64) bool {
 	t.mu.Lock()
@@ -130,12 +141,14 @@ func (t *modelSwitchTracker) current(sessionID string, seq int64) bool {
 // detector caught a bare variable).
 type switchTimings struct {
 	poll, idleWait, modelConfirm, levelConfirm time.Duration
+	// settle is how long after one command was typed the next is held back, and landWait how long a typed command is given to show in the transcript before it is typed once more (#6225).
+	settle, landWait time.Duration
 }
 
 var switchTiming atomic.Pointer[switchTimings]
 
 func init() {
-	switchTiming.Store(&switchTimings{poll: 500 * time.Millisecond, idleWait: 10 * time.Minute, modelConfirm: 30 * time.Second, levelConfirm: 30 * time.Second})
+	switchTiming.Store(&switchTimings{poll: 500 * time.Millisecond, idleWait: 10 * time.Minute, modelConfirm: 30 * time.Second, levelConfirm: 30 * time.Second, settle: 2 * time.Second, landWait: 6 * time.Second})
 }
 
 // modelSwitchRequest is the switch's body: a model, a thinking level, or both. "thinking": "" asks for the CLI's own default
@@ -235,6 +248,47 @@ func (h *SessionsHandler) switchFail(sessionID string, seq int64, message string
 
 var errorOutputR = regexp.MustCompile(`(?i)\b(unknown|invalid|not found|not available|unsupported|error|failed|cannot|can't|unable)\b`)
 
+// typeSwitchCommand types a switch's command into the agent and makes sure Claude took it (#6225). A command typed while Claude was still showing the output of the one before it (a quick second choice:
+// High, then Extra high) was lost with no trace: the text left the input box, which deliverHumanSend reads as "a CLI's own command ran", and nothing was ever written to the transcript. So the next
+// command waits settle after the last one was typed, and a command that is not in the transcript within landWait is typed once more; the confirm wait that follows says if it still did not take.
+func (h *SessionsHandler) typeSwitchCommand(ctx context.Context, tm *switchTimings, name, agentType, sessionID, workDir, command string) error {
+	if wait := tm.settle - time.Since(h.modelSwitches.lastTyped(sessionID)); wait > 0 {
+		if err := sleepCtx(ctx, wait); err != nil {
+			return err
+		}
+	}
+	since := time.Now().Add(-time.Second)
+	for attempt := 0; attempt < 2; attempt++ {
+		if err := h.deliverHumanSend(ctx, name, agentType, sessionID, command); err != nil {
+			return err
+		}
+		h.modelSwitches.noteTyped(sessionID)
+		if h.jsonl == nil || h.commandLanded(ctx, sessionID, workDir, command, since, tm) {
+			return nil
+		}
+	}
+	return nil
+}
+
+// commandLanded waits up to landWait for Claude's transcript to hold an entry for command (its name and argument) written since since; it reports false when there is none.
+func (h *SessionsHandler) commandLanded(ctx context.Context, sessionID, workDir, command string, since time.Time, tm *switchTimings) bool {
+	name, args, _ := strings.Cut(strings.TrimSpace(command), " ")
+	deadline := time.Now().Add(tm.landWait)
+	for {
+		for _, c := range h.jsonl.ReadClaudeLocalCommands(sessionID, workDir, since) {
+			if c.Name == name && strings.EqualFold(c.Args, strings.TrimSpace(args)) {
+				return true
+			}
+		}
+		if time.Now().After(deadline) {
+			return false
+		}
+		if sleepCtx(ctx, tm.poll) != nil {
+			return true // cancelled: nothing more to type for it
+		}
+	}
+}
+
 // switchGone says why a switch can no longer finish: its agent was killed (no row), or put to sleep (no terminal). "" while the agent is there. Read at each wait, so Sleep, Sleep all, Kill and a
 // restart that replaced the agent end the switch within a poll, whichever route did it.
 func (h *SessionsHandler) switchGone(ctx context.Context, sessionID string) string {
@@ -285,7 +339,7 @@ func (h *SessionsHandler) runModelSwitch(ctx context.Context, seq int64, name, a
 	}
 	sent := time.Now().Add(-time.Second) // the transcript's own clock may differ a little
 	if setModel {
-		if err := h.deliverHumanSend(ctx, name, agentType, sessionID, "/model "+model); err != nil {
+		if err := h.typeSwitchCommand(ctx, tm, name, agentType, sessionID, workDir, "/model "+model); err != nil {
 			h.switchFail(sessionID, seq, "Could not type /model into the agent: "+err.Error())
 			return
 		}
@@ -305,7 +359,7 @@ func (h *SessionsHandler) runModelSwitch(ctx context.Context, seq int64, name, a
 			return
 		}
 		sent = time.Now().Add(-time.Second)
-		if err := h.deliverHumanSend(ctx, name, agentType, sessionID, cmd); err != nil {
+		if err := h.typeSwitchCommand(ctx, tm, name, agentType, sessionID, workDir, cmd); err != nil {
 			h.switchFail(sessionID, seq, "Could not type /effort into the agent: "+err.Error())
 			return
 		}
