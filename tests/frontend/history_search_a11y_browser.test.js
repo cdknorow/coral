@@ -39,6 +39,12 @@ const { DATA_WORLD } = require('./helpers/census_world');
             await ev(`document.querySelector('[data-source="claude"]').click(); true`);
             const moved = await ev(`[...document.querySelectorAll('[data-source]')].map(b => b.getAttribute('aria-pressed') === String(b.classList.contains('active')))`);
             assert.deepEqual(moved, moved.map(() => true), `${tag}: aria-pressed follows the choice (${JSON.stringify(moved)})`);
+            // a button elsewhere on the page that carries the same data attribute (the agent list's team Sleep button has data-mode="sleep") is not a filter: it is never given aria-pressed or the active class
+            await ev(`(() => { for (const a of ['data-mode', 'data-source', 'data-logic', 'data-chat-type']) { const b = document.createElement('button'); b.id = 'qa-stray-' + a; b.setAttribute(a, 'sleep'); document.body.append(b); } return true; })()`);
+            for (const sel of ['[data-mode="and"]', '[data-source="agy"]', '[data-logic="OR"]', '[data-chat-type="agent"]']) await ev(`document.querySelector('.hf-toggle${sel}').click(); true`);
+            const stray = await ev(`['data-mode', 'data-source', 'data-logic', 'data-chat-type'].map(a => { const b = document.getElementById('qa-stray-' + a); return { a, pressed: b.getAttribute('aria-pressed'), active: b.classList.contains('active') }; })`);
+            assert.deepEqual(stray.filter(x => x.pressed !== null || x.active), [], `${tag}: a button outside the filters with the same data attribute is not touched: ${JSON.stringify(stray)}`);
+            await ev(`for (const e of document.querySelectorAll('[id^="qa-stray-"]')) e.remove(); document.querySelector('.hf-toggle[data-mode="or"]').click(); document.querySelector('.hf-toggle[data-source="all"]').click(); document.querySelector('.hf-toggle[data-logic="AND"]').click(); document.querySelector('.hf-toggle[data-chat-type="all"]').click(); true`);
             await ev(`document.querySelector('[data-source="claude"]').click(); document.getElementById('hf-adv-toggle').click(); true`);
 
             // the results

@@ -104,18 +104,18 @@ export function syncFilterDomToState() {
     if (durMax && filterState.maxDurationSec != null)
         durMax.value = String(Math.round(filterState.maxDurationSec / 60));
 
-    document.querySelectorAll('[data-chat-type]').forEach(b => {
+    document.querySelectorAll('.hf-toggle[data-chat-type]').forEach(b => {
         setToggle(b, b.dataset.chatType === (filterState.chatType || 'all'));
     });
-    document.querySelectorAll('[data-source]').forEach(b => {
+    document.querySelectorAll('.hf-toggle[data-source]').forEach(b => {
         if (b.dataset.source === 'all')
             setToggle(b, filterState.sourceTypes.length === 0);
         else
             setToggle(b, filterState.sourceTypes.includes(b.dataset.source));
     });
-    document.querySelectorAll('[data-logic]').forEach(b =>
+    document.querySelectorAll('.hf-toggle[data-logic]').forEach(b =>
         setToggle(b, b.dataset.logic === filterState.tagLogic));
-    document.querySelectorAll('[data-mode]').forEach(b =>
+    document.querySelectorAll('.hf-toggle[data-mode]').forEach(b =>
         setToggle(b, b.dataset.mode === filterState.ftsMode));
 
     if (hasActiveFilters()) {
@@ -161,10 +161,10 @@ export function wireHistoryFilters() {
     }
 
     // FTS mode buttons
-    document.querySelectorAll('[data-mode]').forEach(btn => {
+    document.querySelectorAll('.hf-toggle[data-mode]').forEach(btn => {
         btn.addEventListener('click', () => {
             filterState.ftsMode = btn.dataset.mode;
-            document.querySelectorAll('[data-mode]')
+            document.querySelectorAll('.hf-toggle[data-mode]')
                 .forEach(b => setToggle(b, b.dataset.mode === filterState.ftsMode));
             setHistoryPage(1);
             loadHistoryFiltered();
@@ -172,7 +172,7 @@ export function wireHistoryFilters() {
     });
 
     // Source toggle buttons
-    document.querySelectorAll('[data-source]').forEach(btn => {
+    document.querySelectorAll('.hf-toggle[data-source]').forEach(btn => {
         btn.addEventListener('click', () => {
             const source = btn.dataset.source;
             if (source === 'all') {
@@ -182,7 +182,7 @@ export function wireHistoryFilters() {
                 if (idx >= 0) filterState.sourceTypes.splice(idx, 1);
                 else filterState.sourceTypes.push(source);
             }
-            document.querySelectorAll('[data-source]').forEach(b => {
+            document.querySelectorAll('.hf-toggle[data-source]').forEach(b => {
                 if (b.dataset.source === 'all')
                     setToggle(b, filterState.sourceTypes.length === 0);
                 else
@@ -194,10 +194,10 @@ export function wireHistoryFilters() {
     });
 
     // Chat type toggle buttons
-    document.querySelectorAll('[data-chat-type]').forEach(btn => {
+    document.querySelectorAll('.hf-toggle[data-chat-type]').forEach(btn => {
         btn.addEventListener('click', () => {
             filterState.chatType = btn.dataset.chatType;
-            document.querySelectorAll('[data-chat-type]').forEach(b => {
+            document.querySelectorAll('.hf-toggle[data-chat-type]').forEach(b => {
                 setToggle(b, b.dataset.chatType === filterState.chatType);
             });
             setHistoryPage(1);
@@ -222,10 +222,10 @@ export function wireHistoryFilters() {
     }
 
     // Tag logic buttons
-    document.querySelectorAll('[data-logic]').forEach(btn => {
+    document.querySelectorAll('.hf-toggle[data-logic]').forEach(btn => {
         btn.addEventListener('click', () => {
             filterState.tagLogic = btn.dataset.logic;
-            document.querySelectorAll('[data-logic]')
+            document.querySelectorAll('.hf-toggle[data-logic]')
                 .forEach(b => setToggle(b, b.dataset.logic === filterState.tagLogic));
             setHistoryPage(1);
             loadHistoryFiltered();
@@ -272,13 +272,13 @@ export function wireHistoryFilters() {
             if (dateTo) dateTo.value = '';
             if (durMin) durMin.value = '';
             if (durMax) durMax.value = '';
-            document.querySelectorAll('[data-chat-type]')
+            document.querySelectorAll('.hf-toggle[data-chat-type]')
                 .forEach(b => setToggle(b, b.dataset.chatType === 'all'));
-            document.querySelectorAll('[data-source]')
+            document.querySelectorAll('.hf-toggle[data-source]')
                 .forEach(b => setToggle(b, b.dataset.source === 'all'));
-            document.querySelectorAll('[data-logic]')
+            document.querySelectorAll('.hf-toggle[data-logic]')
                 .forEach(b => setToggle(b, b.dataset.logic === 'AND'));
-            document.querySelectorAll('[data-mode]')
+            document.querySelectorAll('.hf-toggle[data-mode]')
                 .forEach(b => setToggle(b, b.dataset.mode === 'or'));
             renderFilterTagPills();
             setHistoryPage(1);
