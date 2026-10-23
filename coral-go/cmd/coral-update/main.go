@@ -21,9 +21,6 @@ import (
 
 // applyEnabled is the off switch of the apply (#5325), one per platform (apply_switch.go): until a platform passes its upgrade tests it answers not_enabled.
 // Compile-time on purpose: nothing a caller, a setting or the environment says turns it on.
-// loadTrust is verify.LoadTrust; a test replaces it.
-var loadTrust = verify.LoadTrust
-
 var applyEnabled = applyOn(runtime.GOOS, applyEnabledDarwin, applyEnabledLinux, applyEnabledWindows, windowsApplyBuilt)
 
 // installProbe says what this install is (a variable so a test can answer for one it cannot build).
@@ -84,6 +81,16 @@ func writableFolder(dir string) bool {
 	return true
 }
 
+// trustedRootFailed is the answer when the trusted root cannot be loaded (offline, the cached root expired). An apply means a click made the server quit, so Coral is started
+// again (#332); a check stopped nothing.
+func trustedRootFailed(command string) output {
+	out := output{Result: stage.ResultFailed, Installed: config.Version, FailedStage: "trusted_root"}
+	if command == "apply" {
+		out.RestartFailed = restartAfterNothingFailed()
+	}
+	return out
+}
+
 func print(w io.Writer, o output) {
 	_ = json.NewEncoder(w).Encode(o)
 }
@@ -120,13 +127,9 @@ func run(args []string, getenv func(string) string, stdout io.Writer) int {
 	defer cancel()
 	// The Sigstore trusted root, through TUF from the embedded starting root, refreshed at most daily (#5303).
 	dataDir := config.ResolveCoralDir("")
-	trust, source, err := loadTrust(ctx, filepath.Join(dataDir, stage.UpdatesDir, "tuf"))
+	trust, source, err := verify.LoadTrust(ctx, filepath.Join(dataDir, stage.UpdatesDir, "tuf"))
 	if err != nil {
-		out := output{Result: stage.ResultFailed, Installed: config.Version, FailedStage: "trusted_root"}
-		if args[0] == "apply" { // offline with an expired cached root: the server quit for a click, so Coral is started again (#332)
-			out.RestartFailed = restartAfterNothingFailed()
-		}
-		print(stdout, out)
+		print(stdout, trustedRootFailed(args[0]))
 		return 0
 	}
 	portable := false

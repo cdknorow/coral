@@ -1,21 +1,17 @@
 package main
 
 import (
-	"context"
-	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
-	"github.com/sigstore/sigstore-go/pkg/root"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/subgentic/coral/internal/config"
 	"github.com/subgentic/coral/internal/updater/apply"
 	"github.com/subgentic/coral/internal/updater/trigger"
-	"github.com/subgentic/coral/internal/updater/verify"
 )
 
 // The Windows "Install update" quits the server first, so an apply that installs nothing must start Coral again (#5946, #5931's F1).
@@ -261,30 +257,26 @@ func TestAMarkerWithNoFolderUsesTheRegisteredInstall(t *testing.T) {
 	assert.False(t, restartFromMarker(data, ""), "a registered folder that is not absolute is no folder")
 }
 
-// #332 (QA's gap B): the trusted root cannot be loaded (offline, the cached root expired) after a click: the apply says so and starts Coral again.
+// #332 (QA's gap B): the trusted root cannot be loaded (offline, the cached root expired) after a click: the apply says so and starts Coral again. The decision is in trustedRootFailed,
+// so the test calls it; main still calls verify.LoadTrust directly (the testrig guard counts that call).
 func TestAnUnloadableTrustedRootStartsCoralAgain(t *testing.T) {
-	oldLoad, oldVersion, oldTier, oldApply := loadTrust, config.Version, config.TierChecksForUpdates, applyEnabled
-	t.Cleanup(func() {
-		loadTrust, config.Version, config.TierChecksForUpdates, applyEnabled = oldLoad, oldVersion, oldTier, oldApply
-	})
-	applyEnabled = true
-	loadTrust = func(context.Context, string) (root.TrustedMaterial, verify.TrustSource, error) {
-		return nil, "", errors.New("offline")
-	}
-	config.Version, config.TierChecksForUpdates = "1.4.130", true
+	oldVersion := config.Version
+	t.Cleanup(func() { config.Version = oldVersion })
+	config.Version = "1.4.130"
 	started := fakeStart(t, nil)
 	data, install := t.TempDir(), installFolder(t)
 	t.Setenv("CORAL_DATA_DIR", data)
 	require.NoError(t, trigger.WriteMarker(data, "1.5.0", install, time.Now()))
-	code, out := runOut(t, nil, "apply")
-	assert.Equal(t, 0, code)
-	assert.Equal(t, "failed", out["result"])
-	assert.Equal(t, "trusted_root", out["failed_stage"])
-	assert.NotContains(t, out, "restart_failed")
+
+	out := trustedRootFailed("apply")
+	assert.Equal(t, "failed", out.Result)
+	assert.Equal(t, "trusted_root", out.FailedStage)
+	assert.False(t, out.RestartFailed)
 	assert.Equal(t, []string{install}, *started)
 
 	*started = nil
-	_, out = runOut(t, nil, "check")
-	assert.Equal(t, "trusted_root", out["failed_stage"])
+	out = trustedRootFailed("check")
+	assert.Equal(t, "trusted_root", out.FailedStage)
 	assert.Empty(t, *started, "a check stopped nothing")
+	assert.False(t, out.RestartFailed)
 }
