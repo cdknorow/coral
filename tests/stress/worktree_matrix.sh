@@ -410,7 +410,7 @@ for how in clean modified; do
     before=$(ls "${DATA_POSIX:-$CORAL_DATA_DIR}/worktrees" 2>/dev/null | sort)
     resp=$(api_code POST "/api/tasks/run" --data-binary "@$(native "$TMPROOT/job.json")"); code="${resp##*$'\n'}"; body="${resp%$'\n'*}"; rid=$(printf '%s' "$body" | jget run_id); [[ -z "$rid" ]] && rid=$(printf '%s' "$body" | jget id)
     sleep 6
-    jw=$(comm -13 <(printf '%s\n' "$before") <(ls "${DATA_POSIX:-$CORAL_DATA_DIR}/worktrees" 2>/dev/null | sort) | grep -- "-task" | head -1)   # the folder this run made, not an earlier run's
+    jw=$(comm -13 <(printf '%s\n' "$before") <(ls "${DATA_POSIX:-$CORAL_DATA_DIR}/worktrees" 2>/dev/null | sort) | grep -- "^job-run-" | head -1)   # the folder this run made, not an earlier run's
     jdir="${DATA_POSIX:-$CORAL_DATA_DIR}/worktrees/$jw"
     if [[ "$how" == modified && -d "$jdir" ]]; then echo "unsaved line" >>"$jdir/README.md"; fi
     api POST "/api/tasks/runs/${rid}/kill" -d '{}' >/dev/null
