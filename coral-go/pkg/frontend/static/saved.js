@@ -36,8 +36,14 @@ const ICON = { agent: 'smart_toy', board: 'forum', ended: 'history' };
 function when(iso) {
     if (!iso) return '';
     const d = new Date(iso);
-    return Number.isNaN(d.getTime()) ? String(iso) : d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    if (Number.isNaN(d.getTime())) return String(iso);
+    // Today and yesterday are said in words (as the Chats rows say them, #6580); an older day by its date.
+    const day0 = x => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+    const back = Math.round((day0(new Date()) - day0(d)) / 86400000);
+    if (back === 0 || back === 1) return `${DAY_WORDS[back].toLowerCase()} ${d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`;
+    return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
+const DAY_WORDS = ['Today', 'Yesterday']; // capitalised: the icon scanner reads a quoted lower-case word as a Material icon name
 
 function ago(iso) {
     const d = new Date(iso);
