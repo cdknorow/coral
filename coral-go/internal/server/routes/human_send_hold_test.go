@@ -206,7 +206,7 @@ func TestHeldPersonMessageIsRefusedWhenTheSessionEnds(t *testing.T) {
 	got := make(chan struct{})
 	held, err := r.h.deliverPersonSend(context.Background(), r.name, "claude", r.sid, "never typed", false, func(err error) { mu.Lock(); ended = err; mu.Unlock(); close(got) })
 	require.NoError(t, err)
-	require.True(t, held)
+	require.NotEmpty(t, held)
 	r.post(`{"event_type":"session_end","summary":"Session ended: other","detail_json":{"reason":"other"}}`)
 	select {
 	case <-got:
@@ -241,7 +241,7 @@ func TestHeldPersonMessageExpiresWhenTheBoxStaysOpen(t *testing.T) {
 	got := make(chan error, 1)
 	held, err := r.h.deliverPersonSend(context.Background(), r.name, "claude", r.sid, "too late", false, func(err error) { got <- err })
 	require.NoError(t, err)
-	require.True(t, held)
+	require.NotEmpty(t, held)
 	select {
 	case err := <-got:
 		assert.Equal(t, errSendHeldExpired, err, "the person is told it was not sent")
@@ -263,6 +263,41 @@ func TestHeldPersonMessageKeepsWaitingWhenTheSignalsCannotBeReadNow(t *testing.T
 	time.Sleep(5 * personHoldSettle)
 	assert.Empty(t, r.typed(), "no evidence the box is gone: nothing is typed into it")
 	assert.True(t, r.h.holds.waiting(personKey(r.name, r.sid)), "and it is still held: no delivery was even tried")
+}
+
+// A held message counts once toward the bound, whether the release loop has started or not: the one waiting its turn stays in the queue until it is typed, so nothing else counts for it (the
+// gate gave 2 for one message, so a bound of 2 refused a second message that fit: the CI run of #6610). The state is set directly: whether the loop has started depends on a goroutine's timing.
+func TestAHeldMessageCountsOnceTowardTheBound(t *testing.T) {
+	p := &personHolds{queues: map[string][]*personHeld{}, running: map[string]bool{}}
+	const key = "agent"
+	assert.Equal(t, 0, p.held(key), "nothing held")
+
+	p.queues[key] = []*personHeld{{text: "a"}} // queued, the loop started and not yet at it
+	p.running[key] = true
+	assert.Equal(t, 1, p.held(key), "one message in the queue is one")
+
+	p.queues[key] = []*personHeld{{text: "a"}, {text: "b"}}
+	assert.Equal(t, 2, p.held(key))
+
+	p.queues[key] = nil
+	assert.Equal(t, 0, p.held(key), "the loop alone counts none")
+}
+
+// A bound of 2 takes two messages however fast they come, and refuses the third: the real run, many times over, with no wait between the sends.
+func TestTheBoundOfTwoTakesTwoMessagesHoweverFastTheyCome(t *testing.T) {
+	old := personHoldMaxPerAgent
+	personHoldMaxPerAgent = 2
+	t.Cleanup(func() { personHoldMaxPerAgent = old })
+	for i := 0; i < 15; i++ {
+		r := newHoldRig(t, true)
+		r.box("permission")
+		a, b, c := r.send("a"), r.send("b"), r.send("c")
+		assert.Equal(t, http.StatusAccepted, a.Code, "run %d: a", i)
+		assert.Equal(t, http.StatusAccepted, b.Code, "run %d: b", i)
+		assert.Equal(t, http.StatusConflict, c.Code, "run %d: c is over the bound", i)
+		r.post(`{"event_type":"session_end","summary":"Session ended: other","detail_json":{"reason":"other"}}`)
+		require.Eventually(t, func() bool { return !r.h.holds.waiting(personKey(r.name, r.sid)) }, 5*time.Second, 5*time.Millisecond)
+	}
 }
 
 // #6615: a Codex whose hooks include PermissionRequest raises its row's Needs input at its approval dialog, and the tool's own PostToolUse clears it: so a person's chat message is held behind
@@ -312,11 +347,11 @@ func TestHeldHubMessageIsRefusedWhenTheComputersModeIsLoweredWhileItWaits(t *tes
 	fromHub := make(chan error, 1)
 	held, err := r.h.deliverPersonSend(ctx, r.name, "claude", r.sid, "from the hub", true, func(err error) { fromHub <- err })
 	require.NoError(t, err)
-	require.True(t, held)
+	require.NotEmpty(t, held)
 	fromDash := make(chan error, 1)
 	held, err = r.h.deliverPersonSend(ctx, r.name, "claude", r.sid, "from the dashboard", false, func(err error) { fromDash <- err })
 	require.NoError(t, err)
-	require.True(t, held)
+	require.NotEmpty(t, held)
 
 	require.NoError(t, ss.SetSetting(ctx, MaxModeSetting, "view")) // the owner lowers the computer's mode
 	r.answered()
@@ -343,7 +378,7 @@ func TestHeldHubMessageIsTypedWhenTheModeStillAllowsInteract(t *testing.T) {
 	got := make(chan error, 1)
 	held, err := r.h.deliverPersonSend(ctx, r.name, "claude", r.sid, "from the hub", true, func(err error) { got <- err })
 	require.NoError(t, err)
-	require.True(t, held)
+	require.NotEmpty(t, held)
 	r.answered()
 	select {
 	case err := <-got:
@@ -352,45 +387,4 @@ func TestHeldHubMessageIsTypedWhenTheModeStillAllowsInteract(t *testing.T) {
 		t.Fatal("answered")
 	}
 	assert.Equal(t, []string{"from the hub"}, r.typed())
-}
-
-// A held message counts once toward the bound, whether it is still in the agent's queue or taken off it by the release loop: the gate gave 2 for one message in the queue (the message and the
-// loop about to take it), so a bound of 2 refused a second message that fit (the CI run of #6610). The states are set directly: which one a real run is in depends on a goroutine's timing.
-func TestAHeldMessageCountsOnceTowardTheBound(t *testing.T) {
-	p := &personHolds{queues: map[string][]*personHeld{}, running: map[string]bool{}, releasing: map[string]bool{}}
-	const key = "agent"
-	assert.Equal(t, 0, p.held(key), "nothing held")
-
-	p.queues[key] = []*personHeld{{text: "a"}} // queued, the loop started and not yet at it
-	p.running[key] = true
-	assert.Equal(t, 1, p.held(key), "one message in the queue is one")
-
-	p.queues[key] = nil // the loop took it and waits for its turn
-	p.releasing[key] = true
-	assert.Equal(t, 1, p.held(key), "taken off the queue it is still one")
-
-	p.queues[key] = []*personHeld{{text: "b"}} // and a second queued behind it
-	assert.Equal(t, 2, p.held(key))
-
-	p.running[key] = false
-	delete(p.releasing, key)
-	p.queues[key] = nil
-	assert.Equal(t, 0, p.held(key), "the loop alone counts none")
-}
-
-// A bound of 2 takes two messages however fast they come, and refuses the third: the real run, many times over, with no wait between the sends.
-func TestTheBoundOfTwoTakesTwoMessagesHoweverFastTheyCome(t *testing.T) {
-	old := personHoldMaxPerAgent
-	personHoldMaxPerAgent = 2
-	t.Cleanup(func() { personHoldMaxPerAgent = old })
-	for i := 0; i < 15; i++ {
-		r := newHoldRig(t, true)
-		r.box("permission")
-		a, b, c := r.send("a"), r.send("b"), r.send("c")
-		assert.Equal(t, http.StatusAccepted, a.Code, "run %d: a", i)
-		assert.Equal(t, http.StatusAccepted, b.Code, "run %d: b", i)
-		assert.Equal(t, http.StatusConflict, c.Code, "run %d: c is over the bound", i)
-		r.post(`{"event_type":"session_end","summary":"Session ended: other","detail_json":{"reason":"other"}}`)
-		require.Eventually(t, func() bool { return !r.h.holds.waiting(personKey(r.name, r.sid)) }, 5*time.Second, 5*time.Millisecond)
-	}
 }

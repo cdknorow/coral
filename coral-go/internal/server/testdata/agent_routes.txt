@@ -349,6 +349,7 @@ b POST /api/sessions/live/{name}/resize
 b POST /api/sessions/live/{name}/restart
 b POST /api/sessions/live/{name}/resume
 b POST /api/sessions/live/{name}/send
+b DELETE /api/sessions/live/{name}/held/{id}
 a POST /api/sessions/live/{name}/tasks
 a POST /api/sessions/live/{name}/tasks/reorder
 a POST /api/sessions/live/{name}/token-usage

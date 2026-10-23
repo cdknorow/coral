@@ -293,6 +293,7 @@ func (s *Server) registerSessions(r *chi.Mux, h *routeHandlers) {
 	r.Get("/api/sessions/live/{name}/search-files", sessHandler.SearchFiles)
 	r.Get("/api/sessions/live/{name}/git", sessHandler.Git)
 	r.Post("/api/sessions/live/{name}/send", sessHandler.Send)
+	r.Delete("/api/sessions/live/{name}/held/{id}", sessHandler.CancelHeld)
 	r.Post("/api/sessions/live/{name}/goal", sessHandler.RequestGoal)
 	s.goalMetrics = routes.NewGoalMetricsHandler(s.db)
 	r.Get("/api/goals/metrics", s.goalMetrics.Metrics)

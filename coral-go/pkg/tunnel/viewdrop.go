@@ -11,7 +11,9 @@ import (
 // is null in every reply and frame that carries it, whatever the owner's redaction switch says (that switch is about secrets; this is about who may see the text).
 
 // viewDroppedFields are the keys set to null for a view-only viewer.
-var viewDroppedFields = map[string]bool{"waiting_summary": true}
+// waiting_summary is what an agent waits for (its command, #6592); held_messages are a person's own chat messages queued behind the agent's question (#6627): neither is for a viewer who
+// cannot send.
+var viewDroppedFields = map[string]bool{"waiting_summary": true, "held_messages": true}
 
 // viewDropRoutes are the View routes whose JSON replies carry a live row (or part of one).
 var viewDropRoutes = map[string]bool{

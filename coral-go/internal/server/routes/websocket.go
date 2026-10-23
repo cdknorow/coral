@@ -769,9 +769,9 @@ func (t *terminalStream) composerSend(msg terminalFrame) {
 		defer t.composing.Add(-1)
 		// A message held behind the agent's box (#6610) is answered held now, and acked or refused by this id when it is typed.
 		reply := func(err error) { t.composerAnswer(id, err) }
-		held, err := t.h.deliverPersonSend(t.ctx, t.name, t.agentType, t.sessionID, msg.Data, t.viaHub, reply)
-		if held {
-			wsWriteJSON(t.ctx, t.conn, map[string]any{"type": "terminal_input_held", "id": id, "note": heldNote})
+		heldID, err := t.h.deliverPersonSend(t.ctx, t.name, t.agentType, t.sessionID, msg.Data, t.viaHub, reply)
+		if heldID != "" {
+			wsWriteJSON(t.ctx, t.conn, map[string]any{"type": "terminal_input_held", "id": id, "held_id": heldID, "note": heldNote})
 			return
 		}
 		t.composerAnswer(id, err)

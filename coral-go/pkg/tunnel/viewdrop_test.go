@@ -19,7 +19,7 @@ import (
 
 // #6592 (Security's #6581 rule): a viewer who can only look never receives a live row's waiting_summary, whatever the owner's redaction switch says; Interact and Launch do.
 
-const waitingRow = `[{"session_id":"s1","waiting_summary":"Claude needs your permission to use Bash: rm -rf <dir>","waiting_for_input":true,"big":12345678901234567890,"note":"a < b && c > d"}]`
+const waitingRow = `[{"session_id":"s1","waiting_summary":"Claude needs your permission to use Bash: rm -rf <dir>","waiting_for_input":true,"held_messages":[{"id":"h1","text":"queued secret words","held_at":"2026-10-23T12:00:00Z","sending":false}],"big":12345678901234567890,"note":"a < b && c > d"}]`
 
 func TestViewOnlyViewerGetsNoWaitingSummaryOverHTTP(t *testing.T) {
 	local := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -63,6 +63,8 @@ func TestViewOnlyViewerGetsNoWaitingSummaryOverHTTP(t *testing.T) {
 		assert.Nil(t, rows[0]["waiting_summary"], path+": View gets no text")
 		assert.Contains(t, body, `"waiting_summary":null`, path)
 		assert.NotContains(t, body, "rm -rf", path)
+		assert.Nil(t, rows[0]["held_messages"], path+": a person's queued messages are not for a viewer who cannot send")
+		assert.NotContains(t, body, "queued secret words", path)
 		assert.Equal(t, true, rows[0]["waiting_for_input"], path+": the state stays, only the text goes")
 		assert.Contains(t, body, `12345678901234567890`, path+": numbers go back as they came")
 		assert.Contains(t, body, `a < b && c > d`, path+": no HTML escaping")
@@ -74,6 +76,7 @@ func TestViewOnlyViewerGetsNoWaitingSummaryOverHTTP(t *testing.T) {
 		for _, tier := range []string{"interact", "launch"} {
 			_, body = get(path, WithHubTier(ctx, tier))
 			assert.Contains(t, body, "rm -rf", path+": "+tier+" gets the line")
+			assert.Contains(t, body, "queued secret words", path+": "+tier+" can send, so it sees what is queued")
 		}
 	}
 
@@ -104,6 +107,7 @@ func TestViewOnlyViewerGetsNoWaitingSummaryOnTheLiveFeed(t *testing.T) {
 	require.Len(t, f, 1)
 	assert.NotContains(t, f[0].data, "rm -rf", "dropped with the secrets switch off")
 	assert.NotContains(t, f[0].data, "nested text", "wherever the key is")
+	assert.NotContains(t, f[0].data, "queued secret words", "the queued chat messages too")
 	assert.Contains(t, f[0].data, `"waiting_for_input":true`)
 	assert.True(t, json.Valid([]byte(f[0].data)))
 
@@ -112,6 +116,7 @@ func TestViewOnlyViewerGetsNoWaitingSummaryOnTheLiveFeed(t *testing.T) {
 	f = dst.got()
 	require.Len(t, f, 2)
 	assert.Contains(t, f[1].data, "rm -rf", "an Interact viewer gets the line")
+	assert.Contains(t, f[1].data, "queued secret words")
 
 	view = true
 	require.Error(t, w.write(websocket.MessageText, []byte(`{"waiting_summary":"a command", broken`)), "a frame that has the key and cannot be read is never sent on")
@@ -165,6 +170,7 @@ func TestLiveFeedThroughTheConnectorDropsWaitingSummaryForAViewer(t *testing.T) 
 		return string(data)
 	}
 	assert.NotContains(t, first("view"), "rm -rf", "a View viewer's feed has no text")
+	assert.NotContains(t, first("view"), "queued secret words", "nor the queued chat messages")
 	assert.Contains(t, first("interact"), "rm -rf", "an Interact viewer's feed has the line")
 	assert.Contains(t, first("launch"), "rm -rf")
 	mode = TierView

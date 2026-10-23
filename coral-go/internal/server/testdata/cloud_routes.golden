@@ -20,6 +20,7 @@ DELETE /api/saved/{id} interact
 DELETE /api/scheduled/jobs/{jobID} never
 DELETE /api/sessions/history/{sessionID}/tags/{tagID} never
 DELETE /api/sessions/live/{name}/events never
+DELETE /api/sessions/live/{name}/held/{id} interact
 DELETE /api/sessions/live/{name}/notes/{noteID} interact
 DELETE /api/sessions/live/{name}/tasks/{taskID} interact
 DELETE /api/shared-images/{id} never
