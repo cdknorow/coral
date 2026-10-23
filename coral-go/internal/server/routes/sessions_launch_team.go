@@ -455,15 +455,16 @@ func checkTeamRequest(body launchTeamRequest) string {
 }
 
 // createTeamWorktree makes the team's git worktree when it asks for one (branch coral-team/<board> from its base
-// branch, main by default; the branch reused when a previous run left it), and returns the folder its agents start
+// branch, the repository's current branch by default; the branch reused when a previous run left it), and returns the folder its agents start
 // in, the worktree ("" for none), or why it failed.
 func (h *SessionsHandler) createTeamWorktree(ctx context.Context, body launchTeamRequest) (workingDir, worktreePath string, branchCreated bool, failure string) {
 	if !body.Worktree || body.WorkingDir == "" {
 		return body.WorkingDir, "", false, ""
 	}
-	branch := body.BaseBranch
-	if branch == "" {
-		branch = "main"
+	// The base branch: the one the request names, else the repository's current branch (not a "main" the repository may not have, #6701).
+	branch, err := gitutil.ResolveBase(ctx, body.WorkingDir, body.BaseBranch)
+	if err != nil {
+		return "", "", false, err.Error()
 	}
 	// The board's name is one folder name under worktrees/: never a path out of it (#5305).
 	if !background.ValidKnowledgeTeam(body.BoardName) {
