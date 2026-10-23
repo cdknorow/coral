@@ -399,9 +399,29 @@ jobs:
           TEMP: ${{ runner.temp }}
           TMP: ${{ runner.temp }}
           CORAL_TELEMETRY_DISABLED: "1"
+          # A suite that hits its timeout leaves a screenshot of its pages, the processes and their CPU, coral.log's tail and the test Coral's goroutines here (run_cdp_suites.mjs, #6195).
+          CDP_EVIDENCE_DIR: ${{ runner.temp }}/timeout-evidence
         run: |
           set -o pipefail
-          node run_cdp_suites.mjs --timeout 180 --keep --fail-on-leak --part "${{ matrix.part }}/3" --results-out "$RUNNER_TEMP/results.json" 2>&1 | tee "$RUNNER_TEMP/run.log"
+          # --allow-flaky, for 159 only (#6195 finds the hang that makes one suite in a few hundred time out once and pass on its retry, then removes it): a suite that passes on its one retry
+          # no longer fails the part, but it is listed in the job summary below, so a green run cannot hide it; a suite that fails twice still fails.
+          node run_cdp_suites.mjs --timeout 180 --keep --fail-on-leak --allow-flaky --part "${{ matrix.part }}/3" --results-out "$RUNNER_TEMP/results.json" 2>&1 | tee "$RUNNER_TEMP/run.log"
+      - name: flaky suites in the job summary
+        if: always()
+        run: |
+          {
+            echo "### cdp part ${{ matrix.part }}/3: suites that passed only on a retry (tolerated for 159, #6195)"
+            flaky=$(grep -aE '^(RETRY|FLAKY)' "$RUNNER_TEMP/run.log" | sed 's/^/    /' || true)
+            echo "${flaky:-none}"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: upload the timeout evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-cdp-evidence-${{ matrix.part }}-a${{ github.run_attempt }}
+          path: ${{ runner.temp }}/timeout-evidence
+          retention-days: 7
+          if-no-files-found: ignore
       - name: upload the logs (failure only)
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
