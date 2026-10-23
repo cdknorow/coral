@@ -90,8 +90,15 @@ type fakeMSI struct {
 	onMsiexec  func() // runs as msiexec does (a test ends the apply's context here)
 	// registeredAfterInstall, when set, is what Windows reports as registered after the update's install (another product).
 	registeredAfterInstall string
+	// applyProcess is what IsApplyProcess answers: whether the pid in the apply lock is a running coral-update.exe of the install or the updater folder.
+	applyProcess bool
+	checkedDirs  []string
 }
 
+func (f *fakeMSI) IsApplyProcess(_ int, dirs ...string) bool {
+	f.checkedDirs = dirs
+	return f.applyProcess
+}
 func (f *fakeMSI) rec(s string)              { f.calls = append(f.calls, s) }
 func (f *fakeMSI) Install() (string, error)  { return f.install, nil }
 func (f *fakeMSI) Unsupported(string) string { return f.unsupport }
@@ -600,14 +607,39 @@ func TestARollbackToARevokedVersionIsRefusedAndThePersonIsTold(t *testing.T) {
 	assert.Empty(t, r.state().Version, "the new version isn't accepted either")
 }
 
-// #323 / Security's note on #145: the busy answer says which lock was held, so the restart after a click is made only when a check held it; another apply is replacing the install.
+// #323 / Security's note on #145, and the Orchestrator's rule: a check's lock is busy/check_running (Coral is started again). The apply's lock is busy/apply_running, which starts nothing,
+// only when it names a live coral-update.exe of the install or the updater folder (checked); every other reason it looks held answers failed/apply_lock, which restarts Coral.
 func TestTheBusyAnswerSaysWhichLockWasHeld(t *testing.T) {
 	live, _ := json.Marshal(map[string]any{"pid": os.Getpid(), "taken": msiTestNow.Unix()})
-	for lock, want := range map[string]string{stage.CheckLockFile: BusyCheck, stage.ApplyLockFile: BusyApply} {
+	lockOf := func(r *msiRig, name string) string { return filepath.Join(r.data, stage.UpdatesDir, name) }
+
+	r := newMSIRig(t)
+	require.NoError(t, os.WriteFile(lockOf(r, stage.CheckLockFile), live, 0o600))
+	res := r.run()
+	assert.Equal(t, ResultBusy, res.Result)
+	assert.Equal(t, BusyCheck, res.FailedStage)
+
+	for name, tc := range map[string]struct {
+		setup     func(t *testing.T, path string)
+		isApply   bool
+		wantStage string
+		wantRes   string
+	}{
+		"a live apply (its image is coral-update.exe of the install or updater folder)": {func(t *testing.T, p string) { require.NoError(t, os.WriteFile(p, live, 0o600)) }, true, BusyApply, ResultBusy},
+		"a planted file naming a live process that is not an apply":                     {func(t *testing.T, p string) { require.NoError(t, os.WriteFile(p, live, 0o600)) }, false, "apply_lock", ResultFailed},
+		"a reused pid whose image is something else":                                    {func(t *testing.T, p string) { require.NoError(t, os.WriteFile(p, live, 0o600)) }, false, "apply_lock", ResultFailed},
+		"a lock that is not a plain file":                                               {func(t *testing.T, p string) { require.NoError(t, os.Mkdir(p, 0o700)) }, true, "apply_lock", ResultFailed},
+		"a lock that names no process":                                                  {func(t *testing.T, p string) { require.NoError(t, os.WriteFile(p, []byte(`{"pid":0}`), 0o600)) }, true, "apply_lock", ResultFailed},
+	} {
 		r := newMSIRig(t)
-		require.NoError(t, os.WriteFile(filepath.Join(r.data, stage.UpdatesDir, lock), live, 0o600))
+		r.msi.applyProcess = tc.isApply
+		tc.setup(t, lockOf(r, stage.ApplyLockFile))
 		res := r.run()
-		assert.Equal(t, ResultBusy, res.Result, lock)
-		assert.Equal(t, want, res.FailedStage, lock)
+		assert.Equal(t, tc.wantRes, res.Result, name)
+		assert.Equal(t, tc.wantStage, res.FailedStage, name)
+		if tc.wantStage == BusyApply {
+			assert.Contains(t, r.msi.checkedDirs, filepath.Join(r.data, stage.UpdatesDir), name+": the updater folder is a place its image may be")
+			assert.Contains(t, r.msi.checkedDirs, r.msi.install, name+": and the install folder")
+		}
 	}
 }

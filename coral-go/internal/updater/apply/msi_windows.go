@@ -170,6 +170,33 @@ func underFold(path, dir string) bool {
 	return path == dir || strings.HasPrefix(path, dir+`\`)
 }
 
+// IsApplyProcess reports whether pid is a running coral-update.exe whose image is under one of dirs.
+func (w *WindowsMSI) IsApplyProcess(pid int, dirs ...string) bool {
+	if pid <= 0 {
+		return false
+	}
+	h, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, uint32(pid))
+	if err != nil {
+		return false
+	}
+	defer windows.CloseHandle(h)
+	buf := make([]uint16, windows.MAX_LONG_PATH)
+	size := uint32(len(buf))
+	if windows.QueryFullProcessImageName(h, 0, &buf[0], &size) != nil {
+		return false
+	}
+	image := windows.UTF16ToString(buf[:size])
+	if !strings.EqualFold(filepath.Base(image), "coral-update.exe") {
+		return false
+	}
+	for _, d := range dirs {
+		if d != "" && underFold(image, d) {
+			return true
+		}
+	}
+	return false
+}
+
 // running lists the processes whose image is a file under install (this process excluded).
 func (w *WindowsMSI) running(install string) ([]string, error) {
 	snap, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPPROCESS, 0)

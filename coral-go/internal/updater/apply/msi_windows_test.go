@@ -182,3 +182,33 @@ func TestOnlyThePerMachineProductIsCoral(t *testing.T) {
 	_, err = w.RegisteredProduct()
 	assert.Error(t, err, "two machine products: fail closed")
 }
+
+// IsApplyProcess looks at the process, not at what a lock file says: this test binary is a live process but not coral-update.exe, and a pid that is gone or nonsense is no apply.
+func TestIsApplyProcessChecksTheImage(t *testing.T) {
+	w := &WindowsMSI{}
+	exe, err := os.Executable()
+	require.NoError(t, err)
+	assert.False(t, w.IsApplyProcess(os.Getpid(), filepath.Dir(exe)), "a live process whose image is not coral-update.exe")
+	assert.False(t, w.IsApplyProcess(0, filepath.Dir(exe)))
+	assert.False(t, w.IsApplyProcess(-4, filepath.Dir(exe)))
+	assert.False(t, w.IsApplyProcess(0x7ffffff0, filepath.Dir(exe)), "a pid nothing has")
+}
+
+// ...and one that is a coral-update.exe under the folder asked about is an apply; the same image elsewhere is not.
+func TestIsApplyProcessKnowsACoralUpdateInItsFolder(t *testing.T) {
+	sys := filepath.Join(os.Getenv("SystemRoot"), "System32", "ping.exe")
+	src, err := os.ReadFile(sys)
+	if err != nil {
+		t.Skip("no ping.exe to stand for a long-running program")
+	}
+	dir := t.TempDir()
+	img := filepath.Join(dir, "coral-update.exe")
+	require.NoError(t, os.WriteFile(img, src, 0o755))
+	cmd := exec.Command(img, "-n", "30", "127.0.0.1")
+	require.NoError(t, cmd.Start())
+	t.Cleanup(func() { _ = cmd.Process.Kill(); _ = cmd.Wait() })
+	w := &WindowsMSI{}
+	assert.True(t, w.IsApplyProcess(cmd.Process.Pid, t.TempDir(), dir), "its folder is one of those asked about")
+	assert.False(t, w.IsApplyProcess(cmd.Process.Pid, t.TempDir()), "under neither folder")
+	assert.False(t, w.IsApplyProcess(cmd.Process.Pid), "no folder")
+}

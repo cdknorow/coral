@@ -47,6 +47,25 @@ func applyRunning(dir string, now time.Time) bool {
 	return live(b, fi.ModTime(), now)
 }
 
+// LockHolder is the process id the lock dir/name names: ok is false when there is no lock, it is not a plain file, it cannot be read or it names no process. The apply uses it to
+// tell a lock held by a running apply from one that only looks held (a planted file, a reused pid): it is read, never taken or removed.
+func LockHolder(dir, name string) (pid int, ok bool) {
+	path := filepath.Join(dir, name)
+	fi, err := os.Lstat(path)
+	if err != nil || !fi.Mode().IsRegular() || fi.Size() > 4096 {
+		return 0, false
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return 0, false
+	}
+	var l lockBody
+	if json.Unmarshal(b, &l) != nil || l.PID <= 0 {
+		return 0, false
+	}
+	return l.PID, true
+}
+
 // newLockGrace is how long a lock file whose body is not there yet (its owner created it a moment ago and has not written it) counts as held.
 const newLockGrace = 30 * time.Second
 

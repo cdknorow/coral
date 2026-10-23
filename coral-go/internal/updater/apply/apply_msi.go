@@ -82,6 +82,9 @@ type MSI interface {
 	// Start starts Coral (coral-tray) from the install folder as this user; Healthy waits until it is up.
 	Start(ctx context.Context, install string) error
 	Healthy(ctx context.Context, install string) error
+	// IsApplyProcess reports whether pid is a running coral-update.exe whose image is under one of dirs (the install folder or the updater's own folder): checked from the process, not
+	// assumed from a lock file that names it.
+	IsApplyProcess(pid int, dirs ...string) bool
 	// Notify tells the person something while Coral is down (a message box).
 	Notify(title, text string)
 }
@@ -165,11 +168,19 @@ func RunMSI(ctx context.Context, mc MSIConfig) Result {
 		return res
 	}
 	release, err := stage.TakeLock(dir, stage.ApplyLockFile, now)
-	if errors.Is(err, stage.ErrBusy) {
-		res.Result, res.FailedStage = ResultBusy, BusyApply // another apply (or a lock that cannot be shown stale) holds it: nothing may start Coral under it
-		return res
-	}
-	if err != nil { // the lock could not be made at all (permissions, a full disk): nobody is applying, the server has quit, so Coral is started again
+	if err != nil {
+		// Busy only when the lock names a live coral-update.exe of the install or the updater folder (checked). A lock that cannot be made, an unreadable or non-plain one, a
+		// dead holder, a reused pid whose image is something else, or a file someone planted: nobody is applying, the server has quit for the click, so Coral is started again.
+		if errors.Is(err, stage.ErrBusy) {
+			dirs := []string{dir}
+			if inst, ierr := mc.MSI.Install(); ierr == nil {
+				dirs = append(dirs, inst)
+			}
+			if pid, ok := stage.LockHolder(dir, stage.ApplyLockFile); ok && mc.MSI.IsApplyProcess(pid, dirs...) {
+				res.Result, res.FailedStage = ResultBusy, BusyApply // a real apply is replacing the install: nothing may start Coral under it
+				return res
+			}
+		}
 		res.Result, res.FailedStage = ResultFailed, "apply_lock"
 		return res
 	}
