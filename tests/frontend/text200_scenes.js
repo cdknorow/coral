@@ -58,7 +58,12 @@ const { removeBoards } = require('./helpers/board_cleanup');
                 if (spill.length) problems.push(`${name}: text spills out of its button (a wrapped label taller than the button; a few px of glyph line, like the row kebab's dots, is not counted) ${spill.slice(0, 4).join('; ')}`);
                 if (r.missing) problems.push(name + ': scene not found');
                 else {
-                    if (r.docOver > 0 || r.nWide) problems.push(`${name}: wider than the screen (docOver ${r.docOver}) ${r.wide.slice(0, 3).join('; ')}`);
+                    if (r.docOver > 0 || r.nWide) {
+                        // The scan names what is wider than the screen; a page that scrolls sideways with none wider (docOver 22, wide=0: the first scene of text200_wide on Windows, 3 of 74 runs) names nothing,
+                        // so say which visible elements end past the right edge: the next red shows the cause.
+                        const past = r.docOver > 0 && !r.nWide ? await ev(`(() => { const w = document.documentElement.clientWidth; return [...document.querySelectorAll('body *')].filter(e => e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden' && e.getBoundingClientRect().right > w + 0.5).slice(0, 6).map(e => (e.id ? '#' + e.id : e.tagName.toLowerCase()) + (typeof e.className === 'string' && e.className.trim() ? '.' + e.className.trim().split(/\\s+/).slice(0, 2).join('.') : '') + ' right=' + Math.round(e.getBoundingClientRect().right) + ' of ' + w); })()`) : [];
+                        problems.push(`${name}: wider than the screen (docOver ${r.docOver}) ${r.wide.slice(0, 3).join('; ')}${past.length ? ' | ends past the right edge: ' + past.join('; ') : ''}`);
+                    }
                     const clipped = r.clipped.filter(c => !/team-artifacts-caption|sr-only/.test(c)); // visually hidden text (a table caption, screen-reader-only spans)
                     if (clipped.length) problems.push(`${name}: clipped ${clipped.slice(0, 3).join('; ')}`);
                     if (r.nSmall) problems.push(`${name}: smaller than 44 px ${r.small.slice(0, 4).join('; ')}`);
