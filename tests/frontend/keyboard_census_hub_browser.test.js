@@ -55,12 +55,18 @@ const { setupHubWorld, BASE } = require('./helpers/hub_world');
         const dlg = async (name, { opener, open }) => { try { const bad = await kb.dialogCheck(ev, client.Input, { opener, box: '[data-census-box]', open: async () => { await open(); for (let i = 0; i < 30 && !(await tagVisibleModal()); i++) await new Promise(r => setTimeout(r, 100)); } }); results.push({ name, stops: 0, path: '' }); found.push(...bad.map(b => `${name}: ${b}`)); } catch (e) { results.push({ name, error: String(e && e.message || e).slice(0, 300) }); } }; // sleep-ok: the dialog appears when its code has loaded
         await dlg(`${tag}: hub: dialog launch`, { opener: '[aria-label="Account menu"]', open: () => ev(`(async () => { await window.showLaunchModal(); return true; })()`) });
         await dlg(`${tag}: hub: dialog settings`, { opener: '[aria-label="Account menu"]', open: () => ev(`(async () => { await window.showSettingsModal(); return true; })()`) });
+        // no computer connected (#6351): the home is one "Connect your computers" panel with its link
+        const noComputers = await Page.addScriptToEvaluateOnNewDocument({ source: 'window.__noComputers = true;' });
+        await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired();
+        await waitFor(`typeof window.switchNavTab==='function' && !!window.__coralReady`, 'dashboard'); await ev(`window.__coralReady.startup('liveList','settings')`);
+        await sc(`${tag}: hub: home, no computer connected`, async () => { await waitFor(`/Connect your computers/.test(document.body.textContent) && !!document.querySelector('a[href="/machines/add"]')`, 'the connect panel', 10000); }, { expect: `[...document.querySelectorAll('a[href="/machines/add"]')].some(a => a.getClientRects().length > 0)` });
+        await Page.removeScriptToEvaluateOnNewDocument({ identifier: noComputers.identifier });
         };
         await run('desktop');
         await Emulation.setDeviceMetricsOverride({ width: 390, height: 844, deviceScaleFactor: 1, mobile: true }); await Emulation.setTouchEmulationEnabled({ enabled: true });
         await run('phone');
         } finally { await client.close(); }
-    const bad = results.filter(r => r.error).map(r => `${r.name}: the scene did not open (${r.error})`).concat(found, required(results, ['hub: home', 'hub: chats list', 'hub: search results', 'hub: search, advanced filters', 'hub: search finds nothing', 'hub: chat transcript', 'hub: chat tab commits', 'hub: boards list', 'hub: board', 'hub: servers', 'hub: servers, a computer opened', 'hub: servers, renaming', 'hub: inbox', 'hub: artifacts', 'hub: docs', 'hub: account menu', 'hub: dialog launch', 'hub: dialog settings'].flatMap(n => ['desktop', 'phone'].map(t => `${t}: ${n}`))));
+    const bad = results.filter(r => r.error).map(r => `${r.name}: the scene did not open (${r.error})`).concat(found, required(results, ['hub: home', 'hub: home, no computer connected', 'hub: chats list', 'hub: search results', 'hub: search, advanced filters', 'hub: search finds nothing', 'hub: chat transcript', 'hub: chat tab commits', 'hub: boards list', 'hub: board', 'hub: servers', 'hub: servers, a computer opened', 'hub: servers, renaming', 'hub: inbox', 'hub: artifacts', 'hub: docs', 'hub: account menu', 'hub: dialog launch', 'hub: dialog settings'].flatMap(n => ['desktop', 'phone'].map(t => `${t}: ${n}`))));
     if (process.env.KEYBOARD_REPORT) { require('node:fs').writeFileSync(process.env.KEYBOARD_REPORT, results.map(r => `${r.name}: ${r.error || r.stops + ' stops'}${process.env.KEYBOARD_PATHS ? '\n    ' + r.path : ''}`).join('\n') + '\n--\n' + bad.join('\n') + '\n'); process.exit(0); }
     assert.deepEqual(bad, [], 'keyboard-only problems through the Hub:\n  ' + bad.join('\n  '));
     console.log(`PASS ${results.length} Hub scenes: Tab reaches every control and shows where it is`);

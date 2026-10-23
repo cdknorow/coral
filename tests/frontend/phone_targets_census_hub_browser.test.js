@@ -96,8 +96,13 @@ const CSP = ["default-src 'self'", "script-src 'self'", "style-src 'self'", "sty
             await ev(`import((window.__coralStatic || '/static/') + 'utils.js').then(m => { m.showToast('Saved to the board.', false, 60000); m.showToast('Could not reach the agent.', true, 60000); m.showToast('Upload failed.', true, 60000, { action: { label: 'Retry', onClick() {} } }); return true; })`);
         }, { min: 3, expect: `document.querySelectorAll('.toast').length >= 3` });
         await ev(`document.querySelectorAll('.toast').forEach(t => t.remove()); true`);
+        // no computer connected (#6351): the home is one "Connect your computers" panel with its link
+        await Page.addScriptToEvaluateOnNewDocument({ source: 'window.__noComputers = true;' });
+        await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired();
+        await waitFor(`typeof window.switchNavTab==='function' && !!window.__coralReady`, 'dashboard'); await ev(`window.__coralReady.startup('liveList','settings')`);
+        await sc('hub: home, no computer connected', async () => { await waitFor(`/Connect your computers/.test(document.body.textContent) && !!document.querySelector('a[href="/machines/add"]')`, 'the connect panel', 10000); }, { min: 2, expect: `[...document.querySelectorAll('a[href="/machines/add"]')].some(a => a.getClientRects().length > 0)` });
     } finally { await client.close(); }
-    const bad = problems(results).concat(required(results, ['hub: toasts', 'hub: home', 'hub: nav menu', 'hub: chats list', 'hub: search results', 'hub: search, advanced filters', 'hub: search finds nothing', 'hub: chat transcript', 'hub: chat tab notes', 'hub: chat tab commits', 'hub: boards list', 'hub: board', 'hub: servers', 'hub: inbox', 'hub: artifacts', 'hub: docs', 'hub: account menu', 'hub: settings general', 'hub: launch']));
+    const bad = problems(results).concat(required(results, ['hub: toasts', 'hub: home', 'hub: home, no computer connected', 'hub: nav menu', 'hub: chats list', 'hub: search results', 'hub: search, advanced filters', 'hub: search finds nothing', 'hub: chat transcript', 'hub: chat tab notes', 'hub: chat tab commits', 'hub: boards list', 'hub: board', 'hub: servers', 'hub: inbox', 'hub: artifacts', 'hub: docs', 'hub: account menu', 'hub: settings general', 'hub: launch']));
     if (process.env.PHONE_TARGETS_REPORT) { require('node:fs').writeFileSync(process.env.PHONE_TARGETS_REPORT, results.map(r => `${r.name}: ${r.error || r.n + ' controls, ' + r.small.length + ' small'}`).join('\n') + '\n--\n' + bad.join('\n') + '\n'); process.exit(0); }
     assert.deepEqual(bad, [], 'controls under 44 px on a phone through the Hub:\n  ' + bad.join('\n  '));
     console.log(`PASS ${results.length} Hub scenes: every control is at least 44 x 44 px`);
