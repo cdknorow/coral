@@ -26,12 +26,18 @@ function el(tag, props = {}, ...kids) {
 async function stillSignedOut() {
     try {
         const r = await fetch('/api/settings', { cache: 'no-store', credentials: 'same-origin' });
-        return r.status === 401;
+        return !r.ok; // only a 2xx is signed in
     } catch { return true; } // unreachable: not signed in, as far as this page can tell
 }
 
+// at most one unprompted reload a minute
+function mayAutoReload() {
+    try { const n = Date.now(); if (n - +sessionStorage.getItem('so') < 6e4) return false; sessionStorage.setItem('so', n); } catch { /* no storage */ }
+    return true;
+}
+
 /** Try again (the button, or the tab coming back to the front after the sign-in): signed in -> reload the page, which restores the view. */
-async function retrySignIn({ quiet = false } = {}) {
+async function retrySignIn({ quiet = false, auto = false } = {}) {
     if (_checking || !isSignedOut()) return false;
     _checking = true;
     const status = _dialog && _dialog.querySelector('#signed-out-status');
@@ -41,12 +47,13 @@ async function retrySignIn({ quiet = false } = {}) {
             if (status && !quiet) status.textContent = 'Still not signed in.';
             return false;
         }
+        if (auto && !mayAutoReload()) return false;
         location.reload();
         return true;
     } finally { _checking = false; }
 }
 
-export function recheckSignedOut() { return retrySignIn({ quiet: true }); }
+export const recheckSignedOut = () => retrySignIn({ quiet: true, auto: true });
 
 function show() {
     if (_dialog) return;

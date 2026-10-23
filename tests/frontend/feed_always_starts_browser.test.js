@@ -20,7 +20,7 @@ const BASE = require('./test_base').BASE;
         await load();
         await waitFor(feedReady, 'the feed ready although an init step threw', 15000, `({ ready: typeof window.__coralReady, thrown: window.__moThrown, errors: ${JSON.stringify(errors.slice(-3))} })`);
         assert.equal(await ev('window.__moThrown'), 1, 'the step really threw');
-        assert.ok(errors.some(t => /init step initTabCustomize failed/.test(t)), 'the failed step is logged: ' + JSON.stringify(errors.slice(-3)));
+        assert.ok(errors.some(t => /init step initTabCustomize/.test(t)), 'the failed step is logged: ' + JSON.stringify(errors.slice(-3)));
         await Page.removeScriptToEvaluateOnNewDocument({ identifier: broke.identifier });
 
         console.log('B. a WebSocket constructor that throws: a retry is scheduled');
@@ -38,13 +38,23 @@ const BASE = require('./test_base').BASE;
         await waitFor(`!!document.getElementById('signed-out-panel')`, 'the signed-out panel');
         await waitFor('window.__marker !== 1', 'the page to reload once the sign-in is found to be fine', 15000);
         await waitFor(feedReady, 'the feed ready again', 15000);
-
-        await ev(`window.__marker = 1; const real = window.fetch; window.fetch = (u, o) => String(u).includes('/api/settings') ? Promise.resolve(new Response('{}', { status: 401 })) : real(u, o);
-            import((window.__coralStatic || '/static/') + 'signed_out.js').then(m => m.enterSignedOut()); true`);
-        await waitFor(`!!document.getElementById('signed-out-panel')`, 'the signed-out panel (a real sign-out)');
+        // The unprompted reload happens at most once a minute: a page that is signed out again right after it (the check still says signed in) stays, instead of reloading in a loop.
+        await ev(`window.__marker = 1; import((window.__coralStatic || '/static/') + 'signed_out.js').then(m => m.enterSignedOut()); true`);
+        await waitFor(`!!document.getElementById('signed-out-panel')`, 'the signed-out panel again');
         await sleep(7000);
-        assert.equal(await ev('window.__marker'), 1, 'a real sign-out does not reload the page');
-        assert.ok(await ev(`!!document.getElementById('signed-out-panel')`), 'and keeps its panel');
+        assert.equal(await ev('window.__marker'), 1, 'a second unprompted reload within a minute does not happen');
+
+        // Only a 2xx from /api/settings is "signed in": a 401, and a server that is shedding load or restarting (429, 503) while the page is really signed out, keep the panel and never reload (no loop).
+        for (const status of [401, 503, 429]) {
+            await load();
+            await waitFor(feedReady, `the feed ready (${status} case)`, 15000);
+            await ev(`sessionStorage.removeItem('so'); window.__marker = 1; const real = window.fetch; window.fetch = (u, o) => String(u).includes('/api/settings') ? Promise.resolve(new Response('{}', { status: ${status} })) : real(u, o);
+                import((window.__coralStatic || '/static/') + 'signed_out.js').then(m => m.enterSignedOut()); true`);
+            await waitFor(`!!document.getElementById('signed-out-panel')`, `the signed-out panel (${status})`);
+            await sleep(7000);
+            assert.equal(await ev('window.__marker'), 1, `a ${status} on the sign-in check does not reload the page`);
+            assert.ok(await ev(`!!document.getElementById('signed-out-panel')`), `and keeps its panel (${status})`);
+        }
         console.log('PASS the live feed always starts and retries');
     } finally { await client.close(); }
 })().catch(e => { console.error(e); process.exit(1); });

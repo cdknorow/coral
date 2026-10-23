@@ -26,19 +26,17 @@ import { syncAutoAcceptHeader, noteAutoAcceptPauses } from './auto_accept.js';
 import { pruneTerminalGone, syncTerminalGoneHeader } from './terminal_gone.js';
 import { setText } from './dom_write.js';
 
-// Reconnect pacing for the live feed. A fixed 5 s retry made every open dashboard reconnect in the same second after
-// a hub restart or deploy, and kept retrying forever after the sign-in ended. Retries now back off exponentially
-// with jitter (feed_pacing.js). A "session ended" close (4401, sent by the hub) is checked against /auth/session
-// first and stops the retries only when that says the browser is signed out (see recheckSignIn).
+// Reconnect pacing for the live feed: exponential backoff with jitter (feed_pacing.js), so tabs do not all retry in the same second after a hub restart. A "session ended" close (4401) is checked
+// against /auth/session first and stops the retries only when that says the browser is signed out (recheckSignIn).
 const FEED_CLOSE_SESSION_ENDED = 4401;
 let _feedFailures = 0;
 let _lastSidebarRenderAt = 0;
 
 function scheduleFeedReconnect() {
     if (isSignedOut()) {
-        if (_feedFailures < 4) { // a false 401 must not end the feed: re-check sign-in (#6233)
+        if (_feedFailures < 4) { // #6233: a false 401
             _feedFailures++;
-            feedHooks.schedule(() => { if (isSignedOut()) recheckSignedOut(); }, feedRetryDelay(_feedFailures));
+            feedHooks.schedule(recheckSignedOut, feedRetryDelay(_feedFailures));
         }
         return;
     }
@@ -46,9 +44,7 @@ function scheduleFeedReconnect() {
     feedHooks.schedule(connectCoralWs, feedRetryDelay(_feedFailures));
 }
 
-// Seams for tests. signedOut is what the feed does once the browser is confirmed signed out; the default is the same
-// redirect the fetch wrapper in cloud.js performs on a 401. schedule runs a reconnect after the backoff delay; a test
-// records the requested delays and runs them faster instead of waiting out the real backoff.
+// Test seams: signedOut is the redirect the fetch wrapper in cloud.js makes on a 401; schedule runs a reconnect after the backoff delay (a test records the delays and runs them faster).
 export const feedHooks = {
     signedOut() {
         if (!/^\/(signin|auth|enroll)/.test(location.pathname)) location.replace(signInUrl());
@@ -85,7 +81,7 @@ export function connectCoralWs() {
     let ws;
     try {
         ws = state.coralWs = new WebSocket(url);
-    } catch (e) { dbg('coralWs new', e); state.coralWs = null; scheduleFeedReconnect(); return; }
+    } catch (e) { state.coralWs = null; scheduleFeedReconnect(); return; }
     const current = () => state.coralWs === ws;
     ws.addEventListener('open', () => { if (current()) markReady('feed'); }); // window.__coralReady (#3118)
     // The machine-health card shows unknown while the feed is down (#3446).
