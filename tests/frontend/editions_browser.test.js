@@ -144,6 +144,9 @@ async function run() {
             check(`${label}: the connect flow (cloud_connect.js) loads when the screen is opened, once, not with the page (#5818)`, ccBefore <= 1 && (await ccLoaded()) === 1, `${ccBefore} -> ${await ccLoaded()}`);
             check(`${label}: the home card still opens Connect to Coral Hub`, ((await screen()) || {}).title === 'Connect to Coral Hub');
             await escape();
+            // Escape on a pending first launch answers it: the page saves welcome_pending False in a request of its own, which must reach the server BEFORE the next put sets it back to True (two requests in flight can swap on a slow
+            // machine: the Windows cdp run then found nothing to offer, #6410).
+            await until(savedIs('welcome_pending', 'False'), 'the Escape from the home card saved its answer');
             // An explicit URL (--cloud-url / CORAL_CLOUD_URL): the server offers it, as with the flag.
             await put({ welcome_pending: 'True', welcome_choice: '' });
             await load({ ...PROD, hub_url: 'https://hub.example.com', offer_at_launch: true });
@@ -151,9 +154,11 @@ async function run() {
             // 1-in-461 flake of the 154 gate). The check says what it saw when it fails.
             await until(`(() => { const m = document.getElementById('editions-modal'); return !!m && m.style.display !== 'none' && !!m.querySelector('#editions-title') && !!m.querySelector('[data-cloud="connect"]:not([hidden])'); })()`, 'the screen for an explicit URL');
             const shown = await screen();
-            check(`${label}: an explicit URL: the first-launch screen opens`, !!shown && shown.title === 'Connect to Coral Hub', JSON.stringify(shown));
+            const why = shown ? '' : JSON.stringify(await ev(`(async () => ({ modal: !!document.getElementById('editions-modal'), server: (await (await fetch('/api/settings')).json()).settings.welcome_pending, page: String((window.__qaState && window.__qaState.settings || {}).welcome_pending), cloudCalls: (window.__cloudCalls || []).length }))()`).catch(e => String(e).slice(0, 120)));
+            check(`${label}: an explicit URL: the first-launch screen opens`, !!shown && shown.title === 'Connect to Coral Hub', JSON.stringify(shown) + why); // a miss says what the page and the server held
             await escape();
             await until(`document.getElementById('editions-modal').style.display === 'none'`, 'closed');
+            await until(savedIs('welcome_pending', 'False'), 'the Escape from the first-launch screen saved its answer'); // as above: before the next put
             // With the flag, a dev build (no hub configured) still asks nothing.
             await put({ welcome_pending: 'True', welcome_choice: '' });
             await load({ ...DEV, offer_at_launch: true });
