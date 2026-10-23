@@ -237,6 +237,7 @@ POST /api/artifacts/received/unlisted/delete never
 POST /api/artifacts/retention/ack never
 POST /api/artifacts/{id}/comments never
 POST /api/artifacts/{id}/comments/{cid}/reopen never
+POST /api/artifacts/{id}/comments/{cid}/reply never
 POST /api/artifacts/{id}/comments/{cid}/resolve never
 POST /api/artifacts/{id}/comments/{cid}/send never
 POST /api/auth/hub-signin/dismiss never

@@ -249,6 +249,7 @@ b POST /api/artifacts/prune
 b POST /api/artifacts/received/unlisted/delete
 b POST /api/artifacts/retention/ack
 b POST /api/artifacts/{id}/comments
+a POST /api/artifacts/{id}/comments/{cid}/reply
 b POST /api/artifacts/{id}/comments/{cid}/reopen
 b POST /api/artifacts/{id}/comments/{cid}/resolve
 b POST /api/artifacts/{id}/comments/{cid}/send
