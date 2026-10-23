@@ -1441,3 +1441,8 @@
     html.kb-open .top-bar { display: none !important; }
     html.kb-open:has(#xterm-container:focus-within) #command-pane:not(.chat-mode) { display: none !important; }
 }
+
+/* The answers of a question or permission card are 44 px targets on a phone (#6727): a short one ("Yes") was 37 px, shorter than the long ones. */
+@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) {
+    .cni-answer:not(.btn):not(.cni-link) { min-height: var(--control-touch-height, 44px); align-items: center; }
+}

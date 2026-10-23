@@ -32,6 +32,7 @@ import { noteUnseenChat, syncJumpToLatest } from './chat_jump_latest.js';
 import { sendPromptAnswer, syncEmptyState } from './chat_prompt_empty.js';
 import { autosizeCommandInput } from './command_autosize.js';
 import { noteReplyText, forgetReplies } from './chat_announce.js';
+import { wireMessageActions } from './message_actions.js'; // the Copy and Save buttons of the bubbles are one Tab stop (#6727)
 export { clearKeptChatPages } from './chat_kept_pages.js';
 export { renderTranscript } from './chat_messages.js';
 export { initCommandInputAutosize } from './command_autosize.js';
@@ -177,6 +178,8 @@ export function stitchPages(lastOlder) {
     }
 }
 
+
+wireMessageActions(document.getElementById("live-history-messages")); // the chat container is in the page from the start
 
 document.addEventListener("click", async (e) => {
     const btn = e.target.closest && e.target.closest(".chat-copy-btn");

@@ -296,7 +296,26 @@ function watchCardInView(el) {
     }, { threshold: [0, 0.1] });
     observer.observe(el);
     _cardWatch = { el, observer };
+    keepAnswersOnScreenSoon(); // a new card: its answers come into view (#6727)
 }
+
+// The answers of the open card stay on screen when the pane under them shrinks (#6727, the phone chat audit #6712): the on-screen keyboard took more than half of a phone's height and left the card with
+// its title showing and Yes and No below the fold. When the card appears, and when the window or the visual viewport is resized while the card is on screen, the chat scrolls so the last answer is at the bottom
+// of the pane. A person who has scrolled away from the card (up in a long chat) is not moved: that is the class the card-in-view watch keeps.
+let _answersTimer = 0;
+function keepAnswersOnScreen() {
+    const el = _cardWatch && _cardWatch.el;
+    if (!el || !el.isConnected) return;
+    const answers = el.querySelectorAll(".cni-answer");
+    const last = answers[answers.length - 1], pane = el.parentElement;
+    if (!last || !pane) return;
+    const pr = pane.getBoundingClientRect(), lr = last.getBoundingClientRect();
+    if (lr.bottom > pr.bottom - 4) pane.scrollTop += lr.bottom - pr.bottom + 8;
+}
+function keepAnswersOnScreenSoon() { clearTimeout(_answersTimer); _answersTimer = setTimeout(keepAnswersOnScreen, 120); } // timeout-ok: the layout settles after the keyboard or the card appears
+const _onViewResize = () => { const w = document.getElementById("capture-wrapper"); if (w && w.classList.contains("card-in-view")) keepAnswersOnScreenSoon(); };
+window.addEventListener("resize", _onViewResize);
+if (window.visualViewport) window.visualViewport.addEventListener("resize", _onViewResize);
 function unwatchCardInView() {
     if (!_cardWatch) return;
     if (_cardWatch.observer) _cardWatch.observer.disconnect();
