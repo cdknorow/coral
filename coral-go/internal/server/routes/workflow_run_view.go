@@ -2,6 +2,7 @@ package routes
 
 import (
 	"encoding/json"
+	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -114,14 +115,26 @@ func reasonOf(text string, lastLineOnly bool) string {
 	if lastLineOnly {
 		return lastLine(red)
 	}
-	return runOneLine(red, maxFailureReason)
+	if l := runOneLine(red, maxFailureReason); !isBlob(l) {
+		return l
+	}
+	return ""
 }
+
+// blobRun is one unbroken run of 12 or more characters of base64, hex or a token: no space, no dot, no colon (Security suggested 32; a tail that ends in the middle of a key line leaves a fragment
+// shorter than a line, so the floor is lower: a fragment of 11 characters or fewer is under 70 bits). Such a line is not a reason, and a redactor that was not given the header of a
+// private key (a window or a stored tail that begins or ends inside one) cannot tell its lines from text, so the reason never shows one (Security's #6530 finding). Ordinary reasons have a
+// space or punctuation in them, and a path or URL has a dot or a colon.
+var blobRun = regexp.MustCompile(`^[A-Za-z0-9+/=_-]{12,}$`)
+
+func isBlob(line string) bool { return blobRun.MatchString(line) }
 
 // lastLine is the last line of text that has anything on it, as one clean line.
 func lastLine(text string) string {
 	lines := strings.Split(clitext.Clean(text), "\n")
 	for i := len(lines) - 1; i >= 0; i-- {
-		if l := runOneLine(lines[i], maxFailureReason); l != "" {
+		l := runOneLine(lines[i], maxFailureReason)
+		if l != "" && !isBlob(l) { // a blob is skipped for the line before it, or for no reason at all
 			return l
 		}
 	}
@@ -147,6 +160,9 @@ func boundedText(text string, tail bool) string {
 	}
 	if tail {
 		text = text[len(text)-maxReasonInput:]
+		if i := strings.IndexByte(text, '\n'); i >= 0 { // the window's first line is partial: dropped, so nothing begins in the middle of a token
+			text = text[i+1:]
+		}
 		for len(text) > 0 && !utf8.RuneStart(text[0]) {
 			text = text[1:]
 		}
