@@ -248,7 +248,8 @@
             </div>
 
             <!-- #5478: Claude is not signed in, so background jobs wait (signin_line.js): one calm line, no alert; the button tells what to do -->
-            <div id="claude-signin-line" class="signin-line" role="status" hidden>
+            <div id="claude-signin-live" class="sr-only" role="status"></div><!-- always in the page: signin_line.js puts the line's words in it when the line appears, so a screen reader says them (#6656); the visible line is not a live region -->
+            <div id="claude-signin-line" class="signin-line" hidden>
                 <button type="button" class="signin-line-btn" id="signin-line-btn" data-on-click="m-signin-hint" aria-expanded="false" aria-controls="signin-line-hint" title="Sign in with claude in a terminal"><span class="material-icons" aria-hidden="true">info</span> Claude isn't signed in: scheduled jobs and workflows that use it are waiting</button>
                 <span id="signin-line-hint" class="signin-line-hint" hidden>Sign in with claude in a terminal.</span>
                 <button type="button" class="signin-line-dismiss" id="signin-line-dismiss" data-on-click="m-signin-dismiss" aria-label="Dismiss the Claude sign-in note" title="Dismiss until tomorrow"><span class="material-icons" aria-hidden="true">close</span></button>
