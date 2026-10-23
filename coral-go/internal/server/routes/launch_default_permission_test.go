@@ -208,10 +208,10 @@ func TestTheAutoDefaultDoesNotGetPastTheHubGate(t *testing.T) {
 	assert.Equal(t, "default", teamMember(true), "Hub team member, below Launch mode: the agent asks")
 	set("launch", "true")
 	assert.Equal(t, "auto", launch(true), "Hub launch, switch on and Launch: Auto")
-	assert.Equal(t, "auto", teamMember(true), "Hub team member, switch on and Launch: Auto")
+	assert.Equal(t, "default", teamMember(true), "Hub team member, switch on and Launch: the CLI confirm mode (#6415), not Auto")
 	set("view", "false")
 	assert.Equal(t, "auto", launch(false), "a launch from this computer: Auto, whatever the Hub's settings")
-	assert.Equal(t, "auto", teamMember(false), "a team member from this computer: Auto")
+	assert.Equal(t, "default", teamMember(false), "a team member from this computer: the CLI confirm mode (#6415)")
 
 	// The same default gate protects Codex's workspace-write/-a never mode.
 	require.NoError(t, ss.SetSetting(ctx, "default_permission_mode", ""))
@@ -297,11 +297,11 @@ func TestAnAgentsLaunchIsNotStartedInAutoByDefault(t *testing.T) {
 
 	assert.Equal(t, "auto", launch(false), "from the dashboard: Auto")
 	assert.Equal(t, "default", launch(true), "an agent's launch with no flags: not Auto")
-	assert.Equal(t, "auto", team(false, plain), "a team member from the dashboard: Auto")
+	assert.Equal(t, "default", team(false, plain), "a team member from the dashboard: the CLI confirm mode (#6415)")
 	assert.Equal(t, "default", team(true, plain), "a team member an agent launches: not Auto")
 	// a member that is exactly an entry of a template the Operator saved is the Operator's choice
 	require.NoError(t, ss.SetSetting(ctx, "saved_team_templates", `[{"name":"t","agents":[{"name":"S","agent_type":"claude"}]}]`))
-	assert.Equal(t, "auto", team(true, map[string]any{"name": "S", "agent_type": "claude"}), "a saved template's member, launched by an agent: unchanged (Auto)")
+	assert.Equal(t, "default", team(true, map[string]any{"name": "S", "agent_type": "claude"}), "a saved template member with nothing chosen: the CLI confirm mode (#6415)")
 	// a saved default still wins for the agent's child, as before this change
 	require.NoError(t, ss.SetSetting(ctx, "default_permission_mode", "acceptEdits"))
 	assert.Equal(t, "acceptEdits", launch(true))
