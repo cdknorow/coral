@@ -97,7 +97,7 @@ jobs:
           if (-not (Get-Command gcc -ErrorAction SilentlyContinue)) { choco install mingw --version=16.1.0 -y --no-progress; if ($LASTEXITCODE -ne 0) { throw "choco install mingw failed" } }
           gcc --version
 
-      - name: Stage 2: a person's click through the real server, the updater, the real Windows Installer (and every click that must not install)
+      - name: "Stage 2 - a person's click through the real server, the updater, the real Windows Installer (and every click that must not install)"
         shell: pwsh
         run: ./tests/release/update_rehearsal_windows_route.ps1 -LogDir "$env:RUNNER_TEMP\rehearsal-route-logs"
 
