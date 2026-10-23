@@ -57,6 +57,8 @@ func TestOperatorOnlyRoutes(t *testing.T) {
 		r.Post("/api/board/{project}/resume", ok)
 		r.Post("/api/board/{project}/messages", ok)
 		r.Get("/api/workflows", ok)
+		r.Get("/api/worktrees", ok)
+		r.Post("/api/worktrees/remove", ok)
 		do := func(method, path string, hdr map[string]string) *httptest.ResponseRecorder {
 			req := httptest.NewRequest(method, path, strings.NewReader("{}"))
 			for k, v := range hdr {
@@ -89,6 +91,8 @@ func TestOperatorOnlyRoutes(t *testing.T) {
 			{"GET", "/api/system/hooks-status"}, {"POST", "/api/sessions/live/abc/refresh-hooks"},
 			// #3929 step 2: the dashboard's own preferences are the Operator's too
 			{"PUT", "/api/settings/git-diff-mode"},
+			// #6736: the kept worktrees, and removing one, are the Operator's
+			{"GET", "/api/worktrees"}, {"POST", "/api/worktrees/remove"},
 		}
 		for _, wr := range writes {
 			rec := do(wr.method, wr.path, agent)

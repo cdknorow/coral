@@ -382,7 +382,7 @@ var routeTable = cat(
 		"/api/workflows/{id}/trigger",
 		"/api/workflows/by-name/{name}/trigger",
 	),
-	rules(http.MethodGet, TierLaunch, "/api/filesystem/list", "/api/filesystem/is-git"),
+	rules(http.MethodGet, TierLaunch, "/api/filesystem/list", "/api/filesystem/is-git", "/api/worktrees"), // the kept worktrees (#6736); their removal is never through the Hub
 	// The prerequisite check for Coral Hub's New Agent dialog (#4579): it RUNS "<cli> --version" on the computer, so it is Launch,
 	// never View. Only type (an exact agent type) and source (cli_recheck) may pass (routes_query.go); binary, which would name a
 	// program to run, is not in the table, and the handler refuses it through the tunnel as well. The reply carries no path.

@@ -297,3 +297,30 @@ func TestRunWithAMissingBaseBranchSaysSoPlainly(t *testing.T) {
 	require.NotNil(t, r.ErrorCode)
 	assert.Equal(t, "worktree_failed", *r.ErrorCode)
 }
+
+// Security's #6741 and the Orchestrator's check: a job that made no worktree never cleans one up: its repository (maybe a person's own linked checkout) is not touched.
+func TestRunWithoutAWorktreeNeverRemovesTheJobsOwnCheckout(t *testing.T) {
+	e := newExitEnv(t, "exit-own-checkout")
+	main := exitGitRepo(t)
+	own := filepath.Join(t.TempDir(), "feature")
+	out, err := exec.Command("git", "-C", main, "worktree", "add", "-b", "feature", "--", own, "main").CombinedOutput()
+	require.NoError(t, err, string(out))
+	e.launch(t, func(context.Context) error { return nil })
+	e.s.launchAndWatch(e.runID, store.ScheduledJob{AgentType: "claude"}, runConfig{repoPath: own, createWorktree: false, cleanupWorktree: true})
+	assert.DirExists(t, own, "the person's checkout is not removed")
+	e.s.cleanupWorktree(own, own, "", "") // even called with the repository as the worktree, it does nothing
+	assert.DirExists(t, own)
+}
+
+func TestIsRunWorktreeFolder(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "worktrees")
+	repo := filepath.Join(t.TempDir(), "proj")
+	assert.True(t, IsRunWorktreeFolder(root, repo, 7, filepath.Join(root, "job-run-7-proj")))
+	assert.True(t, IsRunWorktreeFolder(root, repo, 7, repo+"_task_run_7"), "the legacy folder beside the repository")
+	assert.False(t, IsRunWorktreeFolder(root, repo, 7, repo), "never the repository itself")
+	assert.False(t, IsRunWorktreeFolder(root, repo, 7, filepath.Join(root, "job-run-8-proj")), "another run's")
+	assert.False(t, IsRunWorktreeFolder(root, repo, 7, filepath.Join(root, "job-run-7-other")), "another repository's name")
+	assert.False(t, IsRunWorktreeFolder(root, repo, 7, filepath.Join(root, "x", "job-run-7-proj")), "not directly in the folder")
+	assert.False(t, IsRunWorktreeFolder("", repo, 7, filepath.Join(root, "job-run-7-proj")), "no root, no folder")
+	assert.False(t, IsRunWorktreeFolder(root, "", 7, filepath.Join(root, "job-run-7-")))
+}

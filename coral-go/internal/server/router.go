@@ -501,6 +501,11 @@ func (s *Server) registerSystem(r *chi.Mux, h *routeHandlers) {
 	r.Delete("/api/teams/detail/{name}", teamsHandler.DeleteTeam)
 	r.Post("/api/teams/detail/{name}/resurrect", sessHandler.ResurrectTeam)
 
+	// Worktrees Coral made and kept (#6736)
+	worktreesHandler := routes.NewWorktreesHandler(s.db, s.cfg)
+	r.Get("/api/worktrees", worktreesHandler.List)
+	r.Post("/api/worktrees/remove", worktreesHandler.Remove)
+
 	// Team knowledge distillation
 	r.Post("/api/teams/detail/{name}/distill-knowledge", sessHandler.DistillKnowledge)
 	r.Get("/api/teams/detail/{name}/distill-knowledge", sessHandler.GetKnowledgeStatus)

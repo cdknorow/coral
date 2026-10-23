@@ -213,6 +213,7 @@ GET /api/workflows/runs/{runID} interact
 GET /api/workflows/runs/{runID}/steps/{stepIndex}/files/* never
 GET /api/workflows/{workflowID} interact
 GET /api/workflows/{workflowID}/runs interact
+GET /api/worktrees launch
 GET /ws/coral view
 GET /ws/terminal/{name} view
 PATCH /api/agent/tasks/{taskID} never
@@ -370,6 +371,7 @@ POST /api/workflows never
 POST /api/workflows/by-name/{name}/trigger launch
 POST /api/workflows/runs/{runID}/kill interact
 POST /api/workflows/{workflowID}/trigger launch
+POST /api/worktrees/remove never
 PUT /api/agent/ui/{id} never
 PUT /api/artifacts/{id}/comments/lock never
 PUT /api/artifacts/{id}/keep never
