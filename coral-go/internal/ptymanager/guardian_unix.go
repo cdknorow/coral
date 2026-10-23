@@ -14,6 +14,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/subgentic/coral/internal/safego"
 )
 
 // The guardian (#6129): when Coral dies without cleaning up (SIGKILL, a crash, the machine killing it), the system hangs up each terminal, which ends an agent that exits on hangup and leaves the
@@ -83,6 +85,7 @@ func runGuardian(in io.Reader) {
 		for _, g := range all {
 			wg.Add(1)
 			go func(g *guarded) {
+				defer safego.Recover("ptymanager/guardian-finish")
 				defer wg.Done()
 				left := killTree(g.seen, g.root, g.tag)
 				for end := time.Now().Add(time.Second); anyAlive(left) && time.Now().Before(end); {
@@ -96,6 +99,7 @@ func runGuardian(in io.Reader) {
 	// SIGTERM is not handled: it ends the guardian like any process, and ends no tree. The pipe reaching EOF is the one thing that makes it end terminals, so a stray "kill" or "pkill" that matches its
 	// name cannot end every agent; Coral finds a dead guardian on its next write and starts another, told every terminal.
 	go func() {
+		defer safego.Recover("ptymanager/guardian-sample")
 		for range time.Tick(guardianSample) {
 			mu.Lock()
 			n := len(guard)
@@ -175,7 +179,7 @@ func (g *guardianClient) start() error {
 	for _, r := range g.regs { // a replacement is told what the first knew
 		fmt.Fprintf(in, "add %d %d %s\n", r.root.pid, r.root.created, r.tag)
 	}
-	go g.watch(h)
+	safego.Go("ptymanager/guardian-watch", func() { g.watch(h) })
 	return nil
 }
 
