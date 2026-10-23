@@ -2001,7 +2001,7 @@
     flex: 0 1 auto;
     cursor: help;
 }
-.hub-readonly-chip[hidden] { display: none; }
+.hub-readonly-chip:empty { margin: 0; padding: 0; border: 0; width: 0; min-width: 0; height: 0; } /* in the page with nothing to say: no room, still a live region */
 /* View only through Coral Hub (#3411): Send looks unavailable and the terminal doesn't offer typing. */
 /* A control the Hub's tier does not allow (hub_blocked_controls.js, #3769): dimmed, with the reason as its title. It stays
    clickable, so a click still says why. (Until #3645 the Send rule here named an inline onclick; it matched nothing after.) */

@@ -76,9 +76,9 @@ const CLOUD_PRELOAD = `(() => {
         await ev(`(async () => { await window.selectLiveSession(${JSON.stringify(name)}, 'claude', ${JSON.stringify(name + '-id')}, ${JSON.stringify(server)}); return true; })()`);
         // The agent's terminal socket opens and the access lookup lands (the chip holds still).
         await waitFor(`!!window.__wsTerm && window.__wsTerm.url.includes(${JSON.stringify(name + '-id')}) && window.__wsTerm.readyState === 1`, 'the terminal socket', 3000).catch(() => {});
-        await w.waitStable(`JSON.stringify((c => c ? [c.hidden, c.textContent] : null)(document.getElementById('hub-readonly-chip')))`, 'the access chip', 200).catch(() => {});
+        await w.waitStable(`JSON.stringify((c => c ? [c.textContent] : null)(document.getElementById('hub-readonly-chip')))`, 'the access chip', 200).catch(() => {});
     };
-    const chip = () => ev(`(() => { const c = document.getElementById('hub-readonly-chip'); return c ? { shown: !c.hidden && getComputedStyle(c).display !== 'none', text: c.textContent, title: c.title, role: c.getAttribute('role') } : null; })()`);
+    const chip = () => ev(`(() => { const c = document.getElementById('hub-readonly-chip'); return c ? { shown: c.textContent !== '' && c.getBoundingClientRect().width > 0, hiddenAttr: c.hasAttribute('hidden'), text: c.textContent, title: c.title, role: c.getAttribute('role') } : null; })()`);
     const toasts = () => ev(`[...document.querySelectorAll('.toast, .notification-toast')].map(t => ({ text: (t.querySelector('.toast-message') || t).textContent.trim(), role: t.getAttribute('role'), action: t.querySelector('.toast-action')?.textContent.trim() || null }))`);
     const clearToasts = () => ev(`document.querySelectorAll('.toast, .notification-toast').forEach(t => t.remove()); true`);
     const sends = async () => {
@@ -280,7 +280,7 @@ const CLOUD_PRELOAD = `(() => {
         await ev(`window.selectLiveSession('race', 'claude', 'race-id', 'm5'); true`);
         await waitFor(`window.__wsTerm && window.__wsTerm.url.includes('race-id') && window.__wsTerm.readyState === 1`, 'race socket', 3000);
         const frameAt = await ev(`(() => { window.__wsInject(JSON.stringify({ type: 'hub_read_only', required: 'interact', hub_mode: 'view' })); return performance.now(); })()`);
-        assert.ok(await ev(`window.__qaServers.resolved.every(t => t < ${frameAt}) && document.getElementById('hub-readonly-chip') && !document.getElementById('hub-readonly-chip').hidden`), 'the frame lands while the lookup is still pending');
+        assert.ok(await ev(`window.__qaServers.resolved.every(t => t < ${frameAt}) && document.getElementById('hub-readonly-chip') && document.getElementById('hub-readonly-chip').textContent !== ''`), 'the frame lands while the lookup is still pending');
         // The slow lookup (Interact) resolves after the frame; then give its continuation a moment to run.
         await waitFor(`window.__qaServers.resolved.some(t => t > ${frameAt})`, 'the Servers lookup resolving after the frame', 5000);
         await sleep(100); // sleep-ok: let the lookup's continuation run before checking it changed nothing
@@ -300,7 +300,7 @@ const CLOUD_PRELOAD = `(() => {
         await waitFor(`!!document.querySelector('#server-row-m6 .cs-launch select')`, 'the Hub access select for m6', 5000);
         await ev(`(() => { const s = document.querySelector('#server-row-m6 .cs-launch select'); s.value = 'launch'; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
         await waitFor(`T.state.currentSession.hubReadOnly === null`, 'the lock clearing after choosing Launch (up to what the computer allows)', 5000);
-        const a = await ev(`({ same: T.state.currentSession === window.__sessBefore, chipHidden: document.getElementById('hub-readonly-chip').hidden, patches: window.__qaServers.patches })`);
+        const a = await ev(`({ same: T.state.currentSession === window.__sessBefore, chipHidden: document.getElementById('hub-readonly-chip').textContent === '', patches: window.__qaServers.patches })`);
         assert.ok(a.same, 'the same session object: no reselect');
         assert.ok(a.chipHidden, 'the read-only chip is gone');
         assert.deepEqual(a.patches, [{ id: 'm6', body: { access_mode: 'launch' } }], 'one PATCH: m6 -> launch, no confirmation dialog');

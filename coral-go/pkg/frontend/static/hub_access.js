@@ -81,8 +81,7 @@ function renderChip() {
     const chip = document.getElementById('hub-readonly-chip');
     const ro = state.currentSession && state.currentSession.hubReadOnly;
     if (chip) {
-        chip.hidden = !ro;
-        chip.textContent = ro ? ro.chip : '';
+        chip.textContent = ro ? ro.chip : ''; // the chip is always in the page and only its text changes: a status that appears with its words is often not read
         chip.title = ro ? ro.message : '';
         // On a phone the chip is truncated: a tap (or Enter) says the whole reason (#3411).
         chip.tabIndex = ro ? 0 : -1;

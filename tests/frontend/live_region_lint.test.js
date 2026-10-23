@@ -17,7 +17,6 @@ const TEMPLATES = path.join(FRONTEND, 'templates');
 
 // Reviewed, still in the page (file:region id). Each is a polite region that starts hidden and is shown and filled in one turn: the first words after it appears are not read.
 const KNOWN = {
-  'hub_access.js:hub-readonly-chip': 'the view-only chip of a Hub viewer: hidden = !ro and its text in one go',
   'launch_dialog.js:launch-access-note': 'the New Agent access note: hidden = !why and its text in one go',
   'settings_core.js:settings-debug-input-log-status': 'the debug input log status: text, then hidden = false',
   'team_dialogs.js:team-undo': 'the "Removed <agent>. Undo" line',
