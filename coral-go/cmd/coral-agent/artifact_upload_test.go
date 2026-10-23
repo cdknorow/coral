@@ -44,7 +44,7 @@ func TestUploadArtifactRefusalIsAnError(t *testing.T) {
 			defer srv.Close()
 
 			var out, errOut bytes.Buffer
-			err := uploadArtifact(srv.URL, file, "note.txt", "text/plain", "sess-1", &out, &errOut)
+			err := uploadArtifact(srv.URL, file, "note.txt", "text/plain", "sess-1", "", &out, &errOut)
 			if err == nil {
 				t.Fatalf("a %d answer must be an error, got nil (out=%q)", tc.status, out.String())
 			}
@@ -81,7 +81,7 @@ func TestUploadArtifactTwoXXWithoutIdIsAFailure(t *testing.T) {
 			}))
 			defer srv.Close()
 			var out, errOut bytes.Buffer
-			err := uploadArtifact(srv.URL, file, "note.txt", "text/plain", "sess-1", &out, &errOut)
+			err := uploadArtifact(srv.URL, file, "note.txt", "text/plain", "sess-1", "", &out, &errOut)
 			if err == nil {
 				t.Fatalf("a 2xx with no artifact id must be an error, got nil (out=%q)", out.String())
 			}
@@ -109,10 +109,55 @@ func TestUploadArtifactSuccessPrintsTheLink(t *testing.T) {
 	defer srv.Close()
 
 	var out, errOut bytes.Buffer
-	if err := uploadArtifact(srv.URL, file, "note.txt", "text/plain", "sess-1", &out, &errOut); err != nil {
+	if err := uploadArtifact(srv.URL, file, "note.txt", "text/plain", "sess-1", "", &out, &errOut); err != nil {
 		t.Fatalf("a 2xx upload must succeed: %v (stderr=%q)", err, errOut.String())
 	}
 	if !strings.Contains(out.String(), "coral://artifacts/abc123") {
 		t.Errorf("the coral:// link must be printed to stdout, got %q", out.String())
+	}
+}
+
+// #6357: --new-version-of is sent as X-Artifact-New-Version-Of, exactly as typed (the server accepts only a 64-hex digest link or a 32-hex series link and refuses anything else before any
+// lookup); without it no such header goes. A refusal of a new version (the bytes are an older version) is an error and prints no link, like any refused upload.
+func TestUploadArtifactSendsTheNewVersionHeaderAndAnOlderVersionIsAnError(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "plan.txt")
+	if err := os.WriteFile(file, []byte("plan"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var seen []string
+	refuse := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen = append(seen, r.Header.Get("X-Artifact-New-Version-Of"))
+		if refuse {
+			w.WriteHeader(http.StatusConflict)
+			_, _ = w.Write([]byte(`{"error":"these bytes are version 1 of this series, and the newest is version 3: nothing was added","code":"same_as_older_version"}`))
+			return
+		}
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"uri":"coral://artifacts/` + strings.Repeat("ab", 32) + `","series_id":"` + strings.Repeat("cd", 16) + `","version":2,"versions":2}`))
+	}))
+	defer srv.Close()
+	var out, errOut bytes.Buffer
+	link := "coral://artifacts/series/" + strings.Repeat("cd", 16)
+	if err := uploadArtifact(srv.URL, file, "plan.txt", "text/plain", "s1", link, &out, &errOut); err != nil {
+		t.Fatal(err)
+	}
+	if err := uploadArtifact(srv.URL, file, "plan.txt", "text/plain", "s1", "", &out, &errOut); err != nil {
+		t.Fatal(err)
+	}
+	if len(seen) != 2 || seen[0] != link || seen[1] != "" {
+		t.Fatalf("the header is sent as typed with the flag and not without it: %q", seen)
+	}
+	if !strings.Contains(out.String(), `"series_id"`) || !strings.Contains(out.String(), `"version":2`) {
+		t.Errorf("the reply's series fields are printed: %q", out.String())
+	}
+	refuse = true
+	out.Reset()
+	err := uploadArtifact(srv.URL, file, "plan.txt", "text/plain", "s1", link, &out, &errOut)
+	if err == nil || !strings.Contains(err.Error(), "version 1 of this series") || !strings.Contains(err.Error(), "HTTP 409") {
+		t.Fatalf("an older version must be an error naming the version: %v", err)
+	}
+	if out.Len() != 0 {
+		t.Errorf("no link is printed for a refusal: %q", out.String())
 	}
 }

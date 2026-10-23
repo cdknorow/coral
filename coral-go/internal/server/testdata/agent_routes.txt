@@ -5,6 +5,7 @@
 # TestAgentRouteCensus until it gets a line here: decide, then add it.
 b CONNECT /api/remote/{server}/*
 a DELETE /api/agent/ui/{id}
+b DELETE /api/artifacts/series/{series_id}
 b DELETE /api/artifacts/{id}
 b DELETE /api/shared-images/{id}
 b DELETE /api/artifacts/{id}/comments/lock
@@ -50,9 +51,12 @@ a GET /api/agent/ui/{id}/content
 a GET /api/agent/ui/{id}/events
 b GET /api/agents/models
 b GET /api/artifacts
+a GET /api/artifacts/series/{series_id}
+a GET /api/artifacts/series/{series_id}/versions
 a GET /api/artifacts/{id}
 a GET /api/artifacts/{id}/comments
 a GET /api/artifacts/{id}/meta
+a GET /api/artifacts/{id}/versions
 b GET /api/artifacts/{id}/readers
 b GET /api/auth/hub-origins
 b GET /api/auth/hub-signin

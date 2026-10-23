@@ -355,6 +355,28 @@ func (h *SessionsHandler) keptArtifacts(ctx context.Context) (map[string]bool, e
 	return kept, nil
 }
 
+// protectedArtifacts is what pruning must not remove: the artifacts the Operator keeps, and every member of an artifact series (#6357, pick 4: keep all; a version goes only by the explicit
+// delete). The Operator's own list of what it keeps (keptListRoute) stays only what it marked.
+func (h *SessionsHandler) protectedArtifacts(ctx context.Context) (map[string]bool, error) {
+	kept, err := h.keptArtifacts(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for id := range seriesMemberSet(h.cfg.CoralDir()) {
+		kept[id] = true
+	}
+	return kept, nil
+}
+
+// isProtected is isKept for a prune's re-check under the artifact's lock: kept by the Operator, or a member of a series.
+func (h *SessionsHandler) isProtected(ctx context.Context, id string) (bool, error) {
+	if kept, err := h.isKept(ctx, id); err != nil || kept {
+		return kept, err
+	}
+	_, _, inSeries := digestSeries(h.cfg.CoralDir(), id)
+	return inSeries, nil
+}
+
 func (h *SessionsHandler) isKept(ctx context.Context, id string) (bool, error) {
 	var n int
 	err := h.db.Reader().GetContext(ctx, &n, "SELECT COUNT(*) FROM artifact_keep WHERE hex = ?", id)
@@ -681,7 +703,7 @@ func (h *SessionsHandler) runPrune(ctx context.Context, o pruneOptions) (*pruneR
 			slog.Warn("[artifacts] prune: the reference scan failed, so no artifact object is removed", "error", err)
 			return nil, fmt.Errorf("the reference scan failed (nothing removed): %w", err)
 		}
-		kept, err := h.keptArtifacts(ctx)
+		kept, err := h.protectedArtifacts(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("could not read kept artifacts (nothing removed): %w", err)
 		}
@@ -768,7 +790,7 @@ func (h *SessionsHandler) deleteObjectIfStillUnused(ctx context.Context, coralDi
 	if refs[id] {
 		return 0, false, nil
 	}
-	if kept, err := h.isKept(ctx, id); err != nil || kept {
+	if kept, err := h.isProtected(ctx, id); err != nil || kept {
 		return 0, false, err
 	}
 	use := objectNewestUse(coralDir, id, newestRecordFor(coralDir, id))

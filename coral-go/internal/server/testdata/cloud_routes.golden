@@ -1,4 +1,5 @@
 DELETE /api/agent/ui/{id} never
+DELETE /api/artifacts/series/{series_id} never
 DELETE /api/artifacts/{id} launch
 DELETE /api/artifacts/{id}/comments/lock never
 DELETE /api/artifacts/{id}/comments/{cid} never
@@ -42,10 +43,13 @@ GET /api/agent/ui/{id}/content view
 GET /api/agent/ui/{id}/events view
 GET /api/agents/models launch
 GET /api/artifacts view
+GET /api/artifacts/series/{series_id} never
+GET /api/artifacts/series/{series_id}/versions never
 GET /api/artifacts/{id} view
 GET /api/artifacts/{id}/comments view
 GET /api/artifacts/{id}/meta view
 GET /api/artifacts/{id}/readers view
+GET /api/artifacts/{id}/versions never
 GET /api/auth/hub-origins never
 GET /api/auth/hub-signin never
 GET /api/auth/sessions never
