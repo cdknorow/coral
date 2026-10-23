@@ -48,9 +48,20 @@ func parseClaudeLocalCommandEntry(entry map[string]any, timestamp string) []map[
 		return nil
 	}
 	content, _ := entry["content"].(string)
+	turns, _ := localCommandTurn(content, timestamp)
+	return turns
+}
+
+// localCommandTurn is the chat turn for an entry's text when that text is a slash command's own entry: the command as it was typed ("/effort low") as a note-flagged user turn, and nothing for its
+// output entry. The second result says the text was one of the two (so the caller does not show it as a message). Claude Code 2.1.309 writes both as type "user" entries, where they showed as
+// a bubble "/effort effort low" and a bubble of the output (#6219, finding 4).
+func localCommandTurn(content, timestamp string) ([]map[string]any, bool) {
+	if !localCommandEntryR.MatchString(content) {
+		return nil, false
+	}
 	m := localCommandNameR.FindStringSubmatch(content)
 	if m == nil {
-		return nil
+		return nil, true // the command's output entry: not a turn
 	}
 	text := m[1]
 	if a := localCommandArgsR.FindStringSubmatch(content); a != nil {
@@ -58,7 +69,7 @@ func parseClaudeLocalCommandEntry(entry map[string]any, timestamp string) []map[
 			text += " " + args
 		}
 	}
-	return []map[string]any{{"type": "user", "timestamp": timestamp, "content": text, "local_command": true}}
+	return []map[string]any{{"type": "user", "timestamp": timestamp, "content": text, "local_command": true}}, true
 }
 
 // parseClaudeAttachmentEntry reads a message the user sent while the agent was
@@ -102,6 +113,9 @@ func parseClaudeUserEntry(entry map[string]any, timestamp string, toolUseNames m
 
 	switch c := content.(type) {
 	case string:
+		if turns, ok := localCommandTurn(c, timestamp); ok { // 2.1.309: a slash command and its output are user entries (#6219)
+			return turns
+		}
 		if isMeta || strings.TrimSpace(c) == "" || isSystemInjected(c) {
 			return nil
 		}
