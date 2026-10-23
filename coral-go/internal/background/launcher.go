@@ -4,6 +4,8 @@ package background
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"github.com/subgentic/coral/internal/logsafe"
@@ -33,6 +35,23 @@ type AgentLauncher struct {
 	// :8420 (#6767: a scheduled agent's events went to the default port, so a server on any other port stored none).
 	host     string
 	coralDir string
+}
+
+// runTagger is a runtime whose agents carry a run tag (the tmux one): the agent's processes get CORAL_PTY_RUN=<tag> so a Kill, a sleep or a quit finds what they detached. The built-in terminal
+// tags its own processes, so a tag exported by the launch line would hide them from it.
+type runTagger interface{ TagsRuns() bool }
+
+// newRunTag is a fresh random tag for an agent about to start on a tagging runtime, "" otherwise or when none can be made.
+func (l *AgentLauncher) newRunTag() string {
+	if t, ok := l.runtime.(runTagger); !ok || !t.TagsRuns() {
+		return ""
+	}
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		slog.Warn("could not make a tag for a scheduled agent: its detached helpers will not be found at Kill", "error", err)
+		return ""
+	}
+	return hex.EncodeToString(b)
 }
 
 // SetServer tells the launcher the host agents dial and the data folder of this Coral (the startup passes cfg.AgentHost() and cfg.CoralDir()).
@@ -102,7 +121,7 @@ func (l *AgentLauncher) LaunchAgent(ctx context.Context, workingDir, agentType, 
 	}
 
 	// Build the launch command (empty for terminal sessions)
-	var launchCmd string
+	var launchCmd, runTag string
 	if !isTerminal {
 		protocolPath := FindProtocolMD()
 		// Settings > CLI paths applies to job and scheduled runs like a dashboard
@@ -124,12 +143,14 @@ func (l *AgentLauncher) LaunchAgent(ctx context.Context, workingDir, agentType, 
 		if err != nil {
 			return nil, err
 		}
+		runTag = l.newRunTag()
 		launchCmd, err = ag.LaunchCommand(agent.LaunchParams{
 			SessionID:       sessionID,
 			SessionName:     sessionName, // CORAL_SESSION_NAME: the agent's hooks and coral-board name their session by it
 			CoralHost:       l.host,
 			CoralPort:       l.port,
 			CoralDir:        l.coralDir,
+			RunTag:          runTag,
 			ProtocolPath:    protocolPath,
 			ResumeSessionID: resumeSessionID,
 			Flags:           flags,
@@ -187,6 +208,11 @@ func (l *AgentLauncher) LaunchAgent(ctx context.Context, workingDir, agentType, 
 			l.sessDB.SetDisplayName(ctx, sessionID, displayName)
 		}
 		l.sessDB.RegisterLiveSession(ctx, ls)
+		if runTag != "" {
+			if err := l.sessDB.SetRunTagIfEmpty(ctx, sessionID, runTag); err != nil { // the tag a Kill looks up by session id
+				slog.Warn("could not record a scheduled agent's run tag", "session_id", sessionID, "error", err)
+			}
+		}
 		if !isTerminal {
 			go func() {
 				defer safego.Recover("background/launcher:recordCLIVersion")

@@ -22,6 +22,9 @@ func NewTmuxRuntime(client *tmux.Client) *TmuxRuntime {
 	return &TmuxRuntime{client: client}
 }
 
+// TagsRuns says agents started on this runtime carry a CORAL_PTY_RUN tag, recorded in live_sessions.run_tag, so a Kill finds the processes they detached (#6141, #6770).
+func (r *TmuxRuntime) TagsRuns() bool { return true }
+
 // Client returns the underlying tmux client for cases that need direct access.
 func (r *TmuxRuntime) Client() *tmux.Client {
 	return r.client
