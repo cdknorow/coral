@@ -179,3 +179,31 @@ func TestARelaunchThatEndedWithoutAnUpdateCanBeTriedAgainAfterTheSpacing(t *test
 	assert.Equal(t, 202, code, "tried again")
 	assert.Len(t, e.up.applies, 2)
 }
+
+// #6290: hub_allowed says what the settings say about the Hub's owner, to the person here too: off until the switch was turned on, and off again under the cap or the Operator opt-out.
+func TestHubAllowedFollowsTheSettingsWhoeverAsks(t *testing.T) {
+	allowed := func(e *relaunchEnv, hdr map[string]string) any {
+		code, st := e.status(hdr)
+		require.Equal(t, 200, code)
+		return st["relaunch"].(map[string]any)["hub_allowed"]
+	}
+	e := newRelaunchEnv(t)
+	for name, c := range map[string]struct {
+		set  map[string]string
+		want bool
+	}{
+		"turned on":                {map[string]string{HubRelaunchSetting: "true"}, true},
+		"never touched":            {map[string]string{HubRelaunchSetting: ""}, false},
+		"turned off":               {map[string]string{HubRelaunchSetting: "false"}, false},
+		"on, under a view cap":     {map[string]string{HubRelaunchSetting: "true", MaxModeSetting: "view"}, false},
+		"on, the Operator opt-out": {map[string]string{HubRelaunchSetting: "true", "hub_operator_disabled": "true"}, false},
+	} {
+		e.settings[MaxModeSetting] = "launch"
+		delete(e.settings, "hub_operator_disabled")
+		for k, v := range c.set {
+			e.settings[k] = v
+		}
+		assert.Equal(t, c.want, allowed(e, nil), name+": the person here sees it")
+		assert.Equal(t, c.want, allowed(e, hubHdr(ownerA)), name+": the Hub's owner sees it")
+	}
+}
