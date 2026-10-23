@@ -482,6 +482,24 @@ CREATE TABLE IF NOT EXISTS artifact_comment_locks (
 	PRIMARY KEY (scope, key)
 );
 
+-- Send to agent (#6357, #6443): the owner asked one agent into one comment's thread. An agent may reply only into a thread it was asked into, so a reply is checked against this row in
+-- one step (open, not expired, under its reply cap, the session still the one asked). One row per (comment, agent session); asking again after it ended or expired starts it anew.
+-- No text is kept here (the comment is its own row); version_id is the exact artifact the owner sent the comment for.
+CREATE TABLE IF NOT EXISTS artifact_comment_asks (
+	id            INTEGER PRIMARY KEY AUTOINCREMENT,
+	comment_id    INTEGER NOT NULL,
+	artifact_id   TEXT NOT NULL,
+	board         TEXT NOT NULL,
+	agent_session TEXT NOT NULL,
+	agent_name    TEXT NOT NULL DEFAULT '',
+	created_at    TEXT NOT NULL,
+	expires_at    TEXT NOT NULL,
+	closed_at     TEXT,
+	replies       INTEGER NOT NULL DEFAULT 0,
+	UNIQUE (comment_id, agent_session)
+);
+CREATE INDEX IF NOT EXISTS idx_artifact_comment_asks_artifact ON artifact_comment_asks(artifact_id);
+
 CREATE TABLE IF NOT EXISTS session_index (
 	session_id      TEXT PRIMARY KEY,
 	source_type     TEXT NOT NULL,

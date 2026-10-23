@@ -121,6 +121,7 @@ POST /api/agent/tasks/{taskID}/publish | token-bound
 POST /api/agent/ui-request | unbound | operator-only
 POST /api/agent/ui/{id}/events | token-bound
 POST /api/artifacts/{id}/comments | token-session | operator-only
+POST /api/artifacts/{id}/comments/{cid}/send | token-session | operator-only
 POST /api/board/remotes | board-unchecked | operator-only
 POST /api/board/{project}/cross-team/disable | board-claims | operator-only
 POST /api/board/{project}/cross-team/enable | board-claims | operator-only

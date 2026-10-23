@@ -99,6 +99,7 @@ func (h *SessionsHandler) RegisterArtifactComments(r chi.Router) {
 	r.Post("/api/artifacts/{id}/comments", h.createArtifactComment)
 	r.Patch("/api/artifacts/{id}/comments/{cid}", h.editArtifactComment)
 	r.Delete("/api/artifacts/{id}/comments/{cid}", h.deleteArtifactComment)
+	r.Post("/api/artifacts/{id}/comments/{cid}/send", h.sendArtifactComment)
 	r.Post("/api/artifacts/{id}/comments/{cid}/resolve", h.resolveArtifactComment(true))
 	r.Post("/api/artifacts/{id}/comments/{cid}/reopen", h.resolveArtifactComment(false))
 	r.Put("/api/artifacts/{id}/comments/lock", h.lockArtifactComments(true))
@@ -627,6 +628,7 @@ func (h *SessionsHandler) deleteArtifactComment(w http.ResponseWriter, r *http.R
 		errInternalServer(w, "could not delete the comment")
 		return
 	}
+	_ = h.ss.CloseArtifactAsks(r.Context(), t.ID, time.Now()) // a deleted comment is no thread an agent may still reply into
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -665,6 +667,9 @@ func (h *SessionsHandler) resolveArtifactComment(resolved bool) http.HandlerFunc
 		case !found:
 			errNotFound(w, "comment not found")
 		default:
+			if resolved {
+				_ = h.ss.CloseArtifactAsks(r.Context(), t.ID, time.Now()) // a resolved thread takes no more agent replies
+			}
 			writeJSON(w, http.StatusOK, h.commentView(caller, c, locked, hubWrite))
 		}
 	}

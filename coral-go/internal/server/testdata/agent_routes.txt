@@ -251,6 +251,7 @@ b POST /api/artifacts/retention/ack
 b POST /api/artifacts/{id}/comments
 b POST /api/artifacts/{id}/comments/{cid}/reopen
 b POST /api/artifacts/{id}/comments/{cid}/resolve
+b POST /api/artifacts/{id}/comments/{cid}/send
 b POST /api/auth/hub-signin/dismiss
 b POST /api/auth/password/change
 b POST /api/auth/password/reset
