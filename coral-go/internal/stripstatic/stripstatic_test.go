@@ -40,6 +40,8 @@ func TestOverlayIsMinifyAssetFileByFile(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, string(frontend.MinifyAsset(rel, source)), string(got), "%s is not what the server serves", rel)
 		assert.Less(t, len(got), len(source), "%s did not shrink", rel)
+		// The server minifies what it serves, whatever the binary holds: minifying the stripped copy again must leave it as it is, so a stripped binary serves the bytes a source one does.
+		assert.Equal(t, string(got), string(frontend.MinifyAsset(rel, got)), "%s: serving the stripped copy would minify it again to other bytes", rel)
 	}
 	require.NoError(t, filepath.WalkDir(abs, func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
