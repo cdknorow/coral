@@ -452,6 +452,7 @@ var knownPathParams = map[string]string{
 	"category":     "a template category",
 	"ref":          "an image of the session's own transcript, by the hash of its bytes (the chat's attachment): a target inside the session addressed by {name}",
 	"*":            "the rest of a path: a file inside a workflow run's step, or a remote server's own path (board remotes, the call metrics' remote pattern)",
+	"series_id":    "an artifact series addressed by its id (32 hex, checked before any use) (#6357): a target; who is acting comes from the caller derivation, never from a path",
 	"cid":          "a comment of an artifact addressed by its id (the artifact is {id}): a target; who is acting comes from the caller derivation, never from a path or a body",
 	"id":           "an id", "taskID": "an id", "groupID": "an id", "workflowID": "an id", "runID": "an id", "jobID": "an id", "jobId": "an id",
 	"tagID": "an id", "presetID": "an id", "noteID": "an id", "messageID": "an id", "subagentID": "an id", "stepIndex": "an index",

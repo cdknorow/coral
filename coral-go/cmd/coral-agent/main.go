@@ -139,10 +139,15 @@ func main() {
 	}
 }
 
-const artifactUsageText = `Usage: coral-agent artifact upload <file> [--name NAME] [--media-type TYPE]
+const artifactUsageText = `Usage: coral-agent artifact upload <file> [--name NAME] [--media-type TYPE] [--new-version-of <link>]
        coral-agent artifact download <coral://artifacts/digest> [--output FILE] [--force]
        (options may stand before or after the link; --force replaces an existing
        --output file)
+
+--new-version-of adds the file as a new version of an artifact this agent's board uploaded (its
+coral://artifacts/<digest> link, or a series link coral://artifacts/series/<id>): the reply carries
+series_id, version and versions. Same bytes as the newest version add nothing (exit 0); same
+bytes as an older version are refused (non-zero), so nobody takes it for the newest.
 
 Upload long reports, logs, diffs and evidence instead of pasting them into posts.
 Link the returned coral://artifacts/<digest> in a short board post: a one-line
@@ -173,7 +178,7 @@ func cmdArtifact(args []string) {
 		fmt.Fprintln(os.Stderr, artifactUsageText)
 		clierr.Exit1()
 	}
-	opts, err := splitOptions(args[1:], []string{"name", "media-type"}, nil)
+	opts, err := splitOptions(args[1:], []string{"name", "media-type", "new-version-of"}, nil)
 	if err != nil || len(opts.Positional) != 1 {
 		if err == nil {
 			err = fmt.Errorf("upload needs exactly one file")
@@ -188,7 +193,7 @@ func cmdArtifact(args []string) {
 	}
 	name = mediatype.EnsureExtension(name, file)
 	mediaType := mediatype.Resolve(opts.Values["media-type"], file, name)
-	if err := uploadArtifact(serverURL, file, name, mediaType, resolveSessionID(), os.Stdout, os.Stderr); err != nil {
+	if err := uploadArtifact(serverURL, file, name, mediaType, resolveSessionID(), opts.Values["new-version-of"], os.Stdout, os.Stderr); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		clierr.Exit1()
 	}
@@ -198,7 +203,7 @@ func cmdArtifact(args []string) {
 // to stdout. A refused or failed upload (any non-2xx; the Retry-After is surfaced on a 429) returns
 // an error and prints NO link, so a caller that misses the exit code can't take a refusal for a
 // success (#4004: the CLI used to exit 0 on a refused upload, so dead links were posted).
-func uploadArtifact(serverURL, file, name, mediaType, sid string, stdout, stderr io.Writer) error {
+func uploadArtifact(serverURL, file, name, mediaType, sid, newVersionOf string, stdout, stderr io.Writer) error {
 	f, err := os.Open(file) // streamed to Coral, not read into memory (#3553)
 	if err != nil {
 		return err
@@ -209,6 +214,9 @@ func uploadArtifact(serverURL, file, name, mediaType, sid string, stdout, stderr
 		return err
 	}
 	req.Header.Set("X-Artifact-Name", name)
+	if newVersionOf != "" { // exactly a 64-hex artifact link or a 32-hex series link: the server refuses anything else before any lookup (#6357)
+		req.Header.Set("X-Artifact-New-Version-Of", newVersionOf)
+	}
 	if mediaType != "" {
 		req.Header.Set("X-Artifact-Media-Type", mediaType)
 	}

@@ -20,9 +20,12 @@ GET /api/agent/tasks/{taskID} | token-bound
 GET /api/agent/ui | token-bound
 GET /api/agent/ui/{id}/content | token-bound
 GET /api/agent/ui/{id}/events | token-bound
+GET /api/artifacts/series/{series_id} | token-session
+GET /api/artifacts/series/{series_id}/versions | token-session
 GET /api/artifacts/{id} | token-session
 GET /api/artifacts/{id}/comments | token-session
 GET /api/artifacts/{id}/meta | token-session
+GET /api/artifacts/{id}/versions | token-session
 GET /api/board/projects | board-unchecked
 GET /api/board/remotes | board-unchecked | operator-only
 GET /api/board/remotes/proxy/{remoteServer}/projects | board-unchecked | operator-only

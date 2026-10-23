@@ -47,6 +47,12 @@ type allArtifact struct {
 	// Records counts the sessions that uploaded the same bytes; Available is false when the file itself is gone and only its record is left.
 	Records   int  `json:"records"`
 	Available bool `json:"available"`
+	// SeriesID, Version, Versions and IsLatest are present only on a version of an artifact series (#6357), from the upload records: the series' id, this version's number, how many versions
+	// the series has and whether this is the newest. Absent on an unversioned artifact; nothing else in the row depends on them.
+	SeriesID string `json:"series_id,omitempty"`
+	Version  int    `json:"version,omitempty"`
+	Versions int    `json:"versions,omitempty"`
+	IsLatest *bool  `json:"is_latest,omitempty"`
 }
 
 type allArtifactSource struct {
@@ -115,6 +121,24 @@ func listAllArtifactRows(coralDir string) []allArtifact {
 			}
 		}
 	}
+	// Series (#6357): each series' versions from the records, so the row of a version can say its number, how many there are and whether it is the newest.
+	type seriesFacts struct{ count, newest int }
+	facts := map[string]*seriesFacts{}
+	for _, recs := range records {
+		seen := map[string]bool{}
+		for _, s := range recs {
+			if seriesIDRe.MatchString(s.rec.SeriesID) && !seen[s.rec.SeriesID] {
+				seen[s.rec.SeriesID] = true
+				f := facts[s.rec.SeriesID]
+				if f == nil {
+					f = &seriesFacts{}
+					facts[s.rec.SeriesID] = f
+				}
+				f.count++
+				f.newest = max(f.newest, s.rec.Version)
+			}
+		}
+	}
 	var rows []allArtifact
 	for _, e := range entries {
 		name := e.Name()
@@ -157,6 +181,13 @@ func listAllArtifactRows(coralDir string) []allArtifact {
 			}
 			row.Role = first.rec.Role
 			row.Board = first.rec.Board
+			for _, s := range recs {
+				if f := facts[s.rec.SeriesID]; f != nil && seriesIDRe.MatchString(s.rec.SeriesID) {
+					newest := s.rec.Version == f.newest
+					row.SeriesID, row.Version, row.Versions, row.IsLatest = s.rec.SeriesID, s.rec.Version, f.count, &newest
+					break
+				}
+			}
 		} else if rec, ok := received[id]; ok {
 			row.Source = "received"
 			if rec.At != "" {

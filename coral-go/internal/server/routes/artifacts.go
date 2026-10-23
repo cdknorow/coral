@@ -60,6 +60,11 @@ type agentUploadRecord struct {
 	OwnerID   string `json:"owner_id,omitempty"`
 	// HubUser is the Coral Hub account (hub-user-<8 hex>, never a name or an email) that sent an image through Coral Hub (#6088); UploadedBy stays "owner". Absent on an image from this computer's own dashboard.
 	HubUser string `json:"hub_user,omitempty"`
+	// SeriesID, Version and Previous say that this upload is a version of an artifact series (#6357): the series' id (32 hex), this version's number and the digest of the one before it. They are
+	// here and never in the sidecar, which every upload of the same bytes shares; this record is the authority for what is in a series.
+	SeriesID string `json:"series_id,omitempty"`
+	Version  int    `json:"version,omitempty"`
+	Previous string `json:"previous,omitempty"`
 }
 
 // sourcePaste marks an upload record made from an image pasted or attached in the dashboard.
@@ -87,9 +92,13 @@ func (h *SessionsHandler) RegisterAgentArtifacts(r chi.Router) {
 	st.receivedMaxBytes = h.receivedArtifactsMaxBytes
 	st.mu.Unlock()
 	r.Post("/api/agent/artifacts", h.uploadAgentArtifact)
-	r.Get("/api/artifacts", h.listAllArtifacts) // the machine-wide list, the owner's (#5575)
+	r.Get("/api/artifacts", h.listAllArtifacts)                           // the machine-wide list, the owner's (#5575)
+	r.Get("/api/artifacts/series/{series_id}", h.seriesRedirect)          // #6357: the newest version the caller can read (a redirect to its digest)
+	r.Get("/api/artifacts/series/{series_id}/versions", h.seriesVersions) // #6357
+	r.Delete("/api/artifacts/series/{series_id}", h.deleteSeries)         // #6357: the Operator's, every version
 	r.Get("/api/artifacts/{id}", h.getAgentArtifact)
 	r.Get("/api/artifacts/{id}/meta", h.getAgentArtifactMeta) // metadata only: do you have it (#5465)
+	r.Get("/api/artifacts/{id}/versions", h.artifactVersions) // #6357: the list of its series, found from any version
 	r.Get("/api/artifacts/{id}/readers", h.artifactReaders)   // who can read it, for its owner (#5577)
 	r.Delete("/api/artifacts/{id}", h.deleteAgentArtifact)
 	r.Delete("/api/shared-images/{id}", h.deleteSharedImage)                         // #5284: one session's shared copy of a pasted image
@@ -519,7 +528,24 @@ func (h *SessionsHandler) uploadAgentArtifact(w http.ResponseWriter, r *http.Req
 		}
 	}
 
-	meta, fresh, err := storeArtifactFile(coralDir, sid, name, mediaType, tmpPath, hexID, size)
+	// A new version of an artifact (#6357): worked out under the series lock, which is held until the object, its record and the index are written (the series lock first, the digest's after).
+	var plan *seriesPlan
+	var stamp *seriesStamp
+	if ref := strings.TrimSpace(r.Header.Get(seriesHeader)); ref != "" {
+		callerBoard, _, _ := uploaderOf(sid)
+		var perr error
+		if plan, perr = planNewVersion(coralDir, ref, callerBoard, hexID); perr != nil {
+			h.answerSeriesRefusal(w, coralDir, hexID, perr)
+			return
+		}
+		defer plan.unlock()
+		if plan.same != nil { // the bytes are the newest version: nothing is added, and that version is the answer (exit 0)
+			h.answerExistingVersion(w, coralDir, plan, *plan.same)
+			return
+		}
+		stamp = &plan.stamp
+	}
+	meta, fresh, err := storeArtifactFile(coralDir, sid, name, mediaType, tmpPath, hexID, size, stamp)
 	if errors.Is(err, errStoreFull) {
 		b, _, max := st.size()
 		artifactRefusal(w, http.StatusRequestEntityTooLarge, "artifact_quota", "store",
@@ -532,7 +558,7 @@ func (h *SessionsHandler) uploadAgentArtifact(w http.ResponseWriter, r *http.Req
 	}
 	_ = fresh
 	// The name and type viewers get: the first upload's, when these bytes were stored before.
-	writeJSON(w, http.StatusCreated, map[string]any{
+	reply := map[string]any{
 		"uri":        "coral://artifacts/" + hexID,
 		"url":        artifactURL(hexID),
 		"name":       meta.Name,
@@ -540,7 +566,47 @@ func (h *SessionsHandler) uploadAgentArtifact(w http.ResponseWriter, r *http.Req
 		"size":       meta.Size, // the stored size: smaller than the file when metadata was removed
 		"digest":     meta.Digest,
 		"stripped":   stripped, // image metadata was removed: the id is the hash of the stored bytes
-	})
+	}
+	if plan != nil {
+		versions, cerr := plan.commit(coralDir, hexID, sid)
+		if cerr != nil {
+			slog.Warn("[artifacts] a new version was stored but its series could not be recorded", "series", plan.id, "error", cerr)
+			errInternalServer(w, "the artifact was stored but its series could not be recorded")
+			return
+		}
+		reply["series_id"], reply["version"], reply["versions"] = plan.id, plan.stamp.Version, versions
+		slog.Info("[artifacts] a new version", "series", plan.id, "version", plan.stamp.Version, "digest", hexID, "session", sid) // one audit line per version: who, which series, which digest, no content
+	}
+	writeJSON(w, http.StatusCreated, reply)
+}
+
+// answerSeriesRefusal writes a refused new version's answer: the refusal's own code and words (all of them generic where they would otherwise name another team's series); a 200 "refusal" is the
+// bytes being the artifact the upload is a version of, answered as that artifact.
+func (h *SessionsHandler) answerSeriesRefusal(w http.ResponseWriter, coralDir, hexID string, err error) {
+	ref, ok := err.(*seriesRefusal)
+	if !ok {
+		errInternalServer(w, "could not store the artifact")
+		return
+	}
+	if ref.status == http.StatusOK {
+		body := map[string]any{"uri": "coral://artifacts/" + hexID, "url": artifactURL(hexID), "digest": "sha256:" + hexID, "message": ref.msg, "same": true}
+		if m, found := readSidecar(filepath.Join(coralDir, "artifacts", "objects", hexID+".json")); found {
+			body["name"], body["media_type"], body["size"] = m.Name, m.MediaType, m.Size
+		}
+		writeJSON(w, http.StatusOK, body)
+		return
+	}
+	artifactRefusal(w, ref.status, ref.code, "", ref.msg)
+}
+
+// answerExistingVersion answers an upload whose bytes are the newest version of its series: that version, as stored, with the series' numbers.
+func (h *SessionsHandler) answerExistingVersion(w http.ResponseWriter, coralDir string, plan *seriesPlan, latest seriesMember) {
+	body := map[string]any{"uri": "coral://artifacts/" + latest.Digest, "url": artifactURL(latest.Digest), "digest": "sha256:" + latest.Digest, "series_id": plan.id, "version": latest.N, "versions": len(plan.rows), "same": true,
+		"message": "these bytes are the newest version: nothing was added"}
+	if m, found := readSidecar(filepath.Join(coralDir, "artifacts", "objects", latest.Digest+".json")); found {
+		body["name"], body["media_type"], body["size"] = m.Name, m.MediaType, m.Size
+	}
+	writeJSON(w, http.StatusOK, body)
 }
 
 var errStoreFull = errors.New("artifact store is full")
@@ -549,7 +615,7 @@ var errStoreFull = errors.New("artifact store is full")
 // hexID, with its sidecar and the session's upload record (#3553: the streamed counterpart of
 // storeArtifact). An object that is already stored makes it a free duplicate. It refuses a new
 // object that would take the store past its cap. fresh reports whether the object is new.
-func storeArtifactFile(coralDir, sessionID, name, mediaType, tmpPath, hexID string, size int64) (agentArtifactMeta, bool, error) {
+func storeArtifactFile(coralDir, sessionID, name, mediaType, tmpPath, hexID string, size int64, stamp *seriesStamp) (agentArtifactMeta, bool, error) {
 	defer lockArtifact(hexID)()
 	mine := agentArtifactMeta{Name: name, MediaType: mediaType, Size: size, Digest: "sha256:" + hexID}
 	st := storeFor(coralDir)
@@ -581,7 +647,11 @@ func storeArtifactFile(coralDir, sessionID, name, mediaType, tmpPath, hexID stri
 	}
 	if up := uploadsDir(coralDir, sessionID); up != "" {
 		if os.MkdirAll(up, 0o700) == nil {
-			rec, _ := json.Marshal(newUploadRecord(mine, sessionID, "", ""))
+			ur := newUploadRecord(mine, sessionID, "", "")
+			if stamp != nil { // a version of a series: the record says which (#6357)
+				ur.SeriesID, ur.Version, ur.Previous = stamp.ID, stamp.Version, stamp.Previous
+			}
+			rec, _ := json.Marshal(ur)
 			_ = writeFileAtomic(filepath.Join(up, hexID+".json"), rec, 0o600)
 		}
 	}
@@ -649,6 +719,16 @@ func humanBytes(n int64) string {
 func deleteArtifactFiles(coralDir, id string) (freed int64, records int, found bool, err error) {
 	if !objectNameRe.MatchString(id) {
 		return 0, 0, false, nil
+	}
+	// A version of a series is deleted under its series' lock first, the digest's second (#6357), and the series' index forgets it.
+	if sid, _, in := digestSeries(coralDir, id); in {
+		defer lockSeries(sid)()
+		defer lockArtifact(id)()
+		freed, records, found, err = deleteArtifactFilesLocked(coralDir, id)
+		if found && err == nil {
+			forgetVersion(coralDir, sid, id)
+		}
+		return freed, records, found, err
 	}
 	defer lockArtifact(id)()
 	return deleteArtifactFilesLocked(coralDir, id)
@@ -859,6 +939,12 @@ func (h *SessionsHandler) getAgentArtifactMeta(w http.ResponseWriter, r *http.Re
 	out := map[string]any{"id": id, "size": info.Size(), "media_type": served.Get("Content-Type")}
 	if meta.Name != "" {
 		out["name"] = meta.Name
+	}
+	if h.anySeries() { // #6357: additive, only on a version of a series (the walk is skipped while the store has none)
+		if sid, n, in := digestSeries(h.cfg.CoralDir(), id); in {
+			ms := seriesMembers(h.cfg.CoralDir(), sid)
+			out["series_id"], out["version"], out["versions"], out["is_latest"] = sid, n, len(ms), len(ms) > 0 && ms[len(ms)-1].Digest == id
+		}
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Del("X-Coral-Build")
