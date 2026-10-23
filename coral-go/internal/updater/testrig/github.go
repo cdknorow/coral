@@ -75,7 +75,7 @@ func (g *FakeGitHub) file(tag, name string) ([]byte, bool) {
 		return r.Sums, true
 	case name == stage.SumsBundleFile:
 		return r.SumsBundle, true
-	case name == Asset(r.Version), name == "coral-linux-amd64.tar.gz":
+	case name == r.AssetName, r.AssetName == Asset(r.Version) && name == "coral-linux-amd64.tar.gz":
 		return r.Package, true
 	}
 	return nil, false
