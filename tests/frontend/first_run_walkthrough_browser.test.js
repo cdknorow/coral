@@ -72,6 +72,14 @@ async function freshServer() {
         return r.result.value;
     };
     const { waitFor, coralReady } = require('./helpers/wait').bind(ev);
+    // coralReady with what a red needs to name itself: where the page is, whether it loaded, what it shows, and the server's log tail (the one 59 s first attempt on ci/v161's gate said only "timed out ... (last: false)", #6557).
+    const ready = async (server) => {
+        try { await coralReady(); } catch (e) {
+            const page = await ev(`({ url: location.href, state: document.readyState, text: document.body ? document.body.innerText.replace(/\\s+/g, ' ').slice(0, 200) : null, scripts: document.scripts.length, ready: typeof window.__coralReady })`).catch(x => String(x).slice(0, 80));
+            let tail = ''; try { tail = fs.readFileSync(server.log, 'utf8').slice(-500); } catch { /* no log */ }
+            throw new Error(`${String((e && e.message) || e)} | page ${JSON.stringify(page)} | server log tail ${JSON.stringify(tail)}`);
+        }
+    };
     const servers = [];
     const failures = [];
     const screen = () => ev(`(() => { const vis = e => !!e && e.offsetParent !== null; return { url: location.pathname + location.search, text: document.body.innerText.replace(/\\s+/g, ' ').slice(0, 240), modals: [...document.querySelectorAll('.modal')].filter(m => getComputedStyle(m).display !== 'none').map(m => (m.querySelector('h3,h2') || {}).textContent || m.id), toast: [...document.querySelectorAll('.toast')].map(t => t.textContent.trim()).slice(-2) }; })()`);
@@ -102,7 +110,7 @@ async function freshServer() {
         assert.ok(anon === 401 || anon === 403, `${tag}: signed out, the agent list is refused (got ${anon})`);
         await ev(`(() => { for (const id of ['password', 'confirm']) { const i = document.getElementById(id); i.value = ${JSON.stringify(PASSWORD)}; i.dispatchEvent(new Event('input', { bubbles: true })); } document.getElementById('submit').click(); return true; })()`);
         await waitFor(`!document.getElementById('create-form')`, `${tag}: leaving the password page`, { timeout: 15000, diag: `document.body.innerText.slice(0, 300)` });
-        await coralReady();
+        await ready(s);
         console.log(`   ✓ ${tag}: signed out until a password is created`);
 
         // 2. Coral Hub: offered once, skipped
@@ -189,12 +197,12 @@ async function freshServer() {
         await waitFor(`!!document.getElementById('create-form')`, `${tag}: the "Create a password" page`, { timeout: 15000, diag: `document.body.innerText.slice(0, 300)` });
         await ev(`(() => { for (const id of ['password', 'confirm']) { const i = document.getElementById(id); i.value = ${JSON.stringify(PASSWORD)}; i.dispatchEvent(new Event('input', { bubbles: true })); } document.getElementById('submit').click(); return true; })()`);
         await waitFor(`!document.getElementById('create-form')`, `${tag}: leaving the password page`, { timeout: 15000, diag: `document.body.innerText.slice(0, 300)` });
-        await coralReady();
+        await ready(s);
         // what the terminal's Enter stores (cmd/coral rememberSkip): one request, the dashboard's own answer
         const put = await ev(`fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ welcome_choice: 'skipped', welcome_pending: 'False' }) }).then(r => r.status)`);
         assert.equal(put, 200, `${tag}: the stored skip is accepted`);
         await Page.navigate({ url: s.base + '/' }); await Page.loadEventFired();
-        await coralReady();
+        await ready(s);
         await waitFor(`/What do you want to work on\\?/.test(document.body.innerText)`, `${tag}: the home screen`, { timeout: 15000, diag: `document.body.innerText.slice(0, 300)` });
         // the first-launch offer would open a moment after the settings load: it does not (a bounded look, the offer's own wait for a loading connector is about 3 s)
         for (let i = 0; i < 40; i++) { assert.ok(!await ev(visible('[data-editions="skip"]')), `${tag}: the Coral Hub offer opened although the question was answered in the terminal`); await sleep(100); }
