@@ -63,7 +63,26 @@ export function renderToolsFolderStatus(status) {
         el.textContent = '';
         return;
     }
-    el.textContent = `${tools.path} can be changed by ${who.join(', ')}, not only by an administrator. A program running as one of those accounts could replace the tools every agent runs. To fix it, install Coral with the installer: it goes in Program Files, where only an administrator can change it.`;
+    // One line up front (what is wrong, and a way to the fix), the whole explanation behind "How to fix it" (#6162's follow-up: the Terminal group was 100 words on a machine where this shows).
+    const line = document.createElement('span');
+    line.textContent = 'Your agent tools folder can be changed without administrator rights. ';
+    const more = document.createElement('button');
+    more.type = 'button';
+    more.className = 'tb-learn';
+    more.id = 'settings-tools-folder-more';
+    more.textContent = 'How to fix it';
+    more.setAttribute('aria-expanded', 'false');
+    more.setAttribute('aria-controls', 'settings-tools-folder-detail');
+    const detail = document.createElement('div');
+    detail.id = 'settings-tools-folder-detail';
+    detail.hidden = true;
+    detail.textContent = `${tools.path} can be changed by ${who.join(', ')}, not only by an administrator. A program running as one of those accounts could replace the tools every agent runs. To fix it, install Coral with the installer: it goes in Program Files, where only an administrator can change it.`;
+    more.addEventListener('click', () => {
+        detail.hidden = !detail.hidden;
+        more.setAttribute('aria-expanded', String(!detail.hidden));
+        more.textContent = detail.hidden ? 'How to fix it' : 'Show less';
+    });
+    el.replaceChildren(line, more, detail);
     row.hidden = false;
 }
 
