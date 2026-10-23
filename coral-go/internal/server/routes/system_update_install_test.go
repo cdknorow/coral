@@ -88,6 +88,16 @@ func TestInstallUpdateIsLocalPersonOnly(t *testing.T) {
 		assert.Equal(t, http.StatusForbidden, rec.Code, rec.Body.String())
 		assert.Equal(t, [2]int{0, 0}, [2]int{launched, quit})
 	})
+	t.Run("a local program that leaves its token out and sends the dashboard's headers is refused (#323 F1)", func(t *testing.T) {
+		for _, kind := range []string{callerDashNoCookie, callerLocalOther, callerAgentNoToken, callerAPIKey, callerOpen} {
+			reset()
+			rec := req("", func(r *http.Request) *http.Request {
+				return r.WithContext(context.WithValue(r.Context(), callerKindKey{}, kind))
+			})
+			assert.Equal(t, http.StatusForbidden, rec.Code, kind+": "+rec.Body.String())
+			assert.Equal(t, [2]int{0, 0}, [2]int{launched, quit}, kind)
+		}
+	})
 	t.Run("another local user is refused", func(t *testing.T) {
 		reset()
 		peer = [2]bool{false, true}

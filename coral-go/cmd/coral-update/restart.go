@@ -51,9 +51,16 @@ func restartFromMarker(dataDir, dir string) bool {
 }
 
 // installedNothingAndLeftNoCoral is whether an apply answer is one of the early ones that return before the MSI apply starts the old Coral again:
-// no registered product, a portable or unreadable install (all "unsupported_install"), or the updates folder not usable.
+// no registered product, a portable or unreadable install (all "unsupported_install"), the updates folder not usable, a check or another apply
+// holding the lock ("busy"), or a program of the install folder that outlived the wait ("coral_running"). The server quit for the click in every
+// one of them, and nothing was changed, so the person gets their Coral back (#323, Security's F6): a same-user program must not be able to turn
+// the click into "Coral is down".
 func installedNothingAndLeftNoCoral(res apply.Result) bool {
-	return res.Result == apply.ResultUnsupported || (res.Result == apply.ResultFailed && res.FailedStage == "updates_folder")
+	switch res.Result {
+	case apply.ResultUnsupported, apply.ResultBusy, apply.ResultCoralRunning:
+		return true
+	}
+	return res.Result == apply.ResultFailed && res.FailedStage == "updates_folder"
 }
 
 // dataDirForRestart is where the marker is: the data folder the updater would use.

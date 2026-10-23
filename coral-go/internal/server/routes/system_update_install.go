@@ -18,8 +18,23 @@ import (
 	"runtime"
 	"sync/atomic"
 
+	"github.com/subgentic/coral/internal/cliauth"
 	"github.com/subgentic/coral/internal/updater/trigger"
 )
+
+// installCaller is the stricter half of the gate (#323, Security's F1): the dashboard's signed-in session or the checked command-line signature, never
+// "dashboard_no_cookie". That caller type is any local program that leaves its agent token out and sends an Origin or Referer header (a header anyone can
+// set); strict local auth, on by default, refuses it before a handler runs, but a Coral started with it off would let that program make Coral quit and
+// raise a UAC prompt at a moment it chooses. The install needs something such a program does not have.
+func installCaller(r *http.Request) bool {
+	switch kind, _ := r.Context().Value(callerKindKey{}).(string); kind {
+	case callerDashCookie:
+		return true
+	case callerCLISigned:
+		return cliauth.Verified(r)
+	}
+	return false
+}
 
 // UpdateQuitExitCode is the exit code of a server that quit for an update: the tray's supervisor takes it as "the updater has Coral now; do not start the
 // server again" (cmd/coral-tray/supervise.go). 4 is Settings > Restart.
@@ -37,7 +52,7 @@ func (h *CloudHandler) InstallUpdate(w http.ResponseWriter, r *http.Request) {
 	if h.refuseCloud(w, r, allowDashboard|allowCLI) {
 		return
 	}
-	if !humanInputCaller(r) {
+	if !humanInputCaller(r) || !installCaller(r) {
 		writeError(w, http.StatusForbidden, "operator_only", "only the Operator can install an update") // a person only: never an agent with forged browser headers
 		return
 	}

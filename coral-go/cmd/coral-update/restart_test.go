@@ -114,15 +114,15 @@ func TestWhichAnswersStartCoralAgain(t *testing.T) {
 		res  apply.Result
 		want bool
 	}{
-		"no registered product":  {apply.Result{Result: apply.ResultUnsupported, FailedStage: "no_registered_product"}, true},
-		"a portable install":     {apply.Result{Result: apply.ResultUnsupported, FailedStage: "portable_install"}, true},
-		"an unreadable install":  {apply.Result{Result: apply.ResultUnsupported, FailedStage: "unreadable_install"}, true},
-		"the updates folder":     {apply.Result{Result: apply.ResultFailed, FailedStage: "updates_folder"}, true},
-		"a later failure":        {apply.Result{Result: apply.ResultFailed, FailedStage: "copy"}, false}, // RunMSI started the old Coral itself
-		"busy (another apply)":   {apply.Result{Result: apply.ResultBusy}, false},
-		"relaunched":             {apply.Result{Result: apply.ResultRelaunched}, false},
-		"declined in the prompt": {apply.Result{Result: apply.ResultDeclined}, false},
-		"coral still running":    {apply.Result{Result: apply.ResultCoralRunning}, false},
+		"no registered product":   {apply.Result{Result: apply.ResultUnsupported, FailedStage: "no_registered_product"}, true},
+		"a portable install":      {apply.Result{Result: apply.ResultUnsupported, FailedStage: "portable_install"}, true},
+		"an unreadable install":   {apply.Result{Result: apply.ResultUnsupported, FailedStage: "unreadable_install"}, true},
+		"the updates folder":      {apply.Result{Result: apply.ResultFailed, FailedStage: "updates_folder"}, true},
+		"a later failure":         {apply.Result{Result: apply.ResultFailed, FailedStage: "copy"}, false}, // RunMSI started the old Coral itself
+		"busy (a check or apply)": {apply.Result{Result: apply.ResultBusy}, true},                         // the server quit for the click: nothing was changed (#323)
+		"relaunched":              {apply.Result{Result: apply.ResultRelaunched}, false},
+		"declined in the prompt":  {apply.Result{Result: apply.ResultDeclined}, false},
+		"coral still running":     {apply.Result{Result: apply.ResultCoralRunning}, true}, // a program of the install folder outlived the wait (#323)
 	} {
 		assert.Equal(t, tc.want, installedNothingAndLeftNoCoral(tc.res), name)
 	}
