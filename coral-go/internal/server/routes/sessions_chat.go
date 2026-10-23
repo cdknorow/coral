@@ -461,8 +461,16 @@ func (h *SessionsHandler) addTranscriptModel(entry map[string]any, sessionID str
 		return
 	}
 	m, t := h.transcriptModel(sessionID), h.transcriptThinking(sessionID)
-	// What Claude's own /model or /effort entry confirmed is the agent's own at once, until the transcript records a newer turn (#6225): the chip no longer says "not confirmed yet" after a confirmed switch.
-	t, m = h.modelSwitches.actualOver(sessionID, t, m)
+	// What the CLI was last given or confirmed (a /model or /effort Claude took, a wake that started it with the stored ones) is the agent's own until the transcript records a turn written after it (#6225):
+	// the chip no longer says "not confirmed yet" after a confirmed switch, nor after a restart or wake.
+	if stamp, ok := h.ss.SessionSettingsStamp(context.Background(), sessionID); ok && (h.jsonl == nil || h.jsonl.TranscriptTurnAt(sessionID).Before(stamp)) {
+		if stored, _ := entry["thinking"].(string); stored != "" {
+			t = stored
+		}
+		if stored, _ := entry["model"].(string); stored != "" {
+			m = stored
+		}
+	}
 	if t != "" {
 		entry["thinking_actual"] = t // the level the newest turn ran at, as the CLI's own transcript records it (#4969)
 	}

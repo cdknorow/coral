@@ -54,9 +54,7 @@ type modelSwitchTracker struct {
 	m     map[string]*modelSwitch
 	seq   int64
 	typed sync.Map // session id -> when a switch command was last typed
-	// confirmed is what Claude's own entry confirmed for a session (#6225): the chip shows it at once, until the transcript's own record of the newest turn moves on.
-	confirmed sync.Map // session id -> *confirmedActual
-	runs      sync.Map // session id -> *sync.Mutex: one switch types at a time, a replaced one finishes before the next starts
+	runs  sync.Map // session id -> *sync.Mutex: one switch types at a time, a replaced one finishes before the next starts
 }
 
 // runLock is the session's lock for typing a switch's commands: a new choice waits for the one it replaced to stop, so two are never typed at once.
@@ -118,59 +116,6 @@ func (t *modelSwitchTracker) end(sessionID, message string) {
 		}
 		sw.State, sw.Message, sw.updated = switchFailed, message, time.Now()
 	}
-}
-
-// confirmedActual is a model or level confirmed from Claude's own /model or /effort entry, with what the transcript's newest turn recorded at that moment: the confirmed value is shown only while that
-// has not changed (no newer turn has been recorded), so a reply that ran at another level, or a switch made by hand in the terminal, is never hidden behind it.
-type confirmedActual struct {
-	mu                               sync.Mutex
-	level, model                     string
-	hasLevel, hasModel               bool
-	transcriptLevel, transcriptModel string
-}
-
-func (t *modelSwitchTracker) noteConfirmedLevel(sessionID, level, transcriptLevel, transcriptModel string) {
-	c := t.confirmedFor(sessionID)
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.level, c.hasLevel, c.transcriptLevel = level, level != "", transcriptLevel
-	if !c.hasModel {
-		c.transcriptModel = transcriptModel
-	}
-}
-
-func (t *modelSwitchTracker) noteConfirmedModel(sessionID, model, transcriptLevel, transcriptModel string) {
-	c := t.confirmedFor(sessionID)
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.model, c.hasModel, c.transcriptModel = model, true, transcriptModel
-	if !c.hasLevel {
-		c.transcriptLevel = transcriptLevel
-	}
-}
-
-func (t *modelSwitchTracker) confirmedFor(sessionID string) *confirmedActual {
-	v, _ := t.confirmed.LoadOrStore(sessionID, &confirmedActual{})
-	return v.(*confirmedActual)
-}
-
-// actualOver gives the level and model the chip shows as the agent's own: the confirmed ones while the transcript's newest turn is still the one it was when they were confirmed, else the transcript's.
-func (t *modelSwitchTracker) actualOver(sessionID, transcriptLevel, transcriptModel string) (level, model string) {
-	level, model = transcriptLevel, transcriptModel
-	v, ok := t.confirmed.Load(sessionID)
-	if !ok {
-		return
-	}
-	c := v.(*confirmedActual)
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.hasLevel && transcriptLevel == c.transcriptLevel {
-		level = c.level
-	}
-	if c.hasModel && transcriptModel == c.transcriptModel {
-		model = c.model
-	}
-	return
 }
 
 // noteTyped and lastTyped keep when a switch command was last typed into the session, so the next waits out settle.
@@ -417,7 +362,7 @@ func (h *SessionsHandler) runModelSwitch(ctx context.Context, seq int64, name, a
 			return
 		}
 		_ = h.ss.UpdateContextWindow(ctx, sessionID, proxy.LookupContextWindow(model), model)
-		h.modelSwitches.noteConfirmedModel(sessionID, model, h.transcriptThinking(sessionID), h.transcriptModel(sessionID))
+		_ = h.ss.StampSessionSettings(ctx, sessionID) // Claude took it: the turns the transcript recorded before are older than the setting (#6225)
 	}
 	if setLevel {
 		cmd := "/effort " + level
@@ -438,7 +383,7 @@ func (h *SessionsHandler) runModelSwitch(ctx context.Context, seq int64, name, a
 			return
 		}
 		_ = h.ss.SetSessionThinking(ctx, sessionID, level)
-		h.modelSwitches.noteConfirmedLevel(sessionID, level, h.transcriptThinking(sessionID), h.transcriptModel(sessionID))
+		_ = h.ss.StampSessionSettings(ctx, sessionID)
 		if level == "" { // Default is a choice too: the --effort the agent was launched with must not come back on a wake (#6219)
 			if ls, err := h.ss.GetLiveSession(ctx, sessionID); err == nil && ls != nil {
 				_ = h.ss.SetSessionFlags(ctx, sessionID, agentmodels.StripThinkingFlags(store.UnmarshalFlags(ls.Flags)))

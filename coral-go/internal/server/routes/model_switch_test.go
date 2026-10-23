@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/subgentic/coral/internal/jsonl"
 	"github.com/subgentic/coral/internal/store"
 )
 
@@ -715,4 +716,30 @@ func TestAConfirmedSwitchShowsAsTheAgentsOwnAtOnce(t *testing.T) {
 			assert.Equal(t, "high", r.row(t)["thinking_actual"])
 		})
 	}
+}
+
+// #6225: the confirmed level and model survive a restart of Coral and a wake: the stamp of when the CLI was last given them is stored, so a turn the transcript recorded before it (the old level) is older than the
+// setting and does not show as the agent's own.
+func TestAConfirmedSwitchStaysConfirmedAcrossARestartAndAWake(t *testing.T) {
+	r := newSwitchRig(t, "claude")
+	startedAt(t, r, "medium")
+	r.assistant(t, "medium")          // the last turn ran at the old level
+	time.Sleep(20 * time.Millisecond) // sleep-ok: the setting is later than that turn
+	_, _ = r.post(t, map[string]any{"thinking": "low"})
+	r.waitTyped(t, "/effort low")
+	r.localCommand(t, "/effort", "low", "Set effort level to low (saved as your default for new sessions)")
+	r.waitState(t, switchDone)
+	require.Equal(t, "low", r.row(t)["thinking_actual"])
+
+	r.h.jsonl = jsonl.NewSessionReader() // Coral restarted: nothing of the transcript is in memory
+	assert.Equal(t, "low", r.row(t)["thinking_actual"], "after a restart the row is still the confirmed level")
+
+	r.postRoute(t, "sleep")
+	r.postRoute(t, "wake")
+	assert.Equal(t, "low", r.row(t)["thinking_actual"], "after a wake it is the level the CLI was started with, not the old turn's")
+
+	time.Sleep(20 * time.Millisecond) // sleep-ok: the next turn is later than the wake
+	r.assistant(t, "high")
+	r.row(t) // the list reads the transcript
+	assert.Equal(t, "high", r.row(t)["thinking_actual"], "a turn recorded after the setting is the transcript's")
 }

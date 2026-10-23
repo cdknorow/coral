@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jmoiron/sqlx"
 )
@@ -686,6 +687,23 @@ func (s *SessionStore) CleanupOrphanedSleeping(ctx context.Context) (int, error)
 }
 
 // SetSessionThinking records the thinking level a live session now runs with: "" is the CLI's own default (#4969).
+// StampSessionSettings records now as when the session's model or level was last set and taken by its CLI (a confirmed switch, a wake that started it with them).
+func (s *SessionStore) StampSessionSettings(ctx context.Context, sessionID string) error {
+	_, err := s.db.ExecContext(ctx, `INSERT INTO live_session_settings (session_id, set_at) VALUES (?, ?)
+		ON CONFLICT(session_id) DO UPDATE SET set_at = excluded.set_at`, sessionID, nowUTC())
+	return err
+}
+
+// SessionSettingsStamp is when StampSessionSettings was last called for the session; false when it never was.
+func (s *SessionStore) SessionSettingsStamp(ctx context.Context, sessionID string) (time.Time, bool) {
+	var at string
+	if err := s.reader().GetContext(ctx, &at, `SELECT set_at FROM live_session_settings WHERE session_id = ?`, sessionID); err != nil {
+		return time.Time{}, false
+	}
+	t, err := time.Parse(time.RFC3339Nano, at)
+	return t, err == nil
+}
+
 // SetSessionFlags replaces the CLI flags an agent is started with again (a wake, a restart): none when flags is empty.
 func (s *SessionStore) SetSessionFlags(ctx context.Context, sessionID string, flags []string) error {
 	_, err := s.db.ExecContext(ctx, "UPDATE live_sessions SET flags = ? WHERE session_id = ?", MarshalFlags(flags), sessionID)

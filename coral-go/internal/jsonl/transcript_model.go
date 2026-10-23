@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"regexp"
 	"strings"
+	"time"
 )
 
 // The model an agent is actually using, as its own transcript records it (#4065): Claude
@@ -55,6 +56,32 @@ func claudeLineModelEffort(line []byte) (model, effort string) {
 		return "", ""
 	}
 	return cleanModelID(rec.Message.Model), cleanEffort(rec.Effort)
+}
+
+// claudeLineTime is a line's timestamp, the zero time when it has none.
+func claudeLineTime(line []byte) time.Time {
+	var rec struct {
+		Timestamp string `json:"timestamp"`
+	}
+	if json.Unmarshal(line, &rec) != nil {
+		return time.Time{}
+	}
+	t, _ := time.Parse(time.RFC3339Nano, rec.Timestamp)
+	return t
+}
+
+// TranscriptTurnAt is when the assistant entry that TranscriptModel and TranscriptThinking come from was written (zero when none was read, or for a Codex session): a setting made after it is newer
+// than what it recorded (#6225). Like them it reads nothing itself.
+func (r *SessionReader) TranscriptTurnAt(sessionID string) time.Time {
+	r.mu.Lock()
+	c := r.cache[sessionID]
+	r.mu.Unlock()
+	if c == nil {
+		return time.Time{}
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.claudeState.turnAt
 }
 
 // codexLineModel is a turn_context entry's payload.model, or "".

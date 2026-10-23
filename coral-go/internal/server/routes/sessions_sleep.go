@@ -205,6 +205,7 @@ func (h *SessionsHandler) wakeExistingSession(ctx context.Context, ls *store.Liv
 	defer func() {
 		if err == nil && launched {
 			h.noteLaunchedHooks(ctx, ls.SessionID, ls.AgentType)
+			_ = h.ss.StampSessionSettings(ctx, ls.SessionID) // the CLI now runs with the stored model and level: turns the transcript recorded before are older than them (#6225)
 		}
 	}()
 	flags := wakeFlags(ls)
