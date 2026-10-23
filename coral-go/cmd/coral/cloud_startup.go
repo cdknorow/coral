@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
@@ -25,8 +26,11 @@ import (
 // URL given explicitly (--cloud-url or CORAL_CLOUD_URL; unset --cloud-connect then
 // means prompt), on a server that has a Coral Hub URL and is not enrolled yet, it
 // connects it, with the same flow as `coral cloud connect`:
-//   - prompt on a terminal: the link and code, a live wait, then the access
-//     question; s or Ctrl-C skips it, and the server keeps running;
+//   - prompt on a terminal: the question first, and only the word yes connects (Enter, s or
+//     anything else skips, as Enter declines the Terms: one rule, #6381); a skip is stored
+//     (welcome_choice, the answer the dashboard's first screen saves), so the browser does
+//     not ask again; then the link and code, a live wait and the access question; Ctrl-C
+//     skips the wait, and the server keeps running;
 //   - otherwise (a service, a pipe, '&', or auto) it never blocks: it logs the
 //     link and code, and a new code when one expires, for an hour;
 //   - off, or unset with only the build's default URL: nothing. Coral Hub is still a
@@ -123,6 +127,21 @@ func (logLines) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+// isYes is the one word that connects: the same rule as the Terms, where only the word accepts and Enter declines.
+func isYes(ans string) bool {
+	switch strings.ToLower(strings.TrimSpace(ans)) {
+	case "y", "yes", "connect":
+		return true
+	}
+	return false
+}
+
+// rememberSkip stores the answer the dashboard's first screen stores when its Skip is pressed (welcome_choice and welcome_pending, in one request), so a skip typed in the terminal is the
+// answer for every browser. Best effort: a failure is said by the client and the step goes on.
+func (c *cloudClient) rememberSkip(ctx context.Context) {
+	_ = c.call(ctx, http.MethodPut, "/api/settings", map[string]any{"welcome_choice": "skipped", "welcome_pending": "False"}, nil, 10*time.Second, nil)
+}
+
 // runCloudStartupStep runs the step against this server (its own loopback
 // port, its own command-line token). In prompt mode it returns when the step is
 // done or skipped; in log mode it returns at once.
@@ -193,9 +212,12 @@ func runCloudStartupStep(ctx context.Context, cfg *config.Config, mode string, i
 	}
 
 	ui := connectUI{out: out, in: bufio.NewReader(in), ask: true, how: "coral cloud connect"}
-	ans, ok := ui.prompt(fmt.Sprintf("\nConnect this server to Coral Hub (%s) now? Enter to continue, s to skip: ", st.HubURL))
-	if !ok || strings.EqualFold(ans, "s") || strings.EqualFold(ans, "skip") {
-		fmt.Fprintln(out, "Skipped. This server runs on its own; to connect it later, run: coral cloud connect")
+	ans, ok := ui.prompt(fmt.Sprintf("\nConnect this server to Coral Hub (%s)? Type yes to connect, or press Enter to skip: ", st.HubURL))
+	if !ok || !isYes(ans) {
+		if ok { // somebody answered: the dashboard does not ask again (settings, and the Coral Hub card, still connect it)
+			c.rememberSkip(ctx)
+		}
+		fmt.Fprintln(out, "Skipped. This server runs on its own; to connect it later, use Settings > Coral Hub, or run: coral cloud connect")
 		return
 	}
 	step, cancel := context.WithCancel(ctx)

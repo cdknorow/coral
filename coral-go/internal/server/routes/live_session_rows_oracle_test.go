@@ -489,6 +489,7 @@ func (h *SessionsHandler) liveSessionRowsBefore4713(r *http.Request, trace *phas
 			"needs_login":           state.NeedsLogin,
 			"awaiting_user":         state.AwaitingUser,
 			"not_started":           state.NotStarted,
+			"starting":              agentStarting(agent.AgentType, latestEv, sessionAgeSeconds(createdAtMap[sid]), liveSleeping[sid], liveArchived[sid]),
 			"created_at":            createdAtMap[sid], // new in #6058, here too: a fixed time
 			"done":                  state.Done,
 			"waiting_reason":        nilIf(!state.NeedsInput, state.WaitingReason),
@@ -583,6 +584,7 @@ func (h *SessionsHandler) liveSessionRowsBefore4713(r *http.Request, trace *phas
 			"waiting_for_input":     false,
 			"awaiting_user":         false,
 			"not_started":           false,
+			"starting":              false,
 			"done":                  false,
 			"waiting_reason":        nil,
 			"waiting_summary":       nil,

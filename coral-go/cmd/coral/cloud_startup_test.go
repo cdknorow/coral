@@ -141,22 +141,54 @@ func TestCloudStartupStepPrompt(t *testing.T) {
 	f, cfg, _ := stepEnv(t, idle, enrolling, connected)
 	var out bytes.Buffer
 	ir := &interruptRouter{shutdown: func() { t.Error("the step must not stop the server") }}
-	runCloudStartupStep(context.Background(), cfg, cloudConnectPrompt, ir, strings.NewReader("\n2\n"), &out)
+	runCloudStartupStep(context.Background(), cfg, cloudConnectPrompt, ir, strings.NewReader("yes\n2\n"), &out)
 	o := out.String()
-	assert.Contains(t, o, "Connect this server to Coral Hub (https://app.coralhub.dev) now?")
+	assert.Contains(t, o, "Connect this server to Coral Hub (https://app.coralhub.dev)? Type yes to connect, or press Enter to skip:")
 	assert.Contains(t, o, "Your code ABCD-EFGH should already be filled in")
 	assert.Contains(t, o, "Connected to Coral Hub as build-box.")
 	assert.Contains(t, o, "Coral Hub access: interact.")
 	assert.Equal(t, 1, f.connects)
+	for _, c := range f.callList() {
+		assert.NotContains(t, c, "welcome_choice", "a connect is not a skip")
+	}
 }
 
+// #6381: only the word yes connects; Enter (as on the Terms), s, skip and anything else skip, and the skip is stored as the dashboard's own first-screen answer, once, so no browser asks again.
 func TestCloudStartupStepSkip(t *testing.T) {
+	for in, label := range map[string]string{"\n": "Enter", "s\n": "s", "skip\n": "skip", "no\n": "no", "connect now please\n": "other words", " \n": "spaces"} {
+		f, cfg, _ := stepEnv(t, idle)
+		var out bytes.Buffer
+		runCloudStartupStep(context.Background(), cfg, cloudConnectPrompt, &interruptRouter{}, strings.NewReader(in), &out)
+		assert.Contains(t, out.String(), "Skipped", label)
+		assert.Contains(t, out.String(), "Settings > Coral Hub", label)
+		assert.Contains(t, out.String(), "coral cloud connect", label)
+		assert.Zero(t, f.connects, label+": nothing was started")
+		var puts []string
+		for _, c := range f.callList() {
+			if strings.HasPrefix(c, "PUT /api/settings ") {
+				puts = append(puts, strings.TrimPrefix(c, "PUT /api/settings "))
+			}
+		}
+		require.Len(t, puts, 1, label+": the skip is stored once")
+		assert.JSONEq(t, `{"welcome_choice":"skipped","welcome_pending":"False"}`, puts[0], label)
+	}
+	for _, word := range []string{"yes", "y", "YES", " Yes ", "connect"} {
+		f, cfg, _ := stepEnv(t, idle, enrolling, connected)
+		var out bytes.Buffer
+		runCloudStartupStep(context.Background(), cfg, cloudConnectPrompt, &interruptRouter{shutdown: func() {}}, strings.NewReader(word+"\n2\n"), &out)
+		assert.Equal(t, 1, f.connects, "%q connects", word)
+	}
+}
+
+// No answer at all (the input ended) is not a skip the person chose: nothing is stored, and nothing is started.
+func TestCloudStartupStepWithNoAnswerStoresNothing(t *testing.T) {
 	f, cfg, _ := stepEnv(t, idle)
 	var out bytes.Buffer
-	runCloudStartupStep(context.Background(), cfg, cloudConnectPrompt, &interruptRouter{}, strings.NewReader("s\n"), &out)
-	assert.Contains(t, out.String(), "Skipped")
-	assert.Contains(t, out.String(), "coral cloud connect")
+	runCloudStartupStep(context.Background(), cfg, cloudConnectPrompt, &interruptRouter{}, strings.NewReader(""), &out)
 	assert.Zero(t, f.connects)
+	for _, c := range f.callList() {
+		assert.NotContains(t, c, "welcome_choice")
+	}
 }
 
 // Ctrl-C while the step waits cancels the enrollment and only the step.
@@ -172,7 +204,7 @@ func TestCloudStartupStepCtrlC(t *testing.T) {
 	var out bytes.Buffer
 	done := make(chan struct{})
 	go func() {
-		runCloudStartupStep(context.Background(), cfg, cloudConnectPrompt, ir, strings.NewReader("\n"), &out)
+		runCloudStartupStep(context.Background(), cfg, cloudConnectPrompt, ir, strings.NewReader("yes\n"), &out)
 		close(done)
 	}()
 	select {

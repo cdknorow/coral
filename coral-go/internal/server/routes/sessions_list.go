@@ -467,6 +467,7 @@ func (h *SessionsHandler) agentRow(trace *phaseTrace, agent AgentInfo, lv liveIn
 		"needs_login":           state.NeedsLogin,
 		"awaiting_user":         state.AwaitingUser,
 		"not_started":           state.NotStarted,
+		"starting":              agentStarting(agent.AgentType, latestEv, sessionAgeSeconds(lv.createdAt[sid]), lv.sleeping[sid], lv.archived[sid]),
 		"done":                  state.Done,
 		"waiting_reason":        nilIf(!state.NeedsInput, state.WaitingReason),
 		"waiting_summary":       nilIf(!state.NeedsInput, state.WaitingSummary),
@@ -559,6 +560,7 @@ func (h *SessionsHandler) sleepingRows(allLive []store.LiveSession, liveSIDs map
 			"waiting_for_input":     false,
 			"awaiting_user":         false,
 			"not_started":           false,
+			"starting":              false,
 			"done":                  false,
 			"waiting_reason":        nil,
 			"waiting_summary":       nil,
@@ -653,6 +655,7 @@ func (h *SessionsHandler) ResolveSession(w http.ResponseWriter, r *http.Request)
 			"done":              false,
 			"stuck":             false,
 			"not_started":       false,
+			"starting":          false,
 		})
 		return
 	}
@@ -719,6 +722,7 @@ func (h *SessionsHandler) ResolveSession(w http.ResponseWriter, r *http.Request)
 		"done":              false,
 		"stuck":             false,
 		"not_started":       false,
+		"starting":          false,
 	}
 	for k, v := range h.autoAcceptPayload(r.Context(), ls.SessionID) {
 		out[k] = v
