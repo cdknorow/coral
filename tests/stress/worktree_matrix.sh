@@ -50,8 +50,8 @@ for k in sys.argv[1].split('.'):
 print('' if v is None else (v if not isinstance(v,(dict,list)) else json.dumps(v)))" "$1" 2>/dev/null | tr -d '\r'; }
 
 wait_for_server() {
-    local n=60
-    while ! curl -s -m 5 "${BASE_URL}/api/health" >/dev/null 2>&1; do n=$((n - 1)); if [[ $n -le 0 ]]; then log "ERROR: server did not start"; tail -20 "$TMPROOT/server.log" >&2; exit 1; fi; sleep 0.5; done
+    local n=40
+    while ! curl -s -m 5 "${BASE_URL}/api/health" >/dev/null 2>&1; do n=$((n - 1)); if [[ $n -le 0 ]]; then log "the server did not start"; return 1; fi; sleep 0.5; done
 }
 
 stop_server() {
@@ -68,7 +68,7 @@ start_server() {
         HOME="$TMPROOT/host-home" USERPROFILE="$TMPROOT/host-home" PATH="$CORAL_TEST_STUB_BIN:$PATH" \
         "$TMPROOT/coral${CORAL_TEST_EXE}" --home "$(coral_test_native_path "$CORAL_DATA_DIR")" --no-browser --cloud-url off --host "$HOST" --port "$PORT" --backend "$CORAL_TEST_BACKEND" >"$TMPROOT/server.log" 2>&1 &
     SERVER_PID=$!
-    wait_for_server
+    wait_for_server || return 1
     coral_test_require_ok "$(api PUT "/api/settings" -d "{\"cli_path_claude\": \"$MOCK_AGENT_NATIVE\"}")" "cli_path_claude=$MOCK_AGENT_NATIVE" >/dev/null
 }
 
@@ -79,7 +79,7 @@ log "building coral (dev) and mock-agent ..."
 (cd "$CORAL_DIR" && go build -tags "dev fts5" -o "$TMPROOT/" ./cmd/coral ./cmd/coral-board ./cmd/coral-agent ./cmd/coral-hook-agentic-state ./cmd/coral-hook-session-start ./cmd/coral-hook-message-check ./cmd/coral-hook-task-sync 2>&1 | tail -5; go build -o "$TMPROOT/mock-agent${CORAL_TEST_EXE}" ./cmd/mock-agent/) || { echo "build failed" >&2; exit 2; }
 MOCK_AGENT_NATIVE="$(coral_test_native_path "$TMPROOT/mock-agent${CORAL_TEST_EXE}")"
 coral_test_sandbox
-start_server "$TMPROOT/coral-data"
+start_server "$TMPROOT/coral-data" || { echo "the first server did not start" >&2; tail -20 "$TMPROOT/server.log" >&2; exit 2; }
 
 GIT_ID=(-c user.name=Test -c user.email=test@test.invalid)
 # newrepo NAME [BRANCH]: a repository with one commit, on BRANCH (main by default); prints its path
@@ -109,15 +109,20 @@ state() {
 }
 
 # row CASE WHAT HTTP RESULT LEFT
-row() { N=$((N + 1)); printf '%s\t%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4" "$5" >>"$ROWS"; log "[$1] http=$3 | $4 | $5" | cut -c1-600; }
+row() {
+    N=$((N + 1)); printf '%s\t%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4" "$5" >>"$ROWS"; log "[$1] http=$3 | $4 | $5" | cut -c1-1200
+    if [[ -n "$OUT_DIR" ]]; then mkdir -p "$OUT_DIR"; cp "$ROWS" "$OUT_DIR/rows.tsv" 2>/dev/null || true; fi
+}
 
 # launch_team CASE WHAT REPO [BASE_BRANCH] [BOARD]: one team launch with a worktree; records the row; leaves the launch result in LAST_BODY
 LAST_BODY=""; LAST_CODE=""
 launch_team() {
     local case="$1" what="$2" repo="$3" base="${4:-}" board="${5:-wm-$1-$$}"
     local basej=""; [[ -n "$base" ]] && basej="\"base_branch\": \"$base\","
-    local resp
-    resp=$(api_code POST "/api/sessions/launch-team" -d "{\"board_name\": \"$board\", \"working_dir\": \"$(native "$repo")\", \"worktree\": true, $basej \"agents\": [{\"agent_type\": \"claude\", \"name\": \"Dev\", \"prompt\": \"work\"}]}")
+    local resp bodyfile="$TMPROOT/body.json"
+    # the body goes through a file, as UTF-8 bytes: a curl.exe command-line argument is converted through the ANSI code page on Windows, which turns accents and CJK into '?'
+    printf '{"board_name": "%s", "working_dir": "%s", "worktree": true, %s "agents": [{"agent_type": "claude", "name": "Dev", "prompt": "work"}]}' "$board" "$(native "$repo")" "$basej" >"$bodyfile"
+    resp=$(api_code POST "/api/sessions/launch-team" --data-binary "@$(native "$bodyfile")")
     LAST_CODE="${resp##*$'\n'}"; LAST_BODY="${resp%$'\n'*}"
     local ok err wt
     ok=$(printf '%s' "$LAST_BODY" | python3 -c "import sys,json
@@ -130,7 +135,7 @@ except Exception: print('FAILED')" 2>/dev/null | tr -d '\r')
 try:
     d=json.load(sys.stdin); print(next((a.get('worktree_path','') for a in d.get('agents',[]) if a.get('worktree_path')),''))
 except Exception: print('')" 2>/dev/null | tr -d '\r')
-    row "$case" "$what" "$LAST_CODE" "$ok${err:+ ($(printf '%s' "$err" | clean x 380))}${wt:+ [worktree made]}" "$(state "$repo")"
+    row "$case" "$what" "$LAST_CODE" "$ok${err:+ ($(printf '%s' "$err" | clean x 1000))}${wt:+ [worktree made]}" "$(state "$repo")"
 }
 
 # kill_launch: kills the sessions of LAST_BODY (the worktree is removed by the kill)
@@ -147,10 +152,24 @@ except Exception: pass" 2>/dev/null | tr -d '\r')
     sleep 2
 }
 
+# kill_team: stops the team of LAST_BODY the way the dashboard does (POST /api/sessions/live/team/<board>/kill), then waits for the asynchronous worktree cleanup
+kill_team() {
+    local bid code
+    bid=$(printf '%s' "$LAST_BODY" | jget board_id)
+    [[ -z "$bid" ]] && { log "kill_team: no board_id"; return 1; }
+    code=$(curl -s -m 60 -o /dev/null -w '%{http_code}' -X POST "${BASE_URL}/api/sessions/live/team/${bid}/kill" -H "Content-Type: application/json" -d '{}')
+    sleep 6
+    printf '%s' "$code"
+}
+
 # ── 1. controls ──────────────────────────────────────────────────────
 R=$(newrepo control)
 launch_team control-main "a repository on main, base main (the case that must work)" "$R"; kill_launch
-row control-after-kill "the same repository after the team was killed (what a kill leaves)" "-" "kill done" "$(state "$R")"
+row control-after-session-kill "after the agent's session was killed one by one (POST /api/sessions/live/<name>/kill)" "-" "kill done" "$(state "$R")"
+R=$(newrepo control-team-kill)
+launch_team control-team "a second control, to be stopped as a team" "$R" main "wm-ctk-$$"
+code=$(kill_team)
+row control-after-team-kill "after the team was stopped (POST /api/sessions/live/team/<board>/kill: the dashboard's Stop team)" "$code" "team stop answered" "$(state "$R")"
 
 # ── 2. the base branch ───────────────────────────────────────────────
 R=$(newrepo default-master master)
@@ -208,15 +227,23 @@ launch_team path-spaces "repository path with spaces and parentheses" "$R"; kill
 R=$(newrepo "dépôt-ünï-日本")
 launch_team path-non-ascii "repository path with accents and CJK" "$R"; kill_launch
 
-# a repository that lives under a long path
-LONG="$TMPROOT/repos"; for i in 1 2 3 4 5 6; do LONG="$LONG/segment-number-$i-with-a-rather-long-folder-name"; done
-mkdir -p "$LONG" 2>/dev/null; R="$LONG/repo"; mkdir -p "$R" 2>/dev/null && { git -C "$R" init -q -b main; echo x >"$R/README.md"; git -C "$R" add .; git "${GIT_ID[@]}" -C "$R" commit -q -m initial; }
-launch_team path-long-repo "repository under a path of about ${#R} characters" "$R"; kill_launch
+# repositories under long paths: one under the 260-character limit, one over it
+for SEGS in 3 6; do
+    LONG="$TMPROOT/repos"; for i in $(seq 1 $SEGS); do LONG="$LONG/segment-number-$i-with-a-rather-long-folder-name"; done
+    mkdir -p "$LONG" 2>/dev/null; R="$LONG/repo"; mkdir -p "$R" 2>/dev/null
+    MADE=yes; { git -C "$R" init -q -b main && echo x >"$R/README.md" && git -C "$R" add . && git "${GIT_ID[@]}" -C "$R" commit -q -m initial; } >/dev/null 2>&1 || MADE=no
+    launch_team "path-long-repo-$SEGS" "repository under a path of $(native "$R" | wc -c | tr -d ' ') characters (git itself could create it: $MADE)" "$R" main "wm-lr$SEGS-$$"; kill_launch
+done
 
 # a repository that has a tracked file with a very long path (checked out into the worktree under <data>/worktrees/b-hash/...)
 R=$(newrepo long-file); DEEP=""; for i in 1 2 3 4 5 6 7 8; do DEEP="$DEEP/directory-name-number-$i-padding-padding"; done
 blob=$(echo long | git -C "$R" hash-object -w --stdin); git -C "$R" update-index --add --cacheinfo "100644,$blob,deep${DEEP}/file.txt" 2>/dev/null; git "${GIT_ID[@]}" -C "$R" commit -q -m deep 2>/dev/null
 launch_team long-file-path "a tracked file whose path inside the repository is ${#DEEP} characters (core.longpaths unset)" "$R"; kill_launch
+
+# a board name that is a Windows device name
+R=$(newrepo reserved-name)
+launch_team board-name-con "board_name is the Windows device name 'con'" "$R" main "con"; kill_launch
+launch_team board-name-nul "board_name 'nul'" "$R" main "nul"; kill_launch
 
 # ── 5. what is already there ─────────────────────────────────────────
 R=$(newrepo twice)
@@ -255,27 +282,32 @@ row parallel-4-teams "four teams launched at the same moment in one repository" 
 
 # ── 6. the data folder ───────────────────────────────────────────────
 SPACED="$TMPROOT/data dir with spaces/and (parens)"; mkdir -p "$SPACED"
-start_server "$SPACED"
+start_server "$SPACED" || log "the server did not start on the spaced data folder"
 R=$(newrepo data-spaces)
 launch_team data-dir-spaces "the server's data folder has spaces and parentheses (worktrees go under it)" "$R"; kill_launch
 
-LONGD="$TMPROOT/data"; for i in 1 2 3 4 5 6; do LONGD="$LONGD/a-long-data-folder-segment-$i-for-the-path"; done
-start_server "$LONGD"
-R=$(newrepo data-long)
-launch_team data-dir-long "the server's data folder path is about ${#LONGD} characters" "$R"; kill_launch
-start_server "$TMPROOT/coral-data2"
+for SEGS in 3 6; do
+    LONGD="$TMPROOT/data$SEGS"; for i in $(seq 1 $SEGS); do LONGD="$LONGD/a-long-data-folder-segment-$i-for-the-path"; done
+    if start_server "$LONGD"; then
+        R=$(newrepo "data-long-$SEGS")
+        launch_team "data-dir-long-$SEGS" "the server's data folder path is $(native "$LONGD" | wc -c | tr -d ' ') characters" "$R" main "wm-dl$SEGS-$$"; kill_launch
+    else
+        row "data-dir-long-$SEGS" "the server's data folder path is $(native "$LONGD" | wc -c | tr -d ' ') characters" "-" "SERVER DID NOT START: $(grep -a 'Failed to start\|data folder' "$TMPROOT/server.log" | tail -3 | clean x 700)" "-"
+    fi
+done
+start_server "$TMPROOT/coral-data2" || { echo "the final server did not start" >&2; exit 2; }
 
 # ── 7. kill, resurrect and restart ───────────────────────────────────
 R=$(newrepo resurrect)
 launch_team resurrect-launch "team launched (to be stopped and resurrected)" "$R" main "wm-res-$$"
 RES_BODY="$LAST_BODY"; BID=$(printf '%s' "$RES_BODY" | jget board_id)
-kill_launch
+kill_team >/dev/null
 TSTAT=""
 for _ in $(seq 1 20); do TSTAT=$(api GET "/api/teams/detail/${BID}" | jget status); [[ "$TSTAT" == stopped ]] && break; sleep 1; done
-row resurrect-team-status "the team's status after every session was killed (waited up to 20 s)" "-" "status=$TSTAT" "$(state "$R")"
+row resurrect-team-status "the team's status after Stop team (waited up to 20 s)" "-" "status=$TSTAT" "$(state "$R")"
 if [[ -n "$BID" ]]; then
     resp=$(api_code POST "/api/teams/detail/${BID}/resurrect" -d '{}'); code="${resp##*$'\n'}"; body="${resp%$'\n'*}"
-    row resurrect-after-kill "stopped team resurrected (its worktree was removed by the kill)" "$code" "$(printf '%s' "$body" | jget error | clean x 400)${body:+ | $(printf '%s' "$body" | clean x 200)}" "$(state "$R")"
+    row resurrect-after-kill "stopped team resurrected (POST /api/teams/detail/<board>/resurrect)" "$code" "$(printf '%s' "$body" | jget error | clean x 400)${body:+ | $(printf '%s' "$body" | clean x 200)}" "$(state "$R")"
     LAST_BODY="$body"; kill_launch
 else
     row resurrect-after-kill "stopped team resurrected" "-" "no board_id in the launch answer: $(printf '%s' "$RES_BODY" | clean x 200)" "$(state "$R")"
@@ -306,6 +338,6 @@ TABLE="$TMPROOT/worktree_matrix.md"
     while IFS=$'\t' read -r a b c d e; do printf '| %s | %s | %s | %s | %s |\n' "$a" "$b" "$c" "$d" "$e"; done <"$ROWS"
 } >"$TABLE"
 echo; cat "$TABLE"
-if [[ -n "$OUT_DIR" ]]; then mkdir -p "$OUT_DIR"; cp "$TABLE" "$OUT_DIR/worktree_matrix.md"; sed -e "s#$TMPROOT#<tmp>#g" "$TMPROOT/server.log" | grep -aE "worktree|launch-team|resurrect" | tail -80 >"$OUT_DIR/server_worktree_lines.log" 2>/dev/null || true; fi
+if [[ -n "$OUT_DIR" ]]; then mkdir -p "$OUT_DIR"; cp "$TABLE" "$OUT_DIR/worktree_matrix.md"; sed -e "s#$TMPROOT#<tmp>#g" "$TMPROOT/server.log" | grep -aE "worktree|launch-team|resurrect|kill-team" | tail -80 >"$OUT_DIR/server_worktree_lines.log" 2>/dev/null || true; fi
 coral_test_sandbox_check || log "WARNING: the sandbox check failed (a real CLI may have been reached)"
 exit 0
