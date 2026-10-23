@@ -1,5 +1,43 @@
 # Release Notes
 
+## v1.4.161 — Artifacts you can send to an agent, a Hub that starts with one clear step, and fixes for agents that were held, woke in the wrong mode or locked each other out
+
+### Changes
+
+- **Send to agent, from an artifact comment (this computer only):** the owner picks one or more agents of the comment's board and sends the comment; one message goes to each agent, with the artifact and the comment in it and nothing quoted able to mention anyone on the board. An asked agent answers with `coral-agent artifact reply coral://artifacts/<digest> <comment-id> "your reply"` (the message names that exact command with the ids filled in); the reply lands in the comment's thread, and the server decides whether the agent was asked. An ask that is still open shows in the picker after a reload ("Already asked", with how many times the agent replied) and an agent that cannot be asked is greyed out and still reachable by keyboard, with its reason as text. A refusal tells the agent "the dashboard" and nothing more.
+- **Artifact versions (this computer only):** an artifact can have a series of versions; an upload can say `--new-version-of <link>` (at most 100 versions per series; the routes are local and never go through Coral Hub). With `?series=1` a comment list also shows the comments of earlier versions, each with where its text stands in this version (found with its lines, ambiguous, gone or unchecked): a comment is never moved to a guess, and its replies, resolves and asks stay with the original version (one search per distinct place, bounded at 2,000 searches or 64 MiB). A Team Artifacts Refresh keeps the list where it is until the answer arrives, and Retry after a failed Refresh asks for the first page again.
+- **The Hub, first run:** the Connect to Coral Hub screen's first answer starts at View, and auto-accept starts unticked; in the terminal the Hub question connects only on the word yes (y, yes or connect); Enter and anything else skip, the skip is stored so no browser asks again, and Settings > Coral Hub still connects it. The live list says an agent is starting (no timer: its CLI has not emitted its first event yet) and a new agent's box says "Starting <name>" with Send's title saying a message is held until it is ready. In the team view the Operator (a board subscriber, not an agent) no longer gets a card, an Offline count or a Remind button, and a "No signal yet" card says it is waiting for the agent's first message to Coral. Analytics' Tool & API Calls table says "No tool calls yet" while every row is a call to Coral's own routes.
+- **New Agent:** step 1 helps with the folder (the last three as buttons, one line for a new account); step 2 names the agent once (the radio group; the form's own Agent Type select is hidden while it shows); Save Persona is the one persona button and Export and Import sit in a closed "Export or import" disclosure; the "Claude isn't signed in" line shows only while the list has a Claude agent of this computer; Codex's hooks question says to answer it first and New Agent says once that Codex will ask.
+- **Settings:** General opens on Theme and the default agent, and the render engine is behind a disclosure; the add-a-model form's Cancel is named; Analytics has a text alternative for the spend chart, hides the sparklines from a screen reader and names its tables, sort and filter buttons.
+- **The setup code where a person is:** Settings > Network and Hub and the tray menu show it ("Show setup code" is back two minutes after the click), not only a terminal.
+- **Servers page:** no "Manage connected machines." line, "computers" not "machines", Add a computer is a plain button, and Revoke is in a More menu beside Rename.
+- **A person's read of a reminder:** Edit reminder opens with the instruction in force and the exact interval (from a new person-only route, never reachable through the Hub).
+- **Held messages:** an agent that has held automated input for over a minute says "N messages waiting: Coral can't see the input box", on its row and in its view (with a Show terminal button), in the warning colour; the minute is counted from when the page first saw the agent holding, or from the live row's new `held_since` when the server sends one.
+- **Windows:** a copy of Coral run from another folder than the registered install is treated as portable.
+
+### Fixes
+
+- **An idle Codex whose input box Coral cannot find no longer holds messages and reminders:** in 157 to 160 a Codex whose composer was drawn without the marker the gate looks for was taken for a Codex mid-turn, and every message and reminder to it was held for as long as Coral could not see the box (25 minutes in our soak). A Codex whose own signals say its turn ended (Stop seen) is now pasted into; mid-turn, no-Stop and no-signal Codex are held as before. A reminder may now be pasted after a draft Coral cannot see.
+- **A Codex agent started in Plan no longer wakes, restarts or resets in Auto:** in 158 to 160 a Plan agent could come back in Auto after Sleep and Wake, a restart or a team reset; fixed.
+- **A PTY agent's screen is the terminal's own state,** kept as the output arrives, not a replay of the last 256 KiB: a TUI that repaints only what changes (Codex's composer) left nothing of what it drew once in that ring after a few minutes of work, so the rendered screen had no input box. The work per megabyte of output is bounded, so a flood of control sequences cannot stall the read loop.
+- **Two Corals no longer fight for a data folder:** startup takes the instance lock before it prepares the folder, and the real binary takes it before it touches anything.
+- **The first Codex start on a new Codex home is not raced** by the others (a 3 second gap, one at a time).
+- **An old empty Hub link table says "waiting", not "stale".**
+
+### Known issues
+
+- **A Codex agent with Shell, Read, Write and Git Write and no deny runs without a sandbox, as before;** the built-in Coding Team does this.
+- **A board message can wait up to about 15 minutes to reach an agent that was put to sleep and woken while its notice was held** (present since v1.4.22; fixed in the next release). The message is not lost; `coral-board read` shows it at once.
+
+### Security
+
+- **The updater is off in this release.** When it is on, it skips a pre-release promotion before it picks the highest sequence (so a later rehearsal cannot hide the real promotion) and never takes a draft promotion.
+
+### Internal
+
+- **Release tooling:** `promote.yml` publishes each promotion as its own release, `promote-<tag>-<sequence>` (this repository's releases are immutable), with the client finding it by that name; `verify-release.sh` reads its strip marker from the script's own folder (the first verify of 160 stopped on it); the Windows rehearsal of the updater is in the tree (not part of a release).
+- **Tests:** the Windows settings trace golden is regenerated; the CDP runner keeps a page load only until the next wait; new censuses for Send to agent and the Analytics and Settings dialogs.
+
 ## v1.4.160 — History titles say what you typed, helpers that detached are found on macOS, and a dashboard that is 1.4 MB lighter and easier to hear and reach
 
 ### Changes
