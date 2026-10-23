@@ -1,5 +1,51 @@
 # Release Notes
 
+## v1.4.160 — History titles say what you typed, helpers that detached are found on macOS, and a dashboard that is 1.4 MB lighter and easier to hear and reach
+
+### Changes
+
+- **History titles lead with what you typed:** a chat's title in History is the first thing the person typed in it (Claude, Codex, Antigravity, Gemini and Pi), redacted before it is shortened, skipping what the CLI wrote itself (a compaction summary, an injected entry, a subagent's prompt, an interrupt marker, an AGENTS.md block) and keeping the text you typed when it comes with the editor's IDE context in front of or after it. A chat indexed before this release is read once more at the first start (a few seconds on a large history); one with no typed message falls back to the start of the reply as before.
+- **The History search and the summaries never show the start of a secret:** the excerpt around a match is redacted before its window is cut (a token short of its last character no longer slips through), over a region of at most 64 KiB around the match, so a message of megabytes costs a search nothing; a JWT is masked by the redactor Coral uses.
+- **A helper that detached before Kill is found on macOS, with one limit:** every 3 seconds Coral remembers the processes each agent started, so Kill, quit, Sleep and Restart of built-in-terminal and tmux agents end a helper that moved to a session of its own after Coral had seen it, even an Apple binary such as perl or sleep (the guardian ends them too when Coral dies). One that detached within about 3 seconds of starting, before the first look that saw it, is still not found.
+- **The team board and the Message Board page:** the board's message box is the chat's card (one rounded box that grows with its text, an @all chip and a round Send in its bottom row), the Message Board page names the board as its heading, and Delete sits behind More on a wide screen, away from Select. A message sent from the board is said once to a screen reader, and a send that fails says so and puts your words back.
+- **New Agent is two steps:** step 1 is the working directory with Next (Enter is Next); step 2 is everything else (name and persona, agent, model, prompt, permissions, board) with Back and Launch, and focus moves to step 2. Step 2 keeps its side menu on a wide screen and one dropdown of sections on a phone.
+- **Hub home with no computer connected:** one "Connect your computers" panel with the three steps and an Add a computer link to /machines/add (same tab); no launch cards and no New Agent button until a computer is connected; with computers, a Connect another computer link sits below the cards; a local Coral shows none of it.
+- **Hub: an Artifacts tab** shows the Hub's own artifacts page in a frame, only when the Hub says it can be framed; an artifact's comments through Coral Hub ask the computer that owns the artifact and are read-only (no composer, reply, resolve or lock, and a line says where to write).
+- **Screen readers and keyboards:** a reply is announced when the turn is done, a send once, a state change and a notice once each (a notice is heard even when no toast is on screen; a computer going offline or coming back is said once on the Servers page); History search has named filters, results named for their chat and one line saying how many match; Workflows and Jobs say which choice is on, and an editor error is said and its field marked; a census now checks every live region, the keyboard path of the phone, desktop and Hub scenes, and the 200% text size (text that ignores the reader's font size fails it).
+- **The chat's Add image button sits in the top-right corner of the box,** not at the left of the text.
+- **The terminal's fit-to-width never shrinks a desktop font below 11 px,** so a prompt reads at a glance and the rest scrolls sideways.
+- **Connect to Coral Hub, waiting step:** while it waits, the screen shows only the code, the link and Cancel, with a Copy code button beside the code, and a selection of the code survives the page's polls.
+- **Remind agent and the task reminder ask in a dialog of their own,** not the browser's prompt box.
+- **An open team row has a selected tile** (the soft accent an agent row has) beside the accent name, so it is not told by colour alone.
+- **Settings is shorter:** each terminal backend choice is one title (the line that repeated it is gone), and an empty custom-models list shows only Add a model; Inbox > Saved for later has no "All saved" heading under its own tab and no second row of buttons per card.
+- **Agent list:** a team row has no (i) button any more; the row opens the team, and the chevron expands it.
+- **A smaller dashboard in every binary:** the dashboard's JavaScript and CSS ship already minified, 1.4 MB less per program (the server minified them when serving anyway), and a release checks the server binary carries none of the source's comments; the static budget now measures what a release ships.
+- **A fresh install's example job is now switched off:** a new data folder seeds its example job OFF and marked as an example; if you installed before and never wanted the 9am example job, turn it off in Jobs.
+- **A write through Coral Hub that may already have reached the computer says so in one line and is never sent again** (the outcome is unknown, so Coral does not repeat it).
+- **Coral Hub (for the Hub's notice):** the tunnel's Welcome can carry `retry_after` (whole seconds, only with a retry-later refusal, never more than 300 s) as the floor of the connector's next wait, and the first reconnect after a session that was up more than 30 seconds is spread over ten seconds.
+
+### Fixes
+
+- **A Codex wake with no hook link resumes its conversation** (it used to start a fresh thread when Codex's hooks were not trusted): the thread is found by the marker Coral wrote in the rollout.
+- **A slow slash command is waited for before it is called unconfirmed:** a `/compact` that ran no longer answers "may not have been sent" (it waits up to 12 seconds for any sign: the screen moved, an agent event, or the transcript grew).
+- **The dashboard's live feed always starts and retries:** a failing start-up step, a WebSocket constructor that throws and a false sign-out no longer leave a dashboard with no feed and no retry; a real sign-out keeps its panel.
+- **The guardian refuses a pid of 0, 1 or a negative number** in its add line (a table test pins it).
+
+### Known issues
+
+- **A Codex agent started in Plan mode may come back in Auto after Sleep and Wake, a restart or a team reset** (also in 158 and 159). Until the fix in the next release, check the mode after waking a Codex agent.
+- **A Codex agent with Shell, Read, Write and Git Write and no deny runs without a sandbox, as before;** the built-in Coding Team does this.
+
+### Security
+
+- **The updater is off in this release.**
+- **The dashboard's message listeners** are censused: every window `message` listener checks `event.source` or origin (the Hub's Artifacts frame is unsandboxed and same-origin), and the rest are named.
+
+### Internal
+
+- **Release tooling:** the release build is checked for the rehearsal's fake identity in every program, and `verify-release.sh` refuses it for the tarballs, the zip and the DMG; a `relaunchfixture` go-tests leg; Windows CI also runs the strict phase and captures the page's own state on a timeout.
+- **Tests:** new censuses for announcements, the 200% text size, contrast, keyboard paths and Hub scenes; History, the search excerpt and the sampler have per-offset and per-case tests.
+
 ## v1.4.159 — Switching an agent's model or thinking level works, helpers end with their agent, and a first run that is easier to start
 
 DRAFT (DevOps, 23 Oct), against ci/v159 46ad12e62: every bullet comes from the commit messages in v1.4.158..46ad12e62 (list: /tmp/list159.txt); #6213, #6226 and #6208 are 160 and are not here.
