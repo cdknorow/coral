@@ -47,22 +47,48 @@ func TestManyCallersAtOnceShareOneCheck(t *testing.T) {
 	assert.Zero(t, stub.Grabs())
 }
 
-// A status command that hangs is killed when the check gives up: no process is left behind holding anything.
-func TestAHungStatusCommandIsKilledWhenTheCheckGivesUp(t *testing.T) {
+// waitGone waits for pid to be gone (reaped: a zombie still answers signal 0).
+func waitGone(t *testing.T, pid int, within time.Duration) {
+	t.Helper()
+	require.Eventually(t, func() bool { return syscall.Kill(pid, 0) != nil }, within, 50*time.Millisecond, "the hung status process %d is still running", pid)
+}
+
+// A status command that hangs is killed when the caller gives up. The stand-in is waited for (it has logged its status call) before the caller gives up, not slept for: the earlier form let
+// the check's own six-second limit run from before /bin/sh had started, so a machine that took that long to start the stand-in (a full go test ./... under load) gave up on a process that did not
+// exist yet, and the test failed with no check logged (#6212). The kill is the same one the limit makes: the command runs under the check's context.
+func TestAHungStatusCommandIsKilledWhenTheCallerGivesUp(t *testing.T) {
 	claudestub.Isolate(t)
 	stub := claudestub.New(t, claudestub.HangingAuth)
-	require.True(t, IsNotSignedIn(Require(context.Background(), "claude", stub.Path())))
-	checks := stub.AuthChecks()
-	require.NotEmpty(t, checks)
-	pid := checks[0].PID
-	gone := false
-	for i := 0; i < 40 && !gone; i++ { // up to 4 s: the kill, then the wait for its pipes
-		gone = syscall.Kill(pid, 0) != nil
-		if !gone {
-			time.Sleep(100 * time.Millisecond) // sleep-ok: polling for a process to be gone
-		}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	res := make(chan error, 1)
+	go func() { res <- Require(ctx, "claude", stub.Path()) }()
+	require.Eventually(t, func() bool { return len(stub.AuthChecks()) > 0 }, time.Minute, 25*time.Millisecond, "the stand-in never ran its status command")
+	pid := stub.AuthChecks()[0].PID
+	cancel()
+	// The stand-in holds for 20 s: a check that returns long before that was ended by the kill, not by the stand-in finishing (which would leave the process gone too).
+	select {
+	case <-res:
+	case <-time.After(15 * time.Second):
+		t.Fatal("the check did not return soon after its caller gave up: the hung command was not killed")
 	}
-	assert.True(t, gone, "the hung status process %d is still running", pid)
+	waitGone(t, pid, 10*time.Second) // the kill, then the wait for its pipes
+}
+
+// The limit ends a hung status command too, and the answer is the "did not answer" one that skips jobs. Whether the stand-in had started before a short limit passed depends on the machine, so
+// the process is checked only when it did (the caller-gives-up test above waits for it and always checks); the verdict is checked either way.
+func TestAHungStatusCommandIsKilledWhenTheLimitPasses(t *testing.T) {
+	claudestub.Isolate(t)
+	defer SetCheckTimeoutForTests(3 * time.Second)()
+	stub := claudestub.New(t, claudestub.HangingAuth)
+	start := time.Now()
+	require.True(t, IsNotSignedIn(Require(context.Background(), "claude", stub.Path())), "a check that gave up is an answer that skips jobs")
+	assert.Less(t, time.Since(start), 15*time.Second, "the stand-in holds for 20 s: a check that returned before that was ended by the kill")
+	if checks := stub.AuthChecks(); len(checks) > 0 {
+		waitGone(t, checks[0].PID, 10*time.Second)
+	} else {
+		t.Log("the stand-in had not started within the limit on this machine: the kill is checked by the caller-gives-up test")
+	}
 }
 
 // What the status command is given: nothing on stdin and no terminal, the temp folder as its working directory, and no Coral session token in its environment (the check must never carry a credential to a CLI it is only asking a question).
