@@ -90,3 +90,23 @@ func TestLaunchAgentWithNoTypeStillGetsItsLog(t *testing.T) {
 	require.Len(t, rt.commands, 1)
 	assert.Contains(t, rt.commands[0], "claude", "launched as Claude")
 }
+
+// #6767 (Codex Test's #6766): a scheduled or one-shot agent is started with this server's address, data folder and its own session name, like a dashboard launch. Without them its hooks and coral-board dialed
+// the default port (:8420), so a server on any other port stored none of its events (an open permission box showed as "working", "starting" never cleared).
+func TestScheduledAgentsAreLaunchedWithThisServersEnvironment(t *testing.T) {
+	ctx := context.Background()
+	for _, agentType := range []string{at.Claude, at.Codex} {
+		rt := &spawnRecorder{}
+		l := NewAgentLauncher(rt, store.NewSessionStore(setupTestDB(t)), 8450)
+		dataDir := t.TempDir()
+		l.SetServer("127.0.0.1", dataDir)
+		res, err := l.LaunchAgent(ctx, t.TempDir(), agentType, "job", "", nil, true, "p", "", "")
+		require.NoError(t, err, agentType)
+		rt.mu.Lock()
+		cmd := rt.commands[0]
+		rt.mu.Unlock()
+		for _, want := range []string{"CORAL_PORT", "8450", "CORAL_URL", "http://127.0.0.1:8450", "CORAL_SESSION_NAME", res.SessionName, "CORAL_DATA_DIR", dataDir} {
+			assert.Contains(t, cmd, want, "%s: %s", agentType, want)
+		}
+	}
+}
