@@ -60,9 +60,28 @@ export function chipView(s, server) {
     return view;
 }
 
-/** Whether the row gets a thinking chip: Claude always (its levels load with the menu); another CLI when it reports a level or its list has levels. */
+/** Whether the row gets a thinking chip: Claude always (its levels load with the menu); another CLI when it reports a level, or its own type's list has levels (asked as soon as the agent is selected, below). */
 function _hasLevels(s) {
-    return LIVE_SWITCH_TYPES.has(s.agent_type) || !!(s.thinking_actual || s.thinking) || (_dataKey === `${_cur && _cur.server}:${s.agent_type}` && !!_data && _data.thinking.length > 0);
+    const key = `${_cur && _cur.server}:${s.agent_type}`;
+    return LIVE_SWITCH_TYPES.has(s.agent_type) || !!(s.thinking_actual || s.thinking) || _levels.get(key) === true || (_dataKey === key && !!_data && _data.thinking.length > 0);
+}
+
+// Whether each agent type has effort levels (server:type), from its own list asked when an agent of that type is selected: a Codex agent on Default has its thinking chip at once (#6221).
+const _levels = new Map();   // "server:type" -> true | false
+const _levelsTry = new Map(); // "server:type" -> ms of the last ask that did not settle it
+const LEVELS_RETRY_MS = 5000;
+
+async function _ensureLevels(s, server) {
+    const key = `${server}:${s.agent_type}`;
+    if (!s.agent_type || LIVE_SWITCH_TYPES.has(s.agent_type) || _levels.has(key)) return;
+    const last = _levelsTry.get(key);
+    if (last && Date.now() - last < LEVELS_RETRY_MS) return;
+    _levelsTry.set(key, Date.now());
+    const answer = await _askList(s.agent_type, server);
+    if (!answer) return; // it could not be read: asked again on a later update, after the pause
+    if (answer.thinking.length) _levels.set(key, true);
+    else if (!answer.refreshing) _levels.set(key, false); // the CLI has no levels: no chip, and no asking again
+    if (_cur && `${_cur.server}:${_cur.session.agent_type}` === key && _levels.has(key)) updateModelChip(_cur.session, _cur.server);
 }
 
 export function updateModelChip(session, server) {
@@ -76,6 +95,7 @@ export function updateModelChip(session, server) {
     if (!show) { _closeMenu(); return; }
     const v = chipView(s, server);
     const hasLevels = _hasLevels(s);
+    if (!hasLevels) _ensureLevels(s, server);
     setHidden(p.thinking.wrap, !hasLevels);
     if (!hasLevels && _open === 'thinking') _closeMenu();
     const labels = { model: `Model: ${v.model.text}`, thinking: `Thinking level: ${v.thinking.text}` };
@@ -95,9 +115,9 @@ export function updateModelChip(session, server) {
 // ── The menu ─────────────────────────────────────────────────────────────
 
 /** One answer of the list route: { models, thinking, refreshing }, or null when it could not be read. refreshing: the server is still asking the CLI (it answers with no models at first). */
-async function _askList(agentType) {
+async function _askList(agentType, server = _cur && _cur.server) {
     try {
-        const resp = await serverFetch(_cur.server, `/api/agents/models?type=${encodeURIComponent(agentType)}`);
+        const resp = await serverFetch(server, `/api/agents/models?type=${encodeURIComponent(agentType)}`);
         if (!resp.ok) return null;
         const d = await resp.json();
         return d && Array.isArray(d.models) ? { models: d.models, thinking: Array.isArray(d.thinking) ? d.thinking : [], refreshing: d.refreshing === true, raw: d } : null;

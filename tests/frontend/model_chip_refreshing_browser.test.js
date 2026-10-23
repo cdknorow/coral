@@ -27,6 +27,8 @@ const STUB = answers => `(() => { const R = window.fetch; window.__asks = 0; win
             await select('rf-codex');
             await ev(`T.ws.handleCoralMessage({ type: 'coral_diff', changed: [{ ...window.__m.entry(window.__m.agents['rf-codex-id']), agent_type: 'codex', model: 'gpt-x', thinking_actual: 'low' }] }); true`);
             await waitFor(`!document.getElementById('model-chip-bar').hidden && /gpt.x/i.test(document.getElementById('model-chip-text').textContent)`, `${tag}: the chip`, 8000);
+            // While the agent was on Default for a moment the chip asked the list once for its type's levels (#6221): that ask is not what this suite counts. The menu's own asks start from the scripted answers again.
+            await ev(`window.__answers = ${JSON.stringify(answers)}; window.__asks = 0; true`);
         };
         const menu = () => ev(`(() => { const m = document.getElementById('model-chip-menu'); const e = m.querySelector('.model-chip-empty'); return { open: !m.hidden, items: [...m.querySelectorAll('.model-chip-item[data-model] .model-chip-item-label')].map(i => i.textContent.trim()), empty: e ? e.textContent : '', role: e ? e.getAttribute('role') : null }; })()`);
         const openIt = () => ev(`document.getElementById('model-chip').click(); true`);
