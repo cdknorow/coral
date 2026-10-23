@@ -2,10 +2,13 @@ package gitutil
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode"
 )
 
 // RepoOfWorktree is the repository a worktree belongs to (the folder holding its .git), "" when path is not a worktree of one.
@@ -140,4 +143,34 @@ func registered(ctx context.Context, repoDir, path string) bool {
 		}
 	}
 	return false
+}
+
+// TeamBranch is the branch a team's worktree is on: coral-team/ and the board's name, with every character git's branch names refuse (a space, "..", "~", "^", ":", "?", "*", "[", "\", "@{", a leading
+// or trailing "." or "-", ".lock") replaced by "-" and a short hash of the name added when anything was replaced, so two names that differ only there get two branches. A name that is already a valid
+// branch name is used as it is. The board and its worktree folder keep the name (#6701, Security's #6708 C1: a board named "my team" made every worktree launch fail).
+func TeamBranch(board string) string {
+	var b strings.Builder
+	for _, r := range board {
+		switch {
+		case r == '.' || r == '-' || r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r):
+			b.WriteRune(r)
+		default:
+			b.WriteRune('-')
+		}
+	}
+	slug := b.String()
+	for strings.Contains(slug, "..") {
+		slug = strings.ReplaceAll(slug, "..", ".-")
+	}
+	slug = strings.Trim(slug, ".-")
+	slug = strings.TrimSuffix(slug, ".lock")
+	slug = strings.Trim(slug, ".-")
+	if slug != board || slug == "" {
+		sum := sha256.Sum256([]byte(board))
+		if slug == "" {
+			slug = "team"
+		}
+		slug += "-" + hex.EncodeToString(sum[:3])
+	}
+	return "coral-team/" + slug
 }

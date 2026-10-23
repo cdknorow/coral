@@ -1250,7 +1250,7 @@ func (h *SessionsHandler) KillTeam(w http.ResponseWriter, r *http.Request) {
 	// Artifact snapshots above have finished: the owned worktree goes only if nothing in it is unsaved, and the answer says what was kept and why (#6701).
 	resp := map[string]any{"ok": true, "sessions_killed": killed}
 	if teamWorktree != "" {
-		resp["worktree"] = h.removeOwnedWorktree(bgCtx, "kill-team", teamRepo, teamWorktree, "coral-team/"+boardName)
+		resp["worktree"] = h.removeOwnedWorktree(bgCtx, "kill-team", teamRepo, teamWorktree, gitutil.TeamBranch(filepath.Base(teamWorktree)))
 	}
 
 	// Unpause board
@@ -1338,8 +1338,8 @@ func (h *SessionsHandler) ResurrectTeam(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 
-		// On the team's own branch (coral-team/<board>, as the launch made it), not on the base branch itself: that one is checked out in the repository (#6701).
-		if _, err := gitutil.AddTeamWorktree(ctx, repoDir, team.WorkingDir, "coral-team/"+filepath.Base(team.WorkingDir), branch); err != nil {
+		// On the team's own branch (coral-team/<board slug>, as the launch made it), not on the base branch itself: that one is checked out in the repository (#6701).
+		if _, err := gitutil.AddTeamWorktree(ctx, repoDir, team.WorkingDir, gitutil.TeamBranch(filepath.Base(team.WorkingDir)), branch); err != nil {
 			errBadRequest(w, "failed to recreate worktree: "+err.Error())
 			return
 		}
