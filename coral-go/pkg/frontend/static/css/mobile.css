@@ -565,6 +565,8 @@
     }
     #messageboard-view .mb-more-menu .mb-action-btn:hover,
     #messageboard-view .mb-more-menu .mb-action-btn:focus-visible { background: var(--bg-hover); }
+    #messageboard-view .mb-more-menu .mb-action-btn:not(.mb-action-danger) { color: var(--text-primary); } /* a menu's items are read at full strength: the secondary grey was 4.4:1 on the light menu (#6566) */
+    #messageboard-view .mb-subscribers-list .subscriber-history-link, #mb-subscribers-sheet .subscriber-history-link { min-height: var(--control-touch-height, 44px); display: inline-flex; align-items: center; } /* a name is a touch target (#6566) */
     #messageboard-view .mb-more.open .mb-more-chevron { transform: rotate(180deg); }
     /* Paused, the Pause item reads "Resume Board" in the warning colour: in the menu red is Delete's alone (UX on #4538). */
     #messageboard-view .mb-more-menu #mb-pause-btn.mb-action-danger,
