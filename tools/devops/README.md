@@ -177,3 +177,10 @@ A built program carries the build machine's paths and account name, so one commi
 ## The Download section of a release's notes (#5467)
 
 GitHub hides the disk image behind "Show more assets", so every release's body starts with a Download section: direct links to that tag's stable-name files and the Homebrew line. `finish-release.sh` builds it with `tools/devops/download-section.sh VER` (the links name the release home of `tools/release-homes.txt`, so they follow a repository move), checks each link with a HEAD request (a HEAD is not a download) and puts it above the tag's notes when it sets the body; `RELEASE_NOTES.md` is unchanged. Releases before 1.4.130 have no stable names and get the notes alone. Test: `tests/release/download_section_test.sh`.
+
+
+## Promoting a release (#6274, #6394)
+
+Only the release owner dispatches `promote.yml` (Actions > Promote release), after the release is approved. Each promotion is its own release, `promote-<tag>-<sequence>`: a pre-release that is never Latest and holds only `promote.json` and its Sigstore bundle. Nothing is replaced: promoting a tag again (to revoke) makes a new release with a higher sequence.
+
+If the run fails after it created the release (the step "Publish the promotion as its own release" says where), a **draft** named `promote-<tag>-<sequence>` is left under Releases. A draft is not published and the client never reads it: delete the draft (Releases, the draft, Delete), then dispatch the promotion again. A published promotion is never deleted or edited.
