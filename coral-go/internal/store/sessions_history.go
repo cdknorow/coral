@@ -44,13 +44,15 @@ type SessionListItem struct {
 	LastTimestamp  *string `json:"last_timestamp"`
 	MessageCount   int     `json:"message_count"`
 	Summary        string  `json:"summary"`
-	SummaryTitle   string  `json:"summary_title"`
-	HasNotes       bool    `json:"has_notes"`
-	Tags           []Tag   `json:"tags"`
-	Branch         *string `json:"branch"`
-	DurationSec    *int    `json:"duration_sec"`
-	AgentName      string  `json:"agent_name,omitempty"`
-	DisplayName    string  `json:"display_name,omitempty"`
+	// FirstUserMessage is what the person typed first ("" when the row predates it): History titles lead with it (#6207).
+	FirstUserMessage string  `json:"first_user_message"`
+	SummaryTitle     string  `json:"summary_title"`
+	HasNotes         bool    `json:"has_notes"`
+	Tags             []Tag   `json:"tags"`
+	Branch           *string `json:"branch"`
+	DurationSec      *int    `json:"duration_sec"`
+	AgentName        string  `json:"agent_name,omitempty"`
+	DisplayName      string  `json:"display_name,omitempty"`
 }
 
 // ListSessionsPaged returns a paginated, filtered list of sessions.
@@ -150,15 +152,16 @@ func sessionListQuery(params SessionListParams) sessionListSQL {
 
 // sessionPageRow is one session_index row of a list page.
 type sessionPageRow struct {
-	SessionID      string  `db:"session_id"`
-	SourceType     string  `db:"source_type"`
-	SourceFile     string  `db:"source_file"`
-	FirstTimestamp *string `db:"first_timestamp"`
-	LastTimestamp  *string `db:"last_timestamp"`
-	MessageCount   int     `db:"message_count"`
-	DisplaySummary string  `db:"display_summary"`
-	AgentName      *string `db:"agent_name"`
-	DisplayName    *string `db:"display_name"`
+	SessionID        string  `db:"session_id"`
+	SourceType       string  `db:"source_type"`
+	SourceFile       string  `db:"source_file"`
+	FirstTimestamp   *string `db:"first_timestamp"`
+	LastTimestamp    *string `db:"last_timestamp"`
+	MessageCount     int     `db:"message_count"`
+	DisplaySummary   string  `db:"display_summary"`
+	FirstUserMessage string  `db:"first_user_message"`
+	AgentName        *string `db:"agent_name"`
+	DisplayName      *string `db:"display_name"`
 }
 
 // pageSessions counts the sessions the query matches and reads the requested page of them.
@@ -173,7 +176,7 @@ func (s *SessionStore) pageSessions(ctx context.Context, q sessionListSQL, param
 	}
 	offset := (params.Page - 1) * params.PageSize
 	selectFields := `si.session_id, si.source_type, si.source_file,
-		si.first_timestamp, si.last_timestamp, si.message_count, si.display_summary,
+		si.first_timestamp, si.last_timestamp, si.message_count, si.display_summary, si.first_user_message,
 		si.agent_name, si.display_name`
 	query, pageArgs, err := sqlx.In(fmt.Sprintf("SELECT %s FROM %s%s ORDER BY %s LIMIT ? OFFSET ?", selectFields, q.from, q.where, q.order),
 		append(q.args, params.PageSize, offset)...)
@@ -336,20 +339,21 @@ func (x sessionListExtras) item(r sessionPageRow) SessionListItem {
 	}
 	meta := x.meta[r.SessionID]
 	return SessionListItem{
-		SessionID:      r.SessionID,
-		SourceType:     r.SourceType,
-		SourceFile:     r.SourceFile,
-		FirstTimestamp: r.FirstTimestamp,
-		LastTimestamp:  r.LastTimestamp,
-		MessageCount:   r.MessageCount,
-		Summary:        r.DisplaySummary,
-		SummaryTitle:   meta.SummaryTitle,
-		HasNotes:       meta.HasNotes,
-		Tags:           tags,
-		Branch:         branch,
-		DurationSec:    computeDuration(r.FirstTimestamp, r.LastTimestamp),
-		AgentName:      agentName,
-		DisplayName:    displayName,
+		SessionID:        r.SessionID,
+		SourceType:       r.SourceType,
+		SourceFile:       r.SourceFile,
+		FirstTimestamp:   r.FirstTimestamp,
+		LastTimestamp:    r.LastTimestamp,
+		MessageCount:     r.MessageCount,
+		Summary:          r.DisplaySummary,
+		FirstUserMessage: r.FirstUserMessage,
+		SummaryTitle:     meta.SummaryTitle,
+		HasNotes:         meta.HasNotes,
+		Tags:             tags,
+		Branch:           branch,
+		DurationSec:      computeDuration(r.FirstTimestamp, r.LastTimestamp),
+		AgentName:        agentName,
+		DisplayName:      displayName,
 	}
 }
 

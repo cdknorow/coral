@@ -179,15 +179,16 @@ func (idx *SessionIndexer) RunOnce(ctx context.Context) error {
 			continue
 		}
 		si := &store.SessionIndex{
-			SessionID:      s.SessionID,
-			SourceType:     s.SourceType,
-			SourceFile:     s.SourceFile,
-			FirstTimestamp: s.FirstTimestamp,
-			LastTimestamp:  s.LastTimestamp,
-			MessageCount:   s.MessageCount,
-			DisplaySummary: s.DisplaySummary,
-			FileMtime:      s.FileMtime,
-			IndexVersion:   s.IndexVersion,
+			SessionID:        s.SessionID,
+			SourceType:       s.SourceType,
+			SourceFile:       s.SourceFile,
+			FirstTimestamp:   s.FirstTimestamp,
+			LastTimestamp:    s.LastTimestamp,
+			MessageCount:     s.MessageCount,
+			DisplaySummary:   s.DisplaySummary,
+			FirstUserMessage: s.FirstUserMessage,
+			FileMtime:        s.FileMtime,
+			IndexVersion:     s.IndexVersion,
 		}
 		if names, ok := agentNames[s.SessionID]; ok {
 			si.AgentName = names[0]
