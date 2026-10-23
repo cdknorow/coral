@@ -29,7 +29,7 @@ const BASE = require('./test_base').BASE;
             const view = () => ev(`(() => { const n = document.getElementById('composer-held-notice'), b = n && n.querySelector('button');
                 const row = document.querySelector('[data-session-id="held-agent-id"] .session-held-line, .session-item[data-name="held-agent"] .session-held-line, .session-held-line');
                 const quiet = [...document.querySelectorAll('.session-held-line')].length;
-                return { shown: !!n && !n.hidden && n.getClientRects().length > 0, text: n ? document.getElementById('composer-held-text').textContent : '', btn: b ? b.textContent : '', action: b ? b.dataset.onClick : '', row: row ? row.textContent : null, rowLines: quiet,
+                return { shown: !!n && document.getElementById('composer-held-text').textContent !== '' && n.getBoundingClientRect().height > 0, region: document.getElementById('composer-held-text').getAttribute('role'), hiddenAttr: !!n && n.hasAttribute('hidden'), text: n ? document.getElementById('composer-held-text').textContent : '', btn: b ? b.textContent : '', action: b ? b.dataset.onClick : '', row: row ? row.textContent : null, rowLines: quiet,
                     fits: document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1, deliver: !!document.querySelector('[data-on-click*="deliver"], [data-on-click*="release"]') }; })()`);
 
             await feed(2);
