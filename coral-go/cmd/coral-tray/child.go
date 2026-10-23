@@ -87,12 +87,19 @@ func runServerChild(host string, port int, backendType string) {
 	}()
 
 	var restart, quitForUpdate atomic.Bool
+	// The instance lock before config.Load touches the data folder (#6388): a second server child against a folder another holds writes nothing there.
+	instance, lockErr := startup.LockInstance(config.ResolveCoralDir(""))
+	if lockErr != nil {
+		log.Printf("Failed to start: %v", lockErr)
+		os.Exit(childExitStartFailed)
+	}
 	cfg := config.Load()
 	if host != "" {
 		cfg.Host, cfg.HostExplicit = host, true
 	}
 	cfg.Port = port
 	rs, err := startup.Start(ctx, cfg, startup.Options{
+		Instance:    instance,
 		BackendType: backendType,
 		// Settings > Run as a hub's Restart button (#3460): this server stops and the tray
 		// starts a new one at once.

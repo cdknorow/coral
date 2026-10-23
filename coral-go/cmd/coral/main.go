@@ -130,6 +130,13 @@ func main() {
 	log.Printf("[STARTUP] coral server starting%s pid=%d go=%s os=%s arch=%s exe=%q %s",
 		config.FlavorNote(), os.Getpid(), runtime.Version(), runtime.GOOS, runtime.GOARCH, logsafe.Path(mustExecutable()), logsafe.PathSummary())
 
+	// The instance lock before anything touches the data folder (#6388): config.Load makes the folder and tightens its modes, the log and the Terms marker are written in it, so a second coral
+	// started against a folder another one holds must lose here, with a line on stderr and a non-zero exit, and leave the folder (modes, files, coral.log) exactly as it was.
+	instance, lockErr := startup.LockInstance(config.ResolveCoralDir(*homeDir))
+	if lockErr != nil {
+		fmt.Fprintf(os.Stderr, "coral: %v\n", lockErr)
+		os.Exit(1)
+	}
 	cfg := config.Load(*homeDir)
 	// --hub or CORAL_HUB=1 (read by config.Load) force hub mode on; otherwise the saved
 	// Settings > Run as a hub decides, at startup (#3460).
@@ -239,6 +246,7 @@ func main() {
 		}
 	})
 	rs, err := startup.Start(ctx, cfg, startup.Options{
+		Instance:           instance,
 		BackendType:        *backendFlag,
 		PasswordPrompt:     promptDatabasePassword,
 		UnlockSurface:      "tty",

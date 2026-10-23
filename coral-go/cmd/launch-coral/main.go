@@ -73,6 +73,15 @@ func main() {
 	}
 	targetDir = absTarget
 
+	// The web server's instance lock before config.Load touches the data folder (#6388): a second launch-coral against a folder another server holds writes nothing there.
+	var instance *startup.Instance
+	if !*skipWeb {
+		var lockErr error
+		if instance, lockErr = startup.LockInstance(config.ResolveCoralDir("")); lockErr != nil {
+			fmt.Fprintf(os.Stderr, "launch-coral: %v\n", lockErr)
+			os.Exit(1)
+		}
+	}
 	// Agent pipe logs go where the server looks for them: cfg.LogDir (the data dir's
 	// logs folder for an explicit data dir, the temp dir otherwise).
 	cfg := config.Load()
@@ -112,7 +121,7 @@ func main() {
 	// The browser signs in with a fresh single-use link from the server started here (#3394).
 	var mintLink func() (string, error)
 	if !*skipWeb {
-		rs := startWebServer(ctx, cfg)
+		rs := startWebServer(ctx, cfg, instance)
 		mintLink = func() (string, error) { return rs.NewLoginLink(cfg.Port) }
 	}
 
@@ -256,10 +265,11 @@ func launchAgentSessions(ctx context.Context, tc *tmux.Client, targetDir, agentT
 	return sessionNames, nil
 }
 
-func startWebServer(ctx context.Context, cfg *config.Config) *startup.RunningServer {
+func startWebServer(ctx context.Context, cfg *config.Config, instance *startup.Instance) *startup.RunningServer {
 	tracking.SetEntrypoint("launch-coral")
 	tracking.SetCoralDir(cfg.CoralDir())
 	rs, err := startup.Start(ctx, cfg, startup.Options{
+		Instance: instance,
 		BackendType: func() string {
 			if runtime.GOOS == "windows" {
 				return "pty"

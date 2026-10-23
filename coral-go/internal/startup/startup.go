@@ -30,6 +30,10 @@ import (
 
 // Options configures optional behaviors that differ between entry points.
 type Options struct {
+	// Instance is the data folder's instance lock, taken by the caller with LockInstance before it loaded the configuration (config.Load itself makes and tightens the folder), so a second
+	// start that loses the lock touched nothing at all (#6388). Start owns it from then on. Nil: Start takes the lock itself, as soon as the folder is known (#6379).
+	Instance *Instance
+
 	// Restart, when set, restarts this process (the desktop apps' tray, #3460):
 	// Settings > Run as a hub offers a Restart button then. It returns once the
 	// restart is under way; the server shuts down shortly after.
@@ -201,19 +205,10 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 	// nothing about itself in the data folder. Only the read-only encryption check precedes it (a refused start leaves the home untouched, as before). A folder that does not exist yet has no
 	// server to lose to: it is made first, since the lock file lives in it.
 	coralDir := cfg.CoralDir()
-	if err := rejectUnsupportedEncryption(cfg, coralDir); err != nil {
-		return nil, err
-	}
 	lockPath := filepath.Join(coralDir, "coral-server.lock")
-	lockErr := func(err error) error {
-		return fmt.Errorf("cannot start Coral: %w (stop the existing server or use a different data directory)", err)
-	}
 	var instance *instanceLock
-	if fi, statErr := os.Lstat(coralDir); statErr == nil && fi.IsDir() {
-		var err error
-		if instance, err = acquireInstanceLock(lockPath); err != nil {
-			return nil, lockErr(err)
-		}
+	if opts.Instance != nil { // the caller took it before it loaded the configuration (LockInstance): Start owns it from here and releases it on any failure
+		instance, lockPath = opts.Instance.lock, opts.Instance.path
 	}
 	releaseOnError := true
 	defer func() {
@@ -221,6 +216,15 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 			instance.close(lockPath)
 		}
 	}()
+	if err := rejectUnsupportedEncryption(cfg, coralDir); err != nil {
+		return nil, err
+	}
+	if fi, statErr := os.Lstat(coralDir); instance == nil && statErr == nil && fi.IsDir() {
+		var err error
+		if instance, err = acquireInstanceLock(lockPath); err != nil {
+			return nil, lockError(err)
+		}
+	}
 	logStartup(opts)
 	if err := prepareDataDirs(cfg, coralDir); err != nil {
 		return nil, err
@@ -228,7 +232,7 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 	if instance == nil {
 		var err error
 		if instance, err = acquireInstanceLock(lockPath); err != nil {
-			return nil, lockErr(err)
+			return nil, lockError(err)
 		}
 	}
 
