@@ -92,7 +92,7 @@ body.popout-mode.popout-terminal-blocked .mobile-send-btn {
 
 /* ── Phone: workspace renders directly; quick-action strip stays reachable ── */
 
-@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) {
+@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) and (max-width: 950px) {
     body.popout-mode .live-body, body.popout-mode .main-row { flex-direction: column !important; }
     body.popout-mode .terminal-header {
         position: sticky;

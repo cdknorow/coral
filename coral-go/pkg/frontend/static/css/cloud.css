@@ -70,7 +70,7 @@ body.cloud-mode [data-history-local-only] { display: none !important; }
 /* The row's "(online)" / "(offline)" is for screen readers only; the dot shows it. */
 .cs-title .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .cs-meta { font-size: 0.75rem; opacity: .7; margin-top: 2px; }
-@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) { .cs-meta { font-size: 0.8125rem; } } /* 13px on a phone (#5669) */
+@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) and (max-width: 950px) { .cs-meta { font-size: 0.8125rem; } } /* 13px on a phone (#5669) */
 .cs-note { font-size: 0.75rem; padding: 6px 10px; border-radius: var(--radius-md); background: rgba(var(--fx-amber-rgb), .12); border: 1px solid rgba(var(--fx-amber-rgb), .45); }
 .cs-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: flex-end; }
 .cs-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; background: #6e7681; }

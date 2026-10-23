@@ -100,7 +100,7 @@ div.job-field#sched-label { margin-bottom: 6px; }
 .job-cleanup-option { display: flex; align-items: center; gap: 8px; }
 .job-cleanup-option input { width: auto; margin: 0; }
 /* A phone: the dialog already has a 16 px edge (its own padding); the body's own 24 px made the fields start 41 px in */
-@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) {
+@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) and (max-width: 950px) {
     .job-row { grid-template-columns: 1fr; }
     #job-modal .modal-body, #job-modal .modal-footer { padding-left: 0; padding-right: 0; }
 }
