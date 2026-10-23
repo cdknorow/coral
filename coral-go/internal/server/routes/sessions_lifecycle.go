@@ -1224,12 +1224,17 @@ func (h *SessionsHandler) KillTeam(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Atomically stop the team record (snapshots active members with same stopped_at)
-	teamWorktree := ""
+	teamWorktree, teamRepo := "", ""
 	if h.teamStore != nil {
 		if team, err := h.teamStore.GetTeam(ctx, boardName); err == nil && team != nil {
 			h.teamStore.StopTeam(ctx, team.ID)
 			if team.IsWorktree == 1 && team.WorkingDir != "" {
 				teamWorktree = team.WorkingDir
+				var cfg struct {
+					WorkingDir string `json:"working_dir"`
+				}
+				json.Unmarshal([]byte(team.ConfigJSON), &cfg)
+				teamRepo = cfg.WorkingDir
 			}
 		}
 	}
@@ -1258,10 +1263,9 @@ func (h *SessionsHandler) KillTeam(w http.ResponseWriter, r *http.Request) {
 			defer safego.Recover("server/routes/sessions_lifecycle:901")
 			wtCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
-			parentDir := filepath.Dir(teamWorktree)
-			cmd := gitutil.Command(wtCtx, parentDir, "worktree", "remove", "--force", teamWorktree)
-			if out, err := cmd.CombinedOutput(); err != nil {
-				log.Printf("[kill-team] failed to remove worktree %s: %s", logsafe.Dir(teamWorktree), string(out))
+			// git runs in the team's repository (its stored working dir), not in the folder that holds the worktrees: that is no repository (#6701).
+			if err := gitutil.RemoveWorktree(wtCtx, teamRepo, teamWorktree); err != nil {
+				log.Printf("[kill-team] failed to remove worktree %s: %s", logsafe.Dir(teamWorktree), err)
 			} else {
 				log.Printf("[kill-team] cleaned up worktree: %s", logsafe.Dir(teamWorktree))
 			}
