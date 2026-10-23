@@ -5,6 +5,7 @@ package ptymanager
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"log/slog"
 	"os"
 	"strings"
 	"sync"
@@ -217,16 +218,94 @@ func unionOf(a, b []member) []member {
 	return out
 }
 
-// seen is what Terminate found of the terminal's tree: once the shell is gone, what it started has been reparented and descent no longer finds it.
-type seen struct {
-	mu sync.Mutex
-	ms []member
+// maxRemembered is the most members one terminal's remembered set holds: a terminal whose tree is larger than that (a build fanning out thousands of processes) keeps the first this many it found and
+// the rest are found by the sweep at kill time. The cap is what keeps a runaway tree from growing Coral's memory or the time a kill takes.
+const maxRemembered = 512
+
+// mergeCapped is old and the members of add that are not in it, at most max of them; a member past the cap is dropped, and the second result says so.
+func mergeCapped(old, add []member, max int) (merged []member, dropped bool) {
+	merged = unionOf(old, nil)
+	have := make(map[member]bool, len(merged))
+	for _, m := range merged {
+		have[m] = true
+	}
+	for _, m := range add {
+		if have[m] {
+			continue
+		}
+		if len(merged) >= max {
+			dropped = true
+			continue
+		}
+		have[m] = true
+		merged = append(merged, m)
+	}
+	return merged, dropped
 }
 
-func (s *seen) add(ms []member) {
+// stillThere is the members of ms that are still the processes they were.
+func stillThere(ms []member) []member {
+	out := ms[:0:0]
+	for _, m := range ms {
+		if m.current() {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+// seen is what is remembered of the terminal's tree: what Terminate found, and what the sampler (descendant_sampler_unix.go) has seen since it started. Once the shell is gone, what it started has been
+// reparented and descent no longer finds it; this is what still does.
+type seen struct {
+	mu     sync.Mutex
+	ms     []member
+	capped bool // a debug line was written for this set going past maxRemembered
+}
+
+// add remembers ms (up to the cap) and returns everything remembered.
+func (s *seen) add(ms []member) []member {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.ms = unionOf(s.ms, ms)
+	var dropped bool
+	s.ms, dropped = mergeCapped(s.ms, ms, maxRemembered)
+	if dropped && !s.capped {
+		s.capped = true
+		slog.Debug("[ptymanager] a terminal's process tree is past the remembered-set cap: the rest is found when it is killed", "cap", maxRemembered)
+	}
+	return append([]member(nil), s.ms...)
+}
+
+// prune forgets members that have ended (or whose pid now belongs to another process).
+func (s *seen) prune() {
+	s.mu.Lock()
+	ms := append([]member(nil), s.ms...)
+	s.mu.Unlock()
+	live := stillThere(ms)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	keep := map[member]bool{}
+	for _, m := range live {
+		keep[m] = true
+	}
+	out := s.ms[:0]
+	for _, m := range s.ms {
+		if keep[m] || !contains(ms, m) { // one added while this ran was not looked at: it stays
+			out = append(out, m)
+		}
+	}
+	s.ms = out
+	if len(s.ms) < maxRemembered {
+		s.capped = false
+	}
+}
+
+func contains(ms []member, m member) bool {
+	for _, x := range ms {
+		if x == m {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *seen) all() []member {

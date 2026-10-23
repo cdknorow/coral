@@ -23,6 +23,7 @@ func TestSpawnRefusesASessionWithNoLogPath(t *testing.T) {
 	client.FallbackToDefault = false
 	t.Cleanup(func() { exec.Command("tmux", "-S", sock, "kill-server").Run() })
 	b := NewTmuxBackend(client, t.TempDir())
+	t.Cleanup(func() { b.Close() })
 
 	const sid = "5c1e0a7d-2b3c-4d5e-8f60-718293a4b5c6"
 	err := b.Spawn("bad", "../x", t.TempDir(), sid, "echo hi", 80, 24)

@@ -90,7 +90,7 @@ func runGuardian(in io.Reader) {
 		defer mu.Unlock()
 		for p, g := range guard {
 			if pid == 0 || p == pid {
-				g.seen = unionOf(g.seen, snap.tree(g.root, g.tag))
+				g.seen, _ = mergeCapped(stillThere(g.seen), snap.tree(g.root, g.tag), maxRemembered) // what has ended is forgotten, and the set is capped like Coral's own
 			}
 		}
 	}

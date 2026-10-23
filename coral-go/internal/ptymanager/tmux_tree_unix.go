@@ -59,7 +59,7 @@ func beginTreeKill(paneOut, sessionID string) (finish func()) {
 	if f := runTagLookup.Load(); f != nil && sessionID != "" {
 		tag = (*f)(sessionID) // "" for an agent started before the tag existed: descent only, as before
 	}
-	known := treeMembers(root, tag) // found now, while they are still its descendants; signalled only after tmux's own kill, which would otherwise find its session already ended by a signal and fail
+	known := unionOf(treeMembers(root, tag), sampler.rememberedPane(root)) // found now, and what the sampler saw of it before (a helper that has detached since); found now, while they are still its descendants; signalled only after tmux's own kill, which would otherwise find its session already ended by a signal and fail
 	return func() {
 		// In the background: the person's Kill, sleep or Restart is answered at once and the tree ends while the dashboard shows the result, not after the grace. It is registered while it runs, so a Coral that quits
 		// meanwhile can finish it (finishPendingTreeKills) instead of leaving the helpers running.
@@ -83,6 +83,9 @@ func beginTreeKill(paneOut, sessionID string) (finish func()) {
 		})
 	}
 }
+
+// trackTmuxPanes has the descendant sampler look at the panes of c's tmux server until the returned function is called.
+func trackTmuxPanes(c *tmux.Client) func() { return sampler.trackTmux(c) }
 
 // runTagLookup finds the tag a tmux agent's processes carry (the sessions database's live_sessions.run_tag), set once at startup by SetRunTagLookup.
 var runTagLookup atomic.Pointer[func(sessionID string) string]

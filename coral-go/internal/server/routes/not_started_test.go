@@ -102,6 +102,7 @@ func TestTerminalKindNamesWhatActuallyRuns(t *testing.T) {
 		t.Errorf("PTY backend reported as %q, want \"pty\"", got)
 	}
 	tmuxBackend := ptymanager.NewTmuxBackend(tmux.NewClient(t.TempDir()), t.TempDir())
+	t.Cleanup(func() { tmuxBackend.Close() })
 	if got := terminalKind(tmuxBackend); got != "tmux" {
 		t.Errorf("tmux backend reported as %q, want \"tmux\"", got)
 	}

@@ -309,6 +309,27 @@ func (c *Client) paneSnapshot(ctx context.Context) *paneSnapshot {
 	return s
 }
 
+// PaneRoot is one pane of the primary socket: its session's name and the pid of the shell in it.
+type PaneRoot struct {
+	SessionName string
+	PID         int
+}
+
+// PaneRoots is every pane's session name and shell pid from the shared snapshot (one list-panes at most every paneStateTTL, or the age ctx allows); nil when tmux could not list them.
+func (c *Client) PaneRoots(ctx context.Context) []PaneRoot {
+	s := c.paneSnapshot(ctx)
+	if s == nil {
+		return nil
+	}
+	out := make([]PaneRoot, 0, len(s.panes))
+	for _, p := range s.panes {
+		if st, ok := s.states[p.Target]; ok && st.pid > 1 {
+			out = append(out, PaneRoot{SessionName: p.SessionName, PID: st.pid})
+		}
+	}
+	return out
+}
+
 // allPaneStates is every pane on the primary socket by target, from the shared snapshot.
 func (c *Client) allPaneStates(ctx context.Context) map[string]paneState {
 	if s := c.paneSnapshot(ctx); s != nil {

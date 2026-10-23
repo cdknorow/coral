@@ -11,6 +11,9 @@ import (
 // SetRunTagLookup: tmux does not run on Windows, so there is no tag to look up.
 func SetRunTagLookup(func(sessionID string) string) {}
 
+// tmux does not run on Windows: no panes to look at.
+func trackTmuxPanes(*tmux.Client) func() { return func() {} }
+
 // tmux does not run on Windows: no tree kill is ever pending.
 func finishPendingTreeKills() {}
 

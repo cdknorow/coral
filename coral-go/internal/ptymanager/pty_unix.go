@@ -64,12 +64,14 @@ func startPTYProcess(name string, args []string, dir string, env []string, cols,
 		}
 	}
 
-	guardian.add(p.root, tag) // Coral dying without cleaning up ends this terminal's tree (#6129)
+	guardian.add(p.root, tag)                    // Coral dying without cleaning up ends this terminal's tree (#6129)
+	untrack := sampler.trackPTY(p.root, &p.seen) // what the tree is seen to hold is remembered, for the kill after a helper has detached (#6183)
 	go func() {
 		defer safego.Recover("ptymanager/pty_unix:55")
 		cmd.Wait()
 		close(p.done)
 		guardian.remove(p.root.pid) // ended: nothing left for the guardian to end (#6129)
+		untrack()
 	}()
 
 	return p, nil
@@ -92,7 +94,7 @@ func (p *unixPTY) Terminate() error {
 		return nil
 	}
 	tree := treeMembers(p.root, p.tag) // before the shell goes: what descends from it, and what is tagged, is found while it is still the parent (#6125)
-	p.seen.add(tree)
+	tree = p.seen.add(tree)            // with what the sampler saw: a helper that has detached is sent the stop too
 	pgid, err := syscall.Getpgid(p.cmd.Process.Pid)
 	if err == nil && pgid > 0 {
 		_ = syscall.Kill(-pgid, syscall.SIGHUP)
