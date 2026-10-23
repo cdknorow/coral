@@ -70,6 +70,11 @@ func updateCodexTurnState(state *codexTurnCache, line []byte) {
 	if !state.active {
 		return
 	}
+	// Bookkeeping the CLI writes is not the turn going on: a late one must never close an open approval request (a line written while the dialog waits would make the row read as working,
+	// and a person's message would be typed into the permission box, #6658). token_usage_record and turn_context are the two Codex 0.163.0 writes outside event_msg that carry no turn content.
+	if entry.Type == "token_usage_record" || entry.Type == "turn_context" {
+		return
+	}
 	var activity struct {
 		Timestamp string `json:"timestamp"`
 	}
