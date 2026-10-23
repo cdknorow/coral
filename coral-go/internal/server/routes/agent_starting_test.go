@@ -63,3 +63,45 @@ func TestTheLiveListCarriesStartingForANewAgent(t *testing.T) {
 	assert.Equal(t, false, got["00000000-0000-0000-0000-0000000000a2"], "one launched an hour ago is not")
 	assert.Equal(t, false, got["00000000-0000-0000-0000-0000000000a3"], "a sleeping one is not")
 }
+
+// #6745 (Codex Test's #6742): a scheduled run's row kept starting=true after its CLI had reported (events of the kinds the latest-event read leaves out) and after the run finished.
+func TestStartingClearsForAScheduledAgentThatReportedOrFinished(t *testing.T) {
+	server, h, terminal, ss := setupSessionsTestServer(t)
+	h.SetScheduleStore(store.NewScheduleStore(h.db))
+	sched := store.NewScheduleStore(h.db)
+	tasks := store.NewTaskStore(h.db)
+	ctx := context.Background()
+	now := time.Now().UTC().Format(time.RFC3339)
+	job, err := sched.CreateScheduledJob(ctx, &store.ScheduledJob{Name: "nightly", CronExpr: "0 9 * * *", RepoPath: t.TempDir(), Prompt: "p", AgentType: "claude"})
+	require.NoError(t, err)
+	mk := func(id string) {
+		terminal.addSession("claude-"+id, "/tmp/test")
+		require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: id, AgentType: "claude", AgentName: "job-agent", WorkingDir: "/tmp/test", CreatedAt: now, IsJob: 1}))
+	}
+	const fresh, reported, finished = "00000000-0000-0000-0000-0000000000b1", "00000000-0000-0000-0000-0000000000b2", "00000000-0000-0000-0000-0000000000b3"
+	for _, id := range []string{fresh, reported, finished} {
+		mk(id)
+	}
+	sid := reported
+	_, err = tasks.InsertAgentEvent(ctx, &store.AgentEvent{AgentName: "job-agent", SessionID: &sid, EventType: "status", Summary: "working"})
+	require.NoError(t, err)
+	runID, err := sched.CreateScheduledRun(ctx, job.ID, now, "completed")
+	require.NoError(t, err)
+	require.NoError(t, sched.UpdateScheduledRun(ctx, runID, map[string]interface{}{"session_id": finished}))
+	runID2, err := sched.CreateScheduledRun(ctx, job.ID, now, "running")
+	require.NoError(t, err)
+	require.NoError(t, sched.UpdateScheduledRun(ctx, runID2, map[string]interface{}{"session_id": fresh}))
+
+	resp, err := http.Get(server.URL + "/api/sessions/live")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	var rows []map[string]any
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&rows))
+	got := map[string]any{}
+	for _, r := range rows {
+		got[r["session_id"].(string)] = r["starting"]
+	}
+	assert.Equal(t, true, got[fresh], "a running scheduled agent with no event yet is starting")
+	assert.Equal(t, false, got[reported], "its CLI has reported (a status event): no longer starting")
+	assert.Equal(t, false, got[finished], "its run finished: not starting")
+}
