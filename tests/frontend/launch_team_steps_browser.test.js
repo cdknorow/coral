@@ -134,6 +134,20 @@ const BASE = require('./test_base').BASE;
         assert.deepEqual(by('Planner').flags, ['--permission-mode', 'plan']);
         assert.deepEqual(by('Open').capabilities.allow.sort(), ['file_read', 'file_write', 'git_write', 'shell']);
 
+        console.log('The Edit dialog says the same beside the Mode (#6412)');
+        await ev(`window.showTeamAgentModal([...document.querySelectorAll('#team-agents-list .team-agent-row')].find(r => r.querySelector('.team-agent-role-name').textContent === 'Open')); true`);
+        // the Mode sits in one of the dialog's sections: open the one that has it, as a person looking for the Mode does
+        const showModeSection = () => ev(`import((window.__coralStatic || '/static/') + 'section_dialog.js').then(m => { const shell = document.querySelector('#team-agent-modal .settings-shell'); const pane = document.querySelector('#team-agent-modal-acf .acf-permission-mode').closest('.settings-pane'); m.showSection(shell, pane.dataset.section); return true; })`);
+        const line = () => ev(`(() => { const e = document.querySelector('#team-agent-modal-acf .acf-mode-override'); return !!e && !e.hidden && e.getClientRects().length > 0 ? e.textContent : ''; })()`);
+        await showModeSection();
+        assert.match(await line(), /^Runs without a sandbox/, 'the Mode says Default, the chips mean no sandbox: the line is beside it');
+        await ev(`document.querySelector('#team-agent-modal-acf .perm-chip[data-type="allow"][data-cap="git_write"]').click(); true`);
+        assert.equal(await line(), '', 'without Git Write the sandbox is back: the line goes');
+        await ev(`window.hideTeamAgentModal(); window.showTeamAgentModal([...document.querySelectorAll('#team-agents-list .team-agent-row')].find(r => r.querySelector('.team-agent-role-name').textContent === 'Plain')); true`);
+        await showModeSection();
+        assert.equal(await line(), '', 'a Claude member has none');
+        await ev(`window.hideTeamAgentModal(); window.hideLaunchModal(); true`);
+
         console.log('Phone width: the table stacks and the actions keep 44 px targets');
         await ev(`window.hideLaunchModal(); true`);
         await Emulation.setDeviceMetricsOverride({ width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
