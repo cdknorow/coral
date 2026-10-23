@@ -152,8 +152,10 @@ export function startUpdateUi() {
     banner?.querySelector('.update-fail-details')?.addEventListener('click', openUpdatesSettings);
     banner?.querySelector('.update-fail-again')?.addEventListener('click', tryAgain);
     const ready = $('update-ready-notice');
-    ready?.querySelector('.update-ready-review')?.addEventListener('click', () => { ready.hidden = true; openDialog(); });
-    ready?.querySelector('.update-ready-later')?.addEventListener('click', () => { ready.hidden = true; });
+    // The notice goes away under the button that was pressed, so focus is handed to the control that stays (the top bar's update button) first: the confirmation then returns to it on close, and Later does not drop focus on the page (#6315).
+    const leaveNotice = () => { const pill = $('update-pill'); if (pill && !pill.hidden && pill.getClientRects().length) pill.focus(); ready.hidden = true; };
+    ready?.querySelector('.update-ready-review')?.addEventListener('click', () => { leaveNotice(); openDialog(); });
+    ready?.querySelector('.update-ready-later')?.addEventListener('click', leaveNotice);
     banner?.querySelector('.update-fail-close')?.addEventListener('click', () => { browserLocal.set(DISMISSED_KEY, banner.dataset.key || ''); banner.hidden = true; });
     timer = pollEvery(refreshUpdateStatus, POLL_MS); // skips a hidden tab and an overloaded server (overload.js)
     phone.addEventListener('change', placePill);

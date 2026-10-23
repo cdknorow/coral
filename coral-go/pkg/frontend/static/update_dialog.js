@@ -66,9 +66,9 @@ function draw(note) {
         const lead = mk('p'); lead.append(mk('b', null, `Relaunching restarts ${plural(n, 'agent')}`), document.createTextNode(` that run in Coral's own terminal (pty). Their work in progress stops.${comeBack(back, fresh, n)}`));
         const list = mk('ul', 'update-agents'); list.tabIndex = 0; list.setAttribute('aria-label', 'Agents that restart');
         for (const a of r.restarts) {
-            const li = mk('li'); li.append(mk('span', 'update-agent-name', a.name || a.sessionId), mk('span', 'update-agent-state', STATE_WORDS[a.state] || a.state));
-            if (a.resumes === true) li.append(mk('span', 'update-agent-note', 'starts again afterwards'));
-            else if (a.resumes === false) li.append(mk('span', 'update-agent-note', 'starts a new conversation'));
+            const li = mk('li'); li.append(mk('span', 'update-agent-name', a.name || a.sessionId), ' ', mk('span', 'update-agent-state', STATE_WORDS[a.state] || a.state)); // spaces between the parts: the row's text reads as words wherever it is read from (#6315)
+            if (a.resumes === true) li.append(' ', mk('span', 'update-agent-note', 'starts again afterwards'));
+            else if (a.resumes === false) li.append(' ', mk('span', 'update-agent-note', 'starts a new conversation'));
             list.append(li);
         }
         inner.append(lead, list, mk('p', 'update-keep', r.tmuxRestart ? 'Agents in tmux restart too: the bundled tmux changed.' : 'Agents in tmux keep running and reattach.'));

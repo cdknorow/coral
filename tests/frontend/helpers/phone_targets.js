@@ -209,6 +209,15 @@ function required(results, names) {
     return names.filter(n => !have.has(n)).map(n => `${n}: the scene was never visited`);
 }
 
+/** The update prompt (#6292, #6306) in the census world: the flag on, a verified update staged, and the "ready" notice showing (its Review button opens the confirmation). */
+async function showUpdateReady(ev, waitFor, status) {
+    const S = `(window.__coralStatic || '/static/')`;
+    await ev(`window.__updStatus = ${JSON.stringify(status)}; import(${S} + 'update_flag.js').then(m => m.setUpdatesEnabled(true)).then(() => import(${S} + 'update_ui.js')).then(m => (m.startUpdateUi && m.startUpdateUi()) || m).then(() => import(${S} + 'update_ui.js')).then(m => m.refreshUpdateStatus()).then(() => true)`);
+    await waitFor(UPDATE_NOTICE_UP, 'the update-ready notice', 10000);
+}
+const UPDATE_NOTICE_UP = `!!document.getElementById('update-ready-notice') && !document.getElementById('update-ready-notice').hidden && document.getElementById('update-ready-notice').getClientRects().length > 0`;
+const UPDATE_DIALOG_UP = `(() => { const d = document.getElementById('update-confirm-modal'); return !!d && getComputedStyle(d).display !== 'none' && d.getClientRects().length > 0; })()`;
+
 /** Open the team board's message box (#6239) the way the dashboard does: an agent on `team` is selected and its side panel's Board tab shown. For the censuses' "side panel: board composer" scene. */
 async function openBoardComposer(ev, waitFor, team, select = true) {
     if (select) await ev(`window.__m.add('board-agent', 'B', 3, { sleeping: false, board_project: ${JSON.stringify(team)} }); window.selectLiveSession('board-agent', 'claude', 'board-agent-id', 'local'); true`);
@@ -218,4 +227,4 @@ async function openBoardComposer(ev, waitFor, team, select = true) {
 }
 const BOARD_COMPOSER_UP = `!!document.getElementById('board-panel-input') && !!document.getElementById('board-panel-input').offsetParent && document.querySelector('#board-chat-input-pane .board-mention-chip').getClientRects().length > 0`;
 
-module.exports = { openBoardComposer, BOARD_COMPOSER_UP, useScaleShot, scaleOf, SCALE, MEASURE, ALLOW, ALLOW_DUPS, ALLOW_UNNAMED, ALLOW_CONTRAST, useThemeSetter, scene, tap, problems, required };
+module.exports = { showUpdateReady, UPDATE_NOTICE_UP, UPDATE_DIALOG_UP, openBoardComposer, BOARD_COMPOSER_UP, useScaleShot, scaleOf, SCALE, MEASURE, ALLOW, ALLOW_DUPS, ALLOW_UNNAMED, ALLOW_CONTRAST, useThemeSetter, scene, tap, problems, required };

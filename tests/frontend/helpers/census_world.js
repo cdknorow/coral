@@ -7,6 +7,12 @@ const WF = { id: 7, name: 'Nightly build', description: 'Builds nightly', enable
 const WF2 = { id: 8, name: 'Weekly report', description: 'Weekly', enabled: true, steps: [{ name: 's1', type: 'shell', command: 'echo hi' }] }, WF3 = { id: 9, name: 'Release check', description: 'Release', enabled: false, steps: [{ name: 's1', type: 'shell', command: 'echo hi' }] };
 const RUN = { id: 31, workflow_id: 7, workflow_name: 'Nightly build', status: 'failed', trigger_type: 'manual', started_at: '2026-10-15T10:00:00Z', finished_at: '2026-10-15T10:01:00Z',
     steps: [{ index: 0, name: 's1', type: 'shell', status: 'failed', exit_code: 1, output_tail: 'boom' }] };
+// A verified update that is ready to install, with two agents the relaunch would restart (#6315): what GET /api/system/update answers once the scene sets window.__updStatus.
+const UPDATE_STAGED = { enabled: true, installed: '1.4.159', state: 'staged', staged: { version: '1.4.160', staged_at: '2026-10-23T03:00:00Z', days_ready: 0, verified: true, source: 'subgentic/coral' },
+    relaunch: { available: true, reason: '', hub_allowed: false, tmux_agents_restart: false, ack: 'ack-1', restarts: [{ session_id: 'census-r1', name: 'release-agent', state: 'working', resumes: true }, { session_id: 'census-r2', name: 'docs-agent', state: 'waiting', resumes: false }] },
+    last_result: null, checked_at: '2026-10-23T03:05:00Z', auto: true };
+// This computer linked to a Coral Hub (the sentence under the relaunch switch, #6306, is only there then): what GET /api/cloud/status answers once the scene sets window.__cloudStatus.
+const CLOUD_LINKED = { state: 'connected', configured: true, url: 'https://hub.example.invalid', max_mode: 'launch', mode: 'launch', hub_relaunch_updates: true, allow_hub_auto_accept: true, redact_tokens: true, hub_cross_team_settings: true };
 const JOB = { id: 5, name: 'Hourly job', cron_expr: '0 * * * *', enabled: true, agent_type: 'claude', prompt: 'p', repo_path: '/tmp', consecutive_failures: 0 };
 const JOB2 = { ...JOB, id: 6, name: 'Daily job', cron_expr: '0 9 * * *' }, JOB3 = { ...JOB, id: 7, name: 'Weekly job', cron_expr: '0 9 * * 1', enabled: false };
 const DATA_WORLD = `(() => {
@@ -25,6 +31,8 @@ const DATA_WORLD = `(() => {
             if (path === '/api/scheduled/jobs/5') return json(${JSON.stringify(JOB)});
             if (/^\\/api\\/scheduled\\/jobs\\/5\\/runs/.test(path)) return json({ runs: [] });
             if (path === '/api/sessions/history') return json({ sessions: [{ session_id: 'census-chat', summary_title: 'Release notes chat', source_type: 'claude' }, { session_id: 'census-chat-2', summary_title: 'Build fix chat', source_type: 'claude' }, { session_id: 'census-chat-3', summary_title: 'Planning chat', source_type: 'codex' }], total: 3, page: 1, page_size: 50 });
+            if (path === '/api/cloud/status' && window.__cloudStatus) return json(window.__cloudStatus);
+            if (path === '/api/system/update') return json(window.__updStatus || { enabled: false });
             if (path === '/api/sessions/history/search' && /[?&]q=zzz/.test(u)) return json({ status: 'complete', results: [] });
             if (path === '/api/sessions/history/search') return json({ status: 'complete', results: [{ session_id: 'census-chat', type: 'agent', hits: [{ role: 'user', excerpt: 'Please check the release notes', locator: { session_id: 'census-chat', message_index: 0 } }, { role: 'assistant', excerpt: 'The release notes are ready', locator: { session_id: 'census-chat', message_index: 1 } }] }, { session_id: 'census-chat-2', type: 'agent', hits: [{ role: 'user', excerpt: 'Fix the build before the release', locator: { session_id: 'census-chat-2', message_index: 0 } }] }] });
             if (path === '/api/sessions/history/census-chat') return json({ agent_type: 'claude', messages: [{ type: 'user', content: 'hello' }, { type: 'assistant', text: 'Hi there.' }], total: 2, start: 0 });
@@ -37,4 +45,4 @@ const DATA_WORLD = `(() => {
 })();`;
 async function httpJson(method, p, body) { const r = await fetch(BASE + p, { method, headers: { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) }); let data = null; try { data = await r.json(); } catch { /* no body */ } return { status: r.status, data }; }
 
-module.exports = { WF, RUN, JOB, DATA_WORLD, httpJson };
+module.exports = { WF, RUN, JOB, UPDATE_STAGED, CLOUD_LINKED, DATA_WORLD, httpJson };
