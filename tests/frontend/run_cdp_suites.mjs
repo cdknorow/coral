@@ -387,7 +387,18 @@ const bin = path.join(tmp, 'coral' + EXE);
 const toolPackages = ['./cmd/coral', './cmd/coral-board', './cmd/coral-agent', './cmd/coral-hook-agentic-state',
   './cmd/coral-hook-session-start', './cmd/coral-hook-message-check', './cmd/coral-hook-task-sync',
   './cmd/mock-agent']; // #4354: every test server points cli_path_<type> at this, so a UI launch/version/model probe uses it, not the PATH CLI
-const goBuildArgs = ['build', '-tags', 'dev fts5', '-o', tmp + path.sep, ...toolPackages];
+// CORAL_STRIP_STATIC=1: build coral as a release does, with the dashboard's JS and CSS minified through go build -overlay (tools/strip-static, #6208), so the suites run against what ships. The overlay's folder is a
+// fresh owner-only one, deleted when the run ends.
+let overlayArgs = [];
+if (process.env.CORAL_STRIP_STATIC === '1') {
+  const g = spawnSync('go', ['run', './tools/strip-static'], { cwd: goDir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] });
+  const overlay = (g.stdout || '').trim();
+  if (g.status !== 0 || !overlay) { console.error('CORAL_STRIP_STATIC=1: tools/strip-static failed'); process.exit(2); }
+  overlayArgs = ['-overlay', overlay];
+  console.log(`  [runner] the dashboard is built stripped (overlay ${path.basename(path.dirname(overlay))})`);
+  process.on('exit', () => { spawnSync('go', ['run', './tools/strip-static', '-clean', overlay], { cwd: goDir, stdio: 'ignore' }); });
+}
+const goBuildArgs = ['build', ...overlayArgs, '-tags', 'dev fts5', '-o', tmp + path.sep, ...toolPackages];
 const b = spawnSync('go', goBuildArgs, { cwd: goDir, stdio: 'inherit' });
 if (b.status !== 0) process.exit(2);
 

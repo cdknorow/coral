@@ -40,7 +40,7 @@ def go_builds(step):
     if d:
         step = re.sub(r"\$webviewTags\b", lambda _: d.group(1), step)
     out = {}
-    for m in re.finditer(r'go build\s+-trimpath\s+-tags\s+("[^"]*"|\S+)\s+-ldflags\s+"([^"]*)"\s+-o\s+"[^"]*"\s+"\./cmd/([^/"]+)/?"', step):
+    for m in re.finditer(r'go build\s+-trimpath\s+(?:-overlay\s+\S+\s+)?-tags\s+("[^"]*"|\S+)\s+-ldflags\s+"([^"]*)"\s+-o\s+"[^"]*"\s+"\./cmd/([^/"]+)/?"', step):
         tags, ldflags, cmd = m.group(1).strip('"'), m.group(2), m.group(3)
         out[cmd] = (tags, "-H windowsgui" in ldflags)
     return out

@@ -40,9 +40,12 @@ mkdir -p "$BUILD_DIR"
 
 cd "$GO_DIR"
 
+OVERLAY="$(go run ./tools/strip-static)" # the dashboard ships minified (#6208): a fresh owner-only folder; only the go build commands below read it
+trap 'go run ./tools/strip-static -clean "$OVERLAY"' EXIT
+
 for cmd in coral launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-session-start coral-hook-task-sync coral-update; do
     echo "==> Compiling $cmd"
-    GOOS=linux GOARCH="$ARCH" CGO_ENABLED=0 go build -trimpath -tags "$BUILD_TAGS" \
+    GOOS=linux GOARCH="$ARCH" CGO_ENABLED=0 go build -trimpath -overlay "$OVERLAY" -tags "$BUILD_TAGS" \
         -ldflags="-s -w -X github.com/subgentic/coral/internal/config.Version=$VERSION" \
         -o "$BUILD_DIR/$cmd" "./cmd/$cmd/"
 done

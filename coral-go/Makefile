@@ -29,7 +29,9 @@ dev: sync-docs
 .PHONY: build
 build: sync-docs
 	@mkdir -p $(BINDIR)
-	$(CGO_OPENSSL_FLAGS) go build -trimpath -tags fts5 $(DEV_LDFLAGS) -o $(BINDIR)/ $(CMD_PACKAGES)
+	@# the dashboard ships minified (#6208): a fresh owner-only folder, read by this go build only
+	@set -e; O="$$(go run ./tools/strip-static)"; trap 'go run ./tools/strip-static -clean "$$O"' EXIT; \
+	$(CGO_OPENSSL_FLAGS) go build -trimpath -overlay "$$O" -tags fts5 $(DEV_LDFLAGS) -o $(BINDIR)/ $(CMD_PACKAGES)
 
 # Dev build + run
 .PHONY: run

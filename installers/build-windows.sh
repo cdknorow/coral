@@ -56,21 +56,25 @@ fi
 
 cd "$GO_DIR"
 
+OVERLAY="$(go run ./tools/strip-static)" # the dashboard ships minified (#6208): a fresh owner-only folder; only the go build commands below read it
+# one EXIT trap for both: delete the overlay's folder, and put the .syso files back when this run replaced them
+trap 'go run ./tools/strip-static -clean "$OVERLAY"; if declare -F restore_syso >/dev/null; then restore_syso; fi' EXIT
+
 echo "==> Compiling coral.exe"
-GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath $BUILD_TAGS -ldflags="-s -w" -o "$BUILD_DIR/coral.exe" ./cmd/coral/
+GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -overlay "$OVERLAY" $BUILD_TAGS -ldflags="-s -w" -o "$BUILD_DIR/coral.exe" ./cmd/coral/
 
 echo "==> Compiling launch-coral.exe"
-GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath $BUILD_TAGS -ldflags="-s -w" -o "$BUILD_DIR/launch-coral.exe" ./cmd/launch-coral/
+GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -overlay "$OVERLAY" $BUILD_TAGS -ldflags="-s -w" -o "$BUILD_DIR/launch-coral.exe" ./cmd/launch-coral/
 
 echo "==> Compiling coral-board.exe"
-GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath $BUILD_TAGS -ldflags="-s -w" -o "$BUILD_DIR/coral-board.exe" ./cmd/coral-board/
+GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -overlay "$OVERLAY" $BUILD_TAGS -ldflags="-s -w" -o "$BUILD_DIR/coral-board.exe" ./cmd/coral-board/
 
 echo "==> Compiling coral-agent.exe"
-GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath $BUILD_TAGS -ldflags="-s -w" -o "$BUILD_DIR/coral-agent.exe" ./cmd/coral-agent/
+GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -overlay "$OVERLAY" $BUILD_TAGS -ldflags="-s -w" -o "$BUILD_DIR/coral-agent.exe" ./cmd/coral-agent/
 
 for hook in coral-hook-agentic-state coral-hook-task-sync coral-hook-message-check coral-hook-session-start coral-update; do
     echo "==> Compiling $hook.exe"
-    GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath $BUILD_TAGS -ldflags="-s -w" -o "$BUILD_DIR/$hook.exe" "./cmd/$hook/"
+    GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -overlay "$OVERLAY" $BUILD_TAGS -ldflags="-s -w" -o "$BUILD_DIR/$hook.exe" "./cmd/$hook/"
 done
 
 echo "==> Creating ZIP"

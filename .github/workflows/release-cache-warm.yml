@@ -124,11 +124,13 @@ jobs:
           set -euo pipefail
           while IFS='=' read -r k v; do declare "$k=$v"; done < <(bash ../tests/release/resolve_release.sh v0.0.0)
           mkdir -p "$RUNNER_TEMP/out"
+          OVERLAY="$(go run ./tools/strip-static)" # the dashboard ships minified (#6208): a fresh owner-only folder; only this step's go build commands read it
+          trap 'go run ./tools/strip-static -clean "$OVERLAY"' EXIT
           for cmd in $commands; do
-            CGO_ENABLED=0 GOOS=darwin GOARCH="$ARCH" go build -trimpath -tags "$build_tags" -ldflags "-s -w" -o "$RUNNER_TEMP/out/$cmd" "./cmd/$cmd/"
+            CGO_ENABLED=0 GOOS=darwin GOARCH="$ARCH" go build -trimpath -overlay "$OVERLAY" -tags "$build_tags" -ldflags "-s -w" -o "$RUNNER_TEMP/out/$cmd" "./cmd/$cmd/"
           done
           for cmd in $gui_commands; do
-            MACOSX_DEPLOYMENT_TARGET=13.0 CGO_ENABLED=1 CGO_CFLAGS="-mmacosx-version-min=13.0" CGO_LDFLAGS="-mmacosx-version-min=13.0" GOOS=darwin GOARCH="$ARCH" go build -trimpath -tags "webview,$build_tags" -ldflags "-s -w" -o "$RUNNER_TEMP/out/$cmd" "./cmd/$cmd/"
+            MACOSX_DEPLOYMENT_TARGET=13.0 CGO_ENABLED=1 CGO_CFLAGS="-mmacosx-version-min=13.0" CGO_LDFLAGS="-mmacosx-version-min=13.0" GOOS=darwin GOARCH="$ARCH" go build -trimpath -overlay "$OVERLAY" -tags "webview,$build_tags" -ldflags "-s -w" -o "$RUNNER_TEMP/out/$cmd" "./cmd/$cmd/"
           done
           (go mod download)
       - name: Save the Go caches
@@ -175,9 +177,11 @@ jobs:
           set -euo pipefail
           while IFS='=' read -r k v; do declare "$k=$v"; done < <(bash ../tests/release/resolve_release.sh v0.0.0)
           mkdir -p "$RUNNER_TEMP/out"
+          OVERLAY="$(go run ./tools/strip-static)" # the dashboard ships minified (#6208): a fresh owner-only folder; only this step's go build commands read it
+          trap 'go run ./tools/strip-static -clean "$OVERLAY"' EXIT
           for cmd in $commands; do
             [ -d "./cmd/$cmd" ] || continue
-            CGO_ENABLED=0 GOOS=linux GOARCH="$ARCH" go build -trimpath -tags "$build_tags" -ldflags "-s -w" -o "$RUNNER_TEMP/out/$cmd" "./cmd/$cmd/"
+            CGO_ENABLED=0 GOOS=linux GOARCH="$ARCH" go build -trimpath -overlay "$OVERLAY" -tags "$build_tags" -ldflags "-s -w" -o "$RUNNER_TEMP/out/$cmd" "./cmd/$cmd/"
           done
           (go mod download)
 
@@ -226,15 +230,17 @@ jobs:
           goos=darwin; [ "$OS" = linux ] && goos=linux
           build() { # $1: output folder
             mkdir -p "$1"
+            OVERLAY="$(go run ./tools/strip-static)" # the dashboard ships minified (#6208), a fresh folder per build; a different folder must give the same bytes
             for cmd in $commands; do
               [ -d "./cmd/$cmd" ] || continue
-              CGO_ENABLED=0 GOOS="$goos" GOARCH="$ARCH" go build -trimpath -tags "$build_tags" -ldflags "-s -w" -o "$1/$cmd" "./cmd/$cmd/"
+              CGO_ENABLED=0 GOOS="$goos" GOARCH="$ARCH" go build -trimpath -overlay "$OVERLAY" -tags "$build_tags" -ldflags "-s -w" -o "$1/$cmd" "./cmd/$cmd/"
             done
             if [ "$OS" = macos ]; then
               for cmd in $gui_commands; do
-                MACOSX_DEPLOYMENT_TARGET=13.0 CGO_ENABLED=1 CGO_CFLAGS="-mmacosx-version-min=13.0" CGO_LDFLAGS="-mmacosx-version-min=13.0" GOOS=darwin GOARCH="$ARCH" go build -trimpath -tags "webview,$build_tags" -ldflags "-s -w" -o "$1/$cmd" "./cmd/$cmd/"
+                MACOSX_DEPLOYMENT_TARGET=13.0 CGO_ENABLED=1 CGO_CFLAGS="-mmacosx-version-min=13.0" CGO_LDFLAGS="-mmacosx-version-min=13.0" GOOS=darwin GOARCH="$ARCH" go build -trimpath -overlay "$OVERLAY" -tags "webview,$build_tags" -ldflags "-s -w" -o "$1/$cmd" "./cmd/$cmd/"
               done
             fi
+            go run ./tools/strip-static -clean "$OVERLAY"
           }
           build "$RUNNER_TEMP/with-cache"
           GOCACHE="$RUNNER_TEMP/empty-gocache" build "$RUNNER_TEMP/without-cache"

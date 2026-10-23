@@ -114,3 +114,24 @@ func TestGenerateRefusesToShipNothingOrWithMinifyOff(t *testing.T) {
 	_, err = Generate(realStatic, t.TempDir())
 	assert.ErrorContains(t, err, "CORAL_NO_MINIFY")
 }
+
+// The release verify scripts look for a comment of the source in the server binary (tests/release/strip_marker.txt): it must still be a comment in a static file, or the check passes for the wrong reason.
+func TestStripMarkerIsStillInTheSource(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "tests", "release", "strip_marker.txt"))
+	require.NoError(t, err)
+	marker := strings.TrimSpace(string(raw))
+	require.NotEmpty(t, marker)
+	found := false
+	require.NoError(t, filepath.WalkDir(realStatic, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !minified(strings.TrimPrefix(filepath.ToSlash(p), filepath.ToSlash(realStatic)+"/")) {
+			return err
+		}
+		b, _ := os.ReadFile(p)
+		if strings.Contains(string(b), marker) {
+			found = true
+			assert.NotContains(t, string(frontend.MinifyAsset(strings.TrimPrefix(filepath.ToSlash(p), filepath.ToSlash(realStatic)+"/"), b)), marker, "%s: the marker survives minifying, so a stripped binary would carry it", p)
+		}
+		return nil
+	}))
+	assert.True(t, found, "no JS or CSS file of the static tree holds %q any more: pick another comment line for tests/release/strip_marker.txt", marker)
+}

@@ -118,10 +118,12 @@ jobs:
           COMMANDS: ${{ needs.resolve.outputs.commands }}
         run: |
           LDFLAGS="-s -w -X github.com/subgentic/coral/internal/config.PostHogKey=${POSTHOG_PROJECT_KEY} -X github.com/subgentic/coral/internal/config.Version=${VERSION}"
+          OVERLAY="$(go run ./tools/strip-static)" # the dashboard ships minified (#6208): a fresh owner-only folder; only this step's go build commands read it
+          trap 'go run ./tools/strip-static -clean "$OVERLAY"' EXIT
           mkdir -p ../dist/linux
           for cmd in $COMMANDS; do
             [ -d "./cmd/$cmd" ] || continue
-            CGO_ENABLED=0 GOOS=linux GOARCH="$ARCH" go build -trimpath \
+            CGO_ENABLED=0 GOOS=linux GOARCH="$ARCH" go build -trimpath -overlay "$OVERLAY" \
               -tags "$BUILD_TAGS" \
               -ldflags "$LDFLAGS" \
               -o "../dist/linux/$cmd" \
@@ -212,6 +214,9 @@ jobs:
           BUILD_TAGS: ${{ needs.resolve.outputs.build_tags }}
           COMMANDS: ${{ needs.resolve.outputs.commands }}
         run: |
+          $overlay = (go run ./tools/strip-static) # the dashboard ships minified (#6208): a fresh owner-only folder; only the go build commands below read it
+          if ($LASTEXITCODE -ne 0) { throw "strip-static failed" }
+          try {
           $env:GOOS = "windows"
           $env:GOARCH = "amd64"
           $version = $env:VERSION
@@ -229,7 +234,7 @@ jobs:
           $env:CGO_ENABLED = "0"
           foreach ($cmd in ($env:COMMANDS -split ' ')) {
             if (Test-Path "./cmd/$cmd") {
-              go build -trimpath -tags $buildTags -ldflags "$ldflags" -o "..\dist\windows\bin\$cmd.exe" "./cmd/$cmd/"
+              go build -trimpath -overlay $overlay -tags $buildTags -ldflags "$ldflags" -o "..\dist\windows\bin\$cmd.exe" "./cmd/$cmd/"
             }
           }
 
@@ -237,9 +242,10 @@ jobs:
           $env:CGO_ENABLED = "1"
           $env:CC = "gcc"
           $webviewTags = "webview,$buildTags"
-          go build -trimpath -tags $buildTags -ldflags "-H windowsgui $ldflags" -o "..\dist\windows\bin\coral-tray.exe" "./cmd/coral-tray/"
-          go build -trimpath -tags $webviewTags -ldflags "-H windowsgui $ldflags" -o "..\dist\windows\bin\coral-app.exe" "./cmd/coral-app/"
+          go build -trimpath -overlay $overlay -tags $buildTags -ldflags "-H windowsgui $ldflags" -o "..\dist\windows\bin\coral-tray.exe" "./cmd/coral-tray/"
+          go build -trimpath -overlay $overlay -tags $webviewTags -ldflags "-H windowsgui $ldflags" -o "..\dist\windows\bin\coral-app.exe" "./cmd/coral-app/"
           powershell -ExecutionPolicy Bypass -File ..\tests\release\verify_standard_bundle.ps1 -PackageDir ..\dist\windows\bin
+          } finally { go run ./tools/strip-static -clean $overlay }
 
       # dist\windows\bin\licenses goes into the portable ZIP (bin\*) and the MSI (Coral\licenses, tools/coral.wxs).
       - name: Third-party notices
@@ -438,12 +444,14 @@ jobs:
         run: |
           set -euo pipefail
           LDFLAGS="-s -w -X github.com/subgentic/coral/internal/config.PostHogKey=${POSTHOG_PROJECT_KEY} -X github.com/subgentic/coral/internal/config.Version=${VERSION}"
+          OVERLAY="$(go run ./tools/strip-static)" # the dashboard ships minified (#6208): a fresh owner-only folder; only this step's go build commands read it
+          trap 'go run ./tools/strip-static -clean "$OVERLAY"' EXIT
           mkdir -p ../dist/macos-arm64
           for cmd in $COMMANDS; do
-            CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -tags "$BUILD_TAGS" -ldflags "$LDFLAGS" -o "../dist/macos-arm64/$cmd" "./cmd/$cmd/"
+            CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -overlay "$OVERLAY" -tags "$BUILD_TAGS" -ldflags "$LDFLAGS" -o "../dist/macos-arm64/$cmd" "./cmd/$cmd/"
           done
           for cmd in $GUI_COMMANDS; do
-            MACOSX_DEPLOYMENT_TARGET=13.0 CGO_ENABLED=1 CGO_CFLAGS="-mmacosx-version-min=13.0" CGO_LDFLAGS="-mmacosx-version-min=13.0" GOOS=darwin GOARCH=arm64 go build -trimpath -tags "webview,$BUILD_TAGS" -ldflags "$LDFLAGS" -o "../dist/macos-arm64/$cmd" "./cmd/$cmd/"
+            MACOSX_DEPLOYMENT_TARGET=13.0 CGO_ENABLED=1 CGO_CFLAGS="-mmacosx-version-min=13.0" CGO_LDFLAGS="-mmacosx-version-min=13.0" GOOS=darwin GOARCH=arm64 go build -trimpath -overlay "$OVERLAY" -tags "webview,$BUILD_TAGS" -ldflags "$LDFLAGS" -o "../dist/macos-arm64/$cmd" "./cmd/$cmd/"
           done
       # Restored from main's cache when its inputs are unchanged, else built; checked either way (#4126).
       - uses: ./.github/actions/bundled-tmux
@@ -501,12 +509,14 @@ jobs:
         run: |
           set -euo pipefail
           LDFLAGS="-s -w -X github.com/subgentic/coral/internal/config.PostHogKey=${POSTHOG_PROJECT_KEY} -X github.com/subgentic/coral/internal/config.Version=${VERSION}"
+          OVERLAY="$(go run ./tools/strip-static)" # the dashboard ships minified (#6208): a fresh owner-only folder; only this step's go build commands read it
+          trap 'go run ./tools/strip-static -clean "$OVERLAY"' EXIT
           mkdir -p ../dist/macos-amd64
           for cmd in $COMMANDS; do
-            CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -trimpath -tags "$BUILD_TAGS" -ldflags "$LDFLAGS" -o "../dist/macos-amd64/$cmd" "./cmd/$cmd/"
+            CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -trimpath -overlay "$OVERLAY" -tags "$BUILD_TAGS" -ldflags "$LDFLAGS" -o "../dist/macos-amd64/$cmd" "./cmd/$cmd/"
           done
           for cmd in $GUI_COMMANDS; do
-            MACOSX_DEPLOYMENT_TARGET=13.0 CGO_ENABLED=1 CGO_CFLAGS="-mmacosx-version-min=13.0" CGO_LDFLAGS="-mmacosx-version-min=13.0" GOOS=darwin GOARCH=amd64 go build -trimpath -tags "webview,$BUILD_TAGS" -ldflags "$LDFLAGS" -o "../dist/macos-amd64/$cmd" "./cmd/$cmd/"
+            MACOSX_DEPLOYMENT_TARGET=13.0 CGO_ENABLED=1 CGO_CFLAGS="-mmacosx-version-min=13.0" CGO_LDFLAGS="-mmacosx-version-min=13.0" GOOS=darwin GOARCH=amd64 go build -trimpath -overlay "$OVERLAY" -tags "webview,$BUILD_TAGS" -ldflags "$LDFLAGS" -o "../dist/macos-amd64/$cmd" "./cmd/$cmd/"
           done
       # Restored from main's cache when its inputs are unchanged, else built; checked either way (#4126).
       - uses: ./.github/actions/bundled-tmux

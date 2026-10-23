@@ -61,13 +61,16 @@ mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources" "$DIST_DIR"
 
 cd "$GO_DIR"
 
+OVERLAY="$(go run ./tools/strip-static)" # the dashboard ships minified (#6208): a fresh owner-only folder; only the go build commands below read it
+trap 'go run ./tools/strip-static -clean "$OVERLAY"' EXIT
+
 # Build arm64
 echo "==> Compiling coral (arm64)"
-GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -tags "$BUILD_TAGS" -ldflags="$LDFLAGS" -o "$DIST_DIR/coral-arm64" ./cmd/coral/
+GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -overlay "$OVERLAY" -tags "$BUILD_TAGS" -ldflags="$LDFLAGS" -o "$DIST_DIR/coral-arm64" ./cmd/coral/
 
 # Build amd64
 echo "==> Compiling coral (amd64)"
-GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -tags "$BUILD_TAGS" -ldflags="$LDFLAGS" -o "$DIST_DIR/coral-amd64" ./cmd/coral/
+GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -overlay "$OVERLAY" -tags "$BUILD_TAGS" -ldflags="$LDFLAGS" -o "$DIST_DIR/coral-amd64" ./cmd/coral/
 
 # Create universal binary
 echo "==> Creating universal binary with lipo"
@@ -89,8 +92,8 @@ echo "==> Compiling companion CLI binaries (universal)"
 for cmd in launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-session-start coral-hook-task-sync coral-update; do
     if [ -d "./cmd/$cmd" ]; then
         echo "    Building $cmd..."
-        GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -tags "$BUILD_TAGS" -ldflags="$LDFLAGS" -o "$DIST_DIR/${cmd}-arm64" ./cmd/$cmd/
-        GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -tags "$BUILD_TAGS" -ldflags="$LDFLAGS" -o "$DIST_DIR/${cmd}-amd64" ./cmd/$cmd/
+        GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -overlay "$OVERLAY" -tags "$BUILD_TAGS" -ldflags="$LDFLAGS" -o "$DIST_DIR/${cmd}-arm64" ./cmd/$cmd/
+        GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -overlay "$OVERLAY" -tags "$BUILD_TAGS" -ldflags="$LDFLAGS" -o "$DIST_DIR/${cmd}-amd64" ./cmd/$cmd/
         if command -v lipo &>/dev/null; then
             lipo -create -output "$APP_DIR/Contents/MacOS/$cmd" "$DIST_DIR/${cmd}-arm64" "$DIST_DIR/${cmd}-amd64"
             rm -f "$DIST_DIR/${cmd}-arm64" "$DIST_DIR/${cmd}-amd64"
@@ -109,8 +112,8 @@ echo "==> Compiling coral-tray + coral-app (CGO required)"
 if [[ "$(uname -s)" == "Darwin" ]]; then
     for cmd in coral-tray coral-app; do
         echo "    Building $cmd..."
-        MACOSX_DEPLOYMENT_TARGET=13.0 CGO_CFLAGS="-mmacosx-version-min=13.0" CGO_LDFLAGS="-mmacosx-version-min=13.0" GOOS=darwin GOARCH=arm64 CGO_ENABLED=1 go build -trimpath -tags "$WEBVIEW_TAGS" -ldflags="$LDFLAGS" -o "$DIST_DIR/${cmd}-arm64" ./cmd/$cmd/
-        MACOSX_DEPLOYMENT_TARGET=13.0 CGO_CFLAGS="-mmacosx-version-min=13.0" CGO_LDFLAGS="-mmacosx-version-min=13.0" GOOS=darwin GOARCH=amd64 CGO_ENABLED=1 go build -trimpath -tags "$WEBVIEW_TAGS" -ldflags="$LDFLAGS" -o "$DIST_DIR/${cmd}-amd64" ./cmd/$cmd/
+        MACOSX_DEPLOYMENT_TARGET=13.0 CGO_CFLAGS="-mmacosx-version-min=13.0" CGO_LDFLAGS="-mmacosx-version-min=13.0" GOOS=darwin GOARCH=arm64 CGO_ENABLED=1 go build -trimpath -overlay "$OVERLAY" -tags "$WEBVIEW_TAGS" -ldflags="$LDFLAGS" -o "$DIST_DIR/${cmd}-arm64" ./cmd/$cmd/
+        MACOSX_DEPLOYMENT_TARGET=13.0 CGO_CFLAGS="-mmacosx-version-min=13.0" CGO_LDFLAGS="-mmacosx-version-min=13.0" GOOS=darwin GOARCH=amd64 CGO_ENABLED=1 go build -trimpath -overlay "$OVERLAY" -tags "$WEBVIEW_TAGS" -ldflags="$LDFLAGS" -o "$DIST_DIR/${cmd}-amd64" ./cmd/$cmd/
         lipo -create -output "$APP_DIR/Contents/MacOS/$cmd" "$DIST_DIR/${cmd}-arm64" "$DIST_DIR/${cmd}-amd64"
         rm -f "$DIST_DIR/${cmd}-arm64" "$DIST_DIR/${cmd}-amd64"
         chmod +x "$APP_DIR/Contents/MacOS/$cmd"
