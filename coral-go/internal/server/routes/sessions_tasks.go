@@ -506,6 +506,7 @@ func (h *SessionsHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 	if body.EventType == "permission_request" || body.EventType == "request_resolved" {
 		if body.EventType == "permission_request" {
 			body.DetailJSON = sanitizeWants(body.DetailJSON) // what the request wants to do: stored as the line the row shows, never raw (#6622)
+			body.DetailJSON = h.tieRequestToItsCall(body.SessionID, body.ToolName, body.DetailJSON)
 		}
 		if d, ok := body.DetailJSON.(map[string]any); ok {
 			if k, _ := d["kind"].(string); !sessionstate.RequestKinds[k] {
