@@ -267,7 +267,7 @@ class Manifest(unittest.TestCase):
         self.assertEqual(len(pm.parse_revoked(",".join("1.4.%d" % i for i in range(20)))), 20)
 
     def test_a_tag_must_be_a_version_tag(self):
-        for bad in ("1.4.160", "v1.4", "v1.4.160 ", "v1.4.160\n", "../v1.4.160", "v1.4.160;x", "V1.4.160", "", "v1.4.160-rc1", "v1.4.160-"):
+        for bad in ("1.4.160", "v1.4", "v1.4.160 ", " v1.4.160", "v1.4.160\n", "../v1.4.160", "v1.4.160;x", "v1.4.160/../x", "V1.4.160", "", "v1.4.160-rc1", "v1.4.160-beta", "v1.4.160-dev", "v1.4.160-forDropbox", "v1.4.160-"):
             with self.assertRaises(pm.InputError, msg=repr(bad)):
                 pm.build(env(PROMOTE_TAG=bad), now=1)
 
