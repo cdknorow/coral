@@ -146,6 +146,8 @@ Commands:
                                Read or update custom team rules (mode unchanged)
                                (changing them is Operator only; reading works)
   queue [--json]               The merge queue: approved tasks whose patches have not landed
+  health ack <id>              Mark a health-check item handled: the item that ends
+                               with [ack <id>] (orchestrator or Operator)
   peek "<agent>" [--lines N]   Peek at agent's terminal (orchestrator only)
   send --board <target> [--to <orchestrator>] [--attach coral://artifacts/<id> ...] "<message>"
        (or --file <path> instead of the message: a UTF-8 file, as for post)
@@ -183,6 +185,7 @@ Commands:
   task add "title" [--body "details"] [--priority P]  Create a task
   task list                      List all tasks
   task detail <id>               Read requirements, dependencies and results
+  task show <id> [--json]        A task's status, result message and artifact links
   task claim [id]                Claim a named ready task or next ready work
   task reassign/cancel/amend     Change ownership, stop work, or revise text
   task submit-review/release-review  Record a candidate or release capacity

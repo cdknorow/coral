@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/subgentic/coral/internal/clierr"
+	"github.com/subgentic/coral/internal/clihelp"
 	"net/http"
 	"net/url"
 	"os"
@@ -75,20 +76,20 @@ func cmdHistorySearch(args []string) {
 		}
 	}
 
-	fs := flag.NewFlagSet("history-search", flag.ExitOnError)
+	fs := flag.NewFlagSet("history-search", flag.ContinueOnError)
 	roles := fs.String("roles", "assistant,user", "Roles to search (assistant, user)")
 	limit := fs.Int("limit", 10, "Maximum number of results (max 100)")
 	offset := fs.Int("offset", 0, "Number of results to skip")
 	ancestors := fs.Bool("ancestors", true, "Include proven resumed ancestor sessions")
 	targetSession := fs.String("session", "", "Target session ID in lineage")
 	rawJSON := fs.Bool("json", false, "Output JSON response")
-	fs.Parse(flagArgs)
+	clihelp.ParseFlags(fs, flagArgs, func() string { return commandUsage(os.Args[1], os.Args[2:]) })
 
 	query := strings.Join(queryParts, " ")
 	if strings.TrimSpace(query) == "" {
 		fmt.Fprintln(os.Stderr, "Error: search query is required.")
 		fmt.Fprintln(os.Stderr, "Usage: coral-agent history search <query> [flags]")
-		clierr.Exit1()
+		os.Exit(2)
 	}
 
 	sid := resolveSessionID()
@@ -110,14 +111,7 @@ func cmdHistorySearch(args []string) {
 		clierr.Exit1()
 	}
 	if status != http.StatusOK {
-		var errResp struct {
-			Error string `json:"error"`
-		}
-		if json.Unmarshal(data, &errResp) == nil && errResp.Error != "" {
-			fmt.Fprintf(os.Stderr, "Search error (%d): %s\n", status, errResp.Error)
-		} else {
-			fmt.Fprintf(os.Stderr, "Search error (%d): %s\n", status, string(data))
-		}
+		fmt.Fprintf(os.Stderr, "Search error: %s\n", clierr.Describe(nil, status, data))
 		clierr.Exit1()
 	}
 
@@ -213,10 +207,10 @@ func cmdHistoryContext(args []string) {
 		}
 	}
 
-	fs := flag.NewFlagSet("history-context", flag.ExitOnError)
+	fs := flag.NewFlagSet("history-context", flag.ContinueOnError)
 	window := fs.Int("window", 2, "Surrounding turns before and after target turn (default: 2, max: 10)")
 	rawJSON := fs.Bool("json", false, "Output JSON response")
-	fs.Parse(flagArgs)
+	clihelp.ParseFlags(fs, flagArgs, func() string { return commandUsage(os.Args[1], os.Args[2:]) })
 
 	sid := resolveSessionID()
 	targetSession := sid
@@ -256,14 +250,7 @@ func cmdHistoryContext(args []string) {
 		clierr.Exit1()
 	}
 	if status != http.StatusOK {
-		var errResp struct {
-			Error string `json:"error"`
-		}
-		if json.Unmarshal(data, &errResp) == nil && errResp.Error != "" {
-			fmt.Fprintf(os.Stderr, "Context error (%d): %s\n", status, errResp.Error)
-		} else {
-			fmt.Fprintf(os.Stderr, "Context error (%d): %s\n", status, string(data))
-		}
+		fmt.Fprintf(os.Stderr, "Context error: %s\n", clierr.Describe(nil, status, data))
 		clierr.Exit1()
 	}
 

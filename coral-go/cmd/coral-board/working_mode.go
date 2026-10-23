@@ -46,7 +46,7 @@ func runWorkingMode(args []string) error {
 			return nil, err
 		}
 		if status < 200 || status >= 300 {
-			return nil, fmt.Errorf("working-mode: HTTP %d: %s", status, data)
+			return nil, fmt.Errorf("working-mode: %s", clierr.Describe(nil, status, data))
 		}
 		return data, nil
 	}

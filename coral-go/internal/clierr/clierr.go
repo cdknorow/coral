@@ -13,11 +13,15 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
+	"unicode/utf8"
+
+	"github.com/subgentic/coral/internal/clitext"
 )
 
 // Kind is why a command failed.
@@ -60,8 +64,8 @@ func (k Kind) Code() int {
 }
 
 // Table is the exit-code table as help text.
-const Table = `Exit codes: 0 ok; 1 any other failure; 2 usage (nothing was sent); 3 cannot reach the
-server; 4 the server did not answer in time; 5 refused (HTTP 401 or 403); 6 not found (404).
+const Table = `Exit codes: 0 ok; 1 any other failure; 2 usage (nothing was sent); 3 cannot reach
+Coral; 4 Coral did not answer in time; 5 refused (HTTP 401 or 403); 6 not found (404).
 CORAL_TIMEOUT (a duration such as 30s, 1s to 10m, never more) sets how long a request waits. A command with its
 own long wait (coral-board wait) keeps its own timing; CORAL_TIMEOUT does not shorten or extend it.`
 
@@ -200,8 +204,11 @@ func Timeout(def time.Duration) time.Duration {
 
 var warnOnce sync.Once
 
-// Describe is the words for a failed request in one line: the transport error if there was one (CannotReach's text), else "Coral answered HTTP <status>"
-// and the server's own message (its message or error field, else the body trimmed). It never prints "<nil>" for a request that got an answer.
+// Describe is the words for a failed request in one line: the transport error if there was one (CannotReach's text), else "Coral says: <its message> (HTTP <status>)"
+// (its message or error field, else the body trimmed). It never prints "<nil>" for a request that got an answer.
+// codeShape is a plain error code: letters, digits, underscore, dot and dash.
+var codeShape = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,64}$`)
+
 func Describe(err error, status int, body []byte) string {
 	if err != nil {
 		return err.Error()
@@ -209,20 +216,42 @@ func Describe(err error, status int, body []byte) string {
 	var reply struct {
 		Message string `json:"message"`
 		Error   string `json:"error"`
+		Code    string `json:"code"`
 	}
 	text := strings.TrimSpace(string(body))
+	code := ""
 	if json.Unmarshal(body, &reply) == nil {
 		if reply.Message != "" {
 			text = reply.Message
 		} else if reply.Error != "" {
 			text = reply.Error
+		} else {
+			text = "" // a JSON answer without words (only a code): never print the raw JSON
+		}
+		// A machine-readable code (session_token_required, identity_mismatch) is what scripts and agents match on: it stays in the words. Only a plain code is kept.
+		if codeShape.MatchString(reply.Code) {
+			code = reply.Code
+		}
+		// Some answers put the code in "error" and the words in "message" ({"error":"session_token_required","message":"This comes from the agent's own Coral tools..."}): then "error" is the code.
+		if code == "" && reply.Message != "" && reply.Error != reply.Message && codeShape.MatchString(reply.Error) {
+			code = reply.Error
 		}
 	}
+	// The words come from whatever answered at CORAL_URL: no terminal control, one line, cut at a character boundary.
+	text = strings.Join(strings.FieldsFunc(clitext.Clean(text), func(r rune) bool { return r == 10 || r == 13 }), " ")
 	if len(text) > 300 {
-		text = text[:300] + "..."
+		cut := 300
+		for cut > 0 && !utf8.RuneStart(text[cut]) {
+			cut--
+		}
+		text = text[:cut] + "..."
+	}
+	where := fmt.Sprintf("HTTP %d", status)
+	if code != "" {
+		where = code + ", " + where
 	}
 	if text == "" {
-		return fmt.Sprintf("Coral answered HTTP %d", status)
+		return fmt.Sprintf("Coral returned an error (%s)", where)
 	}
-	return fmt.Sprintf("Coral answered HTTP %d: %s", status, text)
+	return fmt.Sprintf("Coral says: %s (%s)", text, where)
 }

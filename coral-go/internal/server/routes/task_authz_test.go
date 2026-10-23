@@ -77,6 +77,9 @@ func TestTaskRoutesNeedAPlannerOrTheAssignee(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, req("POST", pd, nil), "no actor")
 	assert.Equal(t, http.StatusOK, req("POST", pd, map[string]any{"subscriber_id": "Orch"}))
 
+	// Complete: another worker is refused as a permission refusal (403, like cancel), not a malformed request (400, #298).
+	assert.Equal(t, http.StatusForbidden, req("POST", p("/complete"), map[string]any{"subscriber_id": "Dev2"}))
+
 	// Cancel: the same rule as complete; it is the last step, so last.
 	assert.Equal(t, http.StatusForbidden, req("POST", p("/cancel"), map[string]any{"subscriber_id": "Dev2"}))
 	task, err := h.bs.GetTask(ctx, "team", id)

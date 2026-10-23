@@ -543,7 +543,7 @@ func (s *Store) completeTaskWithArtifacts(ctx context.Context, project string, t
 			return w, err
 		}
 		if assignee.Valid && assignee.String != "" && assignee.String != subscriberID && subscriberID != "Operator" && reviewerErr != nil {
-			return w, fmt.Errorf("task #%d is assigned to %s; only the assignee, Operator or an active registered orchestrator may complete it", taskID, assignee.String)
+			return w, &NotAssigneeError{Msg: fmt.Sprintf("task #%d is assigned to %s; only the assignee, Operator or an active registered orchestrator may complete it", taskID, assignee.String)}
 		}
 		if outcome == "success" {
 			for _, required := range w.RequiredOutputs {
