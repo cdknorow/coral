@@ -1,4 +1,4 @@
-// The Artifacts tab on the Coral Hub (#6236): the hub's /artifacts page in a frame, exactly as the Inbox's is, only where GET /api/account says artifacts_tab is true (a strict boolean, read once at load).
+// The Artifacts tab on the Coral Hub (#6236): the hub's /artifacts page in a frame, exactly as the Inbox's is, only where GET /api/account says artifacts_frame is true (a strict boolean; artifacts_tab alone shows nothing: the hub's page is not framable until artifacts_frame says so, read once at load).
 // True: the tab is in the row (after Docs) and in the phone's list, no frame is in the page until the tab is opened, then one frame with the constant address and the Inbox frame's attributes, kept on a second
 // visit. False, a missing field, a 404, an unreadable answer, a string "true" or the number 1: no tab and no frame. A local Coral: neither. Served as the hub would serve the dashboard (cloud boot flag,
 // stubbed session, servers and live list), against the isolated dev server; the account and the /artifacts page are stood in with fake names only.
@@ -13,7 +13,7 @@ const BASE = require('./test_base').BASE;
     const ev = async expression => { const r = await Runtime.evaluate({ expression, returnByValue: true, awaitPromise: true }); if (r.exceptionDetails) throw new Error(JSON.stringify(r.exceptionDetails).slice(0, 400)); return r.result.value; };
     const { waitFor } = require('./helpers/wait').bind(ev);
     let cloud = true;
-    let account = { status: 200, body: { artifacts_tab: true } }; // what GET /api/account answers: {status, body} (body a string for an unreadable one)
+    let account = { status: 200, body: { artifacts_tab: true, artifacts_frame: true } }; // what GET /api/account answers: {status, body} (body a string for an unreadable one)
     try {
         await Promise.all([Page.enable(), Runtime.enable(), Network.enable()]);
         await Network.setCacheDisabled({ cacheDisabled: true });
@@ -42,7 +42,7 @@ const BASE = require('./test_base').BASE;
         };
         const tabShown = () => ev(`(() => { const t = document.getElementById('nav-tab-artifacts'); return !!t && !t.hidden && t.getClientRects().length > 0; })()`);
 
-        console.log('1. artifacts_tab: true: the tab after Docs, no frame until it is opened, then one frame as the Inbox\'s');
+        console.log('1. artifacts_frame: true (with artifacts_tab): the tab after Docs, no frame until it is opened, then one frame as the Inbox\'s');
         await open();
         assert.equal(await tabShown(), true);
         assert.deepEqual(await ev(`[...document.querySelectorAll('.top-nav-tabs > .top-nav-tab')].filter(t => !t.hidden && t.getClientRects().length).map(t => t.textContent.trim())`).then(l => l.slice(l.indexOf('Docs'), l.indexOf('Docs') + 2)), ['Docs', 'Artifacts'], 'right after Docs');
@@ -63,8 +63,8 @@ const BASE = require('./test_base').BASE;
         assert.deepEqual(await ev(`[...document.querySelectorAll('#nav-more-menu .nav-more-item')].map(b => b.textContent.trim())`).then(l => l.filter(t => /Docs|Artifacts/.test(t))), ['menu_bookDocs', 'inventory_2Artifacts']);
 
         console.log('3. False, missing, an error, unreadable, "true" or 1: no tab and no frame');
-        for (const [what, a] of [['false', { status: 200, body: { artifacts_tab: false } }], ['missing', { status: 200, body: { email: 'tester@example.invalid' } }], ['404', { status: 404, body: { error: 'not found' } }], ['500', { status: 500, body: { error: 'x' } }],
-            ['unreadable', { status: 200, body: 'not json' }], ['the string "true"', { status: 200, body: { artifacts_tab: 'true' } }], ['the number 1', { status: 200, body: { artifacts_tab: 1 } }], ['null', { status: 200, body: null }]]) {
+        for (const [what, a] of [['false', { status: 200, body: { artifacts_tab: true, artifacts_frame: false } }], ['artifacts_tab true, artifacts_frame absent', { status: 200, body: { artifacts_tab: true } }], ['artifacts_tab false, no frame field', { status: 200, body: { artifacts_tab: false } }], ['missing', { status: 200, body: { email: 'tester@example.invalid' } }], ['404', { status: 404, body: { error: 'not found' } }], ['500', { status: 500, body: { error: 'x' } }],
+            ['unreadable', { status: 200, body: 'not json' }], ['the string "true"', { status: 200, body: { artifacts_frame: 'true' } }], ['the number 1', { status: 200, body: { artifacts_frame: 1 } }], ['null', { status: 200, body: null }]]) {
             account = a;
             await open();
             assert.equal(await tabShown(), false, `${what}: no tab`);
@@ -72,7 +72,7 @@ const BASE = require('./test_base').BASE;
         }
 
         console.log('4. A local Coral: no tab');
-        account = { status: 200, body: { artifacts_tab: true } };
+        account = { status: 200, body: { artifacts_tab: true, artifacts_frame: true } };
         cloud = false;
         await open();
         assert.equal(await tabShown(), false);

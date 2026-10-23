@@ -38,7 +38,7 @@ const CSP = ["default-src 'self'", "script-src 'self'", "style-src 'self'", "sty
     if(p.pathname==='/auth/session')return json({authenticated:true,email:'tester@example.com',csrf:'test'});
     if(p.pathname==='/api/sessions/live')return json({sessions:[],servers:window.__noComputers?[]:computers});
     if(p.pathname==='/api/servers')return json({servers:computers});
-    if(p.pathname==='/api/account')return json({artifacts_tab:true});
+    if(p.pathname==='/api/account')return json({artifacts_tab:true,artifacts_frame:true});
     if(p.pathname==='/api/settings'&&m==='GET')return json({settings:{}});
     const match=p.pathname.match(/^\\/api\\/remote\\/([^/]+)(\\/api\\/.*)$/);
     if(!match)return original(u,o);
