@@ -114,6 +114,13 @@ func (h *SystemHandler) CLICheck(w http.ResponseWriter, r *http.Request) {
 			if installNote != "" {
 				result["install_note"] = installNote
 			}
+			if dir, bad := agent.UntrustedMountDir(binaryPath); bad { // the CLI-paths row says why, before a launch (#340)
+				um := &agent.CLIUntrustedMountError{AgentType: agentType, Binary: binaryPath, Dir: dir}
+				result["install_note"] = um.Error()
+				if cloud.Tunneled(r) {
+					result["install_note"] = um.HubText() // no folder of this computer through Coral Hub
+				}
+			}
 			if trackable {
 				tracking.TrackPrerequisite(tool, tracking.PrereqMissing, source)
 			}

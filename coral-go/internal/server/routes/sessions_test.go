@@ -1659,6 +1659,10 @@ func TestSessionsRestartSleeping(t *testing.T) {
 func TestSessionsRestartInfersStoredAgentTypeWhenOmitted(t *testing.T) {
 	server, _, term, ss := setupSessionsTestServer(t)
 	ctx := context.Background()
+	// This computer's real PATH may hold a folder Windows will not open (Codex's junctions, #340): the restart would then be refused with the reason, which another test covers.
+	oldMount := agent.UntrustedMountDir
+	agent.UntrustedMountDir = func(string) (string, bool) { return "", false }
+	t.Cleanup(func() { agent.UntrustedMountDir = oldMount })
 	// This test asserts the restart emits the real agent binary as the command word (launchedAs below). The helper stubs
 	// cli_path for every type (#4615); clear the two it checks so the restart line carries the bare binary name. A restart
 	// never LookPaths or execs the CLI, so it needs no real binary on PATH.
