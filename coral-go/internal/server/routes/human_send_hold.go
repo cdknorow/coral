@@ -47,7 +47,9 @@ type personHolds struct {
 	mu      sync.Mutex
 	queues  map[string][]*personHeld
 	running map[string]bool
-	total   int
+	// releasing is set while the agent's head message has been taken off the queue and is waiting its turn or being typed.
+	releasing map[string]bool
+	total     int
 }
 
 func personKey(name, sessionID string) string {
@@ -76,10 +78,11 @@ func (h *SessionsHandler) deliverPersonSend(ctx context.Context, name, agentType
 	return false, h.deliverHumanSend(ctx, name, agentType, sessionID, text)
 }
 
-// held is how many of the agent's messages wait or are being released (p.mu held).
+// held is how many of the agent's messages wait: those in its queue and the one taken off it that is waiting its turn or being typed (p.mu held). The loop running with nothing in
+// hand counts none, and a message still in the queue is counted once, not again for the loop that is about to take it (the count was 2 for one message, and a bound of 2 refused the second).
 func (p *personHolds) held(key string) int {
 	n := len(p.queues[key])
-	if p.running[key] {
+	if p.releasing[key] {
 		n++
 	}
 	return n
@@ -101,7 +104,7 @@ func (h *SessionsHandler) holdPerson(m *personHeld) error {
 		return errSendBusy
 	}
 	if p.queues == nil {
-		p.queues, p.running = map[string][]*personHeld{}, map[string]bool{}
+		p.queues, p.running, p.releasing = map[string][]*personHeld{}, map[string]bool{}, map[string]bool{}
 	}
 	p.queues[key] = append(p.queues[key], m)
 	p.total++
@@ -129,12 +132,16 @@ func (h *SessionsHandler) releaseHeld(key string) {
 		}
 		m := q[0]
 		p.queues[key] = q[1:]
-		p.total--
+		p.releasing[key] = true
 		p.mu.Unlock()
 		err := h.releaseOne(m)
 		if err != nil {
 			slog.Info("a held message of a person was not sent", "session", m.name, "error", err)
 		}
+		p.mu.Lock()
+		delete(p.releasing, key)
+		p.total--
+		p.mu.Unlock()
 		if m.done != nil {
 			m.done(err)
 		}
