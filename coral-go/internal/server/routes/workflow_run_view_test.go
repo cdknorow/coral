@@ -240,3 +240,40 @@ func TestAHugeTailStillGivesItsLastLineFromABoundedInput(t *testing.T) {
 	multi := strings.Repeat("é日本", 6000) // multi-byte characters: never cut inside one
 	assert.True(t, utf8.ValidString(boundedText(multi, true)) && utf8.ValidString(boundedText(multi, false)))
 }
+
+// Security's #6530 probe: a step that died while printing a private key leaves a tail that begins or ends inside it; the redactor was not given the header, so a raw inner line must never be
+// shown. Blob-shaped lines are skipped, and an ordinary reason still shows whole.
+func TestAKeyLineWithoutItsHeaderIsNeverTheReason(t *testing.T) {
+	rig := newRunViewRig(t)
+	inner := "MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7VJTUt9Us8cKj"
+	show := func(tail string) string {
+		id := rig.run("failed", []map[string]any{{"index": 0, "name": "deploy", "status": "failed", "error_tail": tail}}, "", "", nil)
+		reason, _ := rig.listed(id)["failure_reason"].(string)
+		return reason
+	}
+	// a tail of about 26 KiB that begins with the header and ends mid-key: the 8 KiB window starts and ends inside the key
+	long := "step output\n-----BEGIN PRIVATE KEY-----\n" + strings.Repeat(inner+"\n", 400)
+	for _, tail := range []string{strings.TrimRight(long, "\n"), long, "deploy failed\n" + inner, inner + "\n" + inner, "x\n" + inner[:20] + "\n" + inner + "\n"} {
+		reason := show(tail)
+		for _, part := range []string{"MIIEvQ", "BKcwggSj", "Us8cKj", "9w0BAQEF"} {
+			assert.NotContains(t, reason, part, "no part of a key line in the reason")
+		}
+	}
+	// the line before the blob is the reason, when it is not one itself
+	assert.Equal(t, "deploy failed", show("deploy failed\n"+inner))
+	assert.Equal(t, "", show(inner+"\n"+inner), "only blobs: no reason, and the UI says 'failed'")
+	// a window that starts inside a token: its first, partial line is dropped (it could be the tail end of a longer token)
+	huge := strings.Repeat("a", 7000) + "\nerror: cannot open file /usr/local/lib/x.so.1\n"
+	assert.Equal(t, "error: cannot open file /usr/local/lib/x.so.1", show(huge))
+	// ordinary reasons still show: spaces, dots, colons and paths are not blobs
+	for _, ok := range []string{"error: cannot open file /usr/local/lib/x.so.1", "exit status 1", "panic: runtime error: index out of range [3] with length 3", "https://example.com/some/long/path/that/goes/on/and/on/forever/and/ever.html",
+		"npm ERR! code ELIFECYCLE", "FAIL github.com/example/pkg 0.512s"} {
+		assert.Equal(t, ok, show("building\n"+ok+"\n"), ok)
+	}
+	assert.False(t, isBlob("a path /usr/local/lib/x.so.1"))
+	assert.False(t, isBlob("short"))
+	assert.True(t, isBlob(inner[:20]), "a line cut in the middle of a key line is a blob too")
+	assert.False(t, isBlob("ELIFECYCLE"))
+	assert.True(t, isBlob(inner))
+	assert.True(t, isBlob(strings.Repeat("f", 40)), "hex")
+}
