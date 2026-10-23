@@ -16,6 +16,9 @@ const RESULT_WORDS = {
 };
 export const resultWords = (r) => RESULT_WORDS[r.state] || r.reason || 'Not asked';
 
+/** What an agent with an open ask into this thread is called in the picker: asked, and how many times it has replied. */
+export const askedWords = (k) => k.replies > 0 ? `Already asked, ${k.replies} repl${k.replies === 1 ? 'y' : 'ies'} so far` : 'Already asked';
+
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 
 /** Whether an agent of the board's status list can be asked now, and why not: asleep and not running cannot (the server refuses them as well). */

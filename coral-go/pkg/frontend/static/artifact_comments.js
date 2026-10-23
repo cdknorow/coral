@@ -294,9 +294,17 @@ export function attachComments(dialog, body, host, opts = {}) {
     // ── Send to agent: the picker inside the card, and what came of the ask
     const canAsk = (c) => !isCloud() && !!st.board && !!st.data?.canLock && !c.deleted && !c.resolved && c.parentId == null;
     const askedOf = (id) => askedBy.get(id) || (askedBy.set(id, new Map()), askedBy.get(id));
+    // Who is asked into this thread: what the server's list says (an ask that is still open, with how many times the agent has replied: it survives a reload) and what this page sent since (the newest words).
+    function askedNow(id) {
+        const m = new Map();
+        const c = st.data && st.data.comments.find(x => x.id === id);
+        for (const k of (c && c.asks) || []) if (k.open && k.agent) m.set(k.agent.toLowerCase(), askUi.askedWords(k));
+        for (const [role, words] of askedOf(id)) m.set(role, words);
+        return m;
+    }
     function askBlock() {
         const k = st.ask;
-        return askUi.buildSendBlock({ id: k.id, board: st.board, agents: k.agents, picked: k.picked, asked: askedOf(k.id), results: k.results, busy: k.busy, error: k.error,
+        return askUi.buildSendBlock({ id: k.id, board: st.board, agents: k.agents, picked: k.picked, asked: askedNow(k.id), results: k.results, busy: k.busy, error: k.error,
             onToggle: (role) => { if (k.picked.has(role)) k.picked.delete(role); else if (k.picked.size < askUi.MAX_AGENTS) k.picked.add(role); redrawAsk(role); },
             onCancel: () => { st.ask = null; render(); panel.querySelector(`.ac-card[data-id="${k.id}"] .ac-ask-open`)?.focus(); },
             onSend: () => sendAsk() });
