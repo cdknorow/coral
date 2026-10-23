@@ -12,6 +12,9 @@ const UPDATE_STAGED = { enabled: true, installed: '1.4.159', state: 'staged', st
     relaunch: { available: true, reason: '', hub_allowed: false, tmux_agents_restart: false, ack: 'ack-1', restarts: [{ session_id: 'census-r1', name: 'release-agent', state: 'working', resumes: true }, { session_id: 'census-r2', name: 'docs-agent', state: 'waiting', resumes: false }] },
     last_result: null, checked_at: '2026-10-23T03:05:00Z', auto: true };
 // This computer linked to a Coral Hub (the sentence under the relaunch switch, #6306, is only there then): what GET /api/cloud/status answers once the scene sets window.__cloudStatus.
+// Not connected yet, and waiting for the approval with a code on screen (#6579): what GET /api/cloud/status answers once the scene sets window.__cloudStatus.
+const CLOUD_IDLE = { state: 'idle', configured: true, hub_url: 'https://hub.example.invalid', url: 'https://hub.example.invalid', max_mode: 'view', max_mode_saved: false };
+const CLOUD_WAITING = { state: 'enrolling', configured: true, hub_url: 'https://hub.example.invalid', url: 'https://hub.example.invalid', user_code: 'WXYZ-1234', verification_url: 'https://hub.example.invalid/connect?code=WXYZ-1234', max_mode: 'view', max_mode_saved: true };
 const CLOUD_LINKED = { state: 'connected', configured: true, url: 'https://hub.example.invalid', max_mode: 'launch', mode: 'launch', hub_relaunch_updates: true, allow_hub_auto_accept: true, redact_tokens: true, hub_cross_team_settings: true };
 // Analytics with something in it (#6432): the Cost view's summary, tables, chart, teams, branches and call metrics, so the screen is walked, measured and listened to with data, not as "No data".
 const TOKEN_USAGE = { totals: { input_tokens: 12400, output_tokens: 2100, cache_read_tokens: 800, cache_write_tokens: 300, num_sessions: 5, cost_usd: 6.4 },
@@ -62,4 +65,4 @@ const DATA_WORLD = `(() => {
 })();`;
 async function httpJson(method, p, body) { const r = await fetch(BASE + p, { method, headers: { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) }); let data = null; try { data = await r.json(); } catch { /* no body */ } return { status: r.status, data }; }
 
-module.exports = { WF, RUN, JOB, UPDATE_STAGED, CLOUD_LINKED, DATA_WORLD, httpJson };
+module.exports = { WF, RUN, JOB, UPDATE_STAGED, CLOUD_LINKED, CLOUD_IDLE, CLOUD_WAITING, DATA_WORLD, httpJson };

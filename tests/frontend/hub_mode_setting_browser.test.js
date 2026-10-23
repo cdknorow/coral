@@ -23,7 +23,7 @@ const BASE = require('./test_base').BASE;
         const st = document.getElementById('settings-hub-mode-status');
         const btn = document.getElementById('settings-hub-mode-restart');
         const dd = document.getElementById('settings-hub-mode');
-        return box && { checked: box.checked, disabled: box.disabled, label: box.getAttribute('aria-label'),
+        return box && { checked: box.checked, disabled: box.disabled, label: (document.getElementById(box.getAttribute('aria-labelledby')) || {}).textContent,
             described: (box.getAttribute('aria-describedby') || '').split(' ').every(id => !!document.getElementById(id)),
             status: st.textContent, restart: !btn.hidden, shown: !!dd && !dd.hidden && box.offsetParent !== null };
     })()`);
@@ -44,7 +44,7 @@ const BASE = require('./test_base').BASE;
         await openSettings();
         let r = await row();
         assert.ok(r.shown, 'shown in Settings');
-        assert.equal(r.label, 'Run this Coral as a hub');
+        assert.equal(r.label, 'Manage other computers from this one', 'the switch is named by its heading');
         assert.ok(r.described, 'the toggle is described by the explanation and the status');
         assert.equal(r.checked, false);
         assert.equal(r.status, '', 'off says nothing: the switch shows it');

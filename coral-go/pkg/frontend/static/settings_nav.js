@@ -63,10 +63,10 @@ export function refreshSettingsGroups() {
 /** An (i) button after each label whose explanation is long: the text sits under the row and opens in place. */
 function buildInfoButtons(root) {
     for (const row of root.querySelectorAll('.settings-row')) {
-        const dt = row.querySelector(':scope > dt');
+        const dt = row.querySelector(':scope > dt, :scope > .net-group-head');
         const texts = [...row.querySelectorAll('dt .toggle-desc, [data-info]')];
         if (!dt || !texts.length || dt.querySelector('.settings-info-btn')) continue;
-        const label = dt.querySelector('label') || dt;
+        const label = dt.querySelector('label, .net-group-title') || dt;
         const name = (label.textContent || '').trim();
         const box = document.createElement('div');
         box.className = 'settings-info-text';

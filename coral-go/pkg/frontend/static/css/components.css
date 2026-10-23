@@ -4378,6 +4378,25 @@ a.ibx-open, a.ibx-open:visited { color: var(--link-text); }
 .settings-row > dd { min-width: 0; margin: 0; }
 .settings-row > dd:has(> .check-hit) { align-items: flex-end; }
 .settings-row > dd:has(> .check-hit) .settings-hint { align-self: stretch; text-align: right; }
+/* Settings > Network and Hub (#6579 part 2): the groups are sections with an h3 title, so the headings list reads Remote access, Setup code, Coral Hub, Manage other computers; a section is a row like the others
+   (a title where a term was, a body where a definition was). On a phone Coral Hub, the reason most people open the pane, comes first. */
+.settings-modal-body .net-groups { display: flex; flex-direction: column; }
+.settings-row > .net-group-head { display: flex; flex-wrap: wrap; align-items: center; gap: .1rem .4rem; align-self: start; padding-top: .35rem; min-width: 0; }
+.net-group-title { margin: 0; font-size: .875rem; font-weight: 600; color: var(--text-primary); }
+.settings-row > .net-body { min-width: 0; margin: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; color: var(--text-primary); word-break: normal; overflow-wrap: anywhere; font-size: .8125rem; }
+.settings-row > .net-body:has(> .check-hit) { align-items: flex-end; }
+.settings-row > .net-body:has(> .check-hit) .settings-hint { align-self: stretch; text-align: right; }
+.net-body > .check-hit > input[type="checkbox"] { width: auto; margin: 0; flex: none; }
+.net-group[hidden] { display: none; }
+.settings-modal-body .net-groups { width: 100%; }
+.net-groups > .net-group { width: 100%; box-sizing: border-box; }
+.settings-row > .net-body:has(> .settings-hub-mode-toggle) { align-items: flex-end; }
+.settings-row > .net-body:has(> .settings-hub-mode-toggle) .settings-hint { align-self: stretch; text-align: right; }
+#settings-cloud .settings-cloud-connect-row .btn { margin-left: 0; }
+.settings-row > .net-group-head { flex-wrap: nowrap; }
+.settings-row > .net-group-head .net-group-title { min-width: 0; }
+@media (max-width: 767px) { .net-groups > .net-group { grid-template-columns: minmax(0, 1fr); } } /* a long group title takes the row, its body under it */
+@media (max-width: 767px) { #net-group-hub { order: -1; } }
 .settings-info-btn { display: inline-flex; align-items: center; justify-content: center; width: 1.5rem; height: 1.5rem; padding: 0; flex: none; border: 1px solid var(--control-border); border-radius: 50%; background: none; color: var(--text-secondary); cursor: pointer; }
 .settings-info-btn .material-icons { font-size: 1rem; }
 .settings-info-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
@@ -4636,6 +4655,7 @@ body:has(#launch-modal[style*="flex"] :is(#launch-tmux-slot, #team-tmux-slot)[da
 #settings-cloud .settings-cloud-warn { display: block; color: var(--warning-text, var(--warning)); font-weight: 500; margin-top: 2px; }
 #settings-cloud .settings-cloud-warn .material-icons { font-size: 1rem; vertical-align: text-bottom; }
 #settings-cloud .settings-cloud-saved { margin: 4px 0 0; }
+@media (pointer: coarse), (max-width: 767px) { #settings-cloud-link { display: inline-flex; align-items: center; min-height: var(--control-touch-height, 44px); } } /* the link to approve the code is a 44 px target on a phone */
 .settings-row-hub .settings-info-text { grid-column: 1 / -1; }
 .info-grid.settings-grid .settings-row-hub > dt { align-self: center; padding-top: 0; }
 .settings-row-hub .settings-hub-mode-toggle { display: flex; align-items: center; min-height: var(--control-touch-height, 44px); }

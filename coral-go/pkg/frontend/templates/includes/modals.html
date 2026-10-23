@@ -1036,24 +1036,34 @@
                     </section>
                     <section class="settings-pane" id="settings-pane-network" data-group="network" data-icon="hub" data-title="Network and Hub" role="tabpanel" aria-labelledby="settings-tab-network" tabindex="-1" hidden>
                         <h4 class="settings-pane-title">Network and Hub</h4>
-                        <dl class="info-grid settings-grid">
-                <div class="settings-row">
-                <dt class="toggle-dt">
-                    <label for="settings-remote-access-enabled">Remote access</label>
-                    <span class="toggle-desc" id="settings-remote-access-enabled-desc">Allow connections from other devices. Plain HTTP (unencrypted) unless Coral was started with --tls-cert and --tls-key.</span>
-                </dt>
-                <dd>
-                    <label class="check-hit"><input type="checkbox" id="settings-remote-access-enabled" aria-describedby="settings-remote-access-status settings-remote-access-enabled-desc"></label>
+                        <div class="info-grid settings-grid net-groups">
+                <section class="settings-row net-group" id="net-group-access" aria-labelledby="net-access-title">
+                <div class="net-group-head"><h3 id="net-access-title" class="net-group-title">Remote access</h3></div>
+                <div class="net-body">
+                    <label class="check-hit"><input type="checkbox" id="settings-remote-access-enabled" aria-labelledby="net-access-title" aria-describedby="settings-remote-access-status net-remote-note settings-remote-access-enabled-desc"></label>
                     <div id="settings-remote-access-status" class="settings-hint" role="status">Loading effective access status…</div>
-                </dd>
+                    <div id="net-remote-note" class="settings-hint" role="status"></div>
+                    <div class="settings-hint" id="settings-remote-access-enabled-desc" data-info>Allow connections from other devices. Plain HTTP (unencrypted) unless Coral was started with --tls-cert and --tls-key.</div>
                 </div>
-                <div class="settings-row settings-row-wide">
-                <dt>Coral Hub</dt>
-                <dd id="settings-cloud">
+                </section>
+                <section class="settings-row settings-row-wide net-group" id="net-group-setup" aria-labelledby="net-setup-title" hidden>
+                <div class="net-group-head"><h3 id="net-setup-title" class="net-group-title">Setup code</h3></div>
+                <div class="net-body">
+                    <button type="button" class="btn btn-small" id="settings-setup-code-reveal" aria-expanded="false" aria-controls="settings-setup-code-box">Show setup code</button>
+                    <div id="settings-setup-code-box" class="settings-cloud-usercode-row" hidden>
+                        <div id="settings-setup-code" class="settings-mono-input settings-cloud-usercode" aria-hidden="true"></div><span class="sr-only" id="settings-setup-code-spoken"></span>
+                        <button type="button" class="btn btn-icon" id="settings-setup-code-copy" aria-label="Copy setup code" title="Copy setup code"><span class="material-icons" aria-hidden="true">content_copy</span></button>
+                    </div>
+                    <div id="settings-setup-code-hint" class="settings-hint" role="status">To sign in from another device.</div>
+                </div>
+                </section>
+                <section class="settings-row settings-row-wide net-group" id="net-group-hub" aria-labelledby="net-hub-title">
+                <div class="net-group-head"><h3 id="net-hub-title" class="net-group-title">Coral Hub</h3></div>
+                <div class="net-body" id="settings-cloud">
                     <div class="settings-cloud-head">
                         <div id="settings-cloud-status" data-cloud="status" class="settings-hint" role="status" aria-live="polite">Loading…</div>
                         <div class="settings-cloud-actions">
-                            <button type="button" id="settings-cloud-cancel" data-cloud="cancel" class="btn btn-small" hidden>Cancel</button>
+                            <button type="button" id="settings-cloud-cancel" data-cloud="cancel" class="btn btn-small" aria-label="Cancel connecting to Coral Hub" hidden>Cancel</button>
                             <button type="button" id="settings-cloud-disconnect" data-cloud="disconnect" class="btn btn-small" hidden>Disconnect</button>
                         </div>
                     </div>
@@ -1117,19 +1127,20 @@
                         <button type="button" id="settings-cloud-connect" data-cloud="connect" class="btn btn-small btn-primary" hidden>Connect to Coral Hub</button>
                     </div>
                     <div class="settings-hint" data-info>The hub can read everything you view through it. This is the most Coral Hub can ever do here: its owner can limit it further for each server but never raise it, and only you can change it, here. Interact lets a hub user type into running agents, which can run commands; Launch also lets them start, stop, sleep, wake and restart agents. Disconnect removes the token from this computer; revoke the server on the hub's Servers page to cut it off from there.</div>
-                </dd>
                 </div>
-                <div class="settings-row settings-row-hub">
-                <!-- Run as a hub (#3460, hub_mode_setting.js): saved at once, applied at the next start -->
-                <dt id="settings-hub-mode-label">Run as a hub</dt>
-                <dd id="settings-hub-mode">
-                    <label class="settings-hub-mode-toggle"><input type="checkbox" id="settings-hub-mode-enabled" aria-describedby="settings-hub-mode-desc settings-hub-mode-status" aria-label="Run this Coral as a hub"></label>
-                    <div id="settings-hub-mode-desc" class="settings-hint" data-info>Manage and view your other Coral servers from this one, in a Servers tab. It uses this Coral's own address, port and sign-in: the API key from other computers, and Remote Access above for who can reach it. Nothing new listens. Turning it off keeps the servers you added.</div>
+                </section>
+                <section class="settings-row settings-row-hub net-group" id="net-group-manage" aria-labelledby="settings-hub-mode-label">
+                <!-- Manage other computers from this one (#3460, hub_mode_setting.js): saved at once, applied at the next start -->
+                <div class="net-group-head"><h3 id="settings-hub-mode-label" class="net-group-title">Manage other computers from this one</h3></div>
+                <div class="net-body" id="settings-hub-mode">
+                    <label class="settings-hub-mode-toggle"><input type="checkbox" id="settings-hub-mode-enabled" aria-labelledby="settings-hub-mode-label" aria-describedby="settings-hub-mode-line settings-hub-mode-desc settings-hub-mode-status"></label>
+                    <div id="settings-hub-mode-line" class="settings-hint">Adds a Servers tab, with full control of those computers.</div>
+                    <div id="settings-hub-mode-desc" class="settings-hint" data-info>It uses this Coral's own address, port and sign-in: the API key from other computers, and Remote access above for who can reach it. Nothing new listens. Turning it off keeps the servers you added.</div>
                     <div id="settings-hub-mode-status" class="settings-hint" role="status" aria-live="polite"></div>
                     <button type="button" class="btn btn-small" id="settings-hub-mode-restart" hidden>Restart Coral</button>
-                </dd>
                 </div>
-                        </dl>
+                </section>
+</div>
                     </section>
                     <section class="settings-pane" id="settings-pane-security" data-group="security" data-icon="lock" data-title="Security and privacy" role="tabpanel" aria-labelledby="settings-tab-security" tabindex="-1" hidden>
                         <h4 class="settings-pane-title">Security and privacy</h4>

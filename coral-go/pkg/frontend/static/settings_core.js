@@ -29,6 +29,9 @@ export function renderRemoteAccessStatus(status, loadError = false) {
     }
     const saved = settingBool(status?.remote_access_enabled, false);
     const effective = settingBool(status?.remote_access_effective, false);
+    const box = document.getElementById('settings-remote-access-enabled');
+    if (box) box.dataset.saved = saved ? '1' : '0'; // what the server has: a switch that differs from it is waiting for Save (net note, #6579)
+    document.dispatchEvent(new CustomEvent('coral-remote-access-status'));
     const restart = status?.remote_access_restart_required === true || saved !== effective;
     if (restart) {
         el.textContent = `Saved: ${saved ? 'on' : 'off'}. Running: ${effective ? 'on' : 'local only'}. Restart to apply.`;

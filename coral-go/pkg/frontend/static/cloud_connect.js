@@ -313,6 +313,7 @@ class CloudPanel {
         const enrolled = ENROLLED.includes(st.state);
         if (enrolled !== this.enrolled) { this.enrolled = enrolled; this.loadHubOperator(); }
         this.syncMorePerms(st, enrolled);
+        document.dispatchEvent(new CustomEvent('coral-cloud-state', { detail: { state: st.state } })); // the setup code is offered while a link is being made (setup_code_setting.js)
         this.restoreFocus(had, st);
         this.onState(st);
     }
@@ -335,7 +336,8 @@ class CloudPanel {
             } else if (warn === null && w.warn) { /* unchanged */ }
         }
         const line = this.part('operator-line');
-        if (line) { const t = linked ? operatorLine(this.operatorOn === undefined ? null : this.operatorOn) : ''; put(line, t); line.hidden = !t; }
+        // Linked: the Operator's state, as it is. Not linked: only an opt-out that outlives the link is said, so it stays visible (Security's #6629 LOW 4).
+        if (line) { const on = this.operatorOn === undefined ? null : this.operatorOn; const t = linked ? operatorLine(on) : (on === false ? operatorLine(false) : ''); put(line, t); line.hidden = !t; }
     }
 
     /** After a state change: when focus was inside the panel and its control has gone, it goes to the control that took its place. */
