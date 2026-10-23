@@ -36,6 +36,8 @@ const BASE = require('./test_base').BASE;
             // the Change buttons line up in one column, the folder's too (#6460 point 2)
             const rights = await ev(`['#launch-dir-summary .btn', '#launch-agent-summary [data-row="model"] .las-change', '#launch-agent-summary [data-row="thinking"] .las-change', '#launch-agent-summary [data-row="mode"] .las-change'].map(s => Math.round(document.querySelector(s).getBoundingClientRect().right))`);
             assert.ok(Math.max(...rights) - Math.min(...rights) <= 1, `${at}: the Change buttons share a right edge: ${JSON.stringify(rights)}`);
+            const looks = await ev(`['#launch-dir-summary .btn', '#launch-agent-summary [data-row="model"] .las-change', '#launch-agent-summary [data-row="thinking"] .las-change', '#launch-agent-summary [data-row="mode"] .las-change'].map(s => { const c = getComputedStyle(document.querySelector(s)); return c.color + '|' + c.borderTopColor + '|' + c.backgroundColor; })`);
+            assert.equal(new Set(looks).size, 1, `${at}: the four Change buttons are one style: ${JSON.stringify(looks)}`);
             await shot(`rows-${w}`);
 
             console.log(`${at}: a value changed in the form shows in its row; Change opens the section`);
