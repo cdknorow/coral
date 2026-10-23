@@ -23,7 +23,7 @@ var codexLaunchOutcomes = map[string]int{
 	"a resume":                        20,
 	"developer instructions":          100,
 	"an action prompt":                100,
-	"bypass from capabilities":        10,
+	"bypass from an explicit mode":    3,
 	"full auto from capabilities":     10,
 	"sandbox and approval from caps":  10,
 	"web search":                      10,
@@ -115,8 +115,8 @@ func TestCodexLaunchCommandAgreesWithBefore4845(t *testing.T) {
 		}
 		if perms := TranslateToCodexPermissions(p.Capabilities); perms != nil {
 			switch {
-			case perms.BypassSandbox:
-				counts["bypass from capabilities"]++
+			case p.PermissionMode == "bypassPermissions" && has("--dangerously-bypass-approvals-and-sandbox"):
+				counts["bypass from an explicit mode"]++
 			case perms.FullAuto:
 				counts["full auto from capabilities"]++
 			case perms.SandboxMode != "" || perms.ApprovalPolicy != "":
@@ -231,17 +231,25 @@ func (a *CodexAgent) launchCommandBefore4845(params LaunchParams) (string, error
 	permissionApplied := false
 	if perms := TranslateToCodexPermissions(params.Capabilities); perms != nil {
 		permissionApplied = true
-		if perms.BypassSandbox {
+		// The two deliberate changes since #4845 (#6422, #6425): no bypass is read from capabilities, and an explicit mode is applied with the capabilities only narrowing it.
+		pair := codexPairOf(perms)
+		if m, ok := codexPairForMode(params.PermissionMode); ok {
+			if perms.FullAuto {
+				pair = codexPair{codexSandboxNone, "never"}
+			}
+			pair = narrowCodexPair(m, pair)
+		}
+		if pair.sandbox == codexSandboxNone && pair.approval == "never" {
 			bypassSandbox = true
 			parts = append(parts, "--dangerously-bypass-approvals-and-sandbox")
-		} else if perms.FullAuto {
+		} else if pair.sandbox == "workspace-write" && pair.approval == "never" {
 			parts = appendCodexFullAuto(parts)
 		} else {
-			if perms.SandboxMode != "" {
-				parts = append(parts, "--sandbox", perms.SandboxMode)
+			if pair.sandbox != "" {
+				parts = append(parts, "--sandbox", pair.sandbox)
 			}
-			if perms.ApprovalPolicy != "" {
-				parts = append(parts, "-a", normalizeCodexApprovalPolicy(perms.ApprovalPolicy))
+			if pair.approval != "" {
+				parts = append(parts, "-a", normalizeCodexApprovalPolicy(pair.approval))
 			}
 		}
 		if perms.Search {

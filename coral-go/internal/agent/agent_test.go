@@ -569,13 +569,52 @@ func TestCodex_WithCapabilities_FullAuto(t *testing.T) {
 	}
 }
 
-func TestCodex_WithCapabilities_BypassSandbox(t *testing.T) {
+// Four chips are no sandbox-free choice (#6422): Shell, Read, Write and Git Write with no deny is workspace-write and never asks, the same as Shell alone. The bypass flag comes
+// only from the Bypass Permissions mode (explicit) or a flag typed.
+func TestCodex_WithCapabilities_FourChipsAreNotBypass(t *testing.T) {
 	a := &CodexAgent{}
-	cmd := buildLaunch(a, LaunchParams{
-		Capabilities: &Capabilities{Allow: []string{CapShell, CapFileRead, CapFileWrite, CapGitWrite}},
-	})
+	caps := &Capabilities{Allow: []string{CapShell, CapFileRead, CapFileWrite, CapGitWrite}}
+	cmd := buildLaunch(a, LaunchParams{Capabilities: caps})
+	if strings.Contains(cmd, "--dangerously-bypass-approvals-and-sandbox") || !strings.Contains(cmd, "--sandbox workspace-write -a never") {
+		t.Errorf("expected workspace-write, never, and no bypass, got %q", cmd)
+	}
+	cmd = buildLaunch(a, LaunchParams{Capabilities: caps, PermissionMode: "bypassPermissions"})
 	if !strings.Contains(cmd, "--dangerously-bypass-approvals-and-sandbox") {
-		t.Errorf("expected bypass sandbox, got %q", cmd)
+		t.Errorf("an explicit Bypass Permissions mode is no sandbox, got %q", cmd)
+	}
+}
+
+// An explicit mode is applied and the capabilities only narrow it (#6425): Plan with four chips stays read-only, Bypass with a read-only set is read-only, and the mode never widens a set.
+func TestCodex_ExplicitModeIsAppliedAndCapabilitiesOnlyNarrowIt(t *testing.T) {
+	a := &CodexAgent{}
+	fourChips := &Capabilities{Allow: []string{CapShell, CapFileRead, CapFileWrite, CapGitWrite}}
+	readOnly := &Capabilities{Allow: []string{CapFileRead}}
+	for _, tc := range []struct {
+		name string
+		caps *Capabilities
+		mode string
+		want string
+		not  []string
+	}{
+		{"plan, four chips", fourChips, "plan", "--sandbox read-only -a on-request", []string{"workspace-write", "-a never", "bypass"}},
+		{"acceptEdits, four chips", fourChips, "acceptEdits", "--sandbox workspace-write -a on-request", []string{"-a never", "bypass"}},
+		{"bypass, read-only chips", readOnly, "bypassPermissions", "--sandbox read-only -a on-request", []string{"bypass", "danger-full-access"}},
+		{"auto, read-only chips", readOnly, "auto", "--sandbox read-only -a on-request", []string{"-a never"}},
+		{"plan, read-only chips", readOnly, "plan", "--sandbox read-only -a on-request", nil},
+		{"bypass, four chips: the explicit full-access choice stands", fourChips, "bypassPermissions", "--dangerously-bypass-approvals-and-sandbox", nil},
+		{"auto, four chips", fourChips, "auto", "--sandbox workspace-write -a never", []string{"bypass"}},
+		{"default mode: the chips decide", fourChips, "default", "--sandbox workspace-write -a never", []string{"bypass"}},
+		{"no mode: the chips decide", readOnly, "", "--sandbox read-only -a on-request", nil},
+	} {
+		cmd := buildLaunch(a, LaunchParams{Capabilities: tc.caps, PermissionMode: tc.mode})
+		if !strings.Contains(cmd, tc.want) {
+			t.Errorf("%s: want %q, got %q", tc.name, tc.want, cmd)
+		}
+		for _, n := range tc.not {
+			if strings.Contains(cmd, n) {
+				t.Errorf("%s: must not have %q, got %q", tc.name, n, cmd)
+			}
+		}
 	}
 }
 
@@ -1108,12 +1147,12 @@ func TestTranslateToCodexPermissions_ReadOnly(t *testing.T) {
 	}
 }
 
-func TestTranslateToCodexPermissions_FullAccess(t *testing.T) {
+func TestTranslateToCodexPermissions_FourChipsAreFullAutoNotBypass(t *testing.T) {
 	result := TranslateToCodexPermissions(&Capabilities{
 		Allow: []string{CapShell, CapFileRead, CapFileWrite, CapGitWrite},
 	})
-	if result == nil || !result.BypassSandbox {
-		t.Error("expected BypassSandbox=true")
+	if result == nil || !result.FullAuto || result.SandboxMode != "" {
+		t.Errorf("expected FullAuto (#6422), got %+v", result)
 	}
 }
 
@@ -1826,6 +1865,38 @@ func TestDocsPromptLineMatchesTheCopyButton(t *testing.T) {
 	for _, want := range []string{"coral-agent docs", "coral-agent docs <topic>", "coral-agent docs all"} {
 		if !strings.Contains(DocsPromptLine, want) {
 			t.Errorf("the line does not name %q", want)
+		}
+	}
+}
+
+// Antigravity as Codex (#6425): an explicit mode is applied and the capabilities only narrow it.
+func TestAgy_ExplicitModeIsAppliedAndCapabilitiesOnlyNarrowIt(t *testing.T) {
+	a := &AgyAgent{}
+	fullSet := &Capabilities{Allow: []string{CapShell, CapFileRead, CapFileWrite, CapGitWrite}}
+	readOnly := &Capabilities{Allow: []string{CapFileRead}}
+	for _, tc := range []struct {
+		name string
+		caps *Capabilities
+		mode string
+		want string
+		not  []string
+	}{
+		{"plan, full set", fullSet, "plan", "--mode plan", []string{"--dangerously-skip-permissions", "accept-edits"}},
+		{"acceptEdits, full set", fullSet, "acceptEdits", "--mode accept-edits", []string{"--dangerously-skip-permissions"}},
+		{"bypass, full set: stands", fullSet, "bypassPermissions", "--dangerously-skip-permissions", nil},
+		{"bypass, read-only set: narrowed", readOnly, "bypassPermissions", "--mode plan", []string{"--dangerously-skip-permissions"}},
+		{"plan, read-only set", readOnly, "plan", "--mode plan", nil},
+		{"no mode: the set decides", fullSet, "", "--dangerously-skip-permissions", nil},
+		{"default mode: the set decides", readOnly, "default", "--mode plan", nil},
+	} {
+		cmd := buildLaunch(a, LaunchParams{Capabilities: tc.caps, PermissionMode: tc.mode})
+		if !strings.Contains(cmd, tc.want) {
+			t.Errorf("%s: want %q, got %q", tc.name, tc.want, cmd)
+		}
+		for _, n := range tc.not {
+			if strings.Contains(cmd, n) {
+				t.Errorf("%s: must not have %q, got %q", tc.name, n, cmd)
+			}
 		}
 	}
 }

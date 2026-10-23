@@ -69,8 +69,6 @@ func codexEnforced(caps *Capabilities) string {
 	}
 	var s string
 	switch {
-	case p.BypassSandbox:
-		s = "sandbox=none approval=never"
 	case p.FullAuto:
 		s = "sandbox=workspace-write approval=never"
 	default:
@@ -148,8 +146,8 @@ func TestPresetEnforcementMatchesTheAudit(t *testing.T) {
 		{"Security Reviewer", "sandbox=read-only approval=on-request search", "mode=plan"},
 		{"Frontend Dev", "sandbox=workspace-write approval=on-request search", "mode=accept-edits"},
 		{"QA Engineer", "sandbox=workspace-write approval=never", "mode=skip-permissions"},
-		{"Lead Developer", "sandbox=none approval=never", "mode=skip-permissions"},
-		{"Orchestrator", "sandbox=none approval=never search", "mode=skip-permissions"},
+		{"Lead Developer", "sandbox=workspace-write approval=never", "mode=skip-permissions"},
+		{"Orchestrator", "sandbox=workspace-write approval=never search", "mode=skip-permissions"},
 	} {
 		caps := byName[c.preset]
 		if caps == nil {

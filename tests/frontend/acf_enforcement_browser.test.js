@@ -77,10 +77,11 @@ const BASE = require('./test_base').BASE;
         assert.ok(d.every(x => x.disabled && !x.active), 'removed, and now none can be added');
         assert.match(await line(), /and it never asks/, 'without the Deny entry: never asks');
 
-        console.log('Lead Developer on Codex: no sandbox, said so; Terminal: no line');
+        console.log('Lead Developer on Codex: a workspace-write sandbox that never asks (no sandbox is an explicit mode only); Terminal: no line');
         await ev(`window.__coral.setAgentConfig('fixture', { agentType: 'codex', capabilities: window.__presets['Lead Developer'] }); true`);
-        assert.match(await line(), /no sandbox, and it never asks\. Shell, Write Files and Git Write together make it run without a sandbox/);
-        assert.match(await ev(`document.querySelector('#fixture [data-type="allow"][data-cap="git_write"]').title`), /Codex: with Shell, Read Files and Write Files, it runs without a sandbox/);
+        assert.match(await line(), /a sandbox that can write the working folder, and it never asks/);
+        assert.doesNotMatch(await line(), /without a sandbox/);
+        assert.match(await ev(`document.querySelector('#fixture [data-type="allow"][data-cap="git_write"]').title`), /Codex: Git Write does not change its sandbox/);
         await setType('terminal');
         assert.equal(await line(), null);
 

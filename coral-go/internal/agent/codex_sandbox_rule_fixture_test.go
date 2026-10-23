@@ -37,7 +37,7 @@ func TestCodexSandboxRuleFixture(t *testing.T) {
 		t.Run(c.Name, func(t *testing.T) {
 			caps := &Capabilities{Allow: c.Allow, Deny: c.Deny}
 			perms := TranslateToCodexPermissions(caps)
-			flags, bypass, applied := codexCapabilityFlags(nil, caps)
+			flags, bypass, applied := codexCapabilityFlags(nil, caps, "")
 			if c.Expect == nil {
 				assert.Nil(t, perms, "no capabilities: no translation")
 				assert.False(t, applied)
@@ -47,15 +47,13 @@ func TestCodexSandboxRuleFixture(t *testing.T) {
 			require.NotNil(t, perms)
 			sandbox, approval := perms.SandboxMode, perms.ApprovalPolicy
 			switch {
-			case perms.BypassSandbox:
-				sandbox, approval = "none", "never"
 			case perms.FullAuto:
 				sandbox, approval = "workspace-write", "never"
 			}
 			assert.Equal(t, c.Expect.Sandbox, sandbox, "sandbox")
 			assert.Equal(t, c.Expect.Approval, approval, "approval")
 			assert.Equal(t, c.Expect.Search, perms.Search, "search")
-			assert.Equal(t, c.Expect.Sandbox == "none", bypass, "bypass is the no-sandbox case and nothing else")
+			assert.False(t, bypass, "capabilities alone are never the no-sandbox case (#6422)")
 			assert.True(t, applied)
 			assert.Equal(t, c.Flags, flags, "the exact flags a launch passes: %s", strings.Join(flags, " "))
 		})
