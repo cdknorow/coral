@@ -48,8 +48,8 @@ func parseClaudeSessions(fpath string, mtime float64) ([]IndexedSession, error) 
 			if msg, _ := entry["message"].(map[string]any); msg != nil {
 				text := extractFirstText(msg["content"])
 				fts.Add(text)
-				if etype == "user" && firstMsg == "" && !injectedUserText(text) {
-					firstMsg = clipFirstMessage(text)
+				if t, ok := typedText(text); etype == "user" && firstMsg == "" && ok {
+					firstMsg = clipFirstMessage(t)
 				}
 			}
 		}

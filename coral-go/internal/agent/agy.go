@@ -153,8 +153,10 @@ func parseAgyTranscriptSession(convID, fpath string, mtime float64) (*IndexedSes
 			msgCount++
 		}
 		if etype == "USER_INPUT" && firstMsg == "" {
-			if content, _ := entry["content"].(string); !injectedUserText(content) {
-				firstMsg = clipFirstMessage(content)
+			if content, _ := entry["content"].(string); content != "" {
+				if t, ok := typedText(content); ok {
+					firstMsg = clipFirstMessage(t)
+				}
 			}
 		}
 		if content, _ := entry["content"].(string); content != "" {
@@ -244,8 +246,8 @@ func parseGeminiSession(fpath string, mtime float64) (*IndexedSession, error) {
 						}
 					}
 				}
-				if joined := strings.Join(typed, " "); !injectedUserText(joined) {
-					firstMsg = clipFirstMessage(joined)
+				if t, ok := typedText(strings.Join(typed, " ")); ok {
+					firstMsg = clipFirstMessage(t)
 				}
 			}
 			if summary == "" && role == "model" {
