@@ -59,11 +59,11 @@
     overflow: visible;
 }
 
-/* Add image (#6088): an icon in the bottom-left corner of the text box, which makes room for it. 32 px with a mouse, 44 px on a touch screen. */
+/* Add image (#6088, moved by #6347): an icon in the top-right corner of the text box, the card's one extra control, where the eye ends the first line, not at the left of the text; the box makes room for it on the right. 32 px with a mouse, 44 px on a touch screen. */
 .attach-image-btn {
     position: absolute;
-    left: 6px;
-    bottom: 6px;
+    right: 6px;
+    top: 6px;
     width: 32px;
     height: 32px;
     padding: 0;
@@ -79,10 +79,10 @@
 }
 .attach-image-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
 .attach-image-btn .material-icons { font-size: 1.25rem; }
-.command-editor:has(> .attach-image-btn) textarea { padding-left: 44px !important; }
+.command-editor:has(> .attach-image-btn) textarea { padding-right: 44px !important; }
 @media (pointer: coarse) {
-    .attach-image-btn { width: var(--control-touch-height, 44px); height: var(--control-touch-height, 44px); left: 2px; bottom: 0; }
-    .command-editor:has(> .attach-image-btn) textarea { padding-left: 50px !important; }
+    .attach-image-btn { width: var(--control-touch-height, 44px); height: var(--control-touch-height, 44px); right: 2px; top: 0; }
+    .command-editor:has(> .attach-image-btn) textarea { padding-right: 50px !important; }
 }
 /* Not offered while the agent sleeps, and dimmed when the hub or the popout says the terminal is not for typing (as the Send buttons are). */
 #command-pane.agent-sleeping .attach-image-btn { display: none; }
