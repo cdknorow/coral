@@ -188,6 +188,7 @@ const { removeBoards } = require('./helpers/board_cleanup');
         await ev(`window.__render.renderLiveSessions([{ session_id: 'alpha-1', name: 'alpha-1', agent_type: 'claude', board_project: 'alpha', display_name: 'Alpha agent', working_directory: '/tmp/alpha' }]); true`); // this page's list is drawn from an array, not state.liveSessions, so it does not follow the selection by itself
         await waitFor(`document.querySelector('.board-card-header[data-on-click="team-name-open"]')?.getAttribute('aria-current') === 'true'`, 'the open team marked on its row (aria-current, and the name in the accent colour, #6328)');
         assert.ok(await ev(`document.querySelector('.board-card-header[data-on-click="team-name-open"]').classList.contains('team-selected')`), 'the open team row carries team-selected');
+        assert.notEqual(await ev(`getComputedStyle(document.querySelector('.board-card-header.team-selected')).backgroundColor`), 'rgba(0, 0, 0, 0)', 'the open team row has the selected tile, not only a coloured name (WCAG 1.4.1)');
         const kebab = await ev(`(() => { const k = document.querySelector('.session-group-header .group-kebab-btn'); k.focus(); return { focused: document.activeElement === k }; })()`);
         assert.ok(kebab.focused, 'the group kebab takes focus');
         await waitFor(`getComputedStyle(document.querySelector('.session-group-header .group-kebab-btn')).opacity === '1'`, 'the focused kebab to be visible', { diag: `getComputedStyle(document.querySelector('.session-group-header .group-kebab-btn')).opacity` });

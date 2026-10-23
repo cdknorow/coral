@@ -2517,6 +2517,8 @@ button.team-artifact-name { cursor: pointer; }
 #agentic-panel-team-settings > .team-settings-workspace { overflow: auto; padding: 14px; }
 
 /* The open team is the one whose row is in the accent colour (#6328): the row itself opens the team view (click, Enter), the chevron expands it; the (i) button that did the same is gone. */
+.board-card-header.team-selected { background: rgba(var(--accent-rgb), 0.14); border-radius: var(--radius-md); } /* the selected tile an agent row has, so the open team is not told by colour alone */
+.board-card-header.team-selected:hover { background: rgba(var(--accent-rgb), 0.17); }
 .board-card-header.team-selected .group-name-text { color: var(--accent); }
 /* The team's health check (#4962): shown only while the check is on (#5119; off has no icon), in the accent colour, so it is there at a glance without a ring or a fill (the tooltip and the name say on). */
 .team-health-btn { display: inline-flex; align-items: center; justify-content: center; border-radius: var(--radius-md); }
