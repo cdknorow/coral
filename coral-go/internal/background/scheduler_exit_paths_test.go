@@ -239,3 +239,24 @@ func TestRunWorktreeIsKeptWhenTheJobKeepsIt(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, string(out), fmt.Sprintf("coral/job-run-%d", e.runID), "and its branch")
 }
+
+// #6701: a job whose repository is on master (or any branch but main) runs: the base branch is the one the job names, else the repository's current branch, and a job stored with the old default
+// "main" falls to the current branch where the repository has no main. Before, every tick failed with "invalid reference: main".
+func TestRunWorktreeInARepositoryNotOnMain(t *testing.T) {
+	for _, base := range []string{"", "main"} {
+		e := newExitEnv(t, "exit-notmain-"+base)
+		repo := t.TempDir()
+		for _, args := range [][]string{{"init", "-q", "-b", "master"}, {"-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q", "--allow-empty", "-m", "first"}} {
+			cmd := exec.Command("git", args...)
+			cmd.Dir = repo
+			out, err := cmd.CombinedOutput()
+			require.NoError(t, err, string(out))
+		}
+		launched := false
+		e.launch(t, func(context.Context) error { launched = true; return nil })
+		e.s.launchAndWatch(e.runID, store.ScheduledJob{AgentType: "claude"}, runConfig{repoPath: repo, createWorktree: true, cleanupWorktree: true, baseBranch: base})
+		r := e.run(t)
+		assert.Equal(t, "completed", r.Status, "base %q: %v", base, r.ErrorMsg)
+		assert.True(t, launched, "base %q: the agent launched in the run's worktree", base)
+	}
+}
