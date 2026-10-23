@@ -128,9 +128,11 @@ var (
 	ErrPathNotAllowed = errors.New("path not allowed")
 )
 
+// headerTimeout is how long a machine has to start its reply; a variable so a test can shorten it.
+var headerTimeout = 30 * time.Second
+
 const (
 	connectTimeout = 5 * time.Second
-	headerTimeout  = 30 * time.Second
 	// idleConnTimeout keeps a pooled hub->remote connection open between uses.
 	// The remote poller's /api/health check (every PollInterval) shares this
 	// pool, so with a timeout well above that interval the next chat switch
