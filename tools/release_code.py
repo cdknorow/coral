@@ -71,15 +71,21 @@ def check(code, seed_text, now=None):
     now = time.time() if now is None else now
     ok = False
     for back in (0, 1):  # both are always computed and compared: no early exit on the first
-        want = hotp(seed, int(now) // STEP - back)
+        counter = int(now) // STEP - back
+        if counter < 0:
+            continue  # a clock before 1970 has no such step (and the counter is unsigned)
+        want = hotp(seed, counter)
         ok |= hmac.compare_digest(typed.encode(), want.encode())
     return ok
 
 
 def cmd_verify():
     code, seed = os.environ.get("RELEASE_CODE", ""), os.environ.get("RELEASE_CODE_SEED", "")
-    if code:
-        print("::add-mask::" + code, flush=True)  # first output: whatever happens next, the code is not in the log
+    # first output: whatever happens next, the code is not in the log. One command per line of the value: a code with a line break in it must not put a second line of its own into the log,
+    # where the runner would read it as a workflow command (::error::, ::stop-commands::). Its digits without spaces or dashes are masked too, as the authenticator shows them.
+    for line in dict.fromkeys(code.splitlines() + [re.sub(r"[\s-]", "", code)]):
+        if line:
+            print("::add-mask::" + line, flush=True)
     try:
         right = check(code, seed)
     except CodeError as e:
