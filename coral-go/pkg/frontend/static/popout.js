@@ -11,6 +11,7 @@
  * and are never derived or matched by name. The session id never appears in
  * visible text, tooltips or document.title. */
 
+import { isPhoneLayout } from './phone_layout.js';
 import { state } from './state.js';
 import { resolveSessionIdentity, deriveSessionState } from './render.js';
 import { toggleAgenticPanel } from './sidebar.js';
@@ -242,7 +243,7 @@ function _wireHeader() {
     if (pill) pill.hidden = false;
 }
 
-function _isPhone() { return window.innerWidth <= 767; }
+function _isPhone() { return isPhoneLayout(); }
 
 export function togglePopoutPanel() {
     toggleAgenticPanel();

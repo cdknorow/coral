@@ -3,6 +3,7 @@
  * on the messages and the top bar's count are in saved_marks.js. An agent still running opens in its Chat view and pages up to the message; one that has ended
  * opens in Chats (History) at the message; a board opens and jumps to the message as the board's search does. A message that is gone (the transcript no longer has
  * it, the board message was deleted) is marked Gone on its item, which keeps its snippet and can only be removed. */
+import { isPhoneLayout } from './phone_layout.js';
 import { state } from './state.js';
 import { showToast } from './utils.js';
 import { sessionServer, normServer, serverFetch, identityKey, LOCAL_SERVER } from './server_base.js';
@@ -336,7 +337,7 @@ async function refresh() {
 }
 
 /** On a phone the side panel is an overlay over the chat: it gives way so the jump is seen (the tab is where it was when it is opened again). */
-function closeOverlay() { if (window.innerWidth <= 767) window.toggleAgenticPanel?.(false); }
+function closeOverlay() { if (isPhoneLayout()) window.toggleAgenticPanel?.(false); }
 
 function status(text) { $('saved-status').textContent = ''; requestAnimationFrame(() => { $('saved-status').textContent = text; }); }
 
@@ -441,7 +442,7 @@ async function openSavedView({ toggle = false } = {}) {
 let _before = null; // {open, tab}: the dock as it was when the Saved button opened it
 function dockOpen() {
     const dock = $('agentic-state');
-    return !!dock && (window.innerWidth <= 767 ? dock.classList.contains('mobile-panel-overlay') : !dock.classList.contains('collapsed'));
+    return !!dock && (isPhoneLayout() ? dock.classList.contains('mobile-panel-overlay') : !dock.classList.contains('collapsed'));
 }
 /** Close the sidebar the Saved button opened: the tab the agent's dock had is shown again if it was open, the sidebar is shut if it was not. The focus goes back to the button. */
 export function closeSaved({ focus = true } = {}) {

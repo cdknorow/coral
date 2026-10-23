@@ -1,5 +1,6 @@
 /* Token Usage Dashboard — token usage and cost UI */
 
+import { PHONE_QUERY } from './phone_layout.js';
 import { modelDisplayName } from './model_names.js';
 import { showView, escapeHtml, escapeAttr } from './utils.js';
 import { registerActions, idOf, uuidOf, tokenOf, textOf } from './actions.js';
@@ -19,7 +20,7 @@ const COST_NAME_COLUMNS = { provider: 1, model: 2, thinking: 2, agent: 1, task: 
 // By Thinking Level has three columns that name its rows, each with its 44 px buttons: all three do not fit before Cost at 390 px (#5120). On a phone the model and the level come first (a
 // model's name says its provider; the Provider column follows Share), so the figure is on screen.
 const COST_PHONE_NAMES = { thinking: ['model', 'level'] };
-const _phone = typeof matchMedia === 'function' ? matchMedia('(max-width: 767px)') : null;
+const _phone = typeof matchMedia === 'function' ? matchMedia(PHONE_QUERY) : null;
 
 function placeCostColumns(root) {
     const narrow = !!(_phone && _phone.matches);

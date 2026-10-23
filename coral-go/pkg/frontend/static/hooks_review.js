@@ -1,6 +1,7 @@
 /* Codex's hooks question (#6409, Security's #6408 rank 4): a new Codex agent started by Coral stops on "Hooks need review: N hooks are new or changed" (Review hooks / Trust all and continue / Continue without
  * trusting) until the person answers it, and no message is typed into it (the server refuses one, 409 codex_hooks_review_pending). The chat shows the question as its card; the box under it says to answer that first, in
  * the card's words, so the first message is not written into a refusal. Nothing here answers for the person. */
+import { isPhoneLayout } from './phone_layout.js';
 import { state } from './state.js';
 import { promptOptionsBySession } from './needs_input_card.js';
 import { setHooksPlaceholder } from './composer_placeholder.js';
@@ -21,7 +22,7 @@ export function syncHooksComposer(session) {
     if (!input) return;
     const cur = state.currentSession;
     const open = !!session && !!cur && cur.session_id === session.session_id && session.agent_type === 'codex' && isHooksReview(promptOptionsBySession.get(session.session_id));
-    setHooksPlaceholder(input, open ? (window.innerWidth <= 767 ? HOOKS_PLACEHOLDER_PHONE : HOOKS_PLACEHOLDER) : '');
+    setHooksPlaceholder(input, open ? (isPhoneLayout() ? HOOKS_PLACEHOLDER_PHONE : HOOKS_PLACEHOLDER) : '');
     // The instruction is also a line that stays (a placeholder is gone once a person types, and is not read as the box's description): the box is described by it while it shows.
     const hint = document.getElementById('composer-hooks-hint');
     if (hint) {

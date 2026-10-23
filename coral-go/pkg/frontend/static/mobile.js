@@ -1,15 +1,14 @@
 /* Mobile navigation and view management */
 
+import { isPhoneLayout } from './phone_layout.js';
 import { state } from './state.js';
 import { syncDisplayMenu } from './session_rows.js';
 import { showView } from './utils.js';
 import { note, backIs } from './nav.js';
 import { switchRow } from './switch_row.js';
 
-const MOBILE_BREAKPOINT = 767;
-
 function isMobile() {
-    return window.innerWidth <= MOBILE_BREAKPOINT;
+    return isPhoneLayout(); // a narrow window, or a phone turned to landscape (phone_layout.js, #6683)
 }
 
 // ── Tablet Sidebar Toggle ─────────────────────────────────────────────────
