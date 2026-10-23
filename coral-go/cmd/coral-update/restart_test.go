@@ -1,17 +1,21 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/sigstore/sigstore-go/pkg/root"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/subgentic/coral/internal/config"
 	"github.com/subgentic/coral/internal/updater/apply"
 	"github.com/subgentic/coral/internal/updater/trigger"
+	"github.com/subgentic/coral/internal/updater/verify"
 )
 
 // The Windows "Install update" quits the server first, so an apply that installs nothing must start Coral again (#5946, #5931's F1).
@@ -53,10 +57,13 @@ func TestRestartAfterNothingNeedsAGoodClick(t *testing.T) {
 	data, install := t.TempDir(), installFolder(t)
 	attempted, _ := restartAfterNothing(data, time.Now())
 	assert.False(t, attempted, "run by hand: no marker, nothing was stopped")
+	// A marker older than its life is a click whose updater started late: the server quit all the same (#332), so Coral is started from the folder it names.
 	require.NoError(t, trigger.WriteMarker(data, "1.5.0", install, time.Now().Add(-trigger.MarkerTTL-time.Minute)))
-	attempted, _ = restartAfterNothing(data, time.Now())
-	assert.False(t, attempted, "a leftover marker is no click")
-	assert.Empty(t, *started)
+	attempted, ok := restartAfterNothing(data, time.Now())
+	assert.True(t, attempted, "a late click")
+	assert.True(t, ok)
+	assert.Equal(t, []string{install}, *started)
+	*started = nil
 
 	restartGOOS = "linux"
 	require.NoError(t, trigger.WriteMarker(data, "1.5.0", install, time.Now()))
@@ -67,6 +74,7 @@ func TestRestartAfterNothingNeedsAGoodClick(t *testing.T) {
 }
 
 func TestRestartAfterNothingSaysWhenItCouldNotStartCoral(t *testing.T) {
+	registered(t, "", os.ErrNotExist) // no registered install to fall back on
 	data := t.TempDir()
 	for name, install := range map[string]string{
 		"a marker with no folder (an older server)": "",
@@ -182,4 +190,101 @@ func TestAnApplyThatStopsAtItsOffSwitchesStartsCoralAgain(t *testing.T) {
 		assert.Equal(t, "not_enabled", out["result"])
 		assert.Equal(t, []string{install}, *started)
 	})
+}
+
+// registered stands for the folder Windows Installer registered.
+func registered(t *testing.T, dir string, err error) {
+	t.Helper()
+	old := registeredInstall
+	registeredInstall = func() (string, error) { return dir, err }
+	t.Cleanup(func() { registeredInstall = old })
+}
+
+// #332 (QA's gap A): a click whose marker is late (request_expired) or damaged (request_invalid) still has no Coral running; the apply starts it again, and says when it cannot.
+func TestALateOrDamagedClickStartsCoralAgain(t *testing.T) {
+	t.Setenv("CORAL_AUTO_UPDATE", "")
+	for name, tc := range map[string]struct {
+		write      func(t *testing.T, data, marked string)
+		wantResult string
+		fromMarker bool
+	}{
+		"expired": {func(t *testing.T, data, marked string) {
+			require.NoError(t, trigger.WriteMarker(data, "1.5.0", marked, time.Now().Add(-trigger.MarkerTTL-time.Minute)))
+		}, resultRequestExpired, true},
+		"damaged": {func(t *testing.T, data, _ string) {
+			require.NoError(t, os.MkdirAll(filepath.Join(data, "updates"), 0o700))
+			require.NoError(t, os.WriteFile(filepath.Join(data, "updates", "install-trigger.json"), []byte("{not json"), 0o600))
+		}, resultRequestInvalid, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			started := fakeStart(t, nil)
+			marked, reg := installFolder(t), installFolder(t)
+			registered(t, reg, nil)
+			data := t.TempDir()
+			tc.write(t, data, marked)
+			require.Equal(t, tc.wantResult, installRequest(data, time.Now()))
+			want := reg
+			if tc.fromMarker {
+				want = marked
+			}
+			assert.True(t, restartFromMarker(data, clickedInstallDir))
+			assert.Equal(t, []string{want}, *started, "an expired marker names its folder; a damaged one has none, so the registered install is used")
+		})
+	}
+	t.Run("no marker at all: nothing was stopped, nothing is started", func(t *testing.T) {
+		started := fakeStart(t, nil)
+		registered(t, installFolder(t), nil)
+		assert.Equal(t, resultNotRequested, installRequest(t.TempDir(), time.Now()))
+		assert.Empty(t, *started)
+	})
+}
+
+// #332: a marker with no folder (an older server's) is started from the registered install; with none registered the answer says it failed.
+func TestAMarkerWithNoFolderUsesTheRegisteredInstall(t *testing.T) {
+	started := fakeStart(t, nil)
+	reg := installFolder(t)
+	registered(t, reg, nil)
+	data := t.TempDir()
+	require.NoError(t, trigger.WriteMarker(data, "1.5.0", "", time.Now()))
+	attempted, ok := restartAfterNothing(data, time.Now())
+	assert.True(t, attempted)
+	assert.True(t, ok)
+	assert.Equal(t, []string{reg}, *started)
+
+	registered(t, "", os.ErrNotExist)
+	require.NoError(t, trigger.WriteMarker(data, "1.5.0", "", time.Now()))
+	attempted, ok = restartAfterNothing(data, time.Now())
+	assert.True(t, attempted)
+	assert.False(t, ok, "nothing registered: said, not hidden")
+	assert.Len(t, *started, 1)
+	registered(t, "relative", nil)
+	assert.False(t, restartFromMarker(data, ""), "a registered folder that is not absolute is no folder")
+}
+
+// #332 (QA's gap B): the trusted root cannot be loaded (offline, the cached root expired) after a click: the apply says so and starts Coral again.
+func TestAnUnloadableTrustedRootStartsCoralAgain(t *testing.T) {
+	oldLoad, oldVersion, oldTier, oldApply := loadTrust, config.Version, config.TierChecksForUpdates, applyEnabled
+	t.Cleanup(func() {
+		loadTrust, config.Version, config.TierChecksForUpdates, applyEnabled = oldLoad, oldVersion, oldTier, oldApply
+	})
+	applyEnabled = true
+	loadTrust = func(context.Context, string) (root.TrustedMaterial, verify.TrustSource, error) {
+		return nil, "", errors.New("offline")
+	}
+	config.Version, config.TierChecksForUpdates = "1.4.130", true
+	started := fakeStart(t, nil)
+	data, install := t.TempDir(), installFolder(t)
+	t.Setenv("CORAL_DATA_DIR", data)
+	require.NoError(t, trigger.WriteMarker(data, "1.5.0", install, time.Now()))
+	code, out := runOut(t, nil, "apply")
+	assert.Equal(t, 0, code)
+	assert.Equal(t, "failed", out["result"])
+	assert.Equal(t, "trusted_root", out["failed_stage"])
+	assert.NotContains(t, out, "restart_failed")
+	assert.Equal(t, []string{install}, *started)
+
+	*started = nil
+	_, out = runOut(t, nil, "check")
+	assert.Equal(t, "trusted_root", out["failed_stage"])
+	assert.Empty(t, *started, "a check stopped nothing")
 }

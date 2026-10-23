@@ -23,6 +23,10 @@ var errNoRestart = errors.New("Coral can be started again on Windows only")
 // restartGOOS is the platform the restart is for; a test says "windows".
 var restartGOOS = runtime.GOOS
 
+// registeredInstall is the folder Windows Installer registered for Coral (restart_windows.go); a test replaces it. It is where Coral is started when the click's
+// marker has no usable folder: never a path from the network or the package.
+var registeredInstall = func() (string, error) { return "", errNoRestart }
+
 // startCoralFrom starts coral-tray from dir as this user (restart_windows.go); a test replaces it.
 var startCoralFrom = func(dataDir, dir string) error { return errNoRestart }
 
@@ -33,15 +37,28 @@ func restartAfterNothing(dataDir string, now time.Time) (attempted, ok bool) {
 		return false, false
 	}
 	m, err := trigger.Consume(dataDir, now)
-	if err != nil {
-		return false, false
+	switch {
+	case err == nil:
+	case errors.Is(err, trigger.ErrNoMarker):
+		return false, false // no click: nothing was stopped
+	case errors.Is(err, trigger.ErrMarkerExpired):
+		// A click whose updater started late: the server quit all the same. The folder it names parsed, so it is used.
+	default:
+		m = trigger.Marker{} // damaged: a click was made, the folder is unknown, so the registered install is used
 	}
 	return true, restartFromMarker(dataDir, m.InstallDir)
 }
 
 // restartFromMarker starts Coral from dir (a marker already consumed); a folder with no coral-tray.exe in it is a failure said in the answer.
 func restartFromMarker(dataDir, dir string) bool {
-	if dir == "" || !filepath.IsAbs(dir) {
+	if dir == "" { // an older server's marker, a late or damaged one: where Windows Installer put Coral
+		reg, err := registeredInstall()
+		if err != nil {
+			return false
+		}
+		dir = reg
+	}
+	if !filepath.IsAbs(dir) {
 		return false
 	}
 	if fi, err := os.Lstat(filepath.Join(dir, "coral-tray.exe")); err != nil || !fi.Mode().IsRegular() {
