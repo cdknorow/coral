@@ -430,7 +430,7 @@ func (h *BoardHandler) postExternalMessageBefore4838(w http.ResponseWriter, r *h
 			}
 		}
 		if len(off) > 0 {
-			writeJSON(w, http.StatusForbidden, map[string]string{"code": "artifacts_off", "error": fmt.Sprintf("Sharing files with other teams is off on %s. Turn on Share files with teams on other computers in Team settings > Messaging.", strings.Join(off, " and "))})
+			writeJSON(w, http.StatusForbidden, map[string]string{"code": "artifacts_off", "error": fmt.Sprintf("Sharing files with other teams is off on %s. Ask the Operator to turn on Share files with teams on other computers in Team settings > Messaging%s (the setting also covers files between teams on this computer). Nothing was sent.", strings.Join(off, " and "), eachIfMany(off))})
 			return
 		}
 		sender := h.attachSenderFor(ctx, r, body.FromBoard, body.SubscriberID, senderSession)
