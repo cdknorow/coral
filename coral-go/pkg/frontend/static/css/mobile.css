@@ -1378,8 +1378,8 @@
 #mobile-jobs-list { display: none; }
 @media (max-width: 767px) {
     #mobile-jobs-list { display: block; width: 100%; min-height: 0; }
-    #mobile-jobs-list .sidebar-section { padding: 12px; }
-    #mobile-jobs-list .sidebar-section-header { display: none; } /* the page already says "Jobs"; the Active and Scheduled tabs carry their own counts */
+    #mobile-jobs-list .sidebar-section { padding: 12px 0; } /* the rows start where the page heading does (#6521) */
+    #mobile-jobs-list .sidebar-section-header { display: none; } /* the page already says "Jobs" */
     #mobile-jobs-list button, #mobile-jobs-list .session-list > li { min-height: 44px; }
     #mobile-jobs-list button { min-width: 44px; }
 }

@@ -56,10 +56,10 @@ function renderJobsSidebar() {
     list.innerHTML = scheduledJobs.map(job => {
         const active = selectedJobId === job.id ? 'active' : '';
         const lastStatus = job.last_run ? job.last_run.status : '';
-        const dot = lastStatus === 'completed' ? '🟢'
-            : lastStatus === 'running' ? '🔵'
-            : lastStatus === 'failed' || lastStatus === 'killed' ? '🔴'
-            : '⚪';
+        const dot = lastStatus === 'completed' ? 'ok'
+            : lastStatus === 'running' ? 'run'
+            : lastStatus === 'failed' || lastStatus === 'killed' ? 'bad'
+            : 'none';
         const dotWords = lastStatus ? `Last run ${lastStatus}` : 'Not run yet'; // the dot is a coloured circle: its words say what it means
         const paused = job.enabled ? '' : `<span class="sched-chip">${job.paused_reason ? 'paused: failing' : 'paused'}</span>`;
         // A job whose scheduling works but whose every run fails otherwise looks identical to a healthy one here.
@@ -70,7 +70,7 @@ function renderJobsSidebar() {
         const meta = [cronWords(job.cron_expr), lastWords(job.last_run), job.enabled && job.next_fire_at ? `next ${awayWords(job.next_fire_at)}` : ''].filter(Boolean).join(' · ');
         const nextTitle = job.enabled && job.next_fire_at ? `Next run ${atWords(job.next_fire_at)} your time` : '';
         return `<li class="session-list-item sched-row ${escapeAttr(active)}" data-on-click="job-select" data-job-id="${Number(job.id)}" title="${escapeAttr(nextTitle)}">
-            <span class="sched-row-head"><span class="sched-dot" role="img" aria-label="${escapeAttr(dotWords)}" title="${escapeAttr(dotWords)}">${dot}</span> <span class="sched-row-name">${escapeHtml(job.name)}</span> ${paused} ${failBadge}</span>
+            <span class="sched-row-head"><span class="sched-dot sched-dot-${dot}" role="img" aria-label="${escapeAttr(dotWords)}" title="${escapeAttr(dotWords)}"></span> <span class="sched-row-name">${escapeHtml(job.name)}</span> ${paused} ${failBadge}</span>
             <span class="sched-row-meta">${escapeHtml(meta)}</span>
         </li>`;
     }).join('');

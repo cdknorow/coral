@@ -216,11 +216,6 @@
     margin-bottom: 8px;
 }
 
-.sched-dot {
-    font-size: 0.625rem;
-    margin-right: 4px;
-}
-
 /* ── Failing job indicators ────────────────────────────────────────────── */
 
 /* A job that fires on schedule and fails every run looks healthy in the list:
@@ -272,7 +267,7 @@
 .sched-row { display: flex; flex-direction: column; align-items: stretch; gap: 2px; }
 .sched-row-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .sched-row-name { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
-.sched-row-meta { color: var(--text-secondary); font-size: var(--fs-md); padding-left: 1.5rem; }
+.sched-row-meta { color: var(--text-secondary); font-size: var(--fs-md); padding-left: 14px; }
 .sched-chip { border: 1px solid var(--border); border-radius: 999px; padding: 0 8px; font-size: .75rem; color: var(--text-secondary); white-space: nowrap; }
 .sched-header { flex-wrap: wrap; gap: 8px; }
 .sched-header h2 { margin-right: auto; overflow-wrap: anywhere; min-width: 0; }
@@ -282,7 +277,7 @@
 .sched-path { font-family: var(--font-mono, monospace); font-size: .8125rem; }
 .sched-link { color: var(--accent); }
 .sched-settings { margin: 6px 0 12px; }
-.sched-settings > summary { cursor: pointer; color: var(--text-secondary); font-size: var(--fs-md); min-height: 28px; display: flex; align-items: center; }
+.sched-settings > summary { cursor: pointer; color: var(--text-secondary); min-height: 28px; }
 .sched-more { position: relative; }
 .sched-more-menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 5; min-width: 120px; padding: 6px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); box-shadow: var(--shadow-md); }
 .sched-more-menu[hidden] { display: none; }
@@ -291,6 +286,12 @@
 @media (pointer: coarse), (max-width: 767px) {
     .sched-actions { flex: 1 0 100%; }
     .sched-actions .btn, .sched-more-menu .btn { min-height: var(--control-touch-height, 44px); }
-    .sched-row { min-height: var(--control-touch-height, 44px); }
+    #scheduled-jobs-list .sched-row { min-height: var(--control-touch-height, 44px); padding-inline: 0; }
+    #scheduled-jobs-list { padding-inline: 0; } /* the rows start where the page heading does */
     .sched-settings > summary { min-height: var(--control-touch-height, 44px); }
 }
+/* the last-result dot: flat, like the agent list's (the coloured-circle emoji it was were glossy) */
+.sched-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--fg-muted, var(--text-muted)); }
+.sched-dot-ok { background: var(--success); }
+.sched-dot-bad { background: var(--danger); }
+.sched-dot-run { background: var(--working); }

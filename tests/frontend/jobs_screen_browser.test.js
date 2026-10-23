@@ -14,9 +14,12 @@ const S = `(window.__coralStatic || '/static/')`;
     const STUB = `(() => {
         const real = window.fetch; const json = (o, status) => Promise.resolve(new Response(JSON.stringify(o), { status: status || 200, headers: { 'Content-Type': 'application/json' } }));
         const ago = h => new Date(Date.now() - h * 3600000).toISOString(), inn = h => new Date(Date.now() + h * 3600000).toISOString();
+        // the next run of a daily "M H * * *" (UTC) job, as the scheduler computes it: the stub's next run follows its cron
+        const nextDaily = (m, h) => { const n = new Date(); const t = new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate(), h, m)); if (t <= n) t.setUTCDate(t.getUTCDate() + 1); return t.toISOString(); };
+        window.__nextDaily = nextDaily;
         const base = { description: '', timezone: 'UTC', agent_type: 'claude', repo_path: '/work/project', base_branch: 'main', prompt: '', enabled: 1, max_duration_s: 3600, cleanup_worktree: 0, flags: '', job_type: 'workflow', workflow_id: null, created_at: ago(48), updated_at: ago(48), paused_reason: '', consecutive_failures: 0 };
         window.__jobs = [
-            { ...base, id: 1, name: 'nightly-build-job', cron_expr: '0 2 * * *', workflow_id: 7, next_fire_at: inn(5), consecutive_failures: 1, last_run: { id: 11, status: 'failed', error_msg: 'step 1 (Test) failed: exit code 3', started_at: ago(8), finished_at: ago(8), scheduled_at: ago(8) } },
+            { ...base, id: 1, name: 'nightly-build-job', cron_expr: '0 2 * * *', workflow_id: 7, next_fire_at: nextDaily(0, 2), consecutive_failures: 1, last_run: { id: 11, status: 'failed', error_msg: 'step 1 (Test) failed: exit code 3', started_at: ago(8), finished_at: ago(8), scheduled_at: ago(8) } },
             { ...base, id: 2, name: 'summarize-the-day', cron_expr: '0 18 * * 1-5', job_type: 'prompt', prompt: 'Summarize what changed today.', next_fire_at: inn(30), last_run: { id: 12, status: 'completed', started_at: ago(20), finished_at: ago(20), scheduled_at: ago(20) } },
             { ...base, id: 3, name: 'weekly-cleanup', cron_expr: '0 9 * * 1', job_type: 'prompt', prompt: 'Tidy.', enabled: 0, next_fire_at: null, last_run: null },
         ];
@@ -59,6 +62,11 @@ const S = `(window.__coralStatic || '/static/')`;
             await ev(`import(${S} + 'live_jobs.js').then(m => m.renderLiveJobs([])).then(() => true)`);
             assert.equal(await ev(vis('#live-jobs-group')), false);
             assert.equal(await text('#live-jobs-status'), '', `${at}: and cleared when it ends`);
+            assert.deepEqual(await ev(`[...document.querySelectorAll('#scheduled-jobs-list .sched-dot')].map(d => [d.textContent, getComputedStyle(d).borderRadius, Math.round(d.getBoundingClientRect().width), getComputedStyle(d).backgroundImage])`), [['', '50%', 8, 'none'], ['', '50%', 8, 'none'], ['', '50%', 8, 'none']], `${at}: the dots are flat 8 px circles (no emoji, no gradient)`);
+            if (mobile) {
+                const left = await ev(`(() => { const h = [...document.querySelectorAll('h2')].find(e => e.textContent.trim() === 'Jobs' && e.getClientRects().length); const d = document.querySelector('#scheduled-jobs-list .sched-dot'); const pad = e => getComputedStyle(e).paddingLeft + '/' + getComputedStyle(e).marginLeft; const row = d.closest('li'); return [Math.round(h.getBoundingClientRect().left), Math.round(d.getBoundingClientRect().left), pad(row), pad(row.parentElement), pad(row.parentElement.parentElement), pad(row.parentElement.parentElement.parentElement), row.parentElement.parentElement.className, row.parentElement.parentElement.parentElement.className, row.parentElement.parentElement.parentElement.parentElement.className + '/' + pad(row.parentElement.parentElement.parentElement.parentElement)]; })()`);
+                assert.ok(Math.abs(left[0] - left[1]) <= 4, `${at}: the rows start where the heading does (heading ${left[0]} px, first dot ${left[1]} px; paddings/margins li,ul,body,section ${left.slice(2)})`);
+            }
             await shot(`jobs-list-${w}`);
 
             console.log(`${at}: the job page, failure first`);
@@ -70,11 +78,16 @@ const S = `(window.__coralStatic || '/static/')`;
             assert.equal(await ev(`/\\benabled\\b/i.test(document.querySelector('#scheduler-detail .sched-header').textContent)`), false, `${at}: no "enabled" pill`);
             const facts = await ev(`[...document.querySelectorAll('#scheduler-detail > .sched-facts dt')].map(d => d.textContent.trim() + '=' + d.nextElementSibling.textContent.replace(/\\s+/g, ' ').trim())`);
             assert.equal(facts[0], 'Runs=Every day at 02:00 (UTC)');
-            assert.match(facts[1], /^Next=(today|tomorrow) \d\d:\d\d your time$/);
+            // Next agrees with the schedule: 02:00 UTC, in this browser's own time (a different zone would show 19:00 in Pacific)
+            const expectNext = await ev(`(() => { const t = new Date(window.__nextDaily(0, 2)); const p = n => String(n).padStart(2, '0'); const day = d => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); const dd = Math.round((day(t) - day(new Date())) / 86400000); return (dd === 0 ? 'today ' : dd === 1 ? 'tomorrow ' : t.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ') + p(t.getHours()) + ':' + p(t.getMinutes()); })()`);
+            assert.equal(facts[1], `Next=${expectNext} your time`, `${at}: Next is the schedule's next 02:00 UTC in the viewer's time`);
+            assert.match(facts[1], /^Next=(today|tomorrow|[A-Z][a-z]{2} \d+) \d\d:\d\d your time$/);
             assert.match(await ev(`document.querySelector('#scheduler-detail > .sched-facts dd:nth-of-type(2)').title`), /^in \d+ h$/, `${at}: the relative part is a title, the absolute time is the text`);
             assert.equal(facts[2], 'Does=Workflow nightly-build (2 steps)');
             assert.equal(facts.length, 3, `${at}: three facts, the rest is in Settings: ${JSON.stringify(facts)}`);
             assert.equal(await ev(`document.querySelector('#scheduler-detail .sched-settings').open`), false, `${at}: Settings is closed`);
+            { const cs = await ev(`(() => { const c = getComputedStyle(document.querySelector('#scheduler-detail .sched-settings > summary')); return [c.display, c.listStyleType, c.listStylePosition]; })()`); assert.ok(cs[0] === 'list-item' || (cs[1] !== 'none'), `${at}: Settings is a disclosure with its arrow (${cs})`); }
+            await shot(`jobs-page-closed-${w}`);
             assert.equal(await ev(`/Cleanup|Base branch/.test(document.querySelector('#scheduler-detail .sched-settings').textContent) && !/Cleanup/.test(document.querySelector('#scheduler-detail .sched-settings').textContent)`), false);
             await ev(`document.querySelector('#scheduler-detail .sched-settings > summary').click(); true`);
             assert.match(await text('#scheduler-detail .sched-settings'), /Time limit\s*1 hour/);
