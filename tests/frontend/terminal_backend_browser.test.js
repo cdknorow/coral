@@ -163,6 +163,7 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
         await ev(`window.__tbFake = { status: () => ({ saved: '', running: 'pty', next: 'pty', forced: false, choice: true, restart_required: false, can_restart: false, running_agents: 0, leftover_tmux_agents: 0, default_notice: !window.__tbFake.seen }) };
             import((window.__coralStatic || '/static/') + 'terminal_backend.js').then(m => m.checkTerminalNotices()).then(() => true)`);
         await until(`!document.getElementById('default-notice-banner').hidden`, 'the default notice');
+        check('the default notice is a note with a Dismiss, not a live region (it says nothing by itself when it appears)', await ev(`!document.getElementById('default-notice-banner').closest('[role=status], [aria-live]') && !document.querySelector('#default-notice-banner [role=status], #default-notice-banner [aria-live]') && !document.getElementById('default-notice-banner').getAttribute('role')`));
         const notice = await ev(`document.getElementById('default-notice-banner').textContent.replace(/\\s+/g, ' ').trim()`);
         check('the line says agents now stop on quit and where to keep them running', notice === 'info Agents now stop when you quit Coral. To keep them running, choose tmux in Settings > Terminal. Got it', notice);
         await ev(`document.querySelector('#default-notice-banner .default-notice-link').click(); true`);

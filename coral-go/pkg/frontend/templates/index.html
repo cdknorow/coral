@@ -217,7 +217,7 @@
             </div>
 
             <!-- #6064: the built-in terminal became the default: one line, once, for an install that ran on the old tmux default (terminal_backend.js) -->
-            <div id="default-notice-banner" class="leftover-tmux-banner default-notice-banner" role="status" hidden>
+            <div id="default-notice-banner" class="leftover-tmux-banner default-notice-banner" hidden><!-- a one-time notice with its own Dismiss, read when the person reaches it: not a live region (#6656) -->
                 <span class="material-icons" aria-hidden="true">info</span>
                 <div class="leftover-tmux-text"><b>Agents now stop when you quit Coral.</b> To keep them running, choose tmux in <button type="button" class="default-notice-link" data-on-click="m-open-terminal-settings">Settings &gt; Terminal</button>.</div>
                 <button class="btn btn-primary" type="button" id="default-notice-dismiss" data-on-click="m-dismiss-default-notice">Got it</button>
