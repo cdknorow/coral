@@ -27,4 +27,11 @@ foreach ($cmd in $commands) {
     throw "Standard $cmd.exe imports OpenSSL or SQLCipher"
   }
 }
+# The dashboard ships minified (#6208): the server binary carries none of the source's comments (strip_marker.txt is a comment line of a static file; a Go test keeps it in the source).
+$marker = (Get-Content (Join-Path $PSScriptRoot 'strip_marker.txt') -TotalCount 1).Trim()
+if (-not $marker) { throw 'strip_marker.txt is empty' }
+$bytes = [System.IO.File]::ReadAllBytes((Join-Path $PackageDir 'coral.exe'))
+if ([System.Text.Encoding]::Latin1.GetString($bytes).Contains($marker)) {
+  throw "The server binary carries the dashboard's source comments: it was built without the strip-static overlay (#6208)"
+}
 Write-Host "Standard package dependency checks passed: $PackageDir"

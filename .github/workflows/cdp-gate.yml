@@ -126,10 +126,54 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
 
+  stripped:
+    # The dashboard as a release ships it (#6208): its JS and CSS are embedded already minified (tools/strip-static, passed to go build as -overlay). A few suites that drive the Settings, chat and launch pages run
+    # against that build, since minifying is the one thing that could change behaviour only there. Not part of the gate's parts or its summary; a failure here fails this job.
+    name: cdp (stripped dashboard)
+    if: github.event_name != 'workflow_dispatch' || inputs.suites == ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: coral-go/go.mod
+          cache: false # nothing cached here: see the header
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+      - id: chrome
+        uses: browser-actions/setup-chrome@4f8e94349a351df0f048634f25fec36c3c91eded # v2.1.1
+        with:
+          install-dependencies: true
+          chrome-version: "155.0.8059.39" # the same pin as cloud-tests.yml; bump both together
+      - name: install
+        working-directory: tests/frontend
+        run: npm ci --ignore-scripts --no-audit --no-fund # exactly package-lock.json, no install scripts (#3675)
+      - name: stub agent CLIs first on PATH
+        run: |
+          stub="$RUNNER_TEMP/stub-cli"
+          mkdir -p "$stub"
+          for c in claude codex gemini; do
+            printf '#!/bin/sh\necho "stub %s: a CDP suite tried to run a real agent CLI ($*)" >&2\nexit 1\n' "$c" > "$stub/$c"
+            chmod 755 "$stub/$c"
+          done
+          echo "$stub" >> "$GITHUB_PATH"
+      - name: run the Settings, chat and launch suites on the stripped build
+        working-directory: tests/frontend
+        env:
+          CHROME: ${{ steps.chrome.outputs.chrome-path }}
+          CORAL_STRIP_STATIC: "1"
+        run: |
+          set -o pipefail
+          node run_cdp_suites.mjs --timeout 180 --shards 1 --retries 0 --only settings_modal_trace_browser,settings_text_budget_browser,composer_sending_browser,launch_agent_pick_browser,live_chat_autoload_browser,startup_sequence_golden_browser 2>&1 | tee "$RUNNER_TEMP/run.log"
+
   summary:
     name: cdp-gate
     if: always() && (github.event_name != 'workflow_dispatch' || inputs.suites == '')
-    needs: part
+    needs: [part, stripped]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
@@ -143,6 +187,7 @@ jobs:
         id: summary
         env:
           PARTS_RESULT: ${{ needs.part.result }}
+          STRIPPED_RESULT: ${{ needs.stripped.result }} # the Settings, chat and launch suites on the build a release ships (#6208)
         run: |
           python3 - <<'PY'
           import glob, json, os, re
@@ -174,7 +219,7 @@ jobs:
                   if block is not None:
                       if not line.strip() or line.startswith('results:'): block = None
                       elif len(block) < 6: block.append(line)
-          green = os.environ['PARTS_RESULT'] == 'success' and bool(rows) and not (failed or flaky or ends)  # no results read is not green
+          green = os.environ['PARTS_RESULT'] == 'success' and os.environ['STRIPPED_RESULT'] in ('success', 'skipped') and bool(rows) and not (failed or flaky or ends)  # no results read is not green
           lines = [("green: " if green else "NOT green: ") + f"{passed}/{len(rows)} suites passed" + (f", {len(flaky)} FLAKY" if flaky else "") + (f", {len(failed)} FAILED" if failed else "") + (f", {len(ends)} end-check failure(s)" if ends else "") + f"; parts: {os.environ['PARTS_RESULT']}"]
           if flaky: lines.append("FLAKY: " + ", ".join(flaky))
           if failed: lines.append("FAILED: " + ", ".join(failed))

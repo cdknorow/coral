@@ -51,6 +51,25 @@ class T(unittest.TestCase):
             missing += [f"{f}:{n}" for n, c in cmds if "-trimpath" not in c]
         self.assertEqual(missing, [], "go build without -trimpath (a shipped binary would carry the builder's absolute paths): " + ", ".join(missing))
 
+    def test_every_release_and_installer_go_build_ships_the_stripped_dashboard(self):
+        """#6208: a release embeds the dashboard's JS and CSS minified, through go build -overlay (tools/strip-static). A build that forgets the flag still works and quietly ships 1.4 MB of
+        comments, so each go build of a release or an installer must carry -overlay (the dev build is exempt: it keeps the source), and each file must make the overlay and delete it."""
+        missing, unscoped = [], []
+        for f, floor in FILES.items():
+            text = open(os.path.join(ROOT, f)).read()
+            cmds = [(n, c) for n, c in commands(text) if "mock-agent" not in c and '-tags "dev' not in c]
+            missing += [f"{f}:{n}" for n, c in cmds if not re.search(r"-overlay\s+\"?\$\{?overlay\}?\"?|-overlay\s+\"\$OVERLAY\"|-overlay\s+\"\$\$O\"", c, re.I)]
+            if cmds:
+                gen = len(re.findall(r"go run \./tools/strip-static(?!\s+-)", text))
+                clean = len(re.findall(r"strip-static -clean", text))
+                if gen < 1 or clean < 1:
+                    unscoped.append(f"{f}: makes the overlay {gen} time(s) and deletes it {clean}: both must be at least 1")
+        self.assertEqual(missing, [], "go build without -overlay (a release would ship the larger source tree): " + ", ".join(missing))
+        self.assertEqual(unscoped, [], "; ".join(unscoped))
+        for f in FILES:
+            # GOFLAGS would put the overlay on every go test and go vet of the job too, which then read stripped files: it is passed to the builds only
+            self.assertNotRegex(open(os.path.join(ROOT, f)).read(), r"GOFLAGS[^\n]*-overlay", f"{f}: -overlay goes on the go build lines, not in GOFLAGS")
+
     def test_the_census_itself_sees_a_missing_flag_and_a_continuation(self):
         self.assertEqual([n for n, c in commands("x\n  go build -tags a -o b ./cmd/x\n") if "-trimpath" not in c], [2])
         self.assertEqual(len(commands("CGO=0 go build -trimpath \\\n  -tags a \\\n  -o b ./c\n")), 1)

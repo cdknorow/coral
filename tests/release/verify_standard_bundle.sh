@@ -24,6 +24,15 @@ for forbidden in libcrypto.so.3 libcrypto.3.dylib openssl-attestation.env THIRD_
   fi
 done
 
+# The dashboard ships minified (#6208): the server binary carries none of the source's comments. strip_marker.txt is a comment line of a static file (a Go test keeps it in the source);
+# a binary built without the overlay holds it, and 1.4 MB of other comments with it.
+marker="$(head -n1 "$(dirname "$0")/strip_marker.txt")"
+[ -n "$marker" ] || { echo "verify_standard_bundle.sh: strip_marker.txt is empty" >&2; exit 2; }
+if grep -aFq -- "$marker" "$package_dir/coral"; then
+  echo "The server binary carries the dashboard's source comments: it was built without the strip-static overlay (#6208)" >&2
+  exit 1
+fi
+
 case "$(file -b "$package_dir/coral")" in
   *ELF*)
     for cmd in "${commands[@]}"; do

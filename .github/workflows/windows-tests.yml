@@ -244,6 +244,9 @@ jobs:
         shell: pwsh
         working-directory: coral-go
         run: |
+          $overlay = (go run ./tools/strip-static) # the dashboard ships minified (#6208), as release.yml builds it: a fresh owner-only folder; only the go build commands below read it
+          if ($LASTEXITCODE -ne 0) { throw "strip-static failed" }
+          try {
           $env:GOOS = "windows"
           $env:GOARCH = "amd64"
           $version = "0.0.0-ci"
@@ -257,17 +260,18 @@ jobs:
           $env:CGO_ENABLED = "0"
           foreach ($cmd in $commands) {
             if ($gui -contains $cmd) { continue }
-            go build -trimpath -tags $buildTags -ldflags "$ldflags" -o "..\dist\windows\bin\$cmd.exe" "./cmd/$cmd/"
+            go build -trimpath -overlay $overlay -tags $buildTags -ldflags "$ldflags" -o "..\dist\windows\bin\$cmd.exe" "./cmd/$cmd/"
             if ($LASTEXITCODE -ne 0) { throw "go build $cmd failed" }
           }
           $env:CGO_ENABLED = "1"
           $env:CC = "gcc"
-          go build -trimpath -tags $buildTags -ldflags "-H windowsgui $ldflags" -o "..\dist\windows\bin\coral-tray.exe" "./cmd/coral-tray/"
+          go build -trimpath -overlay $overlay -tags $buildTags -ldflags "-H windowsgui $ldflags" -o "..\dist\windows\bin\coral-tray.exe" "./cmd/coral-tray/"
           if ($LASTEXITCODE -ne 0) { throw "go build coral-tray failed" }
-          go build -trimpath -tags "webview,$buildTags" -ldflags "-H windowsgui $ldflags" -o "..\dist\windows\bin\coral-app.exe" "./cmd/coral-app/"
+          go build -trimpath -overlay $overlay -tags "webview,$buildTags" -ldflags "-H windowsgui $ldflags" -o "..\dist\windows\bin\coral-app.exe" "./cmd/coral-app/"
           if ($LASTEXITCODE -ne 0) { throw "go build coral-app failed" }
           powershell -ExecutionPolicy Bypass -File ..\tests\release\verify_standard_bundle.ps1 -PackageDir ..\dist\windows\bin
           if ($LASTEXITCODE -ne 0) { throw "verify_standard_bundle.ps1 failed" }
+          } finally { go run ./tools/strip-static -clean $overlay }
           Compress-Archive -Path "..\dist\windows\bin\*" -DestinationPath "..\dist\windows\Coral-$version-x64-portable.zip"
       - name: Third-party notices (the MSI holds them, as in release.yml)
         if: steps.msi.outputs.changed == 'true'
