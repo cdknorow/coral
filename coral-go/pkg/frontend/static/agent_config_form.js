@@ -49,7 +49,7 @@ function _renderPermChips(containerId, type, capabilities) {
         const isActive = baseCaps.includes(cap);
         const cls = `perm-chip${isActive ? ' active' : ''}`;
         const title = CAPABILITY_TITLES[cap] ? ` title="${escapeAttr(CAPABILITY_TITLES[cap])}"` : '';
-        html += `<button type="button" class="${escapeAttr(cls)}" aria-pressed="${escapeAttr(isActive ? 'true' : 'false')}" data-cap="${escapeAttr(cap)}" data-type="${escapeAttr(type)}" data-on-click="perm-chip-toggle"${title}>${CAPABILITY_LABELS[cap] || cap}</button>`;
+        html += `<button type="button" class="${escapeAttr(cls)}" aria-pressed="${escapeAttr(isActive ? 'true' : 'false')}" data-cap="${escapeAttr(cap)}" data-type="${escapeAttr(type)}" data-on-click="perm-chip-toggle" aria-label="${escapeAttr((type === 'deny' ? 'Deny ' : 'Allow ') + (CAPABILITY_LABELS[cap] || cap))}"${title}>${CAPABILITY_LABELS[cap] || cap}</button>`; // the group's own word first: the Allow and the Deny row have a chip each of the same name (#6617)
     }
     container.innerHTML = html;
 
