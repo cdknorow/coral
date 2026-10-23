@@ -15,6 +15,7 @@ import { scheduleLiveSessionsRender } from './render.js';
 import { TERMINAL_GONE_MESSAGE } from './server_status.js';
 import { isPopout } from './popout.js';
 import { importOnce } from './import_once.js';
+import { noteHeld, noteDone, wasCancelled } from './held_sends.js'; // the queued lines under the composer (#6611)
 
 /** Agents whose terminal answered terminal_gone, by server and session id. A restart
  *  gives the agent a new session id, so its new row is never marked. */
@@ -202,6 +203,7 @@ export function refuseSocketSends(sessionId, id) {
 const HELD_ACK_TIMEOUT_MS = 31 * 60 * 1000;
 document.addEventListener('coral:terminal-input-held', e => {
     const { sessionId, id, note } = e.detail || {};
+    noteHeld(sessionId, id); // the line under the composer, with Cancel (#6611)
     for (const p of [..._socketSends]) {
         if ((sessionId && p.sid !== sessionId) || !p.ids.has(id)) continue;
         clearTimeout(p.timer);
@@ -213,6 +215,7 @@ document.addEventListener('coral:terminal-input-held', e => {
 // The server delivered frame `id`.
 document.addEventListener('coral:terminal-input-ack', e => {
     const { sessionId, id } = e.detail || {};
+    noteDone(sessionId, id);
     for (const p of [..._socketSends]) {
         if ((sessionId && p.sid !== sessionId) || !p.ids.delete(id)) continue;
         if (p.ids.size === 0) _settle(p, true);
@@ -223,14 +226,17 @@ document.addEventListener('coral:terminal-input-ack', e => {
 document.addEventListener('coral:terminal-input-refused', e => {
     const { sessionId, id, error } = e.detail || {};
     const before = _socketSends.size;
+    const own = wasCancelled(sessionId, id); // the person cancelled it: its refusal is theirs, not an error
+    noteDone(sessionId, id);
     refuseSocketSends(sessionId, id);
     const cur = state.currentSession;
-    if (error && _socketSends.size < before && cur && (!sessionId || sessionId === cur.session_id)) showComposerError(error);
+    if (error && !own && _socketSends.size < before && cur && (!sessionId || sessionId === cur.session_id)) showComposerError(error);
 });
 
 // The terminal socket said the agent's terminal is gone: shown as for the HTTP 409.
 document.addEventListener('coral:terminal-gone', e => {
     const sid = e.detail && e.detail.sessionId;
+    noteDone(sid, e.detail && e.detail.id);
     refuseSocketSends(sid, e.detail && e.detail.id);
     const cur = state.currentSession;
     if (!cur || cur.type !== 'live' || (sid && sid !== cur.session_id)) return;

@@ -46,6 +46,8 @@ const BUBBLES = [{ type: 'user', content: 'Is the build green?', key: 'c1', time
             await ev(`document.querySelector('[data-on-click="cmd-send"]').click(); true`);
             await waitFor(`[...document.querySelectorAll('#live-history-messages .chat-bubble.human')].some(b => /build green/.test(b.textContent))`, 'my message', 15000);
         }, { min: 10, expect: `document.querySelectorAll('#live-history-messages .chat-bubble').length >= 1` });
+        await sc('composer: messages queued behind a question', async () => { await ev(`import(${S} + 'held_sends.js').then(m => { m.rememberSend(${JSON.stringify(standIn.sid)}, 1, 'Run the tests please'); m.noteHeld(${JSON.stringify(standIn.sid)}, 1); m.noteHeld(${JSON.stringify(standIn.sid)}, 2, 'Then push the branch and open the pull request'); return true; })`); await waitFor(`document.querySelectorAll('#composer-queued .composer-queued-item').length === 2`, 'the queued lines', 8000); }, { min: 3, expect: `document.querySelectorAll('#composer-queued .composer-queued-item').length === 2` });
+        await ev(`import(${S} + 'held_sends.js').then(m => { m.noteDone(${JSON.stringify(standIn.sid)}, 1); m.noteDone(${JSON.stringify(standIn.sid)}, 2); return true; })`);
         await sc('composer: model menu', async () => {
             await ev(`import(${S} + 'model_chip.js').then(m => m.updateModelChip({ session_id: ${JSON.stringify(standIn.sid)}, name: ${JSON.stringify(standIn.name)}, agent_type: 'claude', model: 'claude-sonnet-5-5', sleeping: false, archived: false }, 'local')).then(() => true)`);
             await waitFor(`document.getElementById('model-chip').getClientRects().length > 0`, 'the model chip', 10000);

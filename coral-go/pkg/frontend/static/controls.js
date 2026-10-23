@@ -21,6 +21,7 @@ import { attachmentsLead, sentToastText } from './shared_images.js';
 import { loadModals } from './lazy_panels.js';
 import { responseErrorText, responseError } from './server_status.js';
 import { reportSendError, showComposerError, clearComposerError, awaitSocketAccept, nextInputId, refuseSocketSends } from './terminal_gone.js';
+import { rememberSend, noteHeld } from './held_sends.js'; // a message held behind the agent's question shows as queued under the box (#6611)
 import { pollEvery } from './overload.js';
 import { syncSendStarting } from './agent_starting.js';
 import { MODES, modeFromFooterText, pressesFor } from './mode_cycle.js';
@@ -129,6 +130,7 @@ export async function sendCommand({ nudge = false } = {}) {
             const xterm = await _getXtermModule();
             const id = nextInputId();
             if (xterm.sendComposerWs(command, id)) {
+                rememberSend(sentSessionId, id, command);
                 const accepted = awaitSocketAccept(targetSession, [id]);
                 addPendingMessage(sentSessionId, command, sentAt, { sending: true });
                 input.value = "";
@@ -191,6 +193,7 @@ export async function sendCommand({ nudge = false } = {}) {
                 clearAttachments(targetSession);
                 const heldKey = sessionKey(targetSession);
                 if (heldKey) saveSessionDraft(heldKey, "");
+                if (result.held_id !== undefined && result.held_id !== null) noteHeld(sentSessionId, result.held_id, command); // the line under the box, with Cancel
                 showToast(result.note || "Held until the agent's question is answered.");
             } else if (result.error) {
                 notSent();
