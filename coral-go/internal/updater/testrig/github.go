@@ -81,6 +81,14 @@ func (g *FakeGitHub) PublishPromotion(releaseTag string, manifest, bundle []byte
 	g.order = append(g.order, releaseTag)
 }
 
+// PublishDraftPromotion adds a promotion release that is a draft (the API lists drafts only to someone who may see them; the client must never take one).
+func (g *FakeGitHub) PublishDraftPromotion(releaseTag string, manifest, bundle []byte) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.promos[releaseTag] = &promoRelease{manifest: manifest, bundle: bundle, draft: true}
+	g.order = append(g.order, releaseTag)
+}
+
 // PublishPromotionWithoutAssets adds a promotion release that lists no assets (the listing says so, and a download of its files answers 404).
 func (g *FakeGitHub) PublishPromotionWithoutAssets(releaseTag string) {
 	g.mu.Lock()

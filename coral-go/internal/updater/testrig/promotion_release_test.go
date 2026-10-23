@@ -129,3 +129,16 @@ func TestAManifestOnTheProductReleaseIsNotTheOldWayAnyMore(t *testing.T) {
 	assert.Equal(t, stage.ResultNotPromoted, r.check().Result, "no promotion release listed: nothing is promoted, whatever the product release carries")
 	r.nothingStaged()
 }
+
+// A draft is not a release: a draft promotion carrying a real, signed manifest of a newer version is never taken, however high its sequence (Security's LOW 4).
+func TestADraftPromotionIsNeverTaken(t *testing.T) {
+	r := newRig(t)
+	r.publish(Spec{Version: "1.4.131", Sequence: 5})
+	newer, err := r.s.NewRelease(Spec{Version: "1.4.140", Sequence: 99})
+	require.NoError(t, err)
+	r.gh.PublishDraftPromotion(PromotionTag("v1.4.140", 99), newer.Manifest, newer.ManifestBundle)
+	res := r.check()
+	require.Equal(t, stage.ResultStaged, res.Result, "%+v", res)
+	assert.Equal(t, "1.4.131", res.Version, "the draft's version and sequence are ignored")
+	assert.Zero(t, r.gh.Hits[FakeRepo+"/releases/download/"+PromotionTag("v1.4.140", 99)+"/promote.json"], "its files are not even asked for")
+}
