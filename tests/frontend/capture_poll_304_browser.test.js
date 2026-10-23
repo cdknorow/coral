@@ -58,14 +58,17 @@ async function httpJson(method, path, body) {
         await waitFor(`typeof window.selectLiveSession === 'function'`, 'the dashboard');
         await ev(`(() => { setLiveViewMode('terminal'); selectLiveSession(${JSON.stringify(sname)}, 'terminal', ${JSON.stringify(sid)}); return true; })()`);
         // The shell has printed its prompt and the screen stopped changing.
-        let last = '';
-        for (let i = 0, same = 0; same < 3; i++) {
-            assert.ok(i < 60, 'the terminal settles');
-            const p = await poll();
-            same = p.text === last && p.text.startsWith('ok|') ? same + 1 : 0;
-            last = p.text;
-            await new Promise(r => setTimeout(r, 200)); // sleep-ok: spacing polls while the shell starts
-        }
+        const settled = async prefix => {
+            let last = '';
+            for (let i = 0, same = 0; same < 3; i++) {
+                assert.ok(i < 60, 'the terminal settles');
+                const p = await poll();
+                same = p.text === last && p.text.startsWith(prefix) ? same + 1 : 0;
+                last = p.text;
+                await new Promise(r => setTimeout(r, 200)); // sleep-ok: spacing polls while the shell settles
+            }
+        };
+        await settled('ok|');
 
         console.log('1. An idle terminal: 304s, no body, the screen unchanged');
         const before = await poll();
@@ -97,6 +100,7 @@ async function httpJson(method, path, body) {
         console.log('   ✓ shown on the next poll (200)');
 
         console.log('3. Idle again: 304s');
+        await settled(''); // the shell prints its prompt after the command's output (one more changed screen, slow on Windows, #6506): idle means the screen has stopped changing
         const b2 = await poll();
         await poll(); await poll();
         const a2 = await poll();
