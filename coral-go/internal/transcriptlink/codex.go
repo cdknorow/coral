@@ -248,6 +248,7 @@ var (
 	markerSearchDays  = 14
 	markerSearchFiles = 500
 	markerSearchTime  = 2 * time.Second
+	markerNow         = time.Now // the search's clock: a test replaces it, so a time limit never depends on the system clock's tick (Windows' is about 15 ms)
 )
 
 var (
@@ -283,8 +284,8 @@ func BindCodexByMarker(sessionID string) bool {
 	if Codex(sessionID).ThreadID != "" {
 		return true
 	}
-	deadline := time.Now().Add(markerSearchTime)
-	oldest := time.Now().AddDate(0, 0, -markerSearchDays-1) // a day of slack for the time zone Codex names its folders by
+	deadline := markerNow().Add(markerSearchTime)
+	oldest := markerNow().AddDate(0, 0, -markerSearchDays-1) // a day of slack for the time zone Codex names its folders by
 	sessions := filepath.Join(codexHome(), "sessions")
 	files := 0
 	for _, y := range sortedDirNames(sessions, yearDirName) {
@@ -309,7 +310,7 @@ func BindCodexByMarker(sessionID string) bool {
 				}
 				sort.Sort(sort.Reverse(sort.StringSlice(names)))
 				for _, name := range names {
-					if files++; files > markerSearchFiles || time.Now().After(deadline) {
+					if files++; files > markerSearchFiles || markerNow().After(deadline) {
 						return false
 					}
 					path := filepath.Join(dir, name)

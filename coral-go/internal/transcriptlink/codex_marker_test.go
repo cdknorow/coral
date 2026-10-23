@@ -101,9 +101,16 @@ func TestBindCodexByMarker(t *testing.T) {
 	})
 	t.Run("it gives up after the time limit", func(t *testing.T) {
 		home := codexHomeFor(t)
-		setMarkerSearch(t, 14, 500, time.Nanosecond)
+		setMarkerSearch(t, 14, 500, 2*time.Second)
+		// a clock that moves an hour at every reading: the search is past its two seconds before it has looked at its first file, whatever the system clock's tick is
+		now := time.Now()
+		old := markerNow
+		markerNow = func() time.Time { now = now.Add(time.Hour); return now }
+		t.Cleanup(func() { markerNow = old })
 		dayRollout(t, home, markThread, 0, "09-00-00", developerMarker(markSession))
-		time.Sleep(2 * time.Millisecond) // sleep-ok: past a one-nanosecond deadline
 		assert.False(t, BindCodexByMarker(markSession))
+		assert.Empty(t, Codex(markSession).ThreadID)
+		markerNow = old // the same search on the real clock finds it
+		assert.True(t, BindCodexByMarker(markSession))
 	})
 }
