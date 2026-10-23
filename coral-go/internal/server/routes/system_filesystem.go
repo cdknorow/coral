@@ -3,12 +3,15 @@
 package routes
 
 import (
+	"context"
 	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
+	"github.com/subgentic/coral/internal/gitutil"
 	"github.com/subgentic/coral/internal/safefs"
 )
 
@@ -107,5 +110,12 @@ func (h *SystemHandler) IsGitDir(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_, err := os.Stat(filepath.Join(expanded, ".git"))
-	writeJSON(w, http.StatusOK, map[string]bool{"is_git": err == nil})
+	resp := map[string]any{"is_git": err == nil}
+	if err == nil {
+		// The repository's current branch ("" when it has no commit yet): the launch and job forms prefill Base Branch with it instead of "main" (#6701).
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		defer cancel()
+		resp["branch"] = gitutil.CurrentBranch(ctx, expanded)
+	}
+	writeJSON(w, http.StatusOK, resp)
 }

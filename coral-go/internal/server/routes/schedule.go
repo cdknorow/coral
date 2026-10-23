@@ -2,6 +2,7 @@ package routes
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -197,12 +198,16 @@ func (h *ScheduleHandler) CreateJob(w http.ResponseWriter, r *http.Request) {
 	if job.AgentType == "" {
 		job.AgentType = "claude"
 	}
-	if job.BaseBranch == "" {
-		job.BaseBranch = "main"
-	}
-	if err := gitutil.ValidRef(job.BaseBranch); err != nil { // #3601, weak site W24
-		errBadRequest(w, "base_branch: "+err.Error())
-		return
+	// An empty base branch is the repository's current branch, found when the job runs (#6701): no "main" is written for a repository that may be on master.
+	if job.BaseBranch != "" {
+		if err := gitutil.ValidRef(job.BaseBranch); err != nil { // #3601, weak site W24
+			errBadRequest(w, "base_branch: "+err.Error())
+			return
+		}
+		if missing := jobBaseMissing(r.Context(), job.RepoPath, job.BaseBranch); missing != nil {
+			writeBranchMissing(w, missing)
+			return
+		}
 	}
 
 	created, err := h.sched.CreateScheduledJob(r.Context(), &job)
@@ -287,6 +292,16 @@ func (h *ScheduleHandler) UpdateJob(w http.ResponseWriter, r *http.Request) {
 		if b != "" {
 			if err := gitutil.ValidRef(b); err != nil { // #3601, weak site W24
 				errBadRequest(w, "base_branch: "+err.Error())
+				return
+			}
+			repo, _ := fields["repo_path"].(string)
+			if repo == "" {
+				if existing, _ := h.sched.GetScheduledJob(r.Context(), jobID); existing != nil {
+					repo = existing.RepoPath
+				}
+			}
+			if missing := jobBaseMissing(r.Context(), repo, b); missing != nil { // checked when saved, not on the first run
+				writeBranchMissing(w, missing)
 				return
 			}
 		}
@@ -473,4 +488,17 @@ func jobRepoError(ctx context.Context, dir string) string {
 		return "repo_path is not a git repository: " + dir
 	}
 	return ""
+}
+
+// jobBaseMissing is the base branch a job names when its repository does not have it (nil when it does, when the repository cannot be read here, or when nothing is named): the job form shows it under
+// the field when the job is saved, not as a failed first run (#6701).
+func jobBaseMissing(ctx context.Context, repo, base string) *gitutil.BranchMissingError {
+	if repo == "" || base == "" || !gitutil.IsWorkTree(ctx, repo) {
+		return nil
+	}
+	var missing *gitutil.BranchMissingError
+	if _, err := gitutil.ResolveBase(ctx, repo, base); errors.As(err, &missing) && len(missing.Branches) > 0 { // a repository with no branch yet cannot say
+		return missing
+	}
+	return nil
 }
