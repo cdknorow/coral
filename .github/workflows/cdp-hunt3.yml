@@ -1,7 +1,7 @@
-name: cdp-hunt
+name: cdp-hunt3
 on:
   push:
-    branches: [trial/cdp-hang2-6195]
+    branches: [trial/cdp-hang3-6195]
 permissions:
   contents: read
 jobs:

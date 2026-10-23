@@ -285,7 +285,9 @@ const tmp = fs.mkdtempSync(path.join(tempRoot, 'coral-cdp-'));
 function ownerOnlyOnWindows(p, isDir) {
   if (process.platform !== 'win32') return;
   const me = execFileSync('whoami', [], { encoding: 'utf8' }).trim();
-  execFileSync('icacls', [p, '/inheritance:r', '/grant:r', `${me}:${isDir ? '(OI)(CI)F' : 'F'}`], { stdio: 'ignore' });
+  const flags = isDir ? '(OI)(CI)F' : 'F';
+  // trial arm: SYSTEM keeps its rights on a folder
+  execFileSync('icacls', [p, '/inheritance:r', '/grant:r', `${me}:${flags}`, ...(isDir ? ['/grant:r', `*S-1-5-18:${flags}`] : [])], { stdio: 'ignore' });
 }
 ownerOnlyOnWindows(tmp, true);
 // Mock-agent run safety (#4354): a stub claude/codex/gemini first on every shard server's PATH, so
