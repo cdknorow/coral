@@ -20,7 +20,7 @@ const hex = i => i.toString(16).padStart(20, '0');
     const api = (method, path, body) => ev(`fetch(${JSON.stringify(path)}, { method: ${JSON.stringify(method)}, headers: { 'Content-Type': 'application/json' }, body: ${body ? JSON.stringify(JSON.stringify(body)) : 'undefined'} }).then(async r => ({ status: r.status, body: await r.json().catch(() => ({})) }))`);
     const settle = (cond, label) => waitFor(cond, label, 8000);
     // the sidebar slides open: a picture is taken once it has its width, with the Saved tab showing
-    const shotSaved = async name => { await settle(`(() => { const ui = document.getElementById('saved-ui'); if (!ui || !ui.getClientRects().length) return false; const dock = document.getElementById('agentic-state'); if (dock && dock.contains(ui) && dock.getBoundingClientRect().width < Math.min(300, innerWidth - 40)) return false; const h = document.getElementById('saved-scope').getBoundingClientRect(), li = document.querySelector('#saved-list > li'); return h.width > 0 && h.top >= 0 && h.top < innerHeight / 2 && !!li && li.getBoundingClientRect().top < innerHeight; })()`, 'the Saved list on screen (the page on home, the sidebar for an agent or a team)'); await waitFor(`true`, 'a frame', 2000); await shot(name); };
+    const shotSaved = async name => { await settle(`(() => { const ui = document.getElementById('saved-ui'); if (!ui || !ui.getClientRects().length) return false; const dock = document.getElementById('agentic-state'); if (dock && dock.contains(ui) && dock.getBoundingClientRect().width < Math.min(300, innerWidth - 40)) return false; const h = document.getElementById('saved-scope').getBoundingClientRect(), li = document.querySelector('#saved-list > li'); return (document.body.dataset.savedScope === 'all' || (h.width > 0 && h.top >= 0 && h.top < innerHeight / 2)) && !!li && li.getBoundingClientRect().top < innerHeight; })() /* in the Inbox the "All saved" heading is not drawn (the tab says it, #6300) */`, 'the Saved list on screen (the page on home, the sidebar for an agent or a team)'); await waitFor(`true`, 'a frame', 2000); await shot(name); };
     // what is on top at the middle of the heading is the Saved panel's own (a team's chat once covered the side panel on a phone)
     const onTop = () => ev(`(() => { const h = document.getElementById('saved-scope').getBoundingClientRect(); const e = document.elementFromPoint(h.left + Math.min(h.width, 40) / 2, h.top + h.height / 2); return !!e && !!e.closest('#agentic-panel-saved'); })()`);
     const snap = () => ev(`(() => ({
@@ -87,6 +87,10 @@ const hex = i => i.toString(16).padStart(20, '0');
             await openSaved();
             let s = await rowsAre('All saved', ['fe-a chat', 'qa-a chat', 'qa-b chat', 'team-a board, by the Orchestrator', 'team-a board, by the QA Engineer', 'team-b board, by the QA Engineer'], ['(6)', '(1)'], `${dev}: home shows everything, headed All saved (6 open, 1 done)`);
             await shotSaved(`saved-scope-all-${dev}`);
+            { // in the Inbox the tab names the list: no "All saved" heading; and Read the whole message is a quiet link, not a bordered button (#6300)
+                const q = await ev(`(() => { const h = document.getElementById('saved-scope'), t = document.querySelector('#saved-list .ibx-saved-toggle'); const c = t && getComputedStyle(t); return { heading: getComputedStyle(h).display, toggle: !!t, border: c && c.borderTopColor, bg: c && c.backgroundColor, underline: c && c.textDecorationLine }; })()`);
+                check(`${dev}: no "All saved" heading in the Inbox, and Read the whole message is a link`, q.heading === 'none' && q.toggle && q.bg === 'rgba(0, 0, 0, 0)' && q.border === 'rgba(0, 0, 0, 0)' && q.underline === 'underline', JSON.stringify(q));
+            }
 
             // an agent
             await select(QA_A);

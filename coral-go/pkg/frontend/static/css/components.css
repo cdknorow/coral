@@ -4315,6 +4315,10 @@ body[data-saved-scope="all"][data-dock-page="other"] #panel-toggle-btn, body[dat
 .ibx-task-body[hidden], .ibx-saved-body[hidden] { display: none; }
 .ibx-saved { margin-top: 4px; }
 .ibx-saved-toggle { font-size: var(--fs-sm, 0.8125rem); }
+/* Saved for later in the Inbox (#6300): the tab already says what the list is, so the list's own "All saved" heading goes; and "Read the whole message", which every card carries, is a quiet link, not a second row of bordered buttons above the card's real actions (Open, Done, Remove). */
+body[data-saved-scope="all"] .saved-view .saved-scope { display: none; }
+.saved-list .ibx-saved-toggle { background: none; border-color: transparent; box-shadow: none; padding-left: 0; padding-right: 0; color: var(--link-text, var(--accent)); text-decoration: underline; text-underline-offset: 2px; }
+.saved-list .ibx-saved-toggle:hover { background: none; }
 .ibx-task-facts { margin: 0; color: var(--text-secondary); font-size: var(--fs-sm, 0.8125rem); }
 .ibx-loading, .ibx-why, .ibx-note, .ibx-empty { margin: 4px 0; color: var(--text-secondary); font-size: var(--fs-sm, 0.8125rem); }
 .ibx-error { margin: 4px 0; color: var(--error-text, var(--error)); font-size: var(--fs-sm, 0.8125rem); }
