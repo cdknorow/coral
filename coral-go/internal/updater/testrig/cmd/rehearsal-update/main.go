@@ -91,6 +91,7 @@ func run() int {
 	}
 	cfg := stage.Config{DataDir: *dataDir, Installed: *installed, Pins: testrig.Pins(), Verifier: verify.Sigstore{Trust: signer.Trust()}, Asset: testrig.Asset}
 	gh.Config(&cfg)
+	cfg.Fetcher.Client = &http.Client{Timeout: 60 * time.Second, Transport: tracingTransport{base: http.DefaultTransport}} // the fetcher's own default, with a trace of what each download did
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 	defer cancel()
 	res := stage.Check(ctx, cfg)

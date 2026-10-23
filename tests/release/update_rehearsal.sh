@@ -178,10 +178,26 @@ if setup tampered; then
   if [ "$cr" = failed ] && [ "$cs" = package ] && [ "$digest" = yes ] && [ "${hits:-0}" -ge 1 ] && [ "$ctl_stage" = download ] && [ -z "$ctl_reason" ] && [ "$alive" = yes ] && [ "$v" = "$N" ] && [ "$iv" = "$N" ] && [ "$staged" = 0 ]; then
     result "2 tampered" PASS "a bit flipped on the wire: refused at the package stage with the digest mismatch named, the package asked for $hits time(s), nothing staged, the server of $N untouched (same process, /api/health says $N); the control (a package that 404s) is a $ctl_stage failure with no digest reason, a different result"
   else
-    result "2 tampered" FAIL "check=[$cr/$cs] reason=[${why:0:160}] package requests=[$hits] control=[$ctl_stage/${ctl_reason:0:60}] server alive=$alive health=[$v] install=[$iv] staged entries=$staged; rehearsal err: $(tail -c 300 "$s/rehearsal.err" | tr '\n' ' ')"
+    result "2 tampered" FAIL "check=[$cr/$cs] reason=[${why:0:160}] package requests=[$hits] control=[$ctl_stage/${ctl_reason:0:60}] server alive=$alive health=[$v] install=[$iv] staged entries=$staged; rehearsal err: $(tail -c 1500 "$s/rehearsal.err" | tr '\n' ' ')"
   fi
 else result "2 tampered" FAIL "the world of N did not come up"; fi
 sweep
+
+# ---- 2r tampered, repeated (a diagnostic, off by default) ---------------------------------------------------------------
+# RHS_TAMPER_REPEAT=N runs the tampered check N times, each in a data folder of its own, and prints how each ended and, for the first one that was not refused at the package stage, what the
+# fetches did (the rig's trace). It found nothing wrong by itself: it is how the flake of item 2 (#6297: a download failure once in four runs) is looked at with a sample, not by luck.
+if [ "${RHS_TAMPER_REPEAT:-0}" -gt 0 ] 2>/dev/null; then
+  s="$work/tamper-repeat"; mkdir -p "$s"; pkgs=0; downs=0; others=0; first=""
+  for i in $(seq 1 "$RHS_TAMPER_REPEAT"); do
+    mkdir -p "$s/d$i"
+    "$work/bin/rehearsal-update" --data-dir "$s/d$i" --install "$s" --parent 1 --installed "$N" --package "$work/pkg/n1.tar.gz" --version "$N1" --tamper bit --mode check > "$s/o$i" 2> "$s/e$i"
+    st=$(grep '"step":"check"' "$s/o$i" | tail -1 | jget failed_stage)
+    case "$st" in package) pkgs=$((pkgs+1)) ;; download) downs=$((downs+1)); [ -n "$first" ] || first=$i ;; *) others=$((others+1)); [ -n "$first" ] || first=$i ;; esac
+  done
+  echo "update_rehearsal: tampered check x$RHS_TAMPER_REPEAT: package=$pkgs download=$downs other=$others" >&2
+  [ -z "$first" ] || { echo "update_rehearsal: first run that was not refused at the package stage ($first):" >&2; tail -c 2500 "$s/e$first" >&2; tail -c 600 "$s/o$first" >&2; }
+  result "2r repeat" "$([ "$pkgs" = "$RHS_TAMPER_REPEAT" ] && echo PASS || echo FAIL)" "the tampered check x$RHS_TAMPER_REPEAT: $pkgs refused at the package stage, $downs download failures, $others other"
+fi
 
 # ---- 3 wrong -----------------------------------------------------------------------------------------------------------
 if setup wrong; then
