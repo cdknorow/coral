@@ -1,0 +1,126 @@
+name: Update rehearsal (Windows)
+
+# The Windows update rehearsal, stage 1 (#6290): two releases (1.4.900 and 1.4.901) built from this source, put through the real Windows upgrade tests (Windows
+# Installer's major upgrade through apply.RunMSI, a tampered package, a stale click, a health failure rolled back for real) on a throwaway GitHub-hosted runner, with the
+# tests' own Sigstore stand-in, so no published release and no network are needed (tests/release/update_rehearsal_windows.ps1). It installs and removes Coral on the runner.
+# Stage 2 (the route job, tests/release/update_rehearsal_windows_route.ps1): a person's click through the real server, with the rehearsal's own updater (build tag
+# windowsrehearsal, never released) standing in for coral-update.exe in a fake world; every click that must not install, shown to install nothing.
+# The two MSIs are higher than any real release and are never uploaded: only the redacted logs are.
+on:
+  workflow_dispatch:
+  # A push to a trial/update-rehearsal-* branch runs it (a new workflow file cannot be dispatched until it is on the default branch).
+  push:
+    branches: ["trial/update-rehearsal-*"]
+
+permissions:
+  contents: read
+
+env:
+  CORAL_TELEMETRY_DISABLED: "1"
+
+jobs:
+  rehearsal:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      # Sources are LF, as they ship (see windows-tests.yml): set before the checkout.
+      - name: Check out LF line endings
+        shell: bash
+        working-directory: ${{ runner.temp }}
+        run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: coral-go/go.mod
+          cache-dependency-path: coral-go/go.sum
+
+      - name: A C compiler for coral-tray and coral-app
+        shell: pwsh
+        run: |
+          if (-not (Get-Command gcc -ErrorAction SilentlyContinue)) { choco install mingw --version=16.1.0 -y --no-progress; if ($LASTEXITCODE -ne 0) { throw "choco install mingw failed" } }
+          gcc --version
+
+      - name: Build N and N+1 from this source and run the real Windows upgrade tests
+        shell: pwsh
+        run: ./tests/release/update_rehearsal_windows.ps1 -LogDir "$env:RUNNER_TEMP\rehearsal-logs"
+
+      # Logs only, with the runner's user and computer names taken out; never the packages (a public repository's artifacts are downloadable).
+      - name: Redact the logs
+        if: always()
+        shell: pwsh
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP 'rehearsal-logs'
+          if (Test-Path $dir) {
+            $names = @($env:USERNAME, $env:COMPUTERNAME) | Where-Object { $_ -and $_.Length -ge 4 }
+            Get-ChildItem $dir -Recurse -File | ForEach-Object {
+              $t = [IO.File]::ReadAllText($_.FullName)
+              foreach ($n in $names) { $t = $t.Replace($n, '<redacted>') }
+              [IO.File]::WriteAllText($_.FullName, $t)
+            }
+          }
+
+      - name: Keep the logs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: update-rehearsal-windows-logs
+          path: ${{ runner.temp }}/rehearsal-logs
+          retention-days: 7
+          if-no-files-found: ignore
+
+  route:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      # Sources are LF, as they ship (see windows-tests.yml): set before the checkout.
+      - name: Check out LF line endings
+        shell: bash
+        working-directory: ${{ runner.temp }}
+        run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: coral-go/go.mod
+          cache-dependency-path: coral-go/go.sum
+
+      - name: A C compiler for coral-tray and coral-app
+        shell: pwsh
+        run: |
+          if (-not (Get-Command gcc -ErrorAction SilentlyContinue)) { choco install mingw --version=16.1.0 -y --no-progress; if ($LASTEXITCODE -ne 0) { throw "choco install mingw failed" } }
+          gcc --version
+
+      - name: "Stage 2 - a person's click through the real server, the updater, the real Windows Installer (and every click that must not install)"
+        shell: pwsh
+        run: ./tests/release/update_rehearsal_windows_route.ps1 -LogDir "$env:RUNNER_TEMP\rehearsal-route-logs"
+
+      # Logs only, with the runner's user and computer names taken out; never the packages (a public repository's artifacts are downloadable).
+      - name: Redact the logs
+        if: always()
+        shell: pwsh
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP 'rehearsal-route-logs'
+          if (Test-Path $dir) {
+            $names = @($env:USERNAME, $env:COMPUTERNAME) | Where-Object { $_ -and $_.Length -ge 4 }
+            Get-ChildItem $dir -Recurse -File | ForEach-Object {
+              $t = [IO.File]::ReadAllText($_.FullName)
+              foreach ($n in $names) { $t = $t.Replace($n, '<redacted>') }
+              [IO.File]::WriteAllText($_.FullName, $t)
+            }
+          }
+
+      - name: Keep the logs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: update-rehearsal-windows-route-logs
+          path: ${{ runner.temp }}/rehearsal-route-logs
+          retention-days: 7
+          if-no-files-found: ignore
