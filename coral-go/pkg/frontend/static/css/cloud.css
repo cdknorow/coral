@@ -76,6 +76,7 @@ body.cloud-mode [data-history-local-only] { display: none !important; }
 .cs-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; background: #6e7681; }
 .cs-dot.online { background: var(--fx-green); } .cs-dot.offline { background: var(--fx-amber); }
 .cs-enroll { margin: 0 0 18px; padding: 14px; border-radius: var(--radius-lg); border: 1px dashed var(--border, var(--fx-navy-line)); }
+.cs-enroll.cs-enroll-closed { padding: 0; border: 0; } .cs-enroll-title #cs-enroll-toggle { margin-left: 0; } /* closed it is only the Add a computer button, not a dashed box around one button (#6359) */
 .cs-enroll-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 220px); gap: 16px; align-items: start; }
 .cs-enroll ol { margin: 8px 0 12px 18px; padding: 0; line-height: 1.6; font-size: 0.8125rem; }
 .cs-enroll ol li a { display: block; margin-top: 2px; color: var(--link-text, var(--accent)); overflow-wrap: anywhere; } /* the install link: on its own line (#4586) */

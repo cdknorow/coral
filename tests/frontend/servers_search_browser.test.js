@@ -155,7 +155,7 @@ const hubRows = n => remotes(n).map(s => ({ id: s.id, label: s.label, online: s.
         await typeInto('zzz-nothing');
         await settle(`!!document.querySelector('#servers-view .servers-empty')`, 'the empty line');
         v = await view(CS);
-        check('Coral Hub: nothing matching says "No machines match this search."', /No machines match this search/.test(v.empty || ''), JSON.stringify(v.empty));
+        check('Coral Hub: nothing matching says "No computers match this search."', /No computers match this search/.test(v.empty || ''), JSON.stringify(v.empty));
         await ev(`document.querySelector('#servers-bar .list-bar-clear-q').click(); true`);
         await settle(`document.querySelectorAll('${CS}').length === 9`, 'cleared');
         console.log('Coral Hub, phone');

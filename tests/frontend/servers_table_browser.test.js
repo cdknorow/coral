@@ -147,7 +147,7 @@ const contrast = (a, b) => {
         await open();
         await waitFor(`document.querySelectorAll('#servers-view tr.cs-row').length === ${SERVERS.length}`, 'the rows', 6000);
         let t = await table();
-        assert.equal(t.role, 'table'); assert.equal(t.label, 'Your servers');
+        assert.equal(t.role, 'table'); assert.equal(t.label, 'Your computers');
         assert.deepEqual(t.heads.map(h => h.text), ['Name', 'Status', 'Coral', 'Agents', 'Hub access']);
         assert.ok(t.heads.every(h => h.scope === 'col' && h.button), 'every sortable header is a button in a column header');
         assert.equal(t.actionsHead, 'Actions', 'the last column is the row actions, named for a screen reader, not sortable');

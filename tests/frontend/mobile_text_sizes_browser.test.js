@@ -1,5 +1,5 @@
 // Text on a phone is at least 13px (coral-hub's Mobile probe found 10 to 12px): the agent list (the group count, a state chip, the goal) and the Servers view
-// (its intro, a machine's meta line, the machine health card). At 320 and 390 px; nothing in the list wraps badly or runs off the screen; desktop keeps its sizes.
+// (its empty line, a machine's meta line, the machine health card). At 320 and 390 px; nothing in the list wraps badly or runs off the screen; desktop keeps its sizes.
 // Drives Chrome over CDP against the isolated dev server through agent_view_harness.js; run_cdp_suites.mjs finds it by name.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -25,8 +25,8 @@ const BASE = require('./test_base').BASE;
         };
         // the Servers view's text, as the stylesheets draw it (the classes carry the sizes)
         const probe = () => ev(`(() => { document.getElementById('probe-box')?.remove(); const box = document.createElement('div'); box.id = 'probe-box'; box.style.cssText = 'position:fixed;left:0;top:0;opacity:0;pointer-events:none';
-            box.innerHTML = '<p class="servers-intro">x</p><p class="servers-empty">x</p><div class="cs-meta">x</div><h4 class="machine-health-title">x</h4><span class="machine-health-status">x</span><dl class="machine-health-grid"><dt>a</dt><dd>b</dd></dl>'; document.body.append(box);
-            const px = sel => parseFloat(getComputedStyle(box.querySelector(sel)).fontSize); const out = { servers: { intro: px('.servers-intro'), empty: px('.servers-empty'), meta: px('.cs-meta'), healthTitle: px('.machine-health-title'), healthStatus: px('.machine-health-status'), healthDt: px('.machine-health-grid dt'), healthDd: px('.machine-health-grid dd') } };
+            box.innerHTML = '<p class="servers-empty">x</p><div class="cs-meta">x</div><h4 class="machine-health-title">x</h4><span class="machine-health-status">x</span><dl class="machine-health-grid"><dt>a</dt><dd>b</dd></dl>'; document.body.append(box);
+            const px = sel => parseFloat(getComputedStyle(box.querySelector(sel)).fontSize); const out = { servers: { empty: px('.servers-empty'), meta: px('.cs-meta'), healthTitle: px('.machine-health-title'), healthStatus: px('.machine-health-status'), healthDt: px('.machine-health-grid dt'), healthDd: px('.machine-health-grid dd') } };
             const q = sel => [...document.querySelectorAll(sel)].filter(e => e.getClientRects().length); const sizes = sel => q(sel).map(e => parseFloat(getComputedStyle(e).fontSize));
             out.list = { count: sizes('.session-group-count'), goal: sizes('.session-goal'), chip: sizes('.session-status-chip'), n: q('.session-group-item').length };
             out.over = document.documentElement.scrollWidth - innerWidth;
@@ -50,7 +50,7 @@ const BASE = require('./test_base').BASE;
         console.log('1280 px: desktop keeps its sizes');
         await open(1280, 800, false);
         const d = await probe();
-        assert.equal(d.servers.intro, 12); assert.equal(d.servers.meta, 12); assert.equal(d.servers.healthTitle, 11);
+        assert.equal(d.servers.empty, 12); assert.equal(d.servers.meta, 12); assert.equal(d.servers.healthTitle, 11);
         for (const v of d.list.goal) assert.equal(v, 12, 'the goal on a desktop is 12px');
         for (const v of d.list.count) assert.equal(v, 11, 'a group count on a desktop is 11px');
         console.log('   ✓');

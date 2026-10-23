@@ -437,9 +437,9 @@ function enrollBlock() {
         alt: theme === 'dark' ? 'Coral\'s Connect to Coral Hub screen asking "What may Coral Hub do on this computer?" with View, Interact and Launch, Launch selected, and a Connect button.' : '' });
     // The light picture carries the alt text through its sibling: one description, one picture shown per theme (css).
     const lightShot = shot('light'); lightShot.alt = shot('dark').alt;
-    return h('section', { className: 'cs-enroll', id: 'cs-add-machine', 'aria-labelledby': 'cs-enroll-title' },
+    return h('section', { className: 'cs-enroll' + (open ? '' : ' cs-enroll-closed'), id: 'cs-add-machine', 'aria-labelledby': 'cs-enroll-title' },
         h('h3', { className: 'cs-enroll-title', id: 'cs-enroll-title' },
-            h('button', { type: 'button', id: 'cs-enroll-toggle', className: open ? 'btn btn-small' : 'btn btn-primary btn-small', 'aria-expanded': String(open), 'aria-controls': 'cs-enroll-body', onclick: () => { enrollOpen = !open; render(); } }, 'Add a machine')),
+            h('button', { type: 'button', id: 'cs-enroll-toggle', className: open ? 'btn btn-small' : 'btn btn-primary btn-small', 'aria-expanded': String(open), 'aria-controls': 'cs-enroll-body', onclick: () => { enrollOpen = !open; render(); } }, 'Add a computer')),
         h('div', { className: 'cs-enroll-body', id: 'cs-enroll-body', hidden: !open },
             h('div', { className: 'cs-enroll-steps' },
                 h('p', { className: 'cs-meta', text: 'Each machine connects out to this hub; no inbound port is needed.' }),
@@ -465,14 +465,13 @@ function render() {
     syncServersBar(servers, 'machine', render); // the search box, from six machines up
     const shown = sorted(servers.filter(serverVisible));
     const table = shown.length
-        ? h('table', { className: 'cs-table', role: 'table', 'aria-label': 'Your servers' },
+        ? h('table', { className: 'cs-table', role: 'table', 'aria-label': 'Your computers' },
             h('thead', { role: 'rowgroup' }, headerRow()),
             h('tbody', { role: 'rowgroup' }, shown.flatMap(rows)))
-        : h('p', { className: 'servers-empty', text: loadError ? '' : serversFiltered() ? 'No machines match this search.' : 'No servers connected yet.' });
+        : h('p', { className: 'servers-empty', text: loadError ? '' : serversFiltered() ? 'No computers match this search.' : 'No computers connected yet.' });
     // replaceChildren() would render a null as the text "null": leave it out.
     const restoreFocus = rememberFocus(host); // a control the redraw replaced gets focus back (#4882)
     host.replaceChildren(...[
-        h('p', { className: 'servers-intro', text: 'Manage connected machines.' }),
         enrollBlock(),
         loadError ? h('div', { className: 'servers-form-error', role: 'alert', text: loadError }) : null,
         table].filter(Boolean));

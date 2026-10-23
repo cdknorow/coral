@@ -1360,7 +1360,7 @@
     body #mobile-session-list .session-goal,
     body #mobile-session-list .session-status-chip,
     body #mobile-session-list .session-mobile-meta-pill,
-    body .servers-intro, body .servers-empty,
+    body .servers-empty,
     body .machine-health-title, body .machine-health-status, body .machine-health-grid { font-size: var(--fs-md); }
     /* the goal's box was a fixed 14px, which cut a 13px line (that base rule is for 12px on a desktop row): on a phone it is as high as its lines, up to the two this list's clamp allows */
     body #mobile-session-list .session-goal { height: auto; }

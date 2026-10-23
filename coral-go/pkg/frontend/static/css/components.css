@@ -3792,7 +3792,7 @@ button.subscriber-history-link {
 
 /* ── Servers settings dialog (multi-server hub) ───────────────────── */
 
-.servers-intro, .servers-empty { color: var(--text-secondary); font-size: var(--fs-base); margin: 0 0 var(--space-lg); }
+.servers-empty { color: var(--text-secondary); font-size: var(--fs-base); margin: 0 0 var(--space-lg); }
 .servers-list { list-style: none; margin: 0 0 var(--space-xl); padding: 0; border: 1px solid var(--border); border-radius: var(--radius-lg); }
 .servers-row {
     display: flex;
