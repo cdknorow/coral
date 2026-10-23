@@ -113,6 +113,7 @@ function form(startProvider, index) {
     const acts = mk('div', 'cm-actions');
     const ok = mk('button', 'btn btn-small', index >= 0 ? 'Update model' : 'Add model'); ok.type = 'submit';
     const cancel = mk('button', 'btn btn-small', 'Cancel'); cancel.type = 'button';
+    cancel.setAttribute('aria-label', index >= 0 ? 'Cancel the model change' : 'Cancel adding a model'); // Settings has its own Cancel in its footer: two buttons read the same (#6448)
     acts.append(ok, cancel); f.append(err, acts);
     f.addEventListener('submit', (e) => {
         e.preventDefault();
