@@ -130,12 +130,17 @@ func AddTeamWorktree(ctx context.Context, repoDir, path, branch, base string) (b
 		}
 		return false, fmt.Errorf("the folder %s is left over from an earlier run and is not empty: move or delete it, then launch again", path)
 	}
-	args := []string{"worktree", "add", "--", path, branch}
+	// core.longpaths: Git for Windows stops at 260 characters unless told otherwise, and a repository with a deep tracked file failed the checkout (#6717).
+	args := []string{"-c", "core.longpaths=true", "worktree", "add", "--", path, branch}
 	if !refExists(ctx, repoDir, "refs/heads/"+branch) {
-		args = []string{"worktree", "add", "-b", branch, "--", path, base}
+		args = []string{"-c", "core.longpaths=true", "worktree", "add", "-b", branch, "--", path, base}
 		branchCreated = true
 	}
 	if out, addErr := Command(ctx, repoDir, args...).CombinedOutput(); addErr != nil {
+		if branchCreated { // a failed add leaves no branch of ours behind: it holds nothing yet
+			Command(ctx, repoDir, "worktree", "prune").Run()
+			Command(ctx, repoDir, "branch", "-D", "--", branch).Run()
+		}
 		return false, fmt.Errorf("git worktree add: %s", oneLine(string(out)))
 	}
 	return branchCreated, nil
