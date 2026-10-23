@@ -345,3 +345,27 @@ func TestSeveralStampedHubUsersRefuseToArmAndToAdopt(t *testing.T) {
 	assert.Equal(t, "owner_label_missing", refusalCode(t, e2.hubOwnerRequest(ownerHeaders(other))), "two accounts in the hour: nothing is adopted")
 	assert.Empty(t, e2.store.adopted)
 }
+
+// #6186: how long until Confirm owner can work again is when the SECOND-newest stamp leaves the hour (then at most one account is left). With stamps made at different times the index matters: the
+// oldest or the newest stamp would give another answer.
+func TestSeveralClearsInIsWhenTheSecondNewestStampLeavesTheHour(t *testing.T) {
+	ownerStamps.Lock()
+	saved := ownerStamps.seen
+	ownerStamps.seen = map[string]time.Time{}
+	ownerStamps.Unlock()
+	t.Cleanup(func() { ownerStamps.Lock(); ownerStamps.seen = saved; ownerStamps.Unlock() })
+	t0 := time.Date(2026, 10, 23, 12, 0, 0, 0, time.UTC)
+	now := t0.Add(30 * time.Minute)
+	assert.Zero(t, ownerSeveralClearsIn(now), "no stamp: not several")
+	noteOwnerStamp("hub-user-aaaaaaaa", t0)
+	assert.Zero(t, ownerSeveralClearsIn(now), "one account: not several")
+	noteOwnerStamp("hub-user-bbbbbbbb", t0.Add(10*time.Minute))
+	// two accounts: the older (t0) leaves at t0+60m, 30 minutes from now
+	assert.Equal(t, 30*time.Minute, ownerSeveralClearsIn(now))
+	noteOwnerStamp("hub-user-cccccccc", t0.Add(20*time.Minute))
+	// three: it clears when the second-newest (b, t0+10m) leaves, at t0+70m, 40 minutes from now: not the oldest (30) and not the newest (50)
+	assert.Equal(t, 40*time.Minute, ownerSeveralClearsIn(now))
+	// the older account is seen again: now b is the oldest of the live ones and c the second-newest
+	noteOwnerStamp("hub-user-aaaaaaaa", t0.Add(25*time.Minute))
+	assert.Equal(t, 50*time.Minute, ownerSeveralClearsIn(now), "a newer stamp puts it off: the second-newest is now c (t0+20m), leaving at t0+80m")
+}
