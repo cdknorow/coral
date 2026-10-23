@@ -277,3 +277,67 @@ func TestAKeyLineWithoutItsHeaderIsNeverTheReason(t *testing.T) {
 	assert.True(t, isBlob(inner))
 	assert.True(t, isBlob(strings.Repeat("f", 40)), "hex")
 }
+
+// A finished run's reason is worked out once and kept in a bounded table; one that could not be checked is not kept (Security's and the Orchestrator's #6530 shape).
+func TestAFinishedRunsReasonIsWorkedOutOnceAndTheTableIsBounded(t *testing.T) {
+	rig := newRunViewRig(t)
+	calls := 0
+	reasonInputSeen = func(int) { calls++ }
+	t.Cleanup(func() { reasonInputSeen = nil })
+	id := rig.run("failed", []map[string]any{{"index": 0, "name": "s", "status": "failed", "error_tail": "boom: bad thing"}}, "2026-10-23T10:00:00+00:00", "2026-10-23T10:00:05+00:00", nil)
+	for i := 0; i < 5; i++ {
+		assert.Equal(t, "boom: bad thing", rig.listed(id)["failure_reason"])
+	}
+	assert.Equal(t, 1, calls, "five list requests, one redaction")
+	// a run that has not finished is not kept: it can still change
+	running := rig.run("failed", []map[string]any{{"index": 0, "name": "s", "status": "failed", "error_tail": "again"}}, "2026-10-23T10:00:00+00:00", "", nil)
+	before := calls
+	rig.listed(running)
+	rig.listed(running)
+	assert.Equal(t, before+2, calls, "no finished_at: worked out each time")
+	// a result that changed is not answered from the old one
+	require.NoError(t, rig.h.ws.UpdateWorkflowRun(rig.ctx, id, map[string]any{"step_results": `[{"index":0,"name":"s","status":"failed","error_tail":"a different failure"}]`}))
+	assert.Equal(t, "a different failure", rig.listed(id)["failure_reason"])
+
+	// the redactor failing: nothing is shown and nothing is kept, so when it works again the reason appears
+	failing := true
+	old := reasonRedact
+	reasonRedact = func(s string) (string, bool) {
+		if failing {
+			return "", false
+		}
+		return old(s)
+	}
+	t.Cleanup(func() { reasonRedact = old })
+	id2 := rig.run("failed", []map[string]any{{"index": 0, "name": "s", "status": "failed", "error_tail": "disk full"}}, "2026-10-23T10:00:00+00:00", "2026-10-23T10:00:03+00:00", nil)
+	_, has := rig.listed(id2)["failure_reason"]
+	assert.False(t, has, "cannot be checked: no reason")
+	failing = false
+	assert.Equal(t, "disk full", rig.listed(id2)["failure_reason"], "the outage was not remembered")
+
+	// bounded
+	for i := 0; i < reasonCacheMax+50; i++ {
+		reasonMemo.put(reasonKey{id: int64(100000 + i), finished: "x"}, nil, "r")
+	}
+	reasonMemo.mu.Lock()
+	n := len(reasonMemo.m)
+	reasonMemo.mu.Unlock()
+	assert.LessOrEqual(t, n, reasonCacheMax)
+}
+
+// The window is 32 KiB and a key whose BEGIN is just inside it is redacted whole: the last line shown is never a key line.
+func TestAKeyWhoseBeginIsJustInsideTheWindowIsRedacted(t *testing.T) {
+	rig := newRunViewRig(t)
+	inner := "MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7VJTUt9Us8cKj"
+	key := "-----BEGIN PRIVATE KEY-----\n" + strings.Repeat(inner+"\n", 4) + "-----END PRIVATE KEY-----\n"
+	for _, gap := range []int{0, 100, maxReasonInput - len(key) - 200, maxReasonInput - len(key) - 5} {
+		tail := strings.Repeat("noise line\n", 5000)[:maxReasonInput] + key + strings.Repeat("o", gap)[:0] // the key is at the end of a much longer tail
+		if gap > 0 {
+			tail = "fatal\n" + key + strings.Repeat("padding line\n", gap/13)
+		}
+		id := rig.run("failed", []map[string]any{{"index": 0, "name": "s", "status": "failed", "error_tail": tail}}, "", "", nil)
+		reason, _ := rig.listed(id)["failure_reason"].(string)
+		assert.NotContains(t, reason, "MIIEvQ", "gap %d", gap)
+	}
+	assert.Equal(t, 32<<10, maxReasonInput)
+}

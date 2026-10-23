@@ -2,8 +2,10 @@ package routes
 
 import (
 	"encoding/json"
+	"hash/fnv"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -62,6 +64,22 @@ func runDuration(run *store.WorkflowRun) *float64 {
 
 // failureOf finds the first failed step in the run's results and a one-line reason: the end of that step's stderr, else of its output, else the run's own error message.
 func failureOf(run *store.WorkflowRun) (*store.FailedStep, string) {
+	// A finished run never changes, so its reason is worked out once (redacting a tail costs milliseconds: a list of 200 failed runs would pay it on every request). The key is the run and
+	// the time it finished; a reason that could not be checked (the redactor failed) is never kept, so an outage does not stick.
+	var key reasonKey
+	if run.FinishedAt != nil {
+		h := fnv.New64a() // the stored result itself is part of the key: a finished run does not change, and this keeps a reused id (another database, a test) from ever answering for another result
+		h.Write([]byte(run.StepResults))
+		if run.ErrorMsg != nil {
+			h.Write([]byte{0})
+			h.Write([]byte(*run.ErrorMsg))
+		}
+		key = reasonKey{run.ID, *run.FinishedAt, h.Sum64()}
+		if c, ok := reasonMemo.get(key); ok {
+			return c.step, c.reason
+		}
+	}
+	checked := true
 	var results []struct {
 		Index      int    `json:"index"`
 		Name       string `json:"name"`
@@ -84,42 +102,98 @@ func failureOf(run *store.WorkflowRun) (*store.FailedStep, string) {
 			n = i + 1
 		}
 		step = &store.FailedStep{Number: n, Name: runOneLine(r.Name, 80)}
-		reason = reasonOf(r.ErrorTail, true)
-		if reason == "" {
-			reason = reasonOf(r.OutputTail, true)
-		}
-		if reason == "" {
-			reason = reasonOf(r.Note, false)
+		var ok bool
+		for _, src := range []struct {
+			text string
+			tail bool
+		}{{r.ErrorTail, true}, {r.OutputTail, true}, {r.Note, false}} {
+			if reason, ok = reasonOf(src.text, src.tail); !ok {
+				checked = false
+			}
+			if reason != "" {
+				break
+			}
 		}
 		break
 	}
 	if reason == "" && run.ErrorMsg != nil {
-		reason = reasonOf(*run.ErrorMsg, false)
+		var ok bool
+		if reason, ok = reasonOf(*run.ErrorMsg, false); !ok {
+			checked = false
+		}
+	}
+	if checked && run.FinishedAt != nil {
+		reasonMemo.put(key, step, reason)
 	}
 	return step, reason
+}
+
+// reasonKey identifies a finished run's result as it was when it finished.
+type reasonKey struct {
+	id       int64
+	finished string
+	sum      uint64
+}
+
+type reasonEntry struct {
+	step   *store.FailedStep
+	reason string
+}
+
+// reasonCache is a bounded table of finished runs' failure reasons: at most reasonCacheMax entries, one dropped when it is full.
+type reasonCache struct {
+	mu sync.Mutex
+	m  map[reasonKey]reasonEntry
+}
+
+const reasonCacheMax = 1000
+
+var reasonMemo = &reasonCache{m: map[reasonKey]reasonEntry{}}
+
+func (c *reasonCache) get(k reasonKey) (reasonEntry, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	e, ok := c.m[k]
+	return e, ok
+}
+
+func (c *reasonCache) put(k reasonKey, step *store.FailedStep, reason string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if _, ok := c.m[k]; !ok && len(c.m) >= reasonCacheMax {
+		for old := range c.m { // any one: the table only has to stay bounded
+			delete(c.m, old)
+			break
+		}
+	}
+	c.m[k] = reasonEntry{step: step, reason: reason}
 }
 
 // reasonOf is the one line a tail of text comes to: the WHOLE text is cleaned and redacted first (a failed command may have printed a secret, and a secret is found by what is around it: a
 // private key by its header and footer, a token by its whole length), then its last line with anything on it is taken, then that is cut. Cut or split first and a token's start, or a line
 // from inside a key, would be shown alone (Security's #6530 finding). Empty when the text cannot be checked for secrets.
 // A tail of output is reduced to its last line; a sentence (the step's note, the run's error message) is kept whole, as one line.
-func reasonOf(text string, lastLineOnly bool) string {
+// checked is false when the text could not be checked for secrets (nothing is shown then, and the answer is not kept).
+func reasonOf(text string, lastLineOnly bool) (reason string, checked bool) {
 	text = boundedText(text, lastLineOnly)
 	if reasonInputSeen != nil {
 		reasonInputSeen(len(text))
 	}
-	red, ok := redactComment(clitext.Clean(text))
+	red, ok := reasonRedact(clitext.Clean(text))
 	if !ok {
-		return ""
+		return "", false
 	}
 	if lastLineOnly {
-		return lastLine(red)
+		return lastLine(red), true
 	}
 	if l := runOneLine(red, maxFailureReason); !isBlob(l) {
-		return l
+		return l, true
 	}
-	return ""
+	return "", true
 }
+
+// reasonRedact is the redactor a reason goes through (a variable so a test can fail it).
+var reasonRedact = redactComment
 
 // blobRun is one unbroken run of 12 or more characters of base64, hex or a token: no space, no dot, no colon (Security suggested 32; a tail that ends in the middle of a key line leaves a fragment
 // shorter than a line, so the floor is lower: a fragment of 11 characters or fewer is under 70 bits). Such a line is not a reason, and a redactor that was not given the header of a
@@ -151,7 +225,7 @@ func runOneLine(s string, max int) string {
 }
 
 // maxReasonInput bounds the text a reason is made from, so the cost of a list of runs does not depend on how much a step wrote (the tails are bounded where they are stored; this keeps it so).
-const maxReasonInput = 8 << 10
+const maxReasonInput = 32 << 10 // a real private key is 1 to 4 KiB, so its BEGIN line is inside the window whenever its last line is the one shown
 
 // boundedText is at most maxReasonInput bytes of text: the END of a tail (the last line is wanted), the START of a sentence, never cut inside a character.
 func boundedText(text string, tail bool) string {
