@@ -1939,7 +1939,11 @@ button.subscriber-history-link {
     font-size: 0.75rem;
 }
 
+.dir-browser-use { margin-left: auto; flex: 0 0 auto; padding: 2px 10px; font-size: 0.75rem; }
+@media (pointer: coarse), (max-width: 767px) { .dir-browser-use, .dir-browser-up { min-height: var(--control-touch-height, 44px); min-width: var(--control-touch-height, 44px); } }
+
 .dir-browser-path {
+    min-width: 0;
     font-size: 0.75rem;
     font-family: var(--font-mono);
     color: var(--text-secondary);

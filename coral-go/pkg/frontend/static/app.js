@@ -31,7 +31,7 @@ import './modal_chrome.js'; // modal backdrop/Escape/Tab handling for every dial
 import { attachAllDialogFocus } from './dialog_focus.js';
 import './board_choice.js'; // the duplicate-name choice used by the lazy modals.js (#3538): loaded at startup so a launch never fails on it
 import './dialog_focus.js'; // focus into a dialog and back to its opener (accessibility pass); used by lazy modals.js
-import { toggleBrowser, browserNavigateTo, browserNavigateUp, browserSelectRecent } from './browser.js';
+import { toggleBrowser, browserNavigateTo, browserNavigateUp, browserSelectRecent, browserUse } from './browser.js';
 import { switchJobsSubtab, toggleAgenticPanel, toggleSidebarRail } from './sidebar.js';
 import { connectTerminalWs, disconnectTerminalWs } from './xterm_renderer.js';
 import { saveNotes, generateSummary, toggleNotesEdit, cancelNotesEdit, switchHistoryTab } from './notes.js';
@@ -120,6 +120,7 @@ registerActions({
     'm-add-macro': el => { window.addMacro(); },
     'm-apply-settings': el => { window.applySettings(); },
     'm-browser-navigate-up': el => { window.browserNavigateUp(); },
+    'm-browser-use': el => { window.browserUse(); },
     'm-confirm-restart': el => { window.confirmRestart(); },
     'm-confirm-save-template': el => { window._confirmSaveTemplate(); },
     'm-copy-info-command': el => { window.copyInfoCommand(); },
@@ -376,7 +377,7 @@ Object.assign(window, {
     // sidebar
     switchJobsSubtab, toggleAgenticPanel, toggleSidebarRail,
     // browser
-    toggleBrowser, browserNavigateTo, browserNavigateUp, browserSelectRecent,
+    toggleBrowser, browserNavigateTo, browserNavigateUp, browserSelectRecent, browserUse,
     // theme
     showThemeConfigurator, hideThemeConfigurator,
     // servers (hub mode)

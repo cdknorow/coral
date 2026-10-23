@@ -165,7 +165,15 @@ export function browserNavigateTo(name) {
 }
 
 export function browserSelectRecent(path) {
-    loadBrowserEntries(path);
+    // A recent folder is a choice, not a step on the way: the list closes once it is in the field.
+    loadBrowserEntries(path).then(browserUse);
+}
+
+/** "Use this folder": the field already holds the folder the list is showing; close the list so what is under it (More options) has the room (#6199). */
+export function browserUse() {
+    const browser = document.getElementById(_activeBrowserId);
+    if (browser) browser.style.display = "none"; // display-ok: the closed state toggleBrowser sets, the list is shown and hidden by its inline display
+    document.getElementById(_activeDirInputId)?.focus();
 }
 
 export function browserNavigateUp() {
