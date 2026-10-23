@@ -25,8 +25,10 @@ const BASE = require('./test_base').BASE;
         assert.equal(first.value, '', 'no folder is chosen for the person'); assert.equal(first.placeholder, 'Choose a folder'); assert.equal(first.noteHidden, true); assert.ok(first.root, 'the server has a root to compare with');
         const typed = v => ev(`(() => { const d = document.getElementById('launch-dir'); d.value = ${JSON.stringify(v)}; d.dispatchEvent(new Event('input', { bubbles: true })); return !document.getElementById('launch-dir-note').hidden; })()`);
         assert.equal(await typed(first.root), true, 'the home folder: the note shows');
+        assert.deepEqual(await ev(`(() => { const d = document.getElementById('launch-dir'), n = document.getElementById('launch-dir-note'); return { described: d.getAttribute('aria-describedby'), role: n.getAttribute('role') }; })()`), { described: 'launch-dir-note', role: null }, 'the note describes the Folder field while it applies and is not a live region');
         assert.equal(await ev(`document.getElementById('launch-dir-note').textContent`), 'This is your home folder: the agent can change any file in it.');
         assert.equal(await typed(first.root + '/project'), false, 'a folder in it is a choice: no note');
+        assert.equal(await ev(`document.getElementById('launch-dir').hasAttribute('aria-describedby')`), false, 'and the field is described by nothing when it does not apply');
         assert.equal(await typed('~'), true, '"~" is the home folder too');
         assert.equal(await typed(''), false);
 
