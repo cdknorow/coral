@@ -31,7 +31,7 @@ process.on('beforeExit', async () => { for (const stop of [...PENDING]) await st
 // suites' own JSON helpers do. It returns {sid, name, token, launch, ms, diag, stop}; token is
 // '' when it never came, and diag then explains why. Always call stop() (in a finally): it
 // kills the session, restores cli_path_claude and removes the script's folder.
-async function launchStandIn(api, { workingDir = os.tmpdir(), displayName = 'Stand-in Agent', deadlineMs = TOKEN_DEADLINE_MS } = {}) {
+async function launchStandIn(api, { workingDir = os.tmpdir(), displayName = 'Stand-in Agent', deadlineMs = TOKEN_DEADLINE_MS, reportStart = false } = {}) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'coral-standin-'));
     const tokenFile = path.join(dir, 'token');
     const ranFile = path.join(dir, 'ran');
@@ -104,9 +104,23 @@ async function launchStandIn(api, { workingDir = os.tmpdir(), displayName = 'Sta
             if (fs.existsSync(tokenFile + '.none')) break; // launched without a token: waiting won't help
         }
     }
+    // reportStart: the stand-in's first hook event, as a real agent's SessionStart posts it (a session_reset). Until an agent has reported anything, Coral counts it as starting and refuses a person's
+    // message while its screen shows no input box (human_send.go): a suite that sends to the stand-in sets this (#6775).
+    if (token && reportStart) await postFirstEvent(name, sid, token);
     const ms = Date.now() - started;
     const diag = token ? '' : await diagnose(api, { launch, sid, name, ran: fs.existsSync(ranFile), none: fs.existsSync(tokenFile + '.none'), ms });
     return { sid, name, token, launch, ms, diag, stop };
+}
+
+// postFirstEvent posts one session_reset event as the agent itself: its session token is what identifies it (events from anyone else are refused).
+async function postFirstEvent(name, sid, token) {
+    const { BASE } = require('../test_base');
+    const r = await fetch(`${BASE}/api/sessions/live/${encodeURIComponent(name)}/events`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Coral-Session-Token': token },
+        body: JSON.stringify({ event_type: 'session_reset', summary: 'Session started', session_id: sid }),
+    });
+    if (!r.ok) throw new Error(`the stand-in's first event was refused: HTTP ${r.status} ${(await r.text()).slice(0, 200)}`);
 }
 
 // diagnose says why no token came: the launch answer, how far the script got, the pane's
