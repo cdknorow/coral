@@ -23,6 +23,9 @@ var rawOutput bool
 
 func init() {
 	serverURL = endpointFromEnv(os.Getenv("CORAL_URL"), os.Getenv("CORAL_HOST"), os.Getenv("CORAL_PORT"))
+	if os.Getenv("CORAL_URL") == "" && os.Getenv("CORAL_HOST") == "" && os.Getenv("CORAL_PORT") == "" {
+		serverURL = config.LocalServerURL() // a plain terminal: the running server's recorded address, else the platform's default port (8450 on Windows)
+	}
 }
 
 func main() {
