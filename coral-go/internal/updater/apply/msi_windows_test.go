@@ -183,31 +183,40 @@ func TestOnlyThePerMachineProductIsCoral(t *testing.T) {
 	assert.Error(t, err, "two machine products: fail closed")
 }
 
-// ApplyProcessRunning looks at the processes: this test binary is a live process but not coral-update.exe, and a coral-update.exe is found only under a folder asked about.
+// ApplyProcessRunning looks at the processes, by the names and bytes trigger.Launch makes: coral-update.exe in the install folder, or coral-update-*.exe in the copies folder with
+// the installed updater's bytes. Nothing else counts.
 func TestApplyProcessRunningLooksAtTheProcesses(t *testing.T) {
 	w := &WindowsMSI{}
 	exe, err := os.Executable()
 	require.NoError(t, err)
-	assert.False(t, w.ApplyProcessRunning(filepath.Dir(exe)), "no coral-update.exe is running from here")
-	assert.False(t, w.ApplyProcessRunning())
+	assert.False(t, w.ApplyProcessRunning(filepath.Dir(exe), t.TempDir()), "no updater is running from here")
+	assert.False(t, w.ApplyProcessRunning("", ""))
 
-	sys := filepath.Join(os.Getenv("SystemRoot"), "System32", "ping.exe")
-	src, err := os.ReadFile(sys)
+	src, err := os.ReadFile(filepath.Join(os.Getenv("SystemRoot"), "System32", "ping.exe"))
 	if err != nil {
 		t.Skip("no ping.exe to stand for a long-running program")
 	}
-	dir := t.TempDir()
-	img := filepath.Join(dir, "coral-update.exe")
-	require.NoError(t, os.WriteFile(img, src, 0o755))
-	cmd := exec.Command(img, "-n", "30", "127.0.0.1")
-	require.NoError(t, cmd.Start())
-	t.Cleanup(func() { _ = cmd.Process.Kill(); _ = cmd.Wait() })
-	assert.True(t, w.ApplyProcessRunning(t.TempDir(), dir), "a coral-update.exe under one of the folders")
-	assert.False(t, w.ApplyProcessRunning(t.TempDir()), "under neither")
-	other := filepath.Join(t.TempDir(), "ping-copy.exe")
-	require.NoError(t, os.WriteFile(other, src, 0o755))
-	cmd2 := exec.Command(other, "-n", "30", "127.0.0.1")
-	require.NoError(t, cmd2.Start())
-	t.Cleanup(func() { _ = cmd2.Process.Kill(); _ = cmd2.Wait() })
-	assert.False(t, w.ApplyProcessRunning(filepath.Dir(other)), "a live program in the folder that is not named coral-update.exe is no apply")
+	start := func(path string, content []byte) {
+		require.NoError(t, os.WriteFile(path, content, 0o755))
+		cmd := exec.Command(path, "-n", "30", "127.0.0.1")
+		require.NoError(t, cmd.Start())
+		t.Cleanup(func() { _ = cmd.Process.Kill(); _ = cmd.Wait() })
+	}
+	install, copies := t.TempDir(), t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(install, "coral-update.exe"), src, 0o755)) // the installed updater (not running)
+
+	start(filepath.Join(copies, "coral-update-1.exe"), append(append([]byte{}, src...), 'x')) // another program under Launch's name: other bytes
+	assert.False(t, w.ApplyProcessRunning(install, copies), "a different program named coral-update-1.exe under the copies folder is no updater")
+
+	other := t.TempDir()
+	start(filepath.Join(other, "coral-update-2.exe"), src)
+	assert.False(t, w.ApplyProcessRunning(install, copies), "a real updater's bytes in some other folder")
+
+	start(filepath.Join(copies, "coral-update-3456.exe"), src)
+	assert.True(t, w.ApplyProcessRunning(install, copies), "the real copy: Launch's name, the installed updater's bytes")
+	assert.False(t, w.ApplyProcessRunning(install, t.TempDir()), "and only in the folder asked about")
+
+	install2 := t.TempDir()
+	start(filepath.Join(install2, "coral-update.exe"), src)
+	assert.True(t, w.ApplyProcessRunning(install2, t.TempDir()), "the installed updater itself, running from the install folder")
 }

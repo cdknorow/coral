@@ -95,8 +95,8 @@ type fakeMSI struct {
 	checkedDirs  []string
 }
 
-func (f *fakeMSI) ApplyProcessRunning(dirs ...string) bool {
-	f.checkedDirs = dirs
+func (f *fakeMSI) ApplyProcessRunning(install, copies string) bool {
+	f.checkedDirs = []string{install, copies}
 	return f.applyProcess
 }
 func (f *fakeMSI) rec(s string)              { f.calls = append(f.calls, s) }
@@ -643,7 +643,7 @@ func TestTheBusyAnswerSaysWhichLockWasHeld(t *testing.T) {
 		assert.Equal(t, tc.wantRes, res.Result, name)
 		assert.Equal(t, tc.wantStage, res.FailedStage, name)
 		if tc.wantStage == BusyApply {
-			assert.Contains(t, r.msi.checkedDirs, filepath.Join(r.data, stage.UpdatesDir), name+": the updater folder is a place its image may be")
+			assert.Contains(t, r.msi.checkedDirs, filepath.Join(r.data, stage.UpdatesDir, "apply"), name+": the folder of Launch copies is asked about")
 			assert.Contains(t, r.msi.checkedDirs, r.msi.install, name+": and the install folder")
 			assert.Contains(t, r.msi.notes, "Another update may be running; start Coral from the Start menu when it's done.", name+": the person is told, since nothing starts Coral")
 		} else {

@@ -170,8 +170,9 @@ func underFold(path, dir string) bool {
 	return path == dir || strings.HasPrefix(path, dir+`\`)
 }
 
-// ApplyProcessRunning reports whether a process other than this one is a running coral-update.exe whose image is under one of dirs.
-func (w *WindowsMSI) ApplyProcessRunning(dirs ...string) bool {
+// ApplyProcessRunning reports whether a process other than this one is a real updater: coral-update.exe in the install folder, or coral-update-*.exe in copies (the name
+// trigger.Launch gives its copy) whose bytes are the installed updater's, so a program a user dropped there under that name does not count.
+func (w *WindowsMSI) ApplyProcessRunning(install, copies string) bool {
 	snap, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPPROCESS, 0)
 	if err != nil {
 		return false
@@ -180,8 +181,10 @@ func (w *WindowsMSI) ApplyProcessRunning(dirs ...string) bool {
 	var e windows.ProcessEntry32
 	e.Size = uint32(unsafe.Sizeof(e))
 	self := uint32(os.Getpid())
+	var want string // the installed updater's sha256, read when a copy is found
 	for err = windows.Process32First(snap, &e); err == nil; err = windows.Process32Next(snap, &e) {
-		if e.ProcessID == 0 || e.ProcessID == self || !strings.EqualFold(windows.UTF16ToString(e.ExeFile[:]), "coral-update.exe") {
+		name := strings.ToLower(windows.UTF16ToString(e.ExeFile[:]))
+		if e.ProcessID == 0 || e.ProcessID == self || !strings.HasPrefix(name, "coral-update") {
 			continue
 		}
 		h, oerr := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, e.ProcessID)
@@ -196,13 +199,37 @@ func (w *WindowsMSI) ApplyProcessRunning(dirs ...string) bool {
 			continue
 		}
 		image := windows.UTF16ToString(buf[:size])
-		for _, d := range dirs {
-			if d != "" && underFold(image, d) {
+		base, dir := strings.ToLower(filepath.Base(image)), filepath.Dir(image)
+		switch {
+		case install != "" && base == "coral-update.exe" && strings.EqualFold(dir, filepath.Clean(install)):
+			return true
+		case copies != "" && strings.EqualFold(dir, filepath.Clean(copies)):
+			if ok, _ := filepath.Match("coral-update-*.exe", base); !ok {
+				continue
+			}
+			if want == "" && install != "" {
+				want = fileSHA256(filepath.Join(install, "coral-update.exe"))
+			}
+			if want != "" && fileSHA256(image) == want {
 				return true
 			}
 		}
 	}
 	return false
+}
+
+// fileSHA256 is the hex sha256 of the file at path, "" when it cannot be read.
+func fileSHA256(path string) string {
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return ""
+	}
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 // running lists the processes whose image is a file under install (this process excluded).
