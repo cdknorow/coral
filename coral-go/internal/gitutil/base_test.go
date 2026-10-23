@@ -40,8 +40,8 @@ func TestResolveBase(t *testing.T) {
 		{"a repository on master, nothing named", "master", "", "master"},
 		{"a repository on master, the old default main stored", "master", "main", "master"},
 		{"a repository on another branch, nothing named", "trunk", "", "trunk"},
-		{"a branch named is used as it is", "master", "release", "release"},
-		{"a named branch with spaces around it", "master", "  release ", "release"},
+		{"a branch named is used as it is", "master", "master", "master"},
+		{"a named branch with spaces around it", "master", "  master ", "master"},
 	} {
 		got, err := ResolveBase(ctx, baseRepo(t, c.branch, true), c.requested)
 		require.NoError(t, err, c.name)
@@ -67,9 +67,19 @@ func TestResolveBaseWithNothingToStartFrom(t *testing.T) {
 		_, err := ResolveBase(context.Background(), dir, requested)
 		assert.ErrorIs(t, err, ErrNoCommits, "a repository with no commits: %q", requested)
 	}
-	got, err := ResolveBase(context.Background(), dir, "release")
+}
+
+// #6701: a base branch the repository does not have is a plain answer naming the branches that exist, not git's "invalid reference".
+func TestResolveBaseNamesTheBranchesThatExist(t *testing.T) {
+	dir := baseRepo(t, "master", true)
+	out, err := exec.Command("git", "-C", dir, "branch", "develop").CombinedOutput()
+	require.NoError(t, err, string(out))
+	_, err = ResolveBase(context.Background(), dir, "release")
+	require.Error(t, err)
+	assert.Equal(t, `the branch "release" does not exist in this repository; the branches that do: develop, master`, err.Error())
+	got, err := ResolveBase(context.Background(), dir, "--upload-pack=evil")
 	require.NoError(t, err)
-	assert.Equal(t, "release", got, "a named branch is the caller's to check")
+	assert.Equal(t, "--upload-pack=evil", got, "a name ValidRef refuses is the caller's to refuse")
 }
 
 func TestResolveBaseOnADetachedHead(t *testing.T) {
