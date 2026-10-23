@@ -103,6 +103,10 @@ func failureOf(run *store.WorkflowRun) (*store.FailedStep, string) {
 // from inside a key, would be shown alone (Security's #6530 finding). Empty when the text cannot be checked for secrets.
 // A tail of output is reduced to its last line; a sentence (the step's note, the run's error message) is kept whole, as one line.
 func reasonOf(text string, lastLineOnly bool) string {
+	text = boundedText(text, lastLineOnly)
+	if reasonInputSeen != nil {
+		reasonInputSeen(len(text))
+	}
 	red, ok := redactComment(clitext.Clean(text))
 	if !ok {
 		return ""
@@ -132,3 +136,28 @@ func runOneLine(s string, max int) string {
 	}
 	return s
 }
+
+// maxReasonInput bounds the text a reason is made from, so the cost of a list of runs does not depend on how much a step wrote (the tails are bounded where they are stored; this keeps it so).
+const maxReasonInput = 8 << 10
+
+// boundedText is at most maxReasonInput bytes of text: the END of a tail (the last line is wanted), the START of a sentence, never cut inside a character.
+func boundedText(text string, tail bool) string {
+	if len(text) <= maxReasonInput {
+		return text
+	}
+	if tail {
+		text = text[len(text)-maxReasonInput:]
+		for len(text) > 0 && !utf8.RuneStart(text[0]) {
+			text = text[1:]
+		}
+		return text
+	}
+	text = text[:maxReasonInput]
+	for len(text) > 0 && !utf8.ValidString(text[len(text)-1:]) && !utf8.RuneStart(text[len(text)-1]) {
+		text = text[:len(text)-1]
+	}
+	return strings.ToValidUTF8(text, "")
+}
+
+// reasonInputSeen is a test seam: it is told how many bytes a reason sends to the redactor.
+var reasonInputSeen func(n int)

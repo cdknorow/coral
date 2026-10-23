@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
@@ -220,3 +221,22 @@ func TestTheReasonIsRedactedBeforeItIsSplitOrCut(t *testing.T) {
 }
 
 func ptrString(s string) *string { return &s }
+
+// The text a reason is made from is bounded: a huge tail still gives its last line, and a huge sentence its start, without redacting all of it.
+func TestAHugeTailStillGivesItsLastLineFromABoundedInput(t *testing.T) {
+	rig := newRunViewRig(t)
+	huge := strings.Repeat("noise line that goes on and on\n", 100000) + "the last line\n" // about 3 MB
+	id := rig.run("failed", []map[string]any{{"index": 0, "name": "s", "status": "failed", "error_tail": huge}}, "", "", nil)
+	var most int
+	reasonInputSeen = func(n int) { most = max(most, n) }
+	t.Cleanup(func() { reasonInputSeen = nil })
+	assert.Equal(t, "the last line", rig.listed(id)["failure_reason"])
+	assert.LessOrEqual(t, most, maxReasonInput, "no more than the bound is ever sent to the redactor, however much the step wrote")
+	assert.Positive(t, most)
+	assert.LessOrEqual(t, len(boundedText(huge, true)), maxReasonInput)
+	assert.LessOrEqual(t, len(boundedText(huge, false)), maxReasonInput)
+	assert.True(t, strings.HasSuffix(boundedText(huge, true), "the last line\n"), "a tail keeps its end")
+	assert.True(t, strings.HasPrefix(boundedText(huge, false), "noise line"), "a sentence keeps its start")
+	multi := strings.Repeat("é日本", 6000) // multi-byte characters: never cut inside one
+	assert.True(t, utf8.ValidString(boundedText(multi, true)) && utf8.ValidString(boundedText(multi, false)))
+}
