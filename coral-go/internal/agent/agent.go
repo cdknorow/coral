@@ -4,6 +4,7 @@ package agent
 import (
 	"fmt"
 	"github.com/subgentic/coral/internal/logsafe"
+	"github.com/subgentic/coral/pkg/redact"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -115,6 +116,27 @@ type IndexedSession struct {
 	// FTSUnchanged: FTSBody is the one this scanner returned for the file last time, so the
 	// indexer needn't write it again (#3728).
 	FTSUnchanged bool
+}
+
+// HistoryIndexVersion is the version of the History parsers: a session indexed with an older one is read again once, so a change to what is stored (here, a summary that is redacted before it is cut, #6207's
+// Security finding) reaches sessions that are never written to again. Every scanner stamps it on the rows it writes and store.GetHistoryMtimes is given it. Version 1 was the guardian-aware Codex parser (#6081).
+const HistoryIndexVersion = 2
+
+// redactBound is how much of a message is looked at for secrets before it is clipped: more than any clip keeps, and a bound on the work for a message of megabytes.
+const redactBound = 64 << 10
+
+// redactedCut is the first n bytes of text, redacted BEFORE it is cut and cut where no token can be split (redact.Cut), as a COPY (a substring would keep the whole message alive). A secret that straddles a plain
+// byte cut is left as part of a token that the detector no longer recognises: a GitHub token short of its last character passed the redactor unchanged (#3733's class). Text that cannot be checked gives "" (fail closed).
+func redactedCut(text string, n int) string {
+	if len(text) > redactBound {
+		text = strings.ToValidUTF8(text[:redactBound], "")
+	}
+	out, err := redact.Rules.Text([]byte(text))
+	if err != nil {
+		return ""
+	}
+	s := string(out)
+	return strings.Clone(s[:redact.Cut(s, n)])
 }
 
 // ftsBodyLimit caps how much of one session's text enters the search index.

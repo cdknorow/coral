@@ -73,6 +73,7 @@ func parseClaudeSessions(fpath string, mtime float64) ([]IndexedSession, error) 
 		LastTimestamp:  lastTS,
 		MessageCount:   msgCount,
 		DisplaySummary: summary,
+		IndexVersion:   HistoryIndexVersion,
 		FTSBody:        buildFTSBody(summary, &fts),
 	}}, nil
 }

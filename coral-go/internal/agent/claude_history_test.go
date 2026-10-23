@@ -370,7 +370,7 @@ func TestClaudeHistoryCursorsAreBoundedByBytes(t *testing.T) {
 // the check is exact: a slice of the message (text[:200]) starts inside it and fails here every time.
 func TestCursorSummaryDoesNotShareMemoryWithTheMessage(t *testing.T) {
 	for _, size := range []int{300, 4096, 1 << 20} {
-		msg := strings.Repeat("y", size)
+		msg := strings.Repeat("y ", size/2) // words: a run of token characters longer than the cut is dropped whole by redact.Cut, which is not what this test is about
 		start := uintptr(unsafe.Pointer(unsafe.StringData(msg)))
 		got := cursorSummary(msg)
 		require.Len(t, got, 200)
@@ -404,7 +404,7 @@ func TestClaudeCursorSummaryDoesNotPinTheWholeMessage(t *testing.T) {
 		cs := make([]*claudeCursor, n)
 		for i := range cs {
 			c := &claudeCursor{}
-			c.add([]byte(`{"type":"assistant","timestamp":"2026-01-01T00:00:00Z","message":{"role":"assistant","content":"` + strings.Repeat("x", size) + `"}}`))
+			c.add([]byte(`{"type":"assistant","timestamp":"2026-01-01T00:00:00Z","message":{"role":"assistant","content":"` + strings.Repeat("x ", size/2) + `"}}`))
 			require.Len(t, c.summary, 200)
 			c.fts = FTSBodyBuilder{} // the search body is counted by weight(); what is left is what weight() cannot see
 			cs[i] = c

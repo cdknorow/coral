@@ -68,7 +68,7 @@ func (a *CodexAgent) forgetFailures(seen map[string]bool) {
 	}
 }
 
-const codexHistoryIndexVersion = 1
+const codexHistoryIndexVersion = HistoryIndexVersion
 
 func (a *CodexAgent) AgentType() string    { return "codex" }
 func (a *CodexAgent) SupportsResume() bool { return true }
@@ -204,10 +204,7 @@ func parseCodexSessionWithOpen(fpath string, mtime float64, open func(string) (*
 			fts.Add(text)
 		}
 		if summary == "" && role == "assistant" {
-			if len(text) > 200 {
-				text = text[:200]
-			}
-			summary = text
+			summary = redactedCut(text, 200)
 		}
 	}
 	if msgCount == 0 {
