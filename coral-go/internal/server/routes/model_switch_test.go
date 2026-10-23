@@ -48,6 +48,8 @@ type switchRig struct {
 	ss     *store.SessionStore
 	h      *SessionsHandler
 	term   *mockSessionTerminal
+	// userFormat writes a command's entries the way Claude Code 2.1.309 does, as type user, instead of system local_command.
+	userFormat bool
 }
 
 type testServer = struct {
@@ -88,7 +90,13 @@ func (r *switchRig) localCommand(t *testing.T, name, args, output string) {
 	t.Helper()
 	ts := time.Now().UTC().Format(time.RFC3339Nano)
 	line := func(content string) string {
-		b, _ := json.Marshal(map[string]any{"sessionId": r.sid, "type": "system", "subtype": "local_command", "content": content, "timestamp": ts})
+		var rec map[string]any
+		if r.userFormat { // Claude Code 2.1.309: type user, the tags are the message's content (#6219)
+			rec = map[string]any{"sessionId": r.sid, "type": "user", "message": map[string]any{"role": "user", "content": content}, "timestamp": ts}
+		} else {
+			rec = map[string]any{"sessionId": r.sid, "type": "system", "subtype": "local_command", "content": content, "timestamp": ts}
+		}
+		b, _ := json.Marshal(rec)
 		return string(b)
 	}
 	f, err := os.OpenFile(r.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
@@ -337,28 +345,89 @@ func TestSwitchLevelToTheDefaultAndRefusedOrUnconfirmed(t *testing.T) {
 		r := newSwitchRig(t, "claude")
 		_, _ = r.post(t, map[string]any{"thinking": "low"})
 		sw := r.waitState(t, switchFailed)
-		assert.Contains(t, sw.Message, "not confirmed")
+		assert.Contains(t, sw.Message, "did not confirm the level")
 	})
 }
 
-func TestSwitchModelThenLevelAndOneAtATime(t *testing.T) {
+func TestSwitchModelThenLevel(t *testing.T) {
 	r := newSwitchRig(t, "claude")
 	code, _ := r.post(t, map[string]any{"model": "claude-sonnet-5-5", "thinking": "low"})
 	require.Equal(t, http.StatusAccepted, code)
-	code, m := r.post(t, map[string]any{"thinking": "high"})
-	assert.Equal(t, http.StatusConflict, code, "a second switch while one is pending")
-	assert.Equal(t, "switch_in_progress", m["code"])
 	r.waitTyped(t, "/model claude-sonnet-5-5")
 	assert.NotContains(t, r.typed(), "/effort low", "the level is typed after the model is confirmed")
 	r.localCommand(t, "/model", "claude-sonnet-5-5", "Set model to `Sonnet 5.5`")
 	r.waitTyped(t, "/effort low")
-	r.assistant(t, "low")
+	r.localCommand(t, "/effort", "low", "Set effort level to low (saved as your default for new sessions)")
 	r.waitState(t, switchDone)
 	model, th := r.storedModel(t)
 	assert.Equal(t, "claude-sonnet-5-5", model)
 	assert.Equal(t, "low", th)
-	order := r.typed()
-	assert.Equal(t, []string{"/model claude-sonnet-5-5", "/effort low"}, order)
+	assert.Equal(t, []string{"/model claude-sonnet-5-5", "/effort low"}, r.typed())
+}
+
+// #6219: Claude prints "Set effort level to low" the moment it takes /effort; the switch is done then, not at the next reply (which held every other choice with a 409 until it came).
+func TestSwitchLevelIsConfirmedByClaudesOwnEntryNotTheNextReply(t *testing.T) {
+	r := newSwitchRig(t, "claude")
+	code, m := r.post(t, map[string]any{"thinking": "low"})
+	require.Equal(t, http.StatusAccepted, code, m)
+	r.waitTyped(t, "/effort low")
+	assert.Equal(t, switchPending, r.state(t).State)
+	r.localCommand(t, "/effort", "low", "Set effort level to low (saved as your default for new sessions)")
+	r.waitState(t, switchDone) // no assistant reply was written
+	_, th := r.storedModel(t)
+	assert.Equal(t, "low", th)
+	code, _ = r.post(t, map[string]any{"thinking": "high"})
+	assert.Equal(t, http.StatusAccepted, code, "the next choice is accepted at once")
+}
+
+func TestSwitchLevelThatClaudeSetToAnotherLevelFails(t *testing.T) {
+	r := newSwitchRig(t, "claude")
+	_, _ = r.post(t, map[string]any{"thinking": "max"})
+	r.waitTyped(t, "/effort max")
+	r.localCommand(t, "/effort", "max", "Set effort level to high (the highest this model takes)")
+	sw := r.waitState(t, switchFailed)
+	assert.Contains(t, sw.Message, "set the level to high, not max")
+	_, th := r.storedModel(t)
+	assert.Equal(t, "", th)
+}
+
+// #6219: a choice made while another is pending replaces it; the one it replaced never types and never changes the state, and two are never typed at once.
+func TestANewChoiceReplacesAPendingOne(t *testing.T) {
+	t.Run("before anything was typed", func(t *testing.T) {
+		r := newSwitchRig(t, "claude")
+		ctx := context.Background()
+		_, err := r.h.ts.InsertAgentEvent(ctx, &store.AgentEvent{AgentName: "proj", SessionID: &r.sid, EventType: "prompt_submit", Summary: "x"})
+		require.NoError(t, err)
+		code, m := r.post(t, map[string]any{"thinking": "low"})
+		require.Equal(t, http.StatusAccepted, code, m)
+		code, m = r.post(t, map[string]any{"thinking": "high"})
+		require.Equal(t, http.StatusAccepted, code, "no 409: the newest choice replaces the pending one: %v", m)
+		require.NotNil(t, r.state(t).Thinking)
+		assert.Equal(t, "high", *r.state(t).Thinking)
+		_, err = r.h.ts.InsertAgentEvent(ctx, &store.AgentEvent{AgentName: "proj", SessionID: &r.sid, EventType: "stop", Summary: "stop"})
+		require.NoError(t, err)
+		r.waitTyped(t, "/effort high")
+		time.Sleep(80 * time.Millisecond) // sleep-ok: the replaced choice must not be typed after
+		assert.Equal(t, []string{"/effort high"}, r.typed())
+		r.localCommand(t, "/effort", "high", "Set effort level to high (saved as your default for new sessions)")
+		r.waitState(t, switchDone)
+		_, th := r.storedModel(t)
+		assert.Equal(t, "high", th)
+	})
+	t.Run("while the first waits for Claude to confirm", func(t *testing.T) {
+		r := newSwitchRig(t, "claude")
+		_, _ = r.post(t, map[string]any{"thinking": "low"})
+		r.waitTyped(t, "/effort low")
+		code, m := r.post(t, map[string]any{"thinking": "high"})
+		require.Equal(t, http.StatusAccepted, code, m)
+		r.waitTyped(t, "/effort high")
+		assert.Equal(t, []string{"/effort low", "/effort high"}, r.typed(), "one after the other, the replaced one first")
+		assert.Equal(t, switchPending, r.state(t).State, "the replaced switch ending does not end the new one")
+		r.localCommand(t, "/effort", "high", "Set effort level to high (saved as your default for new sessions)")
+		r.waitState(t, switchDone)
+		_, th := r.storedModel(t)
+		assert.Equal(t, "high", th)
+	})
 }
 
 func TestSwitchWaitsForTheReplyToEnd(t *testing.T) {
@@ -397,4 +466,131 @@ func setSwitchTiming(t testing.TB, v switchTimings) {
 	old := switchTiming.Load()
 	switchTiming.Store(&v)
 	t.Cleanup(func() { switchTiming.Store(old) })
+}
+
+// #6219: Sleep, Kill and Restart end a pending switch with a message (never left pending), and a wake starts the agent at the model and level it runs now, not the ones it was launched with.
+func startedAt(t *testing.T, r *switchRig, level string) {
+	t.Helper()
+	opus := "claude-opus-5-5"
+	require.NoError(t, r.ss.RegisterLiveSession(context.Background(), &store.LiveSession{SessionID: r.sid, AgentType: "claude", AgentName: r.name, WorkingDir: t.TempDir(), Model: &opus, // the mock terminal finds a session by this name
+		Thinking: &level, Flags: store.MarshalFlags([]string{"--effort", level})}))
+}
+
+func (r *switchRig) postRoute(t *testing.T, route string) {
+	t.Helper()
+	code, out := dashboardPost(t, r.server.URL+"/api/sessions/live/"+r.sid+"/"+route, map[string]any{})
+	require.Equal(t, http.StatusOK, code, out)
+	require.Contains(t, out, `"ok":true`)
+}
+
+func TestSleepEndsAPendingSwitchAndAWakeKeepsTheConfirmedLevel(t *testing.T) {
+	t.Run("confirmed before the sleep: the wake starts at the new level, once", func(t *testing.T) {
+		r := newSwitchRig(t, "claude")
+		startedAt(t, r, "medium")
+		_, _ = r.post(t, map[string]any{"thinking": "low"})
+		r.waitTyped(t, "/effort low")
+		r.localCommand(t, "/effort", "low", "Set effort level to low (saved as your default for new sessions)")
+		r.waitState(t, switchDone)
+		r.postRoute(t, "sleep")
+		r.postRoute(t, "wake")
+		n, level := effortArgs(commandsFor(r.term, r.sid))
+		assert.Equal(t, 1, n, "one --effort on the wake")
+		assert.Equal(t, "low", level, "the wake starts at the level that was set, not the one the agent was launched with")
+	})
+	t.Run("not confirmed: the sleep ends the switch with a message and the wake keeps the old level", func(t *testing.T) {
+		r := newSwitchRig(t, "claude")
+		startedAt(t, r, "medium")
+		_, _ = r.post(t, map[string]any{"thinking": "low"})
+		r.waitTyped(t, "/effort low")
+		r.postRoute(t, "sleep")
+		sw := r.waitState(t, switchFailed)
+		assert.Contains(t, sw.Message, "put to sleep")
+		_, th := r.storedModel(t)
+		assert.Equal(t, "medium", th, "a level Claude did not confirm is not stored")
+		r.postRoute(t, "wake")
+		n, level := effortArgs(commandsFor(r.term, r.sid))
+		assert.Equal(t, 1, n)
+		assert.Equal(t, "medium", level)
+		assert.Equal(t, switchFailed, r.state(t).State, "the wake does not bring the switch back")
+	})
+}
+
+func TestKillAndRestartEndAPendingSwitch(t *testing.T) {
+	t.Run("restart", func(t *testing.T) {
+		r := newSwitchRig(t, "claude")
+		startedAt(t, r, "medium")
+		_, _ = r.post(t, map[string]any{"thinking": "low"})
+		r.waitTyped(t, "/effort low")
+		code, out := dashboardPost(t, r.server.URL+"/api/sessions/live/"+r.name+"/restart", map[string]any{"agent_type": "claude", "session_id": r.sid})
+		require.Equal(t, http.StatusOK, code, out)
+		sw := r.waitState(t, switchFailed)
+		assert.Contains(t, sw.Message, "restarted")
+	})
+	t.Run("kill", func(t *testing.T) {
+		r := newSwitchRig(t, "claude")
+		startedAt(t, r, "medium")
+		_, _ = r.post(t, map[string]any{"thinking": "low"})
+		r.waitTyped(t, "/effort low")
+		code, out := dashboardPost(t, r.server.URL+"/api/sessions/live/"+r.name+"/kill", map[string]any{"agent_type": "claude", "session_id": r.sid})
+		require.Equal(t, http.StatusOK, code, out)
+		sw := r.waitState(t, switchFailed)
+		assert.Contains(t, sw.Message, "ended")
+	})
+}
+
+// #6219: both transcript formats, every command, set and refused.
+func TestSwitchesAreConfirmedFromEitherTranscriptFormat(t *testing.T) {
+	for _, userFormat := range []bool{false, true} {
+		name := "system local_command"
+		if userFormat {
+			name = "type user (2.1.309)"
+		}
+		t.Run(name, func(t *testing.T) {
+			rig := func() *switchRig { r := newSwitchRig(t, "claude"); r.userFormat = userFormat; return r }
+			t.Run("/model set", func(t *testing.T) {
+				r := rig()
+				_, _ = r.post(t, map[string]any{"model": "claude-sonnet-5-5"})
+				r.waitTyped(t, "/model claude-sonnet-5-5")
+				r.localCommand(t, "/model", "claude-sonnet-5-5", "Set model to Sonnet 5.5")
+				r.waitState(t, switchDone)
+				model, _ := r.storedModel(t)
+				assert.Equal(t, "claude-sonnet-5-5", model)
+			})
+			t.Run("/model refused", func(t *testing.T) {
+				r := rig()
+				_, _ = r.post(t, map[string]any{"model": "claude-sonnet-5-5"})
+				r.waitTyped(t, "/model claude-sonnet-5-5")
+				r.localCommand(t, "/model", "claude-sonnet-5-5", "Unknown model: claude-sonnet-5-5")
+				sw := r.waitState(t, switchFailed)
+				assert.Contains(t, sw.Message, "did not take the model")
+			})
+			t.Run("/effort set", func(t *testing.T) {
+				r := rig()
+				_, _ = r.post(t, map[string]any{"thinking": "xhigh"})
+				r.waitTyped(t, "/effort xhigh")
+				r.localCommand(t, "/effort", "xhigh", "Set effort level to xhigh (saved as your default for new sessions): Deeper reasoning than high, just below maximum (on supported models)")
+				r.waitState(t, switchDone)
+				_, th := r.storedModel(t)
+				assert.Equal(t, "xhigh", th)
+			})
+			t.Run("/effort auto", func(t *testing.T) {
+				r := rig()
+				require.NoError(t, r.ss.SetSessionThinking(context.Background(), r.sid, "medium"))
+				_, _ = r.post(t, map[string]any{"thinking": ""})
+				r.waitTyped(t, "/effort auto")
+				r.localCommand(t, "/effort", "auto", "Effort level set to auto")
+				r.waitState(t, switchDone)
+				_, th := r.storedModel(t)
+				assert.Equal(t, "", th)
+			})
+			t.Run("/effort refused", func(t *testing.T) {
+				r := rig()
+				_, _ = r.post(t, map[string]any{"thinking": "max"})
+				r.waitTyped(t, "/effort max")
+				r.localCommand(t, "/effort", "max", "Invalid effort level: max")
+				sw := r.waitState(t, switchFailed)
+				assert.Contains(t, sw.Message, "did not take the level")
+			})
+		})
+	}
 }
