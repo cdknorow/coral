@@ -305,3 +305,39 @@ func TestTheBoundOfTwoTakesTwoMessagesHoweverFastTheyCome(t *testing.T) {
 		require.Eventually(t, func() bool { return !r.h.holds.waiting(personKey(r.name, r.sid)) }, 5*time.Second, 5*time.Millisecond)
 	}
 }
+
+// #6615: a Codex whose hooks include PermissionRequest raises its row's Needs input at its approval dialog, and the tool's own PostToolUse clears it: so a person's chat message is held behind
+// the dialog for Codex too.
+func TestCodexApprovalDialogRaisesNeedsInputAndHoldsAPersonsMessage(t *testing.T) {
+	server, h, mock, ss := setupSessionsTestServer(t)
+	ctx := context.Background()
+	sid := "cccccccc-6615-4000-8000-000000000001"
+	name := naming.SessionName("codex", sid)
+	mock.addSession(name, "/tmp/project")
+	require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: sid, AgentType: "codex", AgentName: "cx", WorkingDir: "/tmp/project"}))
+	tok := agentToken(t, h, sid, name)
+	post := func(body string) {
+		req, _ := http.NewRequest("POST", server.URL+"/api/sessions/live/cx/events", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set(store.SessionTokenHeader, tok)
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		resp.Body.Close()
+		require.Equal(t, http.StatusOK, resp.StatusCode, body)
+	}
+	post(`{"event_type":"prompt_submit","summary":"User submitted prompt"}`)
+	needs := func() bool { return h.deriveSingleSessionState(ctx, sid, 0).NeedsInput }
+	assert.False(t, needs())
+
+	post(`{"event_type":"permission_request","summary":"Waiting for the user: permission (Bash)","tool_name":"Bash","detail_json":{"kind":"permission","tool_name":"Bash"}}`)
+	assert.True(t, needs(), "the approval dialog is Needs input")
+	st, ok := h.gateState(ctx, name, "codex", sid)
+	require.True(t, ok)
+	assert.Equal(t, ptymanager.StateBlocked, st.State)
+	assert.Equal(t, "permission", st.Kind)
+	assert.True(t, h.blockedOnBox(ctx, name, "codex", sid), "a person's message is held behind it")
+
+	post(`{"event_type":"tool_use","summary":"Ran: ls","tool_name":"Bash"}`)
+	assert.False(t, needs(), "approved: the tool ran")
+	assert.False(t, h.blockedOnBox(ctx, name, "codex", sid))
+}
