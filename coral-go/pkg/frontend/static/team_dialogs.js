@@ -15,6 +15,7 @@ const { markFieldInvalid, _launchBlocked, _launchOn, _onServerSuffix, _refreshAf
 const { _syncFlagButtons } = await importOnce('./flag_shortcuts.js');
 const { showSettingsModal } = await importOnce('./settings_dialog.js');
 const { modelName, levelName } = await importOnce('./model_labels.js');
+const { codexEnforced, agyEnforced } = await importOnce('./preset_enforcement.js');
 const { BUILTIN_TEAM_TEMPLATES, _renderTeamTemplateSelector, markTeamTemplate, resetTeamTemplatePicker } = await importOnce('./team_templates_ui.js');
 const { showTeamStep, currentTeamStep, TEAM_STEPS } = await importOnce('./team_steps.js');
 
@@ -27,6 +28,20 @@ function _memberModeLabel(flags) {
     const m = (flags || '').match(_TEAM_MODE_FLAG);
     if (m) return label((m[1] || m[2]).replace(/-([a-z])/g, (_, c) => c.toUpperCase()));
     return (flags || '').trim() ? 'Custom' : label(select?.value || 'default');
+}
+
+function _modeFromCapabilities(type, caps) {
+    if (type === 'codex') {
+        const m = codexEnforced(caps);
+        if (!m) return null;
+        if (m.sandbox === 'none') return { text: 'Runs without a sandbox', warn: true };
+        return { text: m.sandbox === 'read-only' ? 'Read-only sandbox' : 'Sandboxed' };
+    }
+    if (type === 'agy' || type === 'antigravity' || type === 'gemini') {
+        if (!caps?.allow?.length && !caps?.deny?.length) return null;
+        return agyEnforced(caps) === 'skip-permissions' ? { text: 'Skips permission prompts', warn: true } : null;
+    }
+    return null;
 }
 
 function _updateTeamAgentSummary(row) {
@@ -48,8 +63,12 @@ function _updateTeamAgentSummary(row) {
     const modelId = config.model || '';
     set('.team-agent-model', modelId ? modelName(type, modelId, _effectiveServer(launch.server)) : 'CLI default', modelId && modelId === _settingsFor(_effectiveServer(launch.server))['default_model_' + type] ? 'default' : '');
     set('.team-agent-thinking', config.thinking ? levelName(config.thinking) : 'CLI default');
+    // What launches: Codex and Antigravity take their sandbox or mode from the member's capabilities, so a member that has them shows that, in plain words, not the Mode beside it.
+    const byCaps = _modeFromCapabilities(type, config.capabilities);
     const own = /--permission-mode|--mode/.test(config.flags || '');
-    set('.team-agent-mode', _memberModeLabel(config.flags), own ? '' : 'team');
+    if (byCaps) set('.team-agent-mode', byCaps.text);
+    else set('.team-agent-mode', _memberModeLabel(config.flags), own ? '' : 'team');
+    row.querySelector('.team-agent-mode')?.classList.toggle('team-mode-warn', !!byCaps?.warn);
     const prompt = row.querySelector('.team-agent-prompt');
     if (prompt) prompt.textContent = config.prompt || 'No behavior prompt yet.';
     const nameBtn = row.querySelector('.team-agent-role-name');
@@ -121,12 +140,14 @@ function teamStepMove(dir) {
 }
 
 function _defaultTeamAgentModalConfig() {
+    const agentType = document.getElementById('team-agent-type')?.value || '';
     return {
         name: '',
         prompt: '',
-        agentType: document.getElementById('team-agent-type')?.value || '',
+        agentType,
         model: '',
         capabilities: null,
+        flags: _getPermissionFlagsForAgentMode(agentType || 'claude', document.getElementById('team-permission-mode')?.value || 'default'), // a new member starts at the team's Mode, not Auto (#6412)
     };
 }
 
