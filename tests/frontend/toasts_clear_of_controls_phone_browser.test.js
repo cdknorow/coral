@@ -58,11 +58,11 @@ async function httpJson(method, p, body) { const r = await fetch(BASE + p, { met
         check('phone: two short toasts are one under the other, not on each other', !!b && a.b <= b.t + 1, JSON.stringify(geo.toasts));
         const seen = await hits({ toast: '.toast', errorToast: '.toast.error' });
         check('phone: the short toasts are on top of the notices, not hidden under them', Object.values(seen).every(v => v === 'ok'), JSON.stringify(seen));
-        // a long toast is two lines, a tap shows the rest
-        const LONG = 'Could not save the file because the folder it is in cannot be written to by this account, and the disk may be full or read-only; check the folder and try again later, or choose another place for it to go.';
+        // a long error toast is four lines, a tap shows the rest (an error says what went wrong and what to do: four lines, #6727)
+        const LONG = 'Could not save the file because the folder it is in cannot be written to by this account, and the disk may be full or read-only; check the folder and try again later, or choose another place for it to go. Nothing was changed on disk, and the file you were editing is still open with your changes in it, so you can save it somewhere else without losing them.';
         await ev(`(async () => { const n = await import(${S} + 'notifications.js'); n.showToast(${JSON.stringify(LONG)}, true, 600000); return true; })()`);
         const lng = await ev(`(() => { const t = [...document.querySelectorAll('.toast')].find(e => e.textContent.startsWith('Could not save')); const m = t.querySelector('.toast-message'); const r = () => Math.round(t.getBoundingClientRect().height); const h0 = r(); const full0 = m.textContent; t.click(); const h1 = r(); const ex = t.classList.contains('expanded'); t.click(); return { h0, h1, ex, back: r(), same: m.textContent === full0 && full0.length > 150 }; })()`);
-        check('phone: a long toast is two lines, a tap shows the rest, another tap folds it, the text is whole either way', lng.h0 <= 90 && lng.h1 > lng.h0 + 20 && lng.ex && lng.back === lng.h0 && lng.same, JSON.stringify(lng));
+        check('phone: a long error toast is four lines, a tap shows the rest, another tap folds it, the text is whole either way', lng.h0 <= 130 && lng.h1 > lng.h0 + 20 && lng.ex && lng.back === lng.h0 && lng.same, JSON.stringify(lng));
         await ev(`[...document.querySelectorAll('.toast')].filter(e => e.textContent.startsWith('Could not save')).forEach(e => e.remove()); true`);
         const awake = await hits({ composer: '#command-input', send: '.mobile-send-btn[data-on-click="cmd-send"]', sendTeam: '.mobile-send-team-btn' });
         check('phone, an awake agent: the message box and both Send buttons are not covered', Object.values(awake).every(v => v === 'ok'), JSON.stringify(awake));

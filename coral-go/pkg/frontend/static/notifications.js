@@ -17,7 +17,13 @@ import { routeHref } from './markdown.js';
  *
  * Returns the toast element. Text is set with textContent only.
  */
-export function showToast(message, isError = false, duration = 4000, opts = {}) {
+/** How long a toast with no duration of its own stays (#6727): a short one 4 s; an error at least 8 s, and either longer by the length of its words (40 ms a character past 80, at most 20 s): a person has to be able to read what went wrong. */
+export function toastMs(text, error) {
+    const extra = Math.max(0, String(text || "").length - 80) * 40;
+    return Math.min(20000, (error ? 8000 : 4000) + extra);
+}
+
+export function showToast(message, isError = false, duration, opts = {}) {
     const error = !!isError;
     const toast = document.createElement("div");
     toast.className = `toast ${error ? "error" : ""}`;
@@ -25,6 +31,7 @@ export function showToast(message, isError = false, duration = 4000, opts = {}) 
     let text = String(message ?? "");
     if (opts.blocked && !/^Blocked:/.test(text)) text = `Blocked: ${text}`;
     if (!opts.silent) announceNotice(text, error); // said once by the Notifications column's own regions, not by the toast (a region that appears already filled is not reliably announced); silent: another region already says it (a send's status)
+    if (duration === undefined) duration = toastMs(text, error);
     const body = document.createElement("span");
     body.className = "toast-message";
     body.textContent = text;
@@ -61,7 +68,7 @@ export function showToast(message, isError = false, duration = 4000, opts = {}) 
     toast.appendChild(close);
     toast.addEventListener("keydown", (e) => { if (e.key === "Escape") dismiss(); });
     // On a phone a long toast shows two lines (css); a tap opens the rest. The full text is in the element either way, so a screen reader reads it all.
-    toast.addEventListener("click", (e) => { if (!e.target.closest("button")) toast.classList.toggle("expanded"); });
+    toast.addEventListener("click", (e) => { if (!e.target.closest("button")) { toast.classList.toggle("expanded"); clearTimeout(timer); timer = 0; } }); // a toast that is being read is not timed out (#6727)
 
     toastHost().appendChild(toast);
     if (Number.isFinite(duration)) timer = setTimeout(dismiss, duration);

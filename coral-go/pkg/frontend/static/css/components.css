@@ -1471,6 +1471,7 @@ button.subscriber-history-link {
     #toast-host > .toast { max-width: none; }
     /* A long toast is two lines, a tap shows the rest (it would otherwise cover a third of the screen). */
     #toast-host > .toast .toast-message { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+    #toast-host > .toast.error .toast-message { -webkit-line-clamp: 4; line-clamp: 4; } /* an error says what went wrong and what to do: four lines before the cut (#6727) */
     #toast-host > .toast.expanded .toast-message { display: block; -webkit-line-clamp: unset; line-clamp: unset; overflow: visible; }
 }
 
