@@ -90,6 +90,16 @@ const BASE = require('./test_base').BASE;
         assert.equal((await rows())[1], 'Warrior', 'Undo puts it back where it was');
         assert.equal(await vis('#team-undo'), false);
 
+        console.log('A member added in the Add member dialog follows the team Mode (Default), not Auto (#6412)');
+        await ev(`window.showTeamAgentModal(); true`);
+        assert.equal(await ev(`document.querySelector('#team-agent-modal-acf .acf-permission-mode').value`), 'default', 'the new member starts at the team Mode');
+        await ev(`{ const n = document.querySelector('#team-agent-modal-acf .acf-name'); n.value = 'Scribe'; n.dispatchEvent(new Event('input', { bubbles: true })); window.saveTeamAgentFromModal(); } true`);
+        assert.equal(await ev(`[...document.querySelectorAll('#team-agents-list .team-agent-row')].pop().querySelector('.team-agent-mode').textContent`), 'Default team');
+        await ev(`document.getElementById('team-permission-mode').value = 'plan'; document.getElementById('team-permission-mode').dispatchEvent(new Event('change', { bubbles: true })); window.showTeamAgentModal(); true`);
+        assert.equal(await ev(`document.querySelector('#team-agent-modal-acf .acf-permission-mode').value`), 'plan', 'and follows a team Mode that was changed');
+        await ev(`window.hideTeamAgentModal(); document.getElementById('team-permission-mode').value = 'default'; document.getElementById('team-permission-mode').dataset.pickedByPerson = ''; true`);
+        await click('#team-agents-list .team-agent-row:last-child .team-agent-remove'); await ev(`document.getElementById('team-undo').hidden = true; true`);
+
         console.log('Start: Mode defaults to Default, Launch Team is here');
         await click('#launch-team-next');
         assert.equal(await step(), 'start');
@@ -100,6 +110,29 @@ const BASE = require('./test_base').BASE;
         await waitFor(`window.__teamLaunches.length === 1`, 'the launch request');
         const sent = await ev(`window.__teamLaunches[0]`);
         assert.equal(sent.board_name, 'crew-1'); assert.equal(sent.agents.length, 7); assert.deepEqual(sent.flags, [], 'Default mode adds no permission flag');
+
+        console.log('The Mode a member shows is what launches (#6412): Claude and Codex');
+        const launches = n => waitFor(`window.__teamLaunches.length === ${n}`, 'the launch request ' + n);
+        const modeOf = name => ev(`[...document.querySelectorAll('#team-agents-list .team-agent-row')].find(r => r.querySelector('.team-agent-role-name').textContent === ${JSON.stringify(name)}).querySelector('.team-agent-mode').textContent`);
+        await open();
+        await ev(`document.getElementById('team-board-name').value = 'crew-2'; document.getElementById('launch-team-dir').value = '/work/repo'; true`);
+        await ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'team_dialogs.js');
+            document.getElementById('team-agents-list').innerHTML = ''; document.getElementById('team-permission-mode').value = 'default';
+            m._addTeamAgent('Plain', 'p', null, 'claude', '', '');
+            m._addTeamAgent('Planner', 'p', null, 'claude', '', '--permission-mode plan');
+            m._addTeamAgent('Open', 'p', { allow: ['file_read', 'file_write', 'shell', 'git_write'] }, 'codex', '', '');
+            m._addTeamAgent('Careful', 'p', { allow: ['file_read'] }, 'codex', '', '');
+            m._refreshTeamSummaries(); return true; })()`);
+        assert.equal(await modeOf('Plain'), 'Default team'); assert.equal(await modeOf('Planner'), 'Plan');
+        assert.equal(await modeOf('Open'), 'Runs without a sandbox', 'a Codex member with Shell, Read, Write and Git Write and no deny launches unsandboxed: the cell says so, not Default');
+        assert.equal(await modeOf('Careful'), 'Read-only sandbox');
+        await ev(`window.launchTeam(); true`);
+        await launches(2);
+        const sent2 = await ev(`window.__teamLaunches[1]`);
+        const by = n => sent2.agents.find(a => a.name === n);
+        assert.deepEqual(sent2.flags, [], 'the team Mode is Default: no permission flag'); assert.equal(by('Plain').flags, undefined, 'Plain carries no flags (not auto)'); assert.equal(by('Plain').capabilities, undefined);
+        assert.deepEqual(by('Planner').flags, ['--permission-mode', 'plan']);
+        assert.deepEqual(by('Open').capabilities.allow.sort(), ['file_read', 'file_write', 'git_write', 'shell']);
 
         console.log('Phone width: the table stacks and the actions keep 44 px targets');
         await ev(`window.hideLaunchModal(); true`);
