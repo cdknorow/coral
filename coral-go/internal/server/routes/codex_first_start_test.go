@@ -106,3 +106,9 @@ func TestTheStartPathDefersTheSecondCodexStartOnANewHome(t *testing.T) {
 	assert.Len(t, deferred, 1, "a Claude start is never deferred by it")
 	assert.Len(t, term.sentCommands(), 3, "every start is typed in the end")
 }
+
+// The gap is the margin over a migration that takes a fraction of a second, not a guess at a slow one: a real Codex had its memories database 0.3 s after it was started (#6374). Raising it makes the first
+// multi-Codex launch of a new person wait that much longer, so it is pinned.
+func TestTheFirstCodexStartGapIsAShortMargin(t *testing.T) {
+	assert.Equal(t, 3*time.Second, codexFirstStartGapDefault)
+}

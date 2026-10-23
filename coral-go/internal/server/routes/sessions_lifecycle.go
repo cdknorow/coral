@@ -289,7 +289,11 @@ var afterTeamSlot = func(d time.Duration, f func()) { time.AfterFunc(d, f) }
 // codexFirstStartGap is how long the first Codex start on a Codex home that has never completed a turn protects itself (#6364): Codex migrates its memories database when it starts, and a second
 // Codex started on the same new home in the middle of that migration exits with "failed to migrate memories DB ... table stage1_outputs already exists". A var so a test can set it (the package's
 // TestMain sets it to zero: every test that launches Codex shares one home).
-var codexFirstStartGap = 10 * time.Second
+// 3 s: the migration is done a fraction of a second after the first Codex starts (a real Codex's memories database exists 0.3 s after its exec, #6374) and team launches already space members 2.5 s apart without
+// ever hitting the race; the race came from two separate launches at the same moment. 3 s is ten times what was measured, and costs the second Codex of a first launch about 3 s, not 10.
+const codexFirstStartGapDefault = 3 * time.Second
+
+var codexFirstStartGap = codexFirstStartGapDefault
 
 var codexFirstStarts = struct {
 	sync.Mutex
