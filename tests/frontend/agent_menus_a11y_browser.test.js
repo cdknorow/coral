@@ -11,6 +11,7 @@ const { connect } = require('./agent_view_harness');
     const openMenu = () => ev(`(() => { const m = [...document.querySelectorAll('.sidebar-kebab-menu')].find(x => getComputedStyle(x).display !== 'none'); return m ? { role: m.getAttribute('role'), label: m.getAttribute('aria-label'), items: [...m.querySelectorAll('button, a')].map(i => i.getAttribute('role') || '') } : null; })()`);
     try {
         await Page.enable(); await Page.addScriptToEvaluateOnNewDocument({ source: PRELOAD });
+        await Emulation.setFocusEmulationEnabled({ enabled: true }); // the menus close on Tab only while the page has focus (as it does for a person)
         await Emulation.setDeviceMetricsOverride({ width: 1280, height: 800, deviceScaleFactor: 1, mobile: false });
         await Page.navigate({ url: process.env.CORAL_TEST_URL + '/' }); await Page.loadEventFired(); await install();
         await ev(`window.__coralReady.startup('liveList', 'liveListLoaded', 'settings')`);
@@ -31,7 +32,22 @@ const { connect } = require('./agent_view_harness');
             assert.equal(await openMenu(), null, `${what}: Escape closes the menu`);
             assert.equal(await ev(`${btn}.getAttribute('aria-expanded')`), 'false', `${what}: and the button says closed again`);
             assert.equal(await ev(`document.activeElement === ${btn}`), true, `${what}: focus is back on the button`);
+            await key('Enter', 'Enter', 13, '\r'); assert.ok(await openMenu(), `${what}: it opens again`);
+            await key('End', 'End', 35); await key('Tab', 'Tab', 9); // Tab walks the items (the design, keyboard_flows); out of the last one it closes the menu
+            assert.equal(await openMenu(), null, `${what}: Tab out of the last item leaves the menu closed`);
+            assert.equal(await ev(`${btn}.getAttribute('aria-expanded')`), 'false', `${what}: and the button says closed after Tab`);
         }
-        console.log('PASS the Agents list menus: aria-expanded follows, menu items, arrows, Escape returns focus');
+        // Display options: the button says whether its panel is open, Enter opens it, Escape closes it and focus returns to the button
+        const disp = `document.querySelector('#sidebar-summary-btn')`, panel = () => ev(`(() => { const p = document.querySelector('[data-display-panel]'); return !!p && !p.hidden && getComputedStyle(p).display !== 'none' && p.getClientRects().length > 0; })()`);
+        await ev(`${disp}.focus(); true`);
+        assert.equal(await ev(`${disp}.getAttribute('aria-expanded')`), 'false', 'Display options: the button says its panel is closed');
+        await key('Enter', 'Enter', 13, '\r');
+        assert.equal(await panel(), true, 'Display options: Enter opens the panel');
+        assert.equal(await ev(`${disp}.getAttribute('aria-expanded')`), 'true', 'Display options: and the button says open');
+        await key('Escape', 'Escape', 27);
+        assert.equal(await panel(), false, 'Display options: Escape closes the panel');
+        assert.equal(await ev(`${disp}.getAttribute('aria-expanded')`), 'false', 'Display options: and the button says closed again');
+        assert.equal(await ev(`document.activeElement === ${disp}`), true, 'Display options: focus is back on the button');
+        console.log('PASS the Agents list menus: aria-expanded follows, menu items, arrows, Escape returns focus, Tab leaves it closed, Display options');
     } finally { await client.close(); }
 })().catch(e => { console.error(e); process.exit(1); });
