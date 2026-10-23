@@ -115,7 +115,7 @@ row() {
 }
 
 # launch_team CASE WHAT REPO [BASE_BRANCH] [BOARD]: one team launch with a worktree; records the row; leaves the launch result in LAST_BODY
-LAST_BODY=""; LAST_CODE=""
+LAST_BODY=""; LAST_CODE=""; KILL_BODY=""
 launch_team() {
     local case="$1" what="$2" repo="$3" base="${4:-}" board="${5:-wm-$1-$$}"
     local basej=""; [[ -n "$base" ]] && basej="\"base_branch\": \"$base\","
@@ -157,7 +157,9 @@ kill_team() {
     local bid code
     bid=$(printf '%s' "$LAST_BODY" | jget board_id)
     [[ -z "$bid" ]] && { log "kill_team: no board_id"; return 1; }
-    code=$(curl -s -m 60 -o /dev/null -w '%{http_code}' -X POST "${BASE_URL}/api/sessions/live/team/${bid}/kill" -H "Content-Type: application/json" -d '{}')
+    local resp
+    resp=$(api_code POST "/api/sessions/live/team/${bid}/kill" -d '{}')
+    code="${resp##*$'\n'}"; KILL_BODY="${resp%$'\n'*}"
     sleep 6
     printf '%s' "$code"
 }
@@ -327,6 +329,90 @@ resp=$(api_code POST "/api/tasks/run" -d "{\"prompt\": \"x\", \"repo_path\": \"$
 code="${resp##*$'\n'}"; body="${resp%$'\n'*}"; rid=$(printf '%s' "$body" | jget run_id); [[ -z "$rid" ]] && rid=$(printf '%s' "$body" | jget id)
 sleep 8; st=$(api GET "/api/tasks/runs/${rid}")
 row task-run-master "task run on a repository whose branch is master (no base_branch)" "$code" "status=$(printf '%s' "$st" | jget status) error=$(printf '%s' "$st" | jget error_msg | clean x 360)" "$(state "$R")"
+
+
+# ── 8. what #6701 promises: a stop, a kill and a job's cleanup keep unsaved work ──────────────────────────────
+upath() { cygpath -u "$1" 2>/dev/null || printf '%s' "$1"; }
+wt_of() { printf '%s' "$LAST_BODY" | python3 -c "import sys,json
+try:
+    d=json.load(sys.stdin); print(next((a.get('worktree_path','') for a in d.get('agents',[]) if a.get('worktree_path')),''))
+except Exception: print('')" 2>/dev/null | tr -d '\r'; }
+wt_answer() { printf '%s' "$1" | python3 -c "import sys,json
+try:
+    w=json.load(sys.stdin).get('worktree') or {}; print('state=%s%s' % (w.get('state',''), (' reason=' + w.get('reason','')) if w.get('reason') else ''))
+except Exception: print('(no worktree answer)')" 2>/dev/null | tr -d '\r'; }
+# stop_case NAME WHAT HOW: HOW is clean, modified, untracked or committed; launches a team, makes the worktree so, stops the team, and reports the answer and what is left
+stop_case() {
+    local name="$1" what="$2" how="$3" R wt u
+    R=$(newrepo "$name")
+    launch_team "$name-launch" "$what (launch)" "$R" main "wm-$name-$$"
+    wt=$(wt_of); u=$(upath "$wt")
+    case "$how" in
+        modified) echo "unsaved line" >>"$u/README.md" ;;
+        untracked) echo "scratch" >"$u/scratch.txt" ;;
+        committed) echo "own commit" >"$u/own.txt"; git -C "$u" add own.txt; git "${GIT_ID[@]}" -C "$u" commit -q -m "work on the team branch" ;;
+    esac
+    local code; code=$(kill_team)
+    local kept="folder-gone"; [[ -d "$u" ]] && kept="folder-kept"
+    local content=""; [[ "$how" == modified && -f "$u/README.md" ]] && content=" README keeps its unsaved line: $(grep -c 'unsaved line' "$u/README.md")"; [[ "$how" == untracked && -f "$u/scratch.txt" ]] && content=" scratch.txt kept"
+    row "$name-stop" "$what: Stop team" "$code" "$(wt_answer "$KILL_BODY") $kept$content" "$(state "$R")"
+    STOP_REPO="$R"; STOP_BOARD=$(printf '%s' "$LAST_BODY" | jget board_id)
+}
+stop_case stop-clean "a clean worktree" clean
+STOP_CLEAN_BOARD="$STOP_BOARD"; STOP_CLEAN_REPO="$STOP_REPO"
+resp=$(api_code POST "/api/teams/detail/${STOP_CLEAN_BOARD}/resurrect" -d '{}'); code="${resp##*$'\n'}"; body="${resp%$'\n'*}"
+row resurrect-after-clean-stop "resurrect the team stopped clean" "$code" "$(printf '%s' "$body" | clean x 500)" "$(state "$STOP_CLEAN_REPO")"
+LAST_BODY="$body"; kill_launch
+stop_case stop-modified "a tracked file edited in the worktree" modified
+STOP_DIRTY_BOARD="$STOP_BOARD"; STOP_DIRTY_REPO="$STOP_REPO"
+resp=$(api_code POST "/api/teams/detail/${STOP_DIRTY_BOARD}/resurrect" -d '{}'); code="${resp##*$'\n'}"; body="${resp%$'\n'*}"
+row resurrect-after-dirty-stop "resurrect the team stopped with unsaved work in its worktree" "$code" "$(printf '%s' "$body" | clean x 500)" "$(state "$STOP_DIRTY_REPO")"
+LAST_BODY="$body"; kill_launch
+launch_team relaunch-after-dirty-stop "a new team in the repository that has a kept worktree and branch" "$STOP_DIRTY_REPO" main "wm-relaunch-$$"; kill_launch
+stop_case stop-untracked "an untracked file in the worktree" untracked
+stop_case stop-committed "a commit on the team's own branch, nothing else" committed
+
+# one session killed (not the team): clean and dirty
+for how in clean modified; do
+    R=$(newrepo "kill-$how")
+    launch_team "kill-$how-launch" "single kill, $how worktree (launch)" "$R" main "wm-k$how-$$"
+    wt=$(wt_of); u=$(upath "$wt"); [[ "$how" == modified ]] && echo "unsaved line" >>"$u/README.md"
+    info=$(printf '%s' "$LAST_BODY" | python3 -c "import sys,json
+d=json.load(sys.stdin)
+for a in d.get('agents',[]): print(a.get('session_name','')+' '+a.get('session_id',''))" 2>/dev/null | tr -d '\r' | head -1)
+    sname="${info%% *}"; sid="${info##* }"
+    kresp=$(api_code POST "/api/sessions/live/${sname}/kill" -d "{\"session_id\": \"$sid\"}"); kcode="${kresp##*$'\n'}"; kbody="${kresp%$'\n'*}"
+    sleep 5; kept="folder-gone"; [[ -d "$u" ]] && kept="folder-kept"
+    row "kill-$how" "one session killed, $how worktree" "$kcode" "$(wt_answer "$kbody") $kept" "$(state "$R")"
+done
+
+# a task run's cleanup (cleanup_worktree true): clean, and with unsaved work written into the run's worktree
+for how in clean modified; do
+    R=$(newrepo "job-$how")
+    bj="{\"prompt\": \"x\", \"repo_path\": \"$(native "$R")\", \"agent_type\": \"claude\", \"create_worktree\": true, \"max_duration_s\": 60, \"cleanup_worktree\": true}"
+    printf '%s' "$bj" >"$TMPROOT/job.json"
+    resp=$(api_code POST "/api/tasks/run" --data-binary "@$(native "$TMPROOT/job.json")"); code="${resp##*$'\n'}"; body="${resp%$'\n'*}"; rid=$(printf '%s' "$body" | jget run_id); [[ -z "$rid" ]] && rid=$(printf '%s' "$body" | jget id)
+    sleep 6
+    jw=$(ls "$CORAL_DATA_DIR/worktrees" 2>/dev/null | grep -- "-task$" | tail -1)
+    jdir="$CORAL_DATA_DIR/worktrees/$jw"
+    if [[ "$how" == modified && -d "$jdir" ]]; then echo "unsaved line" >>"$jdir/README.md"; fi
+    api POST "/api/tasks/runs/${rid}/kill" -d '{}' >/dev/null
+    sleep 8
+    st=$(api GET "/api/tasks/runs/${rid}")
+    kept="folder-gone"; [[ -n "$jw" && -d "$jdir" ]] && kept="folder-kept"
+    row "job-cleanup-$how" "task run with cleanup_worktree=true, $how worktree, run killed" "$code" "status=$(printf '%s' "$st" | jget status) error=$(printf '%s' "$st" | jget error_msg | clean x 300) $kept" "$(state "$R")"
+done
+
+# board names git refuses in a branch name
+R=$(newrepo odd-names)
+for nm in "my team" "a..b" "x~1" "with:colon"; do
+    launch_team "board-name-$(printf '%s' "$nm" | tr -c 'A-Za-z0-9' '_')" "board_name \"$nm\"" "$R" main "$nm"; kill_launch
+done
+# a detached HEAD with no base named, and a base the repository does not have (the message should name the branches that exist)
+R=$(newrepo detached-nobase); git -C "$R" checkout -q --detach
+launch_team detached-no-base "detached HEAD, no base_branch" "$R" "" "wm-dnb-$$"; kill_launch
+R=$(newrepo base-missing-2); git -C "$R" branch other
+launch_team base-missing-lists "base_branch=nope in a repository with branches main and other" "$R" nope "wm-bml-$$"; kill_launch
 
 # ── the table ────────────────────────────────────────────────────────
 TABLE="$TMPROOT/worktree_matrix.md"
