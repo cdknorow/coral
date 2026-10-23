@@ -55,12 +55,24 @@ const DATABASE = 'The sessions database is damaged (page 12 is corrupt). Stop Co
         await waitFor(`!!document.getElementById('agent-search-input')`, 'the page', 15000);
         await ev(`(async () => { await window.showSettingsModal('files'); return true; })()`);
         await waitFor(`!!document.getElementById('settings-tools-folder-row')`, 'the row');
+        await ev(`document.getElementById('settings-tab-terminal').click(); true`); // the row is in the Terminal group
+        await waitFor(`(() => { const p = document.querySelector('#settings-modal .settings-pane:not([hidden])'); return !!p && p.dataset.group === 'terminal'; })()`, 'the Terminal group', 5000);
         const row = await ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'settings_core.js'); m.renderToolsFolderStatus({ tools_folder: { path: 'C:\\\\Users\\\\someone\\\\Coral\\\\tools', writable_by: ['Users', 'Everyone'] } });
             const r = document.getElementById('settings-tools-folder-row'), s = document.getElementById('settings-tools-folder-status'); const b = s.getBoundingClientRect();
-            return { hidden: r.hidden, text: s.textContent, role: s.getAttribute('role'), right: b.right, vw: innerWidth }; })()`);
+            const vis = e => e.getClientRects().length > 0;
+            const shown = [...s.querySelectorAll('span, button, div')].filter(vis).map(e => e.textContent.trim()).join(' ');
+            const d = document.getElementById('settings-tools-folder-detail'), mb = document.getElementById('settings-tools-folder-more');
+            const folded = { shownWords: [...s.childNodes].filter(n => n.nodeType === 1 && vis(n)).map(n => n.textContent.trim()).join(' ').split(/\\s+/).filter(Boolean).length, detailHidden: d.hidden, expanded: mb.getAttribute('aria-expanded'), label: mb.textContent.trim(), controls: mb.getAttribute('aria-controls') };
+            const text = s.textContent; mb.click(); const opened = { detailHidden: d.hidden, expanded: mb.getAttribute('aria-expanded'), label: mb.textContent.trim(), detailShown: vis(d) };
+            return { hidden: r.hidden, text, role: s.getAttribute('role'), right: b.right, vw: innerWidth, folded, opened, shown }; })()`);
         assert.equal(row.hidden, false);
         assert.equal(row.role, 'status');
-        assert.ok(/install Coral with the installer/.test(row.text) && /Program Files/.test(row.text), 'it says the one thing that fixes it: ' + row.text);
+        assert.match(row.text, /^Your agent tools folder can be changed without administrator rights\./, 'one line says what is wrong (true when only the owner can change it, and when other accounts can)');
+        assert.ok(row.folded.shownWords <= 16, 'folded, the row is one short line: ' + JSON.stringify(row.folded));
+        assert.deepEqual([row.folded.detailHidden, row.folded.expanded, row.folded.label, row.folded.controls], [true, 'false', 'How to fix it', 'settings-tools-folder-detail']);
+        assert.deepEqual(row.opened, { detailHidden: false, expanded: 'true', label: 'Show less', detailShown: true });
+        assert.ok(/install Coral with the installer/.test(row.text) && /Program Files/.test(row.text), 'the detail still says the one thing that fixes it: ' + row.text);
+        assert.ok(/can be changed by Users, Everyone, not only by an administrator/.test(row.text) && row.text.includes('C:\\Users\\someone\\Coral\\tools'), 'and names the folder and who can change it: ' + row.text);
         assert.ok(!/hooks/.test(row.text), 'plain words, not the word hooks');
         assert.ok(row.right <= row.vw + 1, 'the row fits a phone width');
         console.log('   ✓');
