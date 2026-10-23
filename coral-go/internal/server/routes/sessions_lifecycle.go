@@ -1342,9 +1342,9 @@ func (h *SessionsHandler) ResurrectTeam(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 
-		cmd := gitutil.Command(ctx, repoDir, "worktree", "add", "--", team.WorkingDir, branch)
-		if out, err := cmd.CombinedOutput(); err != nil {
-			errBadRequest(w, fmt.Sprintf("failed to recreate worktree: %s", string(out)))
+		// On the team's own branch (coral-team/<board>, as the launch made it), not on the base branch itself: that one is checked out in the repository (#6701).
+		if _, err := gitutil.AddTeamWorktree(ctx, repoDir, team.WorkingDir, "coral-team/"+filepath.Base(team.WorkingDir), branch); err != nil {
+			errBadRequest(w, "failed to recreate worktree: "+err.Error())
 			return
 		}
 		log.Printf("[resurrect] recreated worktree at %s (branch %s)", logsafe.Dir(team.WorkingDir), branch)
