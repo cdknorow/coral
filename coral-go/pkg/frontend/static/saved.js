@@ -101,6 +101,8 @@ function liveAgent(it) {
 }
 
 function srcLabel(it) { return it.title || it.ref; }
+/** Which saved message a button is for: its source and the start of its text, so four items do not read as the same three buttons four times (#6541). */
+function whichOne(it) { const t = String(it.snippet || '').replace(/\s+/g, ' ').trim(); return t ? `${srcLabel(it)}, ${t.length > 40 ? t.slice(0, 40) + '…' : t}` : srcLabel(it); }
 
 function chipFor(it) {
     const c = checks.get(uid(it));
@@ -163,9 +165,9 @@ function itemNode(it) {
     if (!gone) {
         const o = openLabel(it);
         if (!noopen) acts.append(btn('btn-primary saved-open', o.text, o.name, 'launch', () => openItem(it, li)));
-        acts.append(btn('saved-done', done ? 'Reopen' : 'Done', done ? 'Move back to Open' : 'Mark done', done ? 'replay' : 'done', () => setDone(it, !done)));
+        acts.append(btn('saved-done', done ? 'Reopen' : 'Done', `${done ? 'Reopen, move back to Open' : 'Mark done'}: ${whichOne(it)}`, done ? 'replay' : 'done', () => setDone(it, !done)));
     }
-    acts.append(btn('saved-remove', 'Remove', 'Remove from saved', 'close', () => remove(it)));
+    acts.append(btn('saved-remove', 'Remove', `Remove from saved: ${whichOne(it)}`, 'close', () => remove(it)));
     li.append(acts);
     // "Read the whole message": the shared Inbox component's control (inbox_panel.js), inline under the snippet; not for an item whose source is gone.
     if (!gone) { const x = savedExpandFor(it); if (x && !x.root.hidden) li.insertBefore(x.root, why); }

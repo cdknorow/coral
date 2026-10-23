@@ -252,6 +252,9 @@ export function mountInbox(host, adapter, options) {
         button.type = 'button';
         button.setAttribute('aria-expanded', 'false');
         button.setAttribute('aria-controls', regionId);
+        const which = (() => { const t = String(item && item.snippet || '').replace(/\s+/g, ' ').trim(); const src = item && (item.title || item.ref) || ''; return [src, t.length > 40 ? t.slice(0, 40) + '…' : t].filter(Boolean).join(', '); })();
+        const nameIt = text => { if (which) button.setAttribute('aria-label', `${text}: ${which}`); }; // the words on the button, then the message they are for (several items read as the same button otherwise, #6541)
+        nameIt(SAVED_OPEN_LABEL);
         const region = el('div', 'ibx-saved-body');
         region.id = regionId;
         region.hidden = true;
@@ -261,7 +264,7 @@ export function mountInbox(host, adapter, options) {
         button.addEventListener('click', async () => {
             const open = button.getAttribute('aria-expanded') === 'true';
             button.setAttribute('aria-expanded', String(!open));
-            button.textContent = open ? SAVED_OPEN_LABEL : SAVED_CLOSE_LABEL; // a toggle: the words say what the next press does (#5882, the Operator's choice over a label that stays); aria-expanded still says which state it is in
+            button.textContent = open ? SAVED_OPEN_LABEL : SAVED_CLOSE_LABEL; nameIt(open ? SAVED_OPEN_LABEL : SAVED_CLOSE_LABEL); // a toggle: the words say what the next press does (#5882, the Operator's choice over a label that stays); aria-expanded still says which state it is in
             region.hidden = open;
             if (open || loaded || loading) return;
             loading = true;
