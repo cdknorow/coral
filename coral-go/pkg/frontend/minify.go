@@ -35,12 +35,21 @@ func MinifyAsset(name string, data []byte) []byte {
 	}
 	opts := minifyOptions(ext)
 	opts.Sourcefile = name
-	res := api.Transform(string(data), opts)
-	if len(res.Errors) > 0 || len(res.Code) == 0 || len(res.Code) >= len(data) {
-		return data
+	// Run to the fixed point: a second pass shaves a few bytes off a dozen files and a third never changes any. A file embedded already minified (tools/strip-static, #6208) is then served as the very
+	// bytes a source build serves, since the server minifies what it serves whatever the binary holds.
+	out := data
+	for pass := 0; pass < minifyPasses; pass++ {
+		res := api.Transform(string(out), opts)
+		if len(res.Errors) > 0 || len(res.Code) == 0 || len(res.Code) >= len(out) {
+			break
+		}
+		out = res.Code
 	}
-	return res.Code
+	return out
 }
+
+// minifyPasses is the most times MinifyAsset runs esbuild over one file (it stops at the first pass that does not shrink it).
+const minifyPasses = 3
 
 // minifyOptions are the esbuild options MinifyAsset transforms a file of this extension (".js" or
 // ".css") with, except the file's own Sourcefile. The one place they are written: MinifyIdentity is
@@ -76,7 +85,7 @@ func MinifyIdentity() string {
 	if disabled.Load() || os.Getenv("CORAL_NO_MINIFY") == "1" {
 		return "minify:off"
 	}
-	return "minify:esbuild " + esbuildVersion + " " + optionsIdentity(minifyOptions(".js"), minifyOptions(".css")) + " " + bundleFormat
+	return fmt.Sprintf("minify:esbuild %s %s passes:%d %s", esbuildVersion, optionsIdentity(minifyOptions(".js"), minifyOptions(".css")), minifyPasses, bundleFormat)
 }
 
 // esbuildVersion is the esbuild module version this binary is built with: a constant, not read
