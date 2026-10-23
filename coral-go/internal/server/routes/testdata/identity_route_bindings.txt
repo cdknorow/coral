@@ -11,6 +11,7 @@ DELETE /api/board/{project}/tasks/{taskID}/reminder | board-claims
 DELETE /api/board/{project}/waits | board-claims
 DELETE /api/sessions/history/{sessionID}/tags/{tagID} | unbound | operator-only
 DELETE /api/sessions/live/{name}/events | token-bound
+DELETE /api/sessions/live/{name}/held/{id} | unbound | operator-only
 DELETE /api/sessions/live/{name}/notes/{noteID} | token-bound
 DELETE /api/sessions/live/{name}/tasks/{taskID} | token-bound
 GET /api/agent/history/context | token-bound

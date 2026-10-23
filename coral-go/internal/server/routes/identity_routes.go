@@ -209,6 +209,7 @@ var operatorOnlyRoutes = map[string]string{
 	"DELETE /api/board/{project}/groups/{groupID}/members/{sessionID}": "remove a member from a board group",
 	"PUT /api/board/{project}/settings":                                "change a board's settings",
 	"POST /api/sessions/live/{name}/send":                              "type into an agent's terminal",
+	"DELETE /api/sessions/live/{name}/held/{id}":                       "cancel a person's queued chat message",
 	"POST /api/sessions/live/{name}/keys":                              "send keys to an agent's terminal",
 	"POST /api/sessions/live/{name}/answer-prompt":                     "answer an agent's permission prompt",
 	"POST /api/sessions/live/{name}/kill":                              "stop an agent",
