@@ -52,6 +52,11 @@ function STUB(fx) {
         const view = c => ({ ...c, deleted: false, mine: true, can: can(c) });
         window.fetch = (u, o) => {
             const url = String(u), method = (o && o.method) || 'GET';
+            // a board with agents for the Send to agent picker (#6475): one that can be asked, one busy, one asleep, one not running
+            if (/\\/api\\/board\\/[^/]+\\/status/.test(url)) return json({ agents: [
+                { name: 'QA', role: 'QA Engineer', agent_type: 'claude', availability: 'available' }, { name: 'Backend', role: 'Backend Dev', agent_type: 'codex', availability: 'busy' },
+                { name: 'Sleepy', role: 'UI Dev', agent_type: 'claude', availability: 'sleeping' }, { name: 'Gone', role: 'Docs Writer', agent_type: 'claude', availability: 'offline' }],
+                summary: {}, unassigned_tasks: [], health_report: [], observed_at: new Date().toISOString() });
             if (url.includes('/api/artifacts/' + window.__HEX + '/comments')) {
                 window.__calls++;
                 if (method === 'GET') return json({ comments: window.__cs.map(view), locked: false, you: { kind: 'owner', name: 'Operator', can_comment: true, reason: '', can_lock: true }, limits: { body: 8192, quote: 2048, comments: 500 } });

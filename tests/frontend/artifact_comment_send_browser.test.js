@@ -59,7 +59,7 @@ const MD = ['# Migration plan', '', '## Steps', '', '1. Add the new columns behi
     };
     const sendBtn = id => `document.querySelector('.ac-card[data-id="${id}"] .ac-ask-open')`;
     const block = () => ev(`(() => { const b = document.querySelector('.ac-ask'); if (!b) return null;
-        return { title: b.querySelector('.ac-ask-title').textContent, agents: [...b.querySelectorAll('.ac-ask-agent')].map(li => ({ role: li.querySelector('input').value, text: li.textContent.replace(/\\s+/g, ' ').trim(), disabled: li.querySelector('input').disabled, checked: li.querySelector('input').checked, state: li.dataset.state || '' })),
+        return { title: b.querySelector('.ac-ask-title').textContent, agents: [...b.querySelectorAll('.ac-ask-agent')].map(li => ({ role: li.querySelector('input').value, text: li.textContent.replace(/\\s+/g, ' ').trim(), disabled: li.querySelector('input').getAttribute('aria-disabled') === 'true' && !li.querySelector('input').disabled, checked: li.querySelector('input').checked, state: li.dataset.state || '' })),
             note: b.querySelector('.ac-ask-note').textContent, go: (b.querySelector('.ac-ask-go') || {}).textContent || '', goDisabled: !!b.querySelector('.ac-ask-go') && b.querySelector('.ac-ask-go').disabled, close: (b.querySelector('.ac-cancel') || {}).textContent, error: b.querySelector('.ac-error').hidden ? '' : b.querySelector('.ac-error').textContent,
             fits: b.getBoundingClientRect().right <= innerWidth + 1 && document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1 }; })()`);
     try {
@@ -84,6 +84,10 @@ const MD = ['# Migration plan', '', '## Steps', '', '1. Add the new columns behi
             check(`${tag}: it names the board and lists its agents (a terminal is not one), asleep and not running shown and not pickable`, /ask-team/.test(b.title) && b.note === 'Each agent you pick gets this comment as a message. They answer in this thread.' && b.agents.map(a => a.role).join() === 'QA Engineer,Backend Dev,UI Dev,Docs Writer'
                 && b.agents.find(a => a.role === 'UI Dev').disabled && /Asleep: wake it first/.test(b.agents.find(a => a.role === 'UI Dev').text) && b.agents.find(a => a.role === 'Docs Writer').disabled && /Not running/.test(b.agents.find(a => a.role === 'Docs Writer').text)
                 && !b.agents[0].disabled && !b.agents[1].disabled, JSON.stringify(b));
+            const reasons = await ev(`[...document.querySelectorAll('.ac-ask input[aria-disabled="true"]')].map(i => ({ role: i.value, focusable: !i.disabled && i.tabIndex >= 0, why: (document.getElementById(i.getAttribute('aria-describedby')) || {}).textContent || '' }))`);
+            check(`${tag}: an agent that cannot be asked is aria-disabled and still focusable, and its reason is its description`, reasons.length === 2 && reasons.every(r => r.focusable && r.why) && reasons.find(r => r.role === 'UI Dev').why === 'Asleep: wake it first' && reasons.find(r => r.role === 'Docs Writer').why === 'Not running', JSON.stringify(reasons));
+            await ev(`document.querySelector('.ac-ask input[value="UI Dev"]').click(); true`);
+            check(`${tag}: a click on one does nothing (not ticked, the button still off)`, !(await ev(`document.querySelector('.ac-ask input[value="UI Dev"]').checked`)) && (await block()).goDisabled);
             check(`${tag}: nothing picked: the button is off; focus is on the first agent that can be picked`, b.goDisabled && b.go === 'Send to agent' && (await ev(`document.activeElement && document.activeElement.value`)) === 'QA Engineer', JSON.stringify([b.go, b.goDisabled]));
             await ev(`document.querySelector('.ac-ask input[value="QA Engineer"]').click(); true`);
             await ev(`document.querySelector('.ac-ask input[value="Backend Dev"]').click(); true`);
@@ -120,10 +124,10 @@ const MD = ['# Migration plan', '', '## Steps', '', '1. Add the new columns behi
             await ev(`document.querySelector('.ac-ask .ac-cancel').click(); true`);
             await ev(`window.__send = { status: 429, body: { ok: false, error: 'too many comments sent to agents; try again later' } }; ${sendBtn(1)}.click(); true`);
             await waitFor(`document.querySelectorAll('.ac-ask .ac-ask-agent').length >= 3`, 'the agents a third time', 8000);
-            await ev(`document.querySelector('.ac-ask input[value="QA Engineer"]:not(:disabled)')?.click(); true`);
+            await ev(`document.querySelector('.ac-ask input[value="QA Engineer"]:not([aria-disabled="true"])')?.click(); true`);
             b = await block();
             check(`${tag}: an asked agent is not pickable again`, b.go === 'Send to agent' && b.goDisabled);
-            await ev(`document.querySelector('.ac-ask input[value="Docs Writer"]:not(:disabled)')?.click(); document.querySelector('.ac-ask-go')?.click(); true`);
+            await ev(`document.querySelector('.ac-ask input[value="Docs Writer"]:not([aria-disabled="true"])')?.click(); document.querySelector('.ac-ask-go')?.click(); true`);
             await waitFor(`!!document.querySelector('.ac-ask .ac-error:not([hidden])')`, 'the refusal', 6000);
             b = await block();
             check(`${tag}: a refusal with no results says the server's words, and the person can try again`, /too many comments sent/.test(b.error) && b.close === 'Cancel', JSON.stringify(b.error));
