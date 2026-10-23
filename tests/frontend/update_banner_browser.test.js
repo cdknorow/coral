@@ -36,7 +36,7 @@ const NEW_BUILD = 'ffffffffffff';
         await ev(`window.__marker = 'old-page'; window.__coralUpdateReloadDelay = 400; localStorage.setItem('coral-live-view-mode', 'chat'); window.__m.add('ub-a', 'A', 3, { sleeping: false }); true`);
         if (preselect) await ev(`window.selectLiveSession('ub-a', 'claude', 'ub-a-id', 'local'); true`);
     };
-    const banner = () => ev(`(() => { const b = document.getElementById('update-banner'); return b && !b.hidden ? { text: b.textContent.replace(/\\s+/g, ' ').trim(), role: b.getAttribute('role'), button: [...b.querySelectorAll('button')].map(x => x.textContent.trim()) } : null; })()`);
+    const banner = () => ev(`(() => { const b = document.getElementById('update-banner'); return b && document.getElementById('update-banner-text').textContent !== '' ? { text: b.textContent.replace(/\\s+/g, ' ').trim(), role: document.getElementById('update-banner-text').getAttribute('role'), button: [...b.querySelectorAll('button')].map(x => x.textContent.trim()) } : null; })()`);
     // Typed like a person: focus the box and insert text, which fires a trusted input event.
     const type = async (id, text) => { await ev(`document.getElementById(${JSON.stringify(id)}).focus(); true`); await Input.insertText({ text }); };
     const clear = async id => { await ev(`document.getElementById(${JSON.stringify(id)}).focus(); true`); await Input.dispatchKeyEvent({ type: 'rawKeyDown', key: 'a', commands: ['selectAll'] }); await Input.dispatchKeyEvent({ type: 'rawKeyDown', key: 'Backspace', commands: ['deleteBackward'] }); };
@@ -88,7 +88,7 @@ const NEW_BUILD = 'ffffffffffff';
         await ev(`sessionStorage.removeItem('coral-update-reloaded'); true`);
         spoof = NEW_BUILD;
         await poke();
-        await waitFor(`!!document.getElementById('update-banner') && !document.getElementById('update-banner').hidden`, 'the update banner', 3000);
+        await waitFor(`!!document.getElementById('update-banner') && document.getElementById('update-banner-text').textContent !== ''`, 'the update banner', 3000);
         const b1 = await banner();
         assert.equal(b1.role, 'status');
         assert.match(b1.text, /Coral was updated/);
@@ -98,7 +98,7 @@ const NEW_BUILD = 'ffffffffffff';
         assert.equal(await ev(`sessionStorage.getItem('coral-update-reloaded')`), NEW_BUILD, 'the reload is recorded for that build');
         await ev(`window.__marker = 'new-page'; window.__coralUpdateReloadDelay = 400; true`);
         await poke(); // the server still reports a different build: the banner returns, the tab does not reload again
-        await waitFor(`!!document.getElementById('update-banner') && !document.getElementById('update-banner').hidden`, 'the banner after the reload', 3000);
+        await waitFor(`!!document.getElementById('update-banner') && document.getElementById('update-banner-text').textContent !== ''`, 'the banner after the reload', 3000);
         await sleep(1200); // sleep-ok: shows that a second automatic reload does not happen (nothing to wait for)
         assert.equal(await ev(`window.__marker`), 'new-page', 'no second automatic reload for the same build');
         assert.match((await banner()).text, /Reload to use the new version/, 'it asks for a manual reload');
@@ -112,7 +112,7 @@ const NEW_BUILD = 'ffffffffffff';
         await type('command-input', 'half written reply');
         spoof = NEW_BUILD;
         await poke();
-        await waitFor(`!!document.getElementById('update-banner') && !document.getElementById('update-banner').hidden`, 'the banner with a draft', 3000);
+        await waitFor(`!!document.getElementById('update-banner') && document.getElementById('update-banner-text').textContent !== ''`, 'the banner with a draft', 3000);
         await sleep(1500); // sleep-ok: several reload ticks pass with the draft there; nothing may happen (no condition to wait for)
         assert.equal(await ev(`window.__marker`), 'old-page', 'the tab did not reload over the draft');
         assert.equal(await ev(`document.getElementById('command-input').value`), 'half written reply', 'the draft is intact');
@@ -128,7 +128,7 @@ const NEW_BUILD = 'ffffffffffff';
         await ev(`sessionStorage.removeItem('coral-update-reloaded'); window.__unsaved = true; import((window.__coralStatic || '/static/') + 'update_banner.js').then(m => { m.registerUnsavedWork(() => window.__unsaved); return true; })`);
         spoof = NEW_BUILD;
         await poke();
-        await waitFor(`!!document.getElementById('update-banner') && !document.getElementById('update-banner').hidden`, 'the banner with unsaved work', 3000);
+        await waitFor(`!!document.getElementById('update-banner') && document.getElementById('update-banner-text').textContent !== ''`, 'the banner with unsaved work', 3000);
         await sleep(1500); // sleep-ok: as above
         assert.equal(await ev(`window.__marker`), 'old-page', 'no reload over unsaved work');
         await ev(`window.__unsaved = false; true`);
@@ -143,7 +143,7 @@ const NEW_BUILD = 'ffffffffffff';
         await type('command-input', 'still typing');
         spoof = NEW_BUILD;
         await poke();
-        await waitFor(`!!document.getElementById('update-banner') && !document.getElementById('update-banner').hidden`, 'the banner', 3000);
+        await waitFor(`!!document.getElementById('update-banner') && document.getElementById('update-banner-text').textContent !== ''`, 'the banner', 3000);
         await ev(`document.querySelector('#update-banner button').click(); true`);
         await waitFor(`window.__marker === undefined`, 'the page to reload from the button', 6000);
         console.log('   ✓ the button reloads without waiting');

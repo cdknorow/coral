@@ -203,10 +203,10 @@
             </div>
 
             <!-- #3751: this tab loaded before a server update (update_banner.js); an idle tab reloads by itself -->
-            <div id="update-banner" class="leftover-tmux-banner update-banner" role="status" hidden>
+            <div id="update-banner" class="leftover-tmux-banner update-banner">
                 <span class="material-icons" aria-hidden="true">system_update</span>
-                <div class="leftover-tmux-text"><b>Coral was updated.</b> <span id="update-banner-detail">Reloading in a few seconds.</span></div>
-                <button class="btn btn-primary" type="button" data-on-click="update-reload">Reload</button>
+                <div class="leftover-tmux-text" id="update-banner-text" role="status"></div><!-- always in the page: update_banner.js sets its words, so they are read; empty, the banner takes no room -->
+                <button class="btn btn-primary" type="button" data-on-click="update-reload" hidden>Reload</button>
             </div>
 
             <!-- #3634: under pty, agents still running in Coral's old tmux server (terminal_backend.js) -->
