@@ -18,12 +18,13 @@ func TestCodexBookkeepingRecordsAreNotTurnActivity(t *testing.T) {
 	lines := `{"timestamp":"2026-10-23T19:17:00.000Z","type":"event_msg","payload":{"type":"task_started"}}` + "\n" +
 		`{"timestamp":"2026-10-23T19:17:03.000Z","type":"response_item","payload":{"type":"custom_tool_call"}}` + "\n" +
 		`{"timestamp":"2026-10-23T19:17:05.100Z","type":"token_usage_record"}` + "\n" + // 2 s after the dialog opened
-		`{"timestamp":"2026-10-23T19:17:06.200Z","type":"turn_context","payload":{"model":"gpt-test","effort":"high"}}` + "\n"
+		`{"timestamp":"2026-10-23T19:17:06.200Z","type":"turn_context","payload":{"model":"gpt-test","effort":"high"}}` + "\n" +
+		`{"timestamp":"2026-10-23T19:17:07.300Z","type":"event_msg","payload":{"type":"item_completed"}}` + "\n" // what a tool running in parallel writes while a dialog waits (Codex Test's #6657)
 	require.NoError(t, os.WriteFile(p, []byte(lines), 0o600))
 	var state codexTurnCache
 	kind, at := readCodexTurnEventIncremental(p, &state)
 	assert.Equal(t, "prompt_submit", kind)
-	assert.Equal(t, "2026-10-23T19:17:03Z", at.Format(time.RFC3339), "the turn's last activity is the call: the bookkeeping after it did not move it")
+	assert.Equal(t, "2026-10-23T19:17:03Z", at.Format(time.RFC3339), "the turn's last activity is the call: the bookkeeping and the parallel tool's item_completed after it did not move it")
 	assert.Equal(t, "gpt-test", state.model, "the turn_context is still read for its model")
 	assert.Equal(t, "high", state.effort)
 

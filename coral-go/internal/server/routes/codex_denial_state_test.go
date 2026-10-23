@@ -161,10 +161,10 @@ func TestALateBookkeepingRecordDoesNotCloseAnOpenCodexRequest(t *testing.T) {
 	r := newCodexRig(t)
 	r.openDialog()
 	require.True(t, r.needsInput())
-	for _, kind := range []string{"token_usage_record", "turn_context"} {
-		r.line(kind, "", 3*time.Second) // two seconds past the whole-second margin
-		assert.True(t, r.needsInput(), kind+": the dialog is still open")
-		assert.True(t, r.h.blockedOnBox(context.Background(), r.name, "codex", r.sid), kind+": and the message is still held")
+	for _, rec := range [][2]string{{"token_usage_record", ""}, {"turn_context", ""}, {"event_msg", "item_completed"}} { // item_completed: a tool running in parallel with the one waiting (Codex Test's #6657)
+		r.line(rec[0], rec[1], 3*time.Second) // two seconds past the whole-second margin
+		assert.True(t, r.needsInput(), rec[0]+" "+rec[1]+": the dialog is still open")
+		assert.True(t, r.h.blockedOnBox(context.Background(), r.name, "codex", r.sid), rec[0]+" "+rec[1]+": and the message is still held")
 	}
 	r.line("response_item", "custom_tool_call_output", 3*time.Second) // the turn's own record does close it
 	assert.False(t, r.needsInput())
