@@ -74,10 +74,11 @@ export function renderStarredFiles() {
     container.innerHTML = `<div class="starred-section-label">★ Starred</div>` +
         starred.map(filepath => {
             const { dir, name } = splitPath(filepath);
-            const starBtn = `<button class="file-star-btn starred" data-filepath="${escapeAttr(filepath)}" data-on-click="file-star" data-path="${escapeAttr(filepath)}" title="Unstar">★</button>`;
-            const copyBtn = `<button class="file-action-btn" data-on-click="file-copy" data-path="${escapeAttr(filepath)}" title="Copy path" aria-label="Copy path"><span class="material-icons" aria-hidden="true">content_copy</span></button>`;
-            const previewBtn = `<button class="file-action-btn" data-on-click="file-preview" data-path="${escapeAttr(filepath)}" title="Preview" aria-label="Preview"><span class="material-icons" aria-hidden="true">visibility</span></button>`;
-            const editBtn = `<button class="file-action-btn" data-on-click="file-edit" data-path="${escapeAttr(filepath)}" title="Edit" aria-label="Edit"><span class="material-icons" aria-hidden="true">edit</span></button>`;
+            const unstarLabel = `Unstar ${name}`, copyLabel = `Copy path of ${name}`, previewLabel = `Preview ${name}`, editLabel = `Edit ${name}`;
+            const starBtn = `<button class="file-star-btn starred" data-filepath="${escapeAttr(filepath)}" data-on-click="file-star" data-path="${escapeAttr(filepath)}" title="Unstar" aria-label="${escapeAttr(unstarLabel)}">★</button>`; // each button names its file: a list of rows must not read as the same four buttons (#6152)
+            const copyBtn = `<button class="file-action-btn" data-on-click="file-copy" data-path="${escapeAttr(filepath)}" title="Copy path" aria-label="${escapeAttr(copyLabel)}"><span class="material-icons" aria-hidden="true">content_copy</span></button>`;
+            const previewBtn = `<button class="file-action-btn" data-on-click="file-preview" data-path="${escapeAttr(filepath)}" title="Preview" aria-label="${escapeAttr(previewLabel)}"><span class="material-icons" aria-hidden="true">visibility</span></button>`;
+            const editBtn = `<button class="file-action-btn" data-on-click="file-edit" data-path="${escapeAttr(filepath)}" title="Edit" aria-label="${escapeAttr(editLabel)}"><span class="material-icons" aria-hidden="true">edit</span></button>`;
             return `<div class="file-item file-starred" data-on-click="file-open" data-path="${escapeAttr(filepath)}">
                 ${starBtn}
                 <div class="file-path-wrap">
@@ -521,10 +522,12 @@ export async function refreshChangedFiles() {
         const agentsHtml = f.agents && f.agents.length > 0
             ? `<span class="file-agents">${escapeHtml(f.agents.map(a => a.name).join(', '))}</span>`
             : '';
-        const starBtn = `<button class="file-star-btn ${escapeAttr(isStarred ? 'starred' : '')}" data-filepath="${escapeAttr(f.filepath)}" data-on-click="file-star" data-path="${escapeAttr(f.filepath)}" title="${escapeAttr(isStarred ? 'Unstar' : 'Star')}">${isStarred ? '★' : '☆'}</button>`;
-        const copyBtn = `<button class="file-action-btn" data-on-click="file-copy" data-path="${escapeAttr(f.filepath)}" title="Copy path" aria-label="Copy path"><span class="material-icons" aria-hidden="true">content_copy</span></button>`;
-        const previewBtn = `<button class="file-action-btn" data-on-click="file-preview" data-path="${escapeAttr(f.filepath)}" data-diff="1" title="Preview" aria-label="Preview"><span class="material-icons" aria-hidden="true">visibility</span></button>`;
-        const editBtn = `<button class="file-action-btn" data-on-click="file-edit" data-path="${escapeAttr(f.filepath)}" data-diff="1" title="Edit" aria-label="Edit"><span class="material-icons" aria-hidden="true">edit</span></button>`;
+        const rowName = splitPath(f.filepath).name;
+        const starLabel = `${isStarred ? 'Unstar' : 'Star'} ${rowName}`, copyLabel = `Copy path of ${rowName}`, previewLabel = `Preview ${rowName}`, editLabel = `Edit ${rowName}`;
+        const starBtn = `<button class="file-star-btn ${escapeAttr(isStarred ? 'starred' : '')}" data-filepath="${escapeAttr(f.filepath)}" data-on-click="file-star" data-path="${escapeAttr(f.filepath)}" title="${escapeAttr(isStarred ? 'Unstar' : 'Star')}" aria-label="${escapeAttr(starLabel)}">${isStarred ? '★' : '☆'}</button>`;
+        const copyBtn = `<button class="file-action-btn" data-on-click="file-copy" data-path="${escapeAttr(f.filepath)}" title="Copy path" aria-label="${escapeAttr(copyLabel)}"><span class="material-icons" aria-hidden="true">content_copy</span></button>`;
+        const previewBtn = `<button class="file-action-btn" data-on-click="file-preview" data-path="${escapeAttr(f.filepath)}" data-diff="1" title="Preview" aria-label="${escapeAttr(previewLabel)}"><span class="material-icons" aria-hidden="true">visibility</span></button>`;
+        const editBtn = `<button class="file-action-btn" data-on-click="file-edit" data-path="${escapeAttr(f.filepath)}" data-diff="1" title="Edit" aria-label="${escapeAttr(editLabel)}"><span class="material-icons" aria-hidden="true">edit</span></button>`;
 
         // Clicking the row opens its diff in the preview pane; the buttons
         // copy the path, preview the file, and open it in the editor.

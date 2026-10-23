@@ -1998,8 +1998,8 @@ body.panel-dragging .agentic-state {
 .file-type-icon { display: flex; align-items: center; justify-content: center; width: 16px; height: 16px; flex-shrink: 0; }
 
 /* Git status now shows on the name (the type icon replaced the status badge) */
-.file-added .file-name { color: var(--success); }
-.file-deleted .file-name { color: var(--error); text-decoration: line-through; }
+.file-added .file-name { color: var(--success-text); } /* green and red as text on the files list: 4.5:1 (#6152 follow-up) */
+.file-deleted .file-name { color: var(--error-text); text-decoration: line-through; }
 .file-renamed .file-name { color: var(--accent); }
 
 .file-agents { display: block; font-size: var(--fs-base); color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -2039,14 +2039,14 @@ body.panel-dragging .agentic-state {
 }
 
 .file-adds {
-    color: var(--success);
+    color: var(--success-text);
     background: rgba(var(--fx-green-rgb), 0.12);
     padding: 1px 5px;
     border-radius: var(--radius-xs);
 }
 
 .file-dels {
-    color: var(--error);
+    color: var(--error-text);
     background: rgba(var(--fx-red-rgb), 0.12);
     padding: 1px 5px;
     border-radius: var(--radius-xs);

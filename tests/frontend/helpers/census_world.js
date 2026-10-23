@@ -15,6 +15,8 @@ const DATA_WORLD = `(() => {
     window.fetch = (url, opts = {}) => {
         const u = String(url && url.url || url).replace(/^https?:\\/\\/[^/]+/, ''), path = u.split('?')[0], m = (opts.method || 'GET').toUpperCase();
         if (m === 'GET') {
+            // the agent's changed files: two, on every OS (the Files panel's rows must each name their buttons, which one row cannot show; #6152)
+            if (/^\\/api\\/sessions\\/live\\/[^/]+\\/files$/.test(path)) return json({ files: [{ filepath: 'src/main.go', status: 'M' }, { filepath: 'docs/README.md', status: '??' }], is_git: true });
             if (path === '/api/workflows') return json({ workflows: [${JSON.stringify(WF)}, ${JSON.stringify(WF2)}, ${JSON.stringify(WF3)}] });
             if (path === '/api/workflows/7') return json(${JSON.stringify(WF)});
             if (/^\\/api\\/workflows\\/7\\/runs/.test(path)) return json({ runs: [${JSON.stringify(RUN)}] });
