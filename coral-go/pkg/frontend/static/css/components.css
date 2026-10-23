@@ -3995,6 +3995,7 @@ button.terminal-gone-header { margin: 0 4px 0 0; font-size: 0.6875rem; line-heig
 .tb-d { font-size: var(--fs-base); color: var(--text-secondary); line-height: 1.45; }
 .tb-note { font-size: var(--fs-sm); color: var(--text-muted); line-height: 1.45; margin: var(--space-xs) 0 0; }
 .tb-pending { font-size: var(--fs-base); color: var(--warning); margin: var(--space-sm) 0 0; }
+.tb-pending:empty { margin: 0; height: 0; overflow: hidden; } /* in the page with nothing to say: no room, still a live region */
 .tb-fixed { font-size: var(--fs-base); color: var(--text-secondary); line-height: 1.45; margin: 0; }
 .leftover-tmux-banner { display: flex; align-items: center; gap: var(--space-lg); margin: var(--space-md) var(--space-xl) 0; padding: var(--space-md) var(--space-lg); border-radius: var(--radius-lg); border: 1px solid color-mix(in srgb, var(--warning) 50%, var(--border)); background: color-mix(in srgb, var(--warning) 12%, var(--bg-secondary)); color: var(--text-primary); font-size: var(--fs-md); }
 .leftover-tmux-banner[hidden] { display: none; }

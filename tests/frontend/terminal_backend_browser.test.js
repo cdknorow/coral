@@ -56,7 +56,7 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
     const row = () => ev(`(() => { const r = document.getElementById('settings-terminal-backend');
         return { hidden: r.hidden, now: document.getElementById('tb-now').textContent, choice: !document.getElementById('tb-choice').hidden,
             fixed: !document.getElementById('tb-fixed').hidden, checked: (document.querySelector('input[name="terminal-backend"]:checked') || {}).value || null,
-            pending: document.getElementById('tb-pending').hidden ? '' : document.getElementById('tb-pending').textContent,
+            pending: document.getElementById('tb-pending').textContent, pendingHiddenAttr: document.getElementById('tb-pending').hasAttribute('hidden'),
             texts: [...document.querySelectorAll('#settings-terminal-backend .tb-t')].map(x => x.textContent.trim()),
             ptyText: (document.querySelector('#tb-opt-pty + span .tb-d') || {}).textContent || '' }; })()`);
     const pick = v => ev(`(() => { const r = document.getElementById('tb-opt-${v}'); r.checked = true; r.dispatchEvent(new Event('change')); return true; })()`);

@@ -59,12 +59,10 @@ function renderPending() {
     const want = picked();
     if (st.forced) {
         note.textContent = `This run was started with --backend ${st.running}, which wins over this setting.`;
-        note.hidden = false;
     } else if (want && want !== st.running) {
         note.textContent = `Switches to ${want} when Coral restarts. Apply asks first.`;
-        note.hidden = false;
     } else {
-        note.hidden = true;
+        note.textContent = ''; // always in the page, only its text changes: a status that appears with its words is often not read
     }
 }
 
