@@ -61,7 +61,8 @@ const { settle } = require('./helpers/wait');
         for (const w of [320, 330, 340, 350, 355, 360, 365, 370, 375, 390, 414]) {
             const r = await oneRow(w);
             assert.ok(r.headerH <= rowH + 1 && r.kidsBottom <= r.headerH + 1, `${w} px at 100% text: one header row (rows end at ${r.kidsBottom}, header ${r.headerH}, one row is ${rowH}) with the name ${r.w}px wide`);
-            assert.ok(r.w >= 48, `${w} px at 100% text: the name has room (${r.w}px)`);
+            assert.ok(r.w >= (w <= 340 ? 100 : 48), `${w} px at 100% text: the name has room (${r.w}px)`);
+            assert.equal(await ev(`getComputedStyle(document.getElementById('terminal-open-window-link')).display`), 'none', `${w} px: Open Agent Tab is not in a phone's header (a pop-out tab is of little use there)`);
             assert.equal(r.branchShown, w >= 370, `${w} px at 100% text: the branch ${w >= 370 ? 'stays in' : 'is left out of'} the header`);
             assert.ok(r.over <= 0, `${w} px: no sideways scroll`);
         }

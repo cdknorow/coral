@@ -2211,3 +2211,8 @@
     html body .terminal-header { padding-left: 2px; padding-right: 2px; }
     html body .terminal-header-actions > .terminal-branch { max-width: 3em; }
 }
+
+/* A phone has little use for a pop-out browser tab, and the link took 44 px the agent name needs (#6756): Open Agent Tab is not in the phone layout's header (the phone query of phone_layout.js); Find and the side panel stay. */
+@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) and (max-width: 950px) {
+    html body #terminal-open-window-link { display: none !important; }
+}
