@@ -44,7 +44,7 @@ const SKIPPED = { 'restart-modal': 'needs a live session; opened by an unexporte
         await Emulation.setDeviceMetricsOverride({ width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
         await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired(); await install();
         await ev(`window.__coralReady.startup('liveList', 'settings')`);
-        await ev(`(() => { window.__M = f => import((window.__coralStatic || '/static/') + f); const t = document.createElement('button'); t.id = 'opener'; t.textContent = 'opener'; t.style.cssText = 'position:fixed;left:4px;bottom:4px;z-index:1'; document.body.append(t); })(); true`);
+        await ev(`(() => { window.__M = f => import((window.__coralStatic || '/static/') + f); const t = document.createElement('button'); t.id = 'opener'; /* z-index 5: above the sidebar's pinned New Agent footer (2) that sits in this corner (#6159) */ t.textContent = 'opener'; t.style.cssText = 'position:fixed;left:4px;bottom:4px;z-index:5'; document.body.append(t); })(); true`);
     };
     // The control a person would press to close it: a visible button named Close, Cancel, Done or ×, or the close button class.
     const CLOSER = root => `(() => { const m = document.querySelector('${root}'); const vis = e => e.getClientRects().length > 0 && getComputedStyle(e).visibility !== 'hidden';
