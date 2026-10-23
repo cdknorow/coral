@@ -450,6 +450,8 @@ type relaunchView struct {
 	agents  []RestartAgent
 	digest  string
 	version string // the staged version when it has the pattern
+	// hubAllowed is whether the Hub's owner may relaunch this Coral by the settings alone (the cap, the Operator opt-out, the switch): the same whoever asks, so the person here sees it too.
+	hubAllowed bool
 }
 
 func (h *UpdateRelaunchHandler) view(ctx context.Context, id callerIdentity) (relaunchView, error) {
@@ -471,6 +473,8 @@ func (h *UpdateRelaunchHandler) view(ctx context.Context, id callerIdentity) (re
 		}
 	}
 	v.digest = ackDigest(v.version, v.agents, rec.TmuxAgentsRestart)
+	hubReason, _ := h.gate(ctx, callerIdentity{owner: true})
+	v.hubAllowed = hubReason == ""
 	switch reason, code := h.gate(ctx, id); {
 	case reason != "":
 		v.reason, v.code = reason, code
@@ -500,7 +504,7 @@ func (h *UpdateRelaunchHandler) relaunchJSON(key []byte, id callerIdentity, v re
 		restarts = append(restarts, map[string]any{"session_id": printable(a.SessionID, 64), "name": cleanName(a.Name), "backend": "pty", "state": cleanState(a.State)})
 	}
 	out := map[string]any{
-		"available": v.reason == "", "reason": v.reason, "hub_allowed": v.reason != reasonSwitchOff && v.reason != reasonMaxMode,
+		"available": v.reason == "", "reason": v.reason, "hub_allowed": v.hubAllowed,
 		"restarts": restarts, "tmux_agents_restart": v.rec.TmuxAgentsRestart,
 	}
 	if v.reason == "" {
