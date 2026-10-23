@@ -752,8 +752,10 @@ func (s *JobScheduler) prepareRunWorktree(ctx, watchCtx context.Context, runID i
 		}
 	} else if err = gitutil.ValidRef(wt.baseBranch); err != nil {
 		errMsg = fmt.Sprintf("base_branch refused: %v", err)
-	} else if err = runGitCmd(watchCtx, rc.repoPath, "worktree", "add", "-b", wt.runBranch, "--", wt.worktreeDir, wt.baseBranch); err != nil {
+	} else if err = runGitCmd(watchCtx, rc.repoPath, "-c", "core.longpaths=true", "worktree", "add", "-b", wt.runBranch, "--", wt.worktreeDir, wt.baseBranch); err != nil {
 		errMsg = fmt.Sprintf("git worktree add failed: %v", err)
+		runGitCmd(watchCtx, rc.repoPath, "worktree", "prune") // a failed add leaves no registration or branch of the run behind (#6717)
+		runGitCmd(watchCtx, rc.repoPath, "branch", "-D", "--", wt.runBranch)
 	}
 	if err != nil {
 		s.logger.Error(errMsg, "run_id", runID)

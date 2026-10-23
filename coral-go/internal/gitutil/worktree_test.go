@@ -167,3 +167,34 @@ func TestAddTeamWorktreeChecksThePathFirst(t *testing.T) {
 	require.NoError(t, err)
 	assert.DirExists(t, filepath.Join(holder, "dotted"))
 }
+
+// #6717 (Windows finding 4): a worktree add that fails in the checkout leaves no branch of Coral's behind.
+func TestAddTeamWorktreeFailedCheckoutLeavesNoBranch(t *testing.T) {
+	ctx := context.Background()
+	repo := baseRepo(t, "master", true)
+	require.NoError(t, os.WriteFile(filepath.Join(repo, "f.txt"), []byte("content"), 0o644))
+	gitIn(t, repo, "add", "f.txt")
+	gitIn(t, repo, "commit", "-q", "-m", "f")
+	blob := strings.TrimSpace(gitIn(t, repo, "rev-parse", "HEAD:f.txt"))
+	require.NoError(t, os.Remove(filepath.Join(repo, ".git", "objects", blob[:2], blob[2:]))) // the checkout cannot read it
+
+	_, err := AddTeamWorktree(ctx, repo, filepath.Join(t.TempDir(), "team"), "coral-team/broken", "master")
+	require.Error(t, err)
+	assert.Empty(t, gitIn(t, repo, "branch", "--list", "coral-team/broken"), "no branch is left behind")
+	assert.NotContains(t, gitIn(t, repo, "worktree", "list"), "team")
+}
+
+// A base that exists only on the remote starts from the remote's branch.
+func TestResolveBaseRemoteOnly(t *testing.T) {
+	ctx := context.Background()
+	repo := baseRepo(t, "master", true)
+	gitIn(t, repo, "update-ref", "refs/remotes/origin/feature", "HEAD")
+	got, err := ResolveBase(ctx, repo, "feature")
+	require.NoError(t, err)
+	assert.Equal(t, "origin/feature", got)
+	got, err = ResolveBase(ctx, repo, "origin/feature")
+	require.NoError(t, err)
+	assert.Equal(t, "origin/feature", got, "already the remote's name")
+	_, err = ResolveBase(ctx, repo, "nothere")
+	assert.Error(t, err)
+}

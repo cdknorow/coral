@@ -20,8 +20,12 @@ var ErrNoCommits = errors.New("the repository has no commits yet: make a first c
 func ResolveBase(ctx context.Context, repoDir, requested string) (string, error) {
 	requested = strings.TrimSpace(requested)
 	if requested != "" && requested != "main" {
-		if ValidRef(requested) == nil && !refExists(ctx, repoDir, requested) { // a branch that is not there is said plainly, before git is asked to start from it
-			return "", branchMissing(ctx, repoDir, requested)
+		if ValidRef(requested) == nil && !refExists(ctx, repoDir, requested) {
+			// A branch that exists only on the remote starts from the remote's: older gits guess it, newer ones refuse (Windows git 2.56, #6717).
+			if remote := "origin/" + requested; refExists(ctx, repoDir, "refs/remotes/"+remote) {
+				return remote, nil
+			}
+			return "", branchMissing(ctx, repoDir, requested) // said plainly, before git is asked to start from it
 		}
 		return requested, nil
 	}
