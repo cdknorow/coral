@@ -457,7 +457,7 @@
     flex-shrink: 0;
 }
 
-.wf-run-step-status.completed { background: rgba(var(--fx-green-deep-rgb), 0.15); color: var(--success); }
+.wf-run-step-status.completed { background: rgba(var(--fx-green-deep-rgb), 0.15); color: var(--success-text, var(--success)); } /* green as text on its own tint: 3.75:1 in the light theme otherwise (#6639) */
 .wf-run-step-status.running { background: rgba(var(--accent-rgb), 0.15); color: var(--accent); }
 .wf-run-step-status.failed { background: rgba(var(--fx-red-rgb), 0.15); color: var(--error-text); }
 .wf-run-step-status.killed { background: rgba(var(--fx-amber-rgb), 0.15); color: var(--warning); }
@@ -548,13 +548,15 @@
 
 .wf-step-agent-link {
     font-size: var(--fs-base);
-    color: var(--accent);
+    color: var(--link-text, var(--accent));
+    background: none; border: 0; padding: 0; font-family: inherit; /* a button that reads as a link (#6639) */
     cursor: pointer;
     display: flex;
     align-items: center;
     gap: 2px;
 }
 
+@media (pointer: coarse), (max-width: 767px) { .wf-step-agent-link { min-height: var(--control-touch-height, 44px); } } /* a touch target on a phone (#6639) */
 .wf-step-agent-link:hover {
     text-decoration: underline;
 }
@@ -577,7 +579,7 @@
 
 .wf-exit-ok {
     background: rgba(var(--fx-green-deep-rgb), 0.12);
-    color: var(--success);
+    color: var(--success-text, var(--success));
 }
 
 .wf-exit-err {
@@ -766,7 +768,7 @@
     font-weight: 500;
 }
 
-.wf-status-badge.completed { background: rgba(var(--fx-green-deep-rgb), 0.15); color: var(--success); }
+.wf-status-badge.completed { background: rgba(var(--fx-green-deep-rgb), 0.15); color: var(--success-text, var(--success)); }
 .wf-status-badge.running { background: rgba(var(--accent-rgb), 0.15); color: var(--accent); }
 .wf-status-badge.failed { background: rgba(var(--fx-red-rgb), 0.15); color: var(--error-text); }
 .wf-status-badge.killed { background: rgba(var(--fx-amber-rgb), 0.15); color: var(--warning); }

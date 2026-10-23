@@ -692,6 +692,9 @@
 1	workflows.js	durationHtml
 1	workflows.js	ecClass
 1	workflows.js	enabledBadge
+1	workflows.js	escAttr('Output of ' + (s.name || 'step ' + (i + 1)))
+1	workflows.js	escAttr('View agent of ' + (s.name || 'step ' + (i + 1)))
+1	workflows.js	escAttr(STEP_WORDS[s.status] || 'Waiting')
 1	workflows.js	escAttr(isFailed)
 1	workflows.js	escAttr(name)
 2	workflows.js	escAttr(outputId)
@@ -706,7 +709,7 @@
 1	workflows.js	formatTime(run.finished_at)
 1	workflows.js	formatTime(run.started_at)
 1	workflows.js	formatTime(wf.created_at)
-2	workflows.js	i + 1
+3	workflows.js	i + 1
 1	workflows.js	icon
 2	workflows.js	iconClass
 1	workflows.js	killBtn

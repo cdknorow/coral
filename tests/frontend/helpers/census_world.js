@@ -6,7 +6,17 @@ const BASE = require('../test_base').BASE;
 const WF = { id: 7, name: 'Nightly build', description: 'Builds nightly', enabled: true, steps: [{ name: 's1', type: 'shell', command: 'echo hi' }] };
 const WF2 = { id: 8, name: 'Weekly report', description: 'Weekly', enabled: true, steps: [{ name: 's1', type: 'shell', command: 'echo hi' }] }, WF3 = { id: 9, name: 'Release check', description: 'Release', enabled: false, steps: [{ name: 's1', type: 'shell', command: 'echo hi' }] };
 const RUN = { id: 31, workflow_id: 7, workflow_name: 'Nightly build', status: 'failed', trigger_type: 'manual', started_at: '2026-10-15T10:00:00Z', finished_at: '2026-10-15T10:01:00Z',
-    steps: [{ index: 0, name: 's1', type: 'shell', status: 'failed', exit_code: 1, output_tail: 'boom' }] };
+    steps: [{ index: 0, name: 'Install', type: 'shell', status: 'completed', exit_code: 0, output_tail: 'added 214 packages', files: ['stdout.txt'], started_at: '2026-10-15T10:00:00Z', finished_at: '2026-10-15T10:00:20Z' },
+        { index: 1, name: 'Test', type: 'shell', status: 'failed', exit_code: 3, output_tail: 'boom', error_tail: 'npm ERR! Test failed\nnpm ERR! exit code 3', files: ['stdout.txt', 'stderr.txt'], started_at: '2026-10-15T10:00:20Z', finished_at: '2026-10-15T10:01:00Z' },
+        { index: 2, name: 'Review', type: 'agent', status: 'skipped' }] };
+// A run that passed, with an agent step that has its conversation (a "View agent" link) and files: the run page when nothing went wrong (#6639).
+const RUN_OK = { id: 32, workflow_id: 7, workflow_name: 'Nightly build', status: 'completed', trigger_type: 'schedule', started_at: '2026-10-16T10:00:00Z', finished_at: '2026-10-16T10:02:00Z',
+    steps: [{ index: 0, name: 'Install', type: 'shell', status: 'completed', exit_code: 0, output_tail: 'added 214 packages', files: ['stdout.txt'], started_at: '2026-10-16T10:00:00Z', finished_at: '2026-10-16T10:00:20Z' },
+        { index: 1, name: 'Review', type: 'agent', status: 'completed', session_id: 'census-run-agent', session_name: 'census-run-agent', files: ['summary.md'], started_at: '2026-10-16T10:00:20Z', finished_at: '2026-10-16T10:02:00Z' }] };
+// A run that is still going: the page re-reads it every few seconds (#6639).
+const RUN_LIVE = { id: 34, workflow_id: 7, workflow_name: 'Nightly build', status: 'running', trigger_type: 'manual', started_at: '2026-10-17T10:00:00Z',
+    steps: [{ index: 0, name: 'Install', type: 'shell', status: 'completed', exit_code: 0, output_tail: 'added 214 packages', started_at: '2026-10-17T10:00:00Z', finished_at: '2026-10-17T10:00:20Z' },
+        { index: 1, name: 'Test', type: 'shell', status: 'running', output_tail: 'running 12 of 40', started_at: '2026-10-17T10:00:20Z' }] };
 // A verified update that is ready to install, with two agents the relaunch would restart (#6315): what GET /api/system/update answers once the scene sets window.__updStatus.
 const UPDATE_STAGED = { enabled: true, installed: '1.4.159', state: 'staged', staged: { version: '1.4.160', staged_at: '2026-10-23T03:00:00Z', days_ready: 0, verified: true, source: 'subgentic/coral' },
     relaunch: { available: true, reason: '', hub_allowed: false, tmux_agents_restart: false, ack: 'ack-1', restarts: [{ session_id: 'census-r1', name: 'release-agent', state: 'working', resumes: true }, { session_id: 'census-r2', name: 'docs-agent', state: 'waiting', resumes: false }] },
@@ -38,8 +48,10 @@ const DATA_WORLD = `(() => {
             if (/^\\/api\\/sessions\\/live\\/[^/]+\\/files$/.test(path)) return json({ files: [{ filepath: 'src/main.go', status: 'M' }, { filepath: 'docs/README.md', status: '??' }], is_git: true });
             if (path === '/api/workflows') return json({ workflows: [${JSON.stringify(WF)}, ${JSON.stringify(WF2)}, ${JSON.stringify(WF3)}] });
             if (path === '/api/workflows/7') return json(${JSON.stringify(WF)});
-            if (/^\\/api\\/workflows\\/7\\/runs/.test(path)) return json({ runs: [${JSON.stringify(RUN)}] });
+            if (/^\\/api\\/workflows\\/7\\/runs/.test(path)) return json({ runs: [${JSON.stringify(RUN)}, ${JSON.stringify(RUN_OK)}] });
             if (path === '/api/workflows/runs/31') return json(${JSON.stringify(RUN)});
+            if (path === '/api/workflows/runs/32') return json(${JSON.stringify(RUN_OK)});
+            if (path === '/api/workflows/runs/34') return json(${JSON.stringify(RUN_LIVE)});
             if (path === '/api/scheduled/jobs') return json({ jobs: [${JSON.stringify(JOB)}, ${JSON.stringify(JOB2)}, ${JSON.stringify(JOB3)}] });
             if (path === '/api/scheduled/jobs/5') return json(${JSON.stringify(JOB)});
             if (/^\\/api\\/scheduled\\/jobs\\/5\\/runs/.test(path)) return json({ runs: [] });
@@ -65,4 +77,4 @@ const DATA_WORLD = `(() => {
 })();`;
 async function httpJson(method, p, body) { const r = await fetch(BASE + p, { method, headers: { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) }); let data = null; try { data = await r.json(); } catch { /* no body */ } return { status: r.status, data }; }
 
-module.exports = { WF, RUN, JOB, UPDATE_STAGED, CLOUD_LINKED, CLOUD_IDLE, CLOUD_WAITING, DATA_WORLD, httpJson };
+module.exports = { WF, RUN, RUN_OK, RUN_LIVE, JOB, UPDATE_STAGED, CLOUD_LINKED, CLOUD_IDLE, CLOUD_WAITING, DATA_WORLD, httpJson };

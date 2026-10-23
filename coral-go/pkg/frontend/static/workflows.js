@@ -448,7 +448,7 @@ function renderRunDetail(run) {
             const outputId = `wf-step-output-${run.id}-${i}`;
             const autoExpand = isFailed ? ' wf-expanded' : '';
             outputHtml = `
-                <button type="button" class="wf-run-step-output-toggle" aria-expanded="${escAttr(isFailed)}" aria-controls="${escAttr(outputId)}" data-on-click="wf-output-toggle">
+                <button type="button" class="wf-run-step-output-toggle" aria-expanded="${escAttr(isFailed)}" aria-controls="${escAttr(outputId)}" aria-label="${escAttr('Output of ' + (s.name || 'step ' + (i + 1)))}" data-on-click="wf-output-toggle">
                     <span class="material-icons" style="font-size:0.875rem" aria-hidden="true">terminal</span> Output
                     <span class="material-icons wf-toggle-arrow" style="font-size:0.875rem" aria-hidden="true">expand_more</span>
                 </button>
@@ -475,17 +475,17 @@ function renderRunDetail(run) {
         // Session link for agent steps
         let agentHtml = '';
         if (s.type === 'agent' && s.session_id) {
-            agentHtml = `<span class="wf-step-agent-link" data-on-click="wf-step-agent" data-session="${escAttr(s.session_name || s.session_id)}">
+            agentHtml = `<button type="button" class="wf-step-agent-link" data-on-click="wf-step-agent" data-session="${escAttr(s.session_name || s.session_id)}" aria-label="${escAttr('View agent of ' + (s.name || 'step ' + (i + 1)))}">
                 <span class="material-icons" style="font-size:0.8125rem" aria-hidden="true">open_in_new</span> View agent
-            </span>`;
+            </button>`;
         }
 
         return `<div class="wf-run-step ${isLast ? '' : 'wf-run-step-connected'}">
             <div class="wf-timeline-node ${iconClass}"></div>
             <div class="wf-run-step-content${isFailed ? ' wf-step-failed' : ''}">
                 <div class="wf-run-step-header">
-                    <span class="wf-run-step-status ${iconClass}">${icon}</span>
-                    <span class="wf-run-step-name">${esc(s.name || 'Step ' + (s.index != null ? s.index : i))}</span>
+                    <span class="wf-run-step-status ${iconClass}" role="img" aria-label="${escAttr(STEP_WORDS[s.status] || 'Waiting')}">${icon}</span>
+                    <span class="wf-run-step-name"><span class="sr-only">Step ${i + 1}: </span>${esc(s.name || 'Step ' + (i + 1))}</span>
                     <span class="wf-step-type">${esc(s.type || '')}</span>
                     ${exitCodeHtml}
                     ${agentHtml}
@@ -509,6 +509,9 @@ function renderRunDetail(run) {
           </button>`
         : '';
 
+    // A run that is still going is drawn again every few seconds (#6639): what the person opened stays open and the control they were on keeps focus.
+    const wasOpen = new Map([...container.querySelectorAll('.wf-run-step-output-toggle')].map(b => [b.getAttribute('aria-controls'), b.getAttribute('aria-expanded') === 'true']));
+    const focusKey = document.activeElement && container.contains(document.activeElement) ? (document.activeElement.getAttribute('aria-controls') ? `c:${document.activeElement.getAttribute('aria-controls')}` : `a:${document.activeElement.dataset.onClick || ''}:${document.activeElement.dataset.session || document.activeElement.dataset.runId || ''}`) : '';
     container.innerHTML = `
         <div class="wf-run-header">
             <h3 class="wf-run-title">Run #${run.id} <span style="color:var(--text-secondary);font-weight:400">— ${esc(run.workflow_name || '')}</span></h3>
@@ -525,6 +528,17 @@ function renderRunDetail(run) {
         ${progressBarHtml}
         <div class="wf-run-steps wf-timeline">${stepsHtml}</div>
     `;
+    for (const b of container.querySelectorAll('.wf-run-step-output-toggle')) {
+        const id = b.getAttribute('aria-controls');
+        if (!wasOpen.has(id)) continue;
+        const open = wasOpen.get(id), out = document.getElementById(id);
+        if (out) out.classList.toggle('wf-expanded', open);
+        b.setAttribute('aria-expanded', String(open));
+    }
+    if (focusKey) {
+        const again = [...container.querySelectorAll('button, [tabindex]')].find(e => focusKey.startsWith('c:') ? `c:${e.getAttribute('aria-controls')}` === focusKey : `a:${e.dataset.onClick || ''}:${e.dataset.session || e.dataset.runId || ''}` === focusKey);
+        if (again) again.focus({ preventScroll: true });
+    }
 }
 
 // ── Trigger ────────────────────────────────────────────────────────────
@@ -808,6 +822,9 @@ function formatTime(ts) {
 function statusIconHtml(status) {
     return `<span class="wf-status-dot ${esc(status)}"></span>`;
 }
+
+// A step's state in words, for a reader: the mark beside it is a glyph (#6639).
+const STEP_WORDS = { completed: 'Passed', running: 'Running', failed: 'Failed', killed: 'Stopped', skipped: 'Skipped' };
 
 function statusIconChar(status) {
     switch (status) {
