@@ -630,7 +630,12 @@ func (t *terminalStream) sendSize(seq int64, initial bool) {
 	if t.sizer == nil {
 		return
 	}
-	cols, rows, err := t.sizer.PaneSize(t.name)
+	// The first report and the answer to a resize are the pane's size now (a resize-window a moment ago is not yet in the shared pane list, #6706); the periodic check may use the list.
+	size := t.sizer.PaneSize
+	if fresh, ok := t.sizer.(ptymanager.FreshPaneSizer); ok && (initial || seq > 0) {
+		size = fresh.PaneSizeFresh
+	}
+	cols, rows, err := size(t.name)
 	if err != nil || (seq == 0 && cols == t.lastCols && rows == t.lastRows) {
 		return
 	}

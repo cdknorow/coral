@@ -263,8 +263,18 @@ func (b *TmuxBackend) Resize(name string, cols, rows uint16) error {
 }
 
 // PaneSize reports the session's pane size from tmux itself, so a resize by any client (another
-// dashboard, a phone, a tmux attach) is seen (#3422).
+// dashboard, a phone, a tmux attach) is seen (#3422). It may come from the shared pane list, up to
+// a second old: right for the periodic check, not for a viewer's first report (PaneSizeFresh).
 func (b *TmuxBackend) PaneSize(name string) (int, int, error) {
+	return b.paneSize(name, false)
+}
+
+// PaneSizeFresh asks tmux itself, bypassing the shared pane list: the size a viewer is told when it opens or after its own resize (#6706).
+func (b *TmuxBackend) PaneSizeFresh(name string) (int, int, error) {
+	return b.paneSize(name, true)
+}
+
+func (b *TmuxBackend) paneSize(name string, fresh bool) (int, int, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
@@ -278,6 +288,9 @@ func (b *TmuxBackend) PaneSize(name string) (int, int, error) {
 	if sess != nil {
 		agentType = sess.info.AgentType
 		sessionID = sess.info.SessionID
+	}
+	if fresh {
+		return b.client.PaneSizeFreshForAgent(ctx, name, agentType, sessionID)
 	}
 	return b.client.PaneSizeForAgent(ctx, name, agentType, sessionID)
 }

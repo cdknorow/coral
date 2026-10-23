@@ -352,6 +352,19 @@ func (c *Client) agentPaneState(ctx context.Context, agentName, agentType, sessi
 	return st, ok
 }
 
+// PaneSizeFreshForAgent is the agent's pane size asked of tmux itself, never from the shared pane list: a viewer that opens right after a
+// resize made elsewhere (resize-window, another client) must be told the size the pane has now, not the one the list had up to paneStateTTL ago (#6706).
+func (c *Client) PaneSizeFreshForAgent(ctx context.Context, agentName, agentType, sessionID string) (cols, rows int, err error) {
+	out, err := c.DisplayForAgent(ctx, agentName, agentType, sessionID, "#{pane_width} #{pane_height}")
+	if err != nil {
+		return 0, 0, err
+	}
+	if _, err := fmt.Sscanf(strings.TrimSpace(out), "%d %d", &cols, &rows); err != nil || cols <= 0 || rows <= 0 {
+		return 0, 0, fmt.Errorf("pane size %q: unexpected tmux output", strings.TrimSpace(out))
+	}
+	return cols, rows, nil
+}
+
 // PaneSizeForAgent is the agent's pane size: from the shared pane list when it has the pane,
 // else from the pane itself. It returns ErrTerminalGone when the pane is gone.
 func (c *Client) PaneSizeForAgent(ctx context.Context, agentName, agentType, sessionID string) (cols, rows int, err error) {
