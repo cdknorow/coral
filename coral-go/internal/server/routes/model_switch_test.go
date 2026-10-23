@@ -515,6 +515,23 @@ func TestSleepEndsAPendingSwitchAndAWakeKeepsTheConfirmedLevel(t *testing.T) {
 	})
 }
 
+// Default is a choice: the --effort the agent was launched with does not come back on a wake (#6219).
+func TestAWakeAfterASwitchToDefaultHasNoEffortFlag(t *testing.T) {
+	r := newSwitchRig(t, "claude")
+	startedAt(t, r, "medium")
+	_, _ = r.post(t, map[string]any{"thinking": ""})
+	r.waitTyped(t, "/effort auto")
+	r.localCommand(t, "/effort", "auto", "Effort level set to auto")
+	r.waitState(t, switchDone)
+	ls, err := r.ss.GetLiveSession(context.Background(), r.sid)
+	require.NoError(t, err)
+	assert.NotContains(t, strings.Join(store.UnmarshalFlags(ls.Flags), " "), "--effort", "the launch level is not kept in the stored flags")
+	r.postRoute(t, "sleep")
+	r.postRoute(t, "wake")
+	n, _ := effortArgs(commandsFor(r.term, r.sid))
+	assert.Equal(t, 0, n, "the CLI's own default: no --effort on the wake")
+}
+
 func TestKillAndRestartEndAPendingSwitch(t *testing.T) {
 	t.Run("restart", func(t *testing.T) {
 		r := newSwitchRig(t, "claude")
