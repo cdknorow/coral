@@ -16,7 +16,7 @@ const GOLDEN = path.join(__dirname, 'fixtures', 'settings_apply_oracle.json');
 const PAYLOAD_KEYS = ['theme', 'custom_theme', 'default_renderer', 'default_agent_type', 'default_permission_mode', 'default_working_dir', 'fit_pane_width', 'notify_needs_input', 'terminal_font_size', 'terminal_scrollback',
     'show_scrollbars', 'cli_path_claude', 'cli_path_codex', 'cli_path_agy', 'cli_path_gemini', 'cli_path_pi', 'default_model_claude', 'default_model_codex', 'default_model_agy', 'default_model_gemini', 'default_model_pi',
     'file_search_mode', 'file_search_limit', 'git_diff_mode', 'git_poll_interval_s', 'agent_priority', 'telemetry_enabled', 'board_auto_attach', 'board_health_monitor', 'auto_resume_after_api_error', 'auto_goals',
-    'artifact_store_max_bytes', 'received_artifacts_max_bytes', 'artifact_retention_days', 'artifact_retention_kinds', 'debug_input_log', 'remote_access_enabled'];
+    'artifact_store_max_bytes', 'received_artifacts_max_bytes', 'artifact_retention_days', 'artifact_retention_kinds', 'debug_input_log', 'remote_access_enabled', 'nudge_claude_artifacts'];
 
 // [case name, edits ([control id, 'value'|'check'|'next'|'input', value]), how the save answers]
 const sel = id => [id, 'next'];
@@ -58,6 +58,7 @@ const CASES = [
     ['auto resume after an API error', [chk('settings-auto-resume')], 'ok'],
     ['auto goals off', [chk('settings-auto-goals')], 'ok'],
     ['team health checks off (all teams)', [chk('settings-board-health-monitor')], 'ok'],
+    ['reminders to use Coral artifacts off (#6583)', [chk('settings-nudge-claude-artifacts')], 'ok'],
     ['debug input log on', [chk('settings-debug-input-log')], 'ok'],
     ['debug input log forced on by the server', [['settings-debug-input-log', 'forced']], 'ok'],
     ['remote access on', [chk('settings-remote-access-enabled')], 'ok'],
