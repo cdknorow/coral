@@ -200,6 +200,9 @@ func (w *WindowsMSI) ApplyProcessRunning(install, copies string) bool {
 		}
 		image := windows.UTF16ToString(buf[:size])
 		base, dir := strings.ToLower(filepath.Base(image)), filepath.Dir(image)
+		if !isApplyCommand(commandLineOf(e.ProcessID)) { // "coral-update.exe status --json" runs from the install folder too (the server's preflight): only an apply counts
+			continue
+		}
 		switch {
 		case install != "" && base == "coral-update.exe" && strings.EqualFold(dir, filepath.Clean(install)):
 			return true
@@ -213,6 +216,36 @@ func (w *WindowsMSI) ApplyProcessRunning(install, copies string) bool {
 			if want != "" && fileSHA256(image) == want {
 				return true
 			}
+		}
+	}
+	return false
+}
+
+// commandLineOf is the command line of process pid ("" when it cannot be read), asked with the same limited right the image path is.
+func commandLineOf(pid uint32) string {
+	h, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
+	if err != nil {
+		return ""
+	}
+	defer windows.CloseHandle(h)
+	buf := make([]byte, 4096+int(unsafe.Sizeof(windows.NTUnicodeString{})))
+	var n uint32
+	if err := windows.NtQueryInformationProcess(h, windows.ProcessCommandLineInformation, unsafe.Pointer(&buf[0]), uint32(len(buf)), &n); err != nil {
+		return ""
+	}
+	us := (*windows.NTUnicodeString)(unsafe.Pointer(&buf[0]))
+	if us.Buffer == nil || us.Length == 0 {
+		return ""
+	}
+	return us.String()
+}
+
+// isApplyCommand reports whether a command line is an "apply" run of the updater: the fixed word as an argument after the program.
+func isApplyCommand(cmdline string) bool {
+	fields := strings.Fields(cmdline)
+	for _, f := range fields[min(1, len(fields)):] {
+		if strings.Trim(f, `"`) == "apply" {
+			return true
 		}
 	}
 	return false
@@ -462,6 +495,13 @@ func (w *WindowsMSI) Healthy(ctx context.Context, install string) error {
 		time.Sleep(2 * time.Second)
 	}
 	return errors.New("the new install did not stay up")
+}
+
+// NotifyBrief is Notify with a wait of a few seconds: the busy answer ends the apply, and a box held for minutes would keep its lock (and make the next click busy too).
+func (w *WindowsMSI) NotifyBrief(title, text string) {
+	short := *w
+	short.MessageWait = 15 * time.Second
+	short.Notify(title, text)
 }
 
 // Notify shows a message box and waits for the person, up to MessageWait (the box stays up until this process ends).

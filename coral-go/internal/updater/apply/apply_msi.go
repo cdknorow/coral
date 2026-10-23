@@ -86,6 +86,8 @@ type MSI interface {
 	// trigger.Launch copies the updater to) whose bytes are the installed updater's. The deciding check for "another apply is replacing the install", made from the processes, not
 	// from a lock file (which can be planted, or unreadable while a live apply moves it).
 	ApplyProcessRunning(install, copies string) bool
+	// NotifyBrief tells the person something with a short wait (the apply is about to end; a long one would hold its lock open and make the next click busy too).
+	NotifyBrief(title, text string)
 	// Notify tells the person something while Coral is down (a message box).
 	Notify(title, text string)
 }
@@ -176,7 +178,7 @@ func RunMSI(ctx context.Context, mc MSIConfig) Result {
 			inst, _ := mc.MSI.Install()
 			if mc.MSI.ApplyProcessRunning(inst, filepath.Join(dir, "apply")) {
 				res.Result, res.FailedStage = ResultBusy, BusyApply // a real apply is replacing the install: nothing may start Coral under it
-				mc.MSI.Notify("Coral update", "Another update may be running; start Coral from the Start menu when it's done.")
+				mc.MSI.NotifyBrief("Coral update", "Another update may be running; start Coral from the Start menu when it's done.")
 				return res
 			}
 		}

@@ -193,6 +193,10 @@ func (f *fakeMSI) Healthy(context.Context, string) error {
 	}
 	return nil
 }
+func (f *fakeMSI) NotifyBrief(title, text string) {
+	f.rec("notify_brief")
+	f.notes = append(f.notes, text)
+}
 func (f *fakeMSI) Notify(title, text string) { f.rec("notify"); f.notes = append(f.notes, text) }
 
 type msiRig struct {
