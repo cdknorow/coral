@@ -88,12 +88,17 @@ function renderDocNav() {
     const list = document.getElementById('docs-nav-list');
     if (!list) return;
 
+    // The topics are one Tab stop (the open one, or the first), and the arrow keys move between them (#6586): 37 stops stood between the top bar and the page's text.
+    const stop = docsList.some(d => d.name === selectedDoc) ? selectedDoc : (docsList[0] || {}).name;
     list.innerHTML = docsList.map(d => {
         const active = selectedDoc === d.name ? ' active' : '';
-        // A list item that opens a page: focusable, and Enter or Space opens it like a click (#4026; it had no keyboard route).
-        return `<li class="session-list-item${escapeAttr(active)}" role="button" tabindex="0"${selectedDoc === d.name ? ' aria-current="true"' : ''} data-on-click="doc-open" data-on-keydown="doc-open-key" data-doc="${escapeAttr(d.name)}">${esc(d.title)}</li>`;
+        // A topic of the Docs list box: the open one is selected; Enter or Space opens the focused one like a click (#4026), the arrows move between them (#6586).
+        return `<li class="session-list-item${escapeAttr(active)}" role="option" tabindex="${Number(d.name === stop ? 0 : -1)}" aria-selected="${escapeAttr(selectedDoc === d.name ? 'true' : 'false')}" data-on-click="doc-open" data-on-keydown="doc-open-key" data-doc="${escapeAttr(d.name)}">${esc(d.title)}</li>`;
     }).join('');
 }
+
+/** Say which topic is showing, politely (the text changes under a reader without a word otherwise, #6586). */
+function sayDocs(text) { const s = document.getElementById('docs-status'); if (s && s.textContent !== text) s.textContent = text; }
 
 // ── Content rendering ──────────────────────────────────────────────────
 
@@ -118,7 +123,9 @@ export function openDoc(name) {
 
 export async function selectDoc(name, { noteRoute = true } = {}) {
     selectedDoc = name;
+    const hadFocus = !!document.activeElement?.closest?.('#docs-nav-list'); // the list is drawn again: focus goes back to the topic that was opened
     renderDocNav();
+    if (hadFocus) [...document.querySelectorAll('#docs-nav-list [data-doc]')].find(e => e.dataset.doc === name)?.focus({ preventScroll: true });
     if (noteRoute && currentRoute()?.view === 'docs') note({ view: 'docs', id: name });
 
     const content = document.getElementById('docs-content');
@@ -134,6 +141,8 @@ export async function selectDoc(name, { noteRoute = true } = {}) {
 
     // Markdown through the dashboard's shared sanitizer and link policy (#3622 F4): a doc link is a
     // router link, a web link opens a new tab, anything else is text.
+    const shown = docsList.find(d => d.name === name);
+    sayDocs(`Showing ${shown ? shown.title : name}`);
     const html = renderDocsMarkdown(doc.content);
     if (html !== null) {
         content.innerHTML = html;
@@ -160,5 +169,14 @@ export async function copyDocsLine() {
 // A doc in the Docs list (#3645).
 registerActions({
     'doc-open': el => { const d = textOf(el.dataset.doc, 200); if (d) window.selectDoc(d); },
-    'doc-open-key': (el, event) => { if (event.target !== el || (event.key !== 'Enter' && event.key !== ' ')) return; event.preventDefault(); const d = textOf(el.dataset.doc, 200); if (d) window.selectDoc(d); },
+    'doc-open-key': (el, event) => {
+        if (event.target === el && ['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) { // between the topics: the one Tab stop goes with the focus
+            const all = [...document.querySelectorAll('#docs-nav-list [data-doc]')], at = all.indexOf(el);
+            const to = event.key === 'Home' ? 0 : event.key === 'End' ? all.length - 1 : event.key === 'ArrowDown' ? (at + 1) % all.length : (at + all.length - 1) % all.length;
+            event.preventDefault();
+            all.forEach((e, i) => { e.tabIndex = i === to ? 0 : -1; });
+            all[to].focus();
+            return;
+        }
+        if (event.target !== el || (event.key !== 'Enter' && event.key !== ' ')) return; event.preventDefault(); const d = textOf(el.dataset.doc, 200); if (d) window.selectDoc(d); },
 });
