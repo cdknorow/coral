@@ -75,7 +75,7 @@ func TestATeamWorktreeFolderIsOneName(t *testing.T) {
 		wd, path, _, failure := h.createTeamWorktree(t.Context(), launchTeamRequest{BoardName: name, WorkingDir: work, Worktree: true})
 		assert.Empty(t, wd, "%q", name)
 		assert.Empty(t, path, "%q", name)
-		assert.NotEmpty(t, failure, "%q", name)
+		assert.Error(t, failure, "%q", name)
 	}
 	_, err := os.Stat(filepath.Join(h.cfg.CoralDir(), "escape"))
 	assert.True(t, os.IsNotExist(err))

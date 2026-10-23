@@ -881,9 +881,9 @@ func runGitCmd(ctx context.Context, repoPath string, args ...string) error {
 func (s *JobScheduler) cleanupWorktree(repoPath, worktreePath, runBranch, baseBranch string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	err := runGitCmd(ctx, repoPath, "worktree", "remove", "--force", worktreePath)
+	err := runGitCmd(ctx, repoPath, "worktree", "remove", "--", worktreePath) // no --force: git keeps a worktree with unsaved work, and so does the branch (#6701)
 	if err != nil {
-		s.logger.Warn("failed to remove worktree", "path", logsafe.Dir(worktreePath), "error", err)
+		s.logger.Warn("kept the run's worktree: git would not remove it", "path", logsafe.Dir(worktreePath), "error", err)
 		return
 	}
 	s.logger.Info("cleaned up worktree", "path", logsafe.Dir(worktreePath))

@@ -165,26 +165,16 @@ func (h *SessionsHandler) Kill(w http.ResponseWriter, r *http.Request) {
 	// Kill tmux/pty session for awake agents
 	h.terminal.KillSession(r.Context(), name, body.AgentType, body.SessionID)
 
-	// Clean up git worktree if this was the last session using it
+	// Clean up git worktree if this was the last session using it, unless something in it is unsaved (#6701)
+	resp := map[string]any{"ok": true, "changes_artifact": changesArtifact, "changes_artifact_error": artifactError}
 	if worktreePathForCleanup != "" && worktreeRepoForCleanup != "" {
 		// Check if any remaining sessions use this worktree
 		remaining, _ := h.ss.CountSessionsWithWorktree(bgCtx, worktreePathForCleanup)
 		if remaining == 0 {
-			go func() {
-				defer safego.Recover("server/routes/sessions_lifecycle:164")
-				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-				defer cancel()
-				cmd := gitutil.Command(ctx, worktreeRepoForCleanup, "worktree", "remove", "--force", worktreePathForCleanup)
-				if out, err := cmd.CombinedOutput(); err != nil {
-					log.Printf("[kill] failed to remove worktree %s: %s", worktreePathForCleanup, string(out))
-				} else {
-					log.Printf("[kill] cleaned up worktree: %s", worktreePathForCleanup)
-				}
-			}()
+			resp["worktree"] = h.removeOwnedWorktree(bgCtx, "kill", worktreeRepoForCleanup, worktreePathForCleanup, "")
 		}
 	}
-
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "changes_artifact": changesArtifact, "changes_artifact_error": artifactError})
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // putSubscriptionBack returns a board subscription to the session it was on, when a launch failed
@@ -1260,16 +1250,7 @@ func (h *SessionsHandler) KillTeam(w http.ResponseWriter, r *http.Request) {
 	// Artifact snapshots above have finished: the owned worktree goes only if nothing in it is unsaved, and the answer says what was kept and why (#6701).
 	resp := map[string]any{"ok": true, "sessions_killed": killed}
 	if teamWorktree != "" {
-		wtCtx, cancel := context.WithTimeout(bgCtx, 30*time.Second)
-		outcome, err := gitutil.RemoveWorktree(wtCtx, teamRepo, teamWorktree, "coral-team/"+boardName)
-		cancel()
-		if err != nil {
-			outcome.Kept = "the worktree could not be removed: " + err.Error()
-			log.Printf("[kill-team] failed to remove worktree %s: %s", logsafe.Dir(teamWorktree), err)
-		} else {
-			log.Printf("[kill-team] worktree %s: removed=%v %s", logsafe.Dir(teamWorktree), outcome.Removed, outcome.Kept)
-		}
-		resp["worktree"] = outcome
+		resp["worktree"] = h.removeOwnedWorktree(bgCtx, "kill-team", teamRepo, teamWorktree, "coral-team/"+boardName)
 	}
 
 	// Unpause board
@@ -1278,6 +1259,21 @@ func (h *SessionsHandler) KillTeam(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// removeOwnedWorktree takes a stopped agent's or team's worktree away when nothing in it is unsaved and answers what happened ({state, path, branch, reason}): the worktree and its work are never deleted
+// without asking (#6701). Git runs in the owning repository, bounded at 30 s.
+func (h *SessionsHandler) removeOwnedWorktree(ctx context.Context, who, repo, path, branch string) gitutil.WorktreeOutcome {
+	wtCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	outcome, err := gitutil.RemoveWorktree(wtCtx, repo, path, branch)
+	if err != nil {
+		outcome.State, outcome.Reason = "failed", "git could not find its repository"
+		log.Printf("[%s] failed to remove worktree %s: %s", who, logsafe.Dir(path), err)
+	} else {
+		log.Printf("[%s] worktree %s: %s %s", who, logsafe.Dir(path), outcome.State, outcome.Reason)
+	}
+	return outcome
 }
 
 // ResurrectTeam relaunches a stopped team with only the agents that were active at kill time.

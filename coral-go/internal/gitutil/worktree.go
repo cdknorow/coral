@@ -17,17 +17,20 @@ func RepoOfWorktree(ctx context.Context, path string) string {
 	return filepath.Dir(common)
 }
 
-// WorktreeOutcome is what taking a worktree away did: Removed when the folder and its registration are gone, and Kept saying what stayed and why (the worktree with unsaved changes, a branch with commits
-// that are merged nowhere). Coral never deletes a person's work without asking (#6701).
+// WorktreeOutcome is what taking a worktree away did, in the shape the stop answers with (#6701): State "removed" (the folder and its registration are gone), "kept" (unsaved work is in it) or "failed", and
+// Reason, one short sentence, saying why it stayed or what else stayed (its branch, with commits merged nowhere). Path is filled by the caller. Coral never deletes a person's work without asking.
 type WorktreeOutcome struct {
-	Removed bool   `json:"removed"`
-	Kept    string `json:"kept,omitempty"`
+	State  string `json:"state"`
+	Path   string `json:"path,omitempty"`
+	Branch string `json:"branch,omitempty"`
+	Reason string `json:"reason,omitempty"`
 }
 
 // RemoveWorktree takes a worktree out of the repository that owns it, only when nothing in it is unsaved: a worktree with uncommitted or untracked changes stays, and so does its branch while it has
 // commits that no other branch holds; a clean worktree goes (folder and registration, git worktree prune) and its branch with it when it holds nothing of its own. repoDir is where git runs: the team's or
 // the job's own repository (a worktree's parent folder is not one); empty, or no longer a repository, it is found from the worktree itself. A worktree already gone is not an error.
 func RemoveWorktree(ctx context.Context, repoDir, path, branch string) (WorktreeOutcome, error) {
+	res := WorktreeOutcome{Path: path, Branch: branch}
 	if repoDir == "" || !IsWorkTree(ctx, repoDir) {
 		repoDir = RepoOfWorktree(ctx, path)
 	}
@@ -35,33 +38,43 @@ func RemoveWorktree(ctx context.Context, repoDir, path, branch string) (Worktree
 	gone := os.IsNotExist(statErr)
 	if repoDir == "" {
 		if gone {
-			return WorktreeOutcome{Removed: true}, nil // nothing there and no repository to unregister it from
+			res.State = "removed" // nothing there and no repository to unregister it from
+			return res, nil
 		}
-		return WorktreeOutcome{}, fmt.Errorf("%s is not a git worktree of a repository Coral knows", path)
+		return res, fmt.Errorf("%s is not a git worktree of a repository Coral knows", path)
 	}
 	if !gone {
-		if out, err := Command(ctx, path, "status", "--porcelain", "--untracked-files=all").Output(); err != nil {
-			return WorktreeOutcome{Kept: "its state could not be read: " + oneLine(err.Error())}, nil
-		} else if trimmed := strings.TrimSpace(string(out)); trimmed != "" {
-			files := strings.Count(trimmed, "\n") + 1
-			return WorktreeOutcome{Kept: fmt.Sprintf("the worktree has %d uncommitted or untracked file(s); it and its branch are kept", files)}, nil
+		out, err := Command(ctx, path, "status", "--porcelain", "--untracked-files=all").Output()
+		if err != nil {
+			res.State, res.Reason = "failed", "its state could not be read"
+			return res, nil
+		}
+		if strings.TrimSpace(string(out)) != "" {
+			res.State, res.Reason = "kept", "it has uncommitted changes"
+			return res, nil
 		}
 		if out, err := Command(ctx, repoDir, "worktree", "remove", "--", path).CombinedOutput(); err != nil {
 			Command(ctx, repoDir, "worktree", "prune").Run()
-			return WorktreeOutcome{Kept: "the worktree is kept: " + oneLine(string(out))}, nil
+			res.State = "kept"
+			if strings.Contains(string(out), "locked") {
+				res.Reason = "the worktree is locked"
+			} else {
+				res.Reason = "git would not remove it"
+			}
+			return res, nil
 		}
 	}
 	// A folder that is gone leaves its registration: prune clears it, so the next launch finds the name free.
 	Command(ctx, repoDir, "worktree", "prune").Run()
-	out := WorktreeOutcome{Removed: true}
+	res.State = "removed"
 	if branch != "" && refExists(ctx, repoDir, "refs/heads/"+branch) {
-		if n := UnmergedCommits(ctx, repoDir, branch); n > 0 {
-			out.Kept = fmt.Sprintf("the branch %s is kept: %d commit(s) on it are merged nowhere", branch, n)
+		if UnmergedCommits(ctx, repoDir, branch) > 0 {
+			res.Reason = "its branch is kept: it has commits that are not merged"
 		} else if err := Command(ctx, repoDir, "branch", "-D", "--", branch).Run(); err != nil {
-			out.Kept = "the branch " + branch + " is kept: it could not be deleted"
+			res.Reason = "its branch is kept: it could not be deleted"
 		}
 	}
-	return out, nil
+	return res, nil
 }
 
 // UnmergedCommits counts the commits on branch that no other branch (local or remote) holds.

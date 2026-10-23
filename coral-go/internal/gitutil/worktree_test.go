@@ -29,7 +29,7 @@ func TestRemoveWorktree(t *testing.T) {
 	add()
 	got, err := RemoveWorktree(ctx, repo, wt, "coral-team/team")
 	require.NoError(t, err)
-	assert.Equal(t, WorktreeOutcome{Removed: true}, got)
+	assert.Equal(t, WorktreeOutcome{State: "removed", Path: wt, Branch: "coral-team/team"}, got)
 	assert.NoDirExists(t, wt)
 	assert.NotContains(t, gitIn(t, repo, "worktree", "list"), "team")
 	assert.Empty(t, gitIn(t, repo, "branch", "--list", "coral-team/team"), "nothing on the branch: it goes")
@@ -38,15 +38,15 @@ func TestRemoveWorktree(t *testing.T) {
 	add()
 	got, err = RemoveWorktree(ctx, holder, wt, "coral-team/team")
 	require.NoError(t, err)
-	assert.True(t, got.Removed)
+	assert.Equal(t, "removed", got.State)
 
 	// unsaved work: kept, worktree and branch
 	add()
 	require.NoError(t, os.WriteFile(filepath.Join(wt, "x.txt"), []byte("x"), 0o644))
 	got, err = RemoveWorktree(ctx, repo, wt, "coral-team/team")
 	require.NoError(t, err)
-	assert.False(t, got.Removed)
-	assert.Contains(t, got.Kept, "1 uncommitted or untracked")
+	assert.Equal(t, "kept", got.State)
+	assert.Equal(t, "it has uncommitted changes", got.Reason)
 	assert.FileExists(t, filepath.Join(wt, "x.txt"))
 
 	// committed, clean: the worktree goes, the branch with its unmerged commit stays
@@ -54,8 +54,8 @@ func TestRemoveWorktree(t *testing.T) {
 	gitIn(t, wt, "commit", "-q", "-m", "x")
 	got, err = RemoveWorktree(ctx, repo, wt, "coral-team/team")
 	require.NoError(t, err)
-	assert.True(t, got.Removed)
-	assert.Contains(t, got.Kept, "merged nowhere")
+	assert.Equal(t, "removed", got.State)
+	assert.Equal(t, "its branch is kept: it has commits that are not merged", got.Reason)
 	assert.Contains(t, gitIn(t, repo, "branch", "--list", "coral-team/team"), "coral-team/team")
 
 	// the folder deleted by hand: the registration goes, and that is not an error
@@ -63,7 +63,7 @@ func TestRemoveWorktree(t *testing.T) {
 	require.NoError(t, os.RemoveAll(wt))
 	got, err = RemoveWorktree(ctx, repo, wt, "")
 	require.NoError(t, err)
-	assert.True(t, got.Removed)
+	assert.Equal(t, "removed", got.State)
 	assert.NotContains(t, gitIn(t, repo, "worktree", "list"), "team")
 
 	// something that is no worktree of any repository is said, in one line
