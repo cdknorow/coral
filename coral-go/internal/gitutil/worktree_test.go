@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -135,4 +136,34 @@ func TestTeamBranchIsAlwaysAValidBranchName(t *testing.T) {
 		assert.Equal(t, branch, TeamBranch(name), "the same name, the same branch")
 	}
 	assert.NotEqual(t, TeamBranch("a b"), TeamBranch("a_b"), "names that differ only where it was replaced get their own")
+}
+
+// #6701 (Security's #6708 D): the paths a worktree is added at are cleaned and checked before git runs.
+func TestAddTeamWorktreeChecksThePathFirst(t *testing.T) {
+	ctx := context.Background()
+	repo := baseRepo(t, "master", true)
+	holder := t.TempDir()
+
+	long := filepath.Join(holder, strings.Repeat("d", 220))
+	_, err := AddTeamWorktree(ctx, repo, long, "coral-team/long", "master")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "longer than")
+
+	file := filepath.Join(holder, "afile")
+	require.NoError(t, os.WriteFile(file, []byte("x"), 0o644))
+	_, err = AddTeamWorktree(ctx, repo, file, "coral-team/afile", "master")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "is a file")
+
+	_, err = AddTeamWorktree(ctx, repo, filepath.Join(holder, "Team"), "coral-team/Team", "master")
+	require.NoError(t, err)
+	_, err = AddTeamWorktree(ctx, repo, filepath.Join(holder, "team"), "coral-team/team", "master")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "differs only in case")
+	assert.Empty(t, gitIn(t, repo, "branch", "--list", "coral-team/team"), "nothing was made for the second")
+
+	// a path with a dot segment is the same worktree
+	_, err = AddTeamWorktree(ctx, repo, filepath.Join(holder, "x", "..", "dotted"), "coral-team/dotted", "master")
+	require.NoError(t, err)
+	assert.DirExists(t, filepath.Join(holder, "dotted"))
 }
