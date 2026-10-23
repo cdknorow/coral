@@ -81,6 +81,16 @@ func writableFolder(dir string) bool {
 	return true
 }
 
+// trustedRootFailed is the answer when the trusted root cannot be loaded (offline, the cached root expired). An apply means a click made the server quit, so Coral is started
+// again (#332); a check stopped nothing.
+func trustedRootFailed(command string) output {
+	out := output{Result: stage.ResultFailed, Installed: config.Version, FailedStage: "trusted_root"}
+	if command == "apply" {
+		out.RestartFailed = restartAfterNothingFailed()
+	}
+	return out
+}
+
 func print(w io.Writer, o output) {
 	_ = json.NewEncoder(w).Encode(o)
 }
@@ -119,7 +129,7 @@ func run(args []string, getenv func(string) string, stdout io.Writer) int {
 	dataDir := config.ResolveCoralDir("")
 	trust, source, err := verify.LoadTrust(ctx, filepath.Join(dataDir, stage.UpdatesDir, "tuf"))
 	if err != nil {
-		print(stdout, output{Result: stage.ResultFailed, Installed: config.Version, FailedStage: "trusted_root"})
+		print(stdout, trustedRootFailed(args[0]))
 		return 0
 	}
 	portable := false

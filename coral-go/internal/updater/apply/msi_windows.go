@@ -170,6 +170,101 @@ func underFold(path, dir string) bool {
 	return path == dir || strings.HasPrefix(path, dir+`\`)
 }
 
+// ApplyProcessRunning reports whether a process other than this one is a real updater: coral-update.exe in the install folder, or coral-update-*.exe in copies (the name
+// trigger.Launch gives its copy) whose bytes are the installed updater's, so a program a user dropped there under that name does not count.
+func (w *WindowsMSI) ApplyProcessRunning(install, copies string) bool {
+	snap, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPPROCESS, 0)
+	if err != nil {
+		return false
+	}
+	defer windows.CloseHandle(snap)
+	var e windows.ProcessEntry32
+	e.Size = uint32(unsafe.Sizeof(e))
+	self := uint32(os.Getpid())
+	var want string // the installed updater's sha256, read when a copy is found
+	for err = windows.Process32First(snap, &e); err == nil; err = windows.Process32Next(snap, &e) {
+		name := strings.ToLower(windows.UTF16ToString(e.ExeFile[:]))
+		if e.ProcessID == 0 || e.ProcessID == self || !strings.HasPrefix(name, "coral-update") {
+			continue
+		}
+		h, oerr := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, e.ProcessID)
+		if oerr != nil {
+			continue
+		}
+		buf := make([]uint16, windows.MAX_LONG_PATH)
+		size := uint32(len(buf))
+		qerr := windows.QueryFullProcessImageName(h, 0, &buf[0], &size)
+		windows.CloseHandle(h)
+		if qerr != nil {
+			continue
+		}
+		image := windows.UTF16ToString(buf[:size])
+		base, dir := strings.ToLower(filepath.Base(image)), filepath.Dir(image)
+		if !isApplyCommand(commandLineOf(e.ProcessID)) { // "coral-update.exe status --json" runs from the install folder too (the server's preflight): only an apply counts
+			continue
+		}
+		switch {
+		case install != "" && base == "coral-update.exe" && strings.EqualFold(dir, filepath.Clean(install)):
+			return true
+		case copies != "" && strings.EqualFold(dir, filepath.Clean(copies)):
+			if ok, _ := filepath.Match("coral-update-*.exe", base); !ok {
+				continue
+			}
+			if want == "" && install != "" {
+				want = fileSHA256(filepath.Join(install, "coral-update.exe"))
+			}
+			if want != "" && fileSHA256(image) == want {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// commandLineOf is the command line of process pid ("" when it cannot be read), asked with the same limited right the image path is.
+func commandLineOf(pid uint32) string {
+	h, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
+	if err != nil {
+		return ""
+	}
+	defer windows.CloseHandle(h)
+	buf := make([]byte, 4096+int(unsafe.Sizeof(windows.NTUnicodeString{})))
+	var n uint32
+	if err := windows.NtQueryInformationProcess(h, windows.ProcessCommandLineInformation, unsafe.Pointer(&buf[0]), uint32(len(buf)), &n); err != nil {
+		return ""
+	}
+	us := (*windows.NTUnicodeString)(unsafe.Pointer(&buf[0]))
+	if us.Buffer == nil || us.Length == 0 {
+		return ""
+	}
+	return us.String()
+}
+
+// isApplyCommand reports whether a command line is an "apply" run of the updater: the fixed word as an argument after the program.
+func isApplyCommand(cmdline string) bool {
+	fields := strings.Fields(cmdline)
+	for _, f := range fields[min(1, len(fields)):] {
+		if strings.Trim(f, `"`) == "apply" {
+			return true
+		}
+	}
+	return false
+}
+
+// fileSHA256 is the hex sha256 of the file at path, "" when it cannot be read.
+func fileSHA256(path string) string {
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return ""
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
 // running lists the processes whose image is a file under install (this process excluded).
 func (w *WindowsMSI) running(install string) ([]string, error) {
 	snap, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPPROCESS, 0)
@@ -400,6 +495,13 @@ func (w *WindowsMSI) Healthy(ctx context.Context, install string) error {
 		time.Sleep(2 * time.Second)
 	}
 	return errors.New("the new install did not stay up")
+}
+
+// NotifyBrief is Notify with a wait of a few seconds: the busy answer ends the apply, and a box held for minutes would keep its lock (and make the next click busy too).
+func (w *WindowsMSI) NotifyBrief(title, text string) {
+	short := *w
+	short.MessageWait = 15 * time.Second
+	short.Notify(title, text)
 }
 
 // Notify shows a message box and waits for the person, up to MessageWait (the box stays up until this process ends).

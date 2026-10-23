@@ -182,3 +182,62 @@ func TestOnlyThePerMachineProductIsCoral(t *testing.T) {
 	_, err = w.RegisteredProduct()
 	assert.Error(t, err, "two machine products: fail closed")
 }
+
+// ApplyProcessRunning looks at the processes, by the names, bytes and command line trigger.Launch makes: coral-update.exe in the install folder, or coral-update-*.exe in the copies
+// folder with the installed updater's bytes, run with "apply". Nothing else counts, so "coral-update.exe status --json" (the server's preflight) is not an apply.
+func TestApplyProcessRunningLooksAtTheProcesses(t *testing.T) {
+	w := &WindowsMSI{}
+	exe, err := os.Executable()
+	require.NoError(t, err)
+	assert.False(t, w.ApplyProcessRunning(filepath.Dir(exe), t.TempDir()), "no updater is running from here")
+	assert.False(t, w.ApplyProcessRunning("", ""))
+
+	src, err := os.ReadFile(filepath.Join(os.Getenv("SystemRoot"), "System32", "cmd.exe"))
+	if err != nil {
+		t.Skip("no cmd.exe to stand for a long-running program")
+	}
+	// cmd.exe stands for the updater: it waits a while, and "apply" or "status" is the last word on its command line.
+	start := func(path string, content []byte, word string) {
+		require.NoError(t, os.WriteFile(path, content, 0o755))
+		cmd := exec.Command(path, "/c", "ping -n 30 127.0.0.1 >nul & rem", word)
+		require.NoError(t, cmd.Start())
+		t.Cleanup(func() { _ = cmd.Process.Kill(); _ = cmd.Wait() })
+	}
+	install, copies := t.TempDir(), t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(install, "coral-update.exe"), src, 0o755)) // the installed updater (not running)
+
+	start(filepath.Join(copies, "coral-update-1.exe"), append(append([]byte{}, src...), 'x'), "apply") // another program under Launch's name: other bytes
+	assert.False(t, w.ApplyProcessRunning(install, copies), "a different program named coral-update-1.exe under the copies folder is no updater")
+
+	start(filepath.Join(t.TempDir(), "coral-update-2.exe"), src, "apply")
+	assert.False(t, w.ApplyProcessRunning(install, copies), "a real updater's bytes in some other folder")
+
+	start(filepath.Join(copies, "coral-update-7.exe"), src, "status")
+	assert.False(t, w.ApplyProcessRunning(install, copies), "the right copy and bytes, but run with status, not apply")
+
+	start(filepath.Join(copies, "coral-update-3456.exe"), src, "apply")
+	assert.True(t, w.ApplyProcessRunning(install, copies), "the real copy: Launch's name, the installed updater's bytes, run with apply")
+	assert.False(t, w.ApplyProcessRunning(install, t.TempDir()), "and only in the folder asked about")
+
+	install2 := t.TempDir()
+	start(filepath.Join(install2, "coral-update.exe"), src, "status")
+	assert.False(t, w.ApplyProcessRunning(install2, t.TempDir()), "the installed updater run with status (the preflight) is not an apply")
+	install3 := t.TempDir()
+	start(filepath.Join(install3, "coral-update.exe"), src, "apply")
+	assert.True(t, w.ApplyProcessRunning(install3, t.TempDir()), "the installed updater run with apply, from the install folder")
+}
+
+func TestIsApplyCommand(t *testing.T) {
+	for line, want := range map[string]bool{
+		`C:\x\coral-update-1.exe apply`:         true,
+		`"C:\x y\coral-update-1.exe" apply`:     true,
+		`"C:\x\coral-update.exe" status --json`: false,
+		`"C:\x\coral-update.exe" check`:         false,
+		`apply`:                                 false, // the program name alone is not an argument
+		``:                                      false,
+		`"C:\x\coral-update.exe" status --x=apply`: false,
+		`"C:\\apply\\coral-update.exe" status`:     false,
+	} {
+		assert.Equal(t, want, isApplyCommand(line), line)
+	}
+}
