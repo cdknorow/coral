@@ -6,7 +6,7 @@ const { connect } = require('./agent_view_harness');
 const { launchStandIn } = require('./helpers/stand_in_agent');
 const { guardSettings } = require('./helpers/settings_guard');
 const { STUB, HEX } = require('./helpers/comments_scale');
-const { scene, tap: tapSel, problems, required } = require('./helpers/phone_targets');
+const { scene, tap: tapSel, problems, required, useScaleShot } = require('./helpers/phone_targets');
 const BASE = require('./test_base').BASE;
 const TEAM = 'census-' + Date.now().toString(36);
 const S = `(window.__coralStatic || '/static/')`;
@@ -14,6 +14,7 @@ const { DATA_WORLD, httpJson } = require('./helpers/census_world');
 
 (async () => {
     const { client, Page, Emulation, ev, waitFor, PRELOAD, install } = await connect();
+    if (process.env.SCALE_SHOT_DIR) useScaleShot(async name => require('node:fs').writeFileSync(`${process.env.SCALE_SHOT_DIR}/${name.replace(/[^a-z0-9]+/gi, '-')}.png`, Buffer.from((await Page.captureScreenshot({ format: 'png' })).data, 'base64'))); // SCALE_SHOT_DIR=<dir>: a picture of each scene with 200% findings
     const guard = await guardSettings(); let standIn = null;
     const results = [];
     const sc = (name, setup, opts) => scene(ev, results, name, setup, opts);

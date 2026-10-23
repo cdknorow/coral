@@ -61,6 +61,87 @@ async function contrastOf(ev, name) {
     return { fails: out, checked };
 }
 
+
+// The 200% text census (WCAG 1.4.4, #6256): the same scenes with the root font at 32 px (twice the default 16). Four things fail: sideways scroll on the page, a control cut off by the screen's edge (outside a scrolling row),
+// two controls drawn over each other (both on top at their own centres, neither inside the other: a button inset in a text box is a design), and text clipped by overflow:hidden with no ellipsis (a fixed label cut; a name ending in an ellipsis is a truncation, not a loss).
+const SCALE = `(() => {
+    const vis = e => { if (!e.getClientRects().length) return false; for (let p = e; p; p = p.parentElement) { const cs = getComputedStyle(p); if (cs.visibility === 'hidden' || cs.display === 'none' || p.hidden || p.inert) return false; } return true; };
+    const sel = 'button, a[href], input:not([type=hidden]), select, textarea, summary, [role=button], [role=tab], [role=menuitem], [role=option], [role=switch], [role=checkbox], [role=radio]';
+    const d = e => e.tagName.toLowerCase() + (e.id ? '#' + e.id : '') + (typeof e.className === 'string' && e.className.trim() ? '.' + e.className.trim().split(/\\s+/)[0] : '');
+    const txt = e => (e.getAttribute('aria-label') || e.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 40);
+    const out = { hscroll: null, offscreen: [], overlap: [], clipped: [], n: 0 };
+    const de = document.documentElement, W = navigator.maxTouchPoints > 0 ? Math.min(innerWidth, screen.width || innerWidth) : innerWidth; // a phone's layout width can grow to fit wide content: its screen's width is what a person has
+    if (de.scrollWidth > W + 1) out.hscroll = de.scrollWidth + ' > ' + W;
+    const scrolls = e => { for (let p = e.parentElement; p && p !== document.body; p = p.parentElement) { const cs = getComputedStyle(p); if (/(auto|scroll)/.test(cs.overflowX) && p.scrollWidth > p.clientWidth) return true; } return false; };
+    const controls = [];
+    for (const e of document.querySelectorAll(sel)) {
+        if (!vis(e) || e.disabled || e.closest('.sr-only, .xterm, [data-census-skip]')) continue;
+        let b = e.getBoundingClientRect(); if (!b.width || !b.height) continue;
+        const raw = b;
+        { let l = b.left, t = b.top, r = b.right, bt = b.bottom; for (let p = e.parentElement; p; p = p.parentElement) { const c = getComputedStyle(p); if (/(auto|scroll|hidden|clip)/.test(c.overflowX + c.overflowY)) { const pr = p.getBoundingClientRect(); l = Math.max(l, pr.left); t = Math.max(t, pr.top); r = Math.min(r, pr.right); bt = Math.min(bt, pr.bottom); } } if (r - l < 1 || bt - t < 1) continue; b = { left: l, top: t, right: r, bottom: bt, width: r - l, height: bt - t }; } // what is seen of it: the part inside its scrolling or clipping parents
+        if (b.top > innerHeight + 4000 || b.bottom < -4000) continue;
+        out.n++;
+        if ((raw.right > W + 2 || raw.left < -2) && !scrolls(e)) out.offscreen.push(d(e) + ' "' + txt(e) + '" ' + Math.round(raw.left) + '..' + Math.round(raw.right));
+        const cy = Math.min(Math.max(b.top + b.height / 2, 0), innerHeight - 1);
+        const onTop = [0.2, 0.5, 0.8].some(f => { const hit = document.elementFromPoint(Math.min(Math.max(b.left + b.width * f, 0), innerWidth - 1), cy); return hit && (e.contains(hit) || hit.contains(e)); });
+        if (b.top < innerHeight && b.bottom > 0 && onTop) controls.push([e, b]); // only a control that is on top where a person would tap it: one under a panel is not overlapping anything
+    }
+    for (let i = 0; i < controls.length; i++) for (let j = i + 1; j < controls.length; j++) {
+        const [a, ab] = controls[i], [c, cb] = controls[j];
+        if (a.contains(c) || c.contains(a)) continue;
+        const inside = (x, y) => x.left >= y.left - 1 && x.right <= y.right + 1 && x.top >= y.top - 1 && x.bottom <= y.bottom + 1;
+        if (inside(ab, cb) || inside(cb, ab)) continue;
+        const layer = x => x.closest('[role=menu], [role=listbox], [role=dialog], dialog, [aria-modal=true], [class*="-menu"]:not(.overflow-menu-item), [class*=dropdown], [popover], .toast, .modal'); // a menu, list or dialog is meant to lie over the page
+        if (layer(a) !== layer(c)) continue;
+        const w = Math.min(ab.right, cb.right) - Math.max(ab.left, cb.left), h = Math.min(ab.bottom, cb.bottom) - Math.max(ab.top, cb.top);
+        if (w > 3 && h > 3) {
+            out.overlap.push(d(a) + ' "' + txt(a) + '" over ' + d(c) + ' "' + txt(c) + '" (' + Math.round(w) + 'x' + Math.round(h) + ')');
+        }
+    }
+    for (const e of document.body.querySelectorAll('*')) {
+        if (e.closest('.sr-only, .xterm, svg, [data-census-skip]') || !vis(e)) continue;
+        const cs = getComputedStyle(e);
+        if (!/(hidden|clip)/.test(cs.overflowX + cs.overflowY) || cs.textOverflow === 'ellipsis' || e.clientWidth <= 2 || e.clientHeight <= 2) continue;
+        const er = e.getBoundingClientRect();
+        const walker = document.createTreeWalker(e, NodeFilter.SHOW_TEXT);
+        let cut = null;
+        for (let n = walker.nextNode(); n && !cut; n = walker.nextNode()) {
+            if (!n.textContent.trim() || !n.parentElement || !vis(n.parentElement) || /material|icon/i.test(n.parentElement.className + ' ' + getComputedStyle(n.parentElement).fontFamily)) continue; // an icon's ligature name is not text
+            let inner = false;
+            for (let p = n.parentElement; p && p !== e; p = p.parentElement) { const c = getComputedStyle(p); if (/(auto|scroll|hidden|clip)/.test(c.overflowX + c.overflowY) || c.textOverflow === 'ellipsis') { inner = true; break; } }
+            if (inner) continue;
+            const r = document.createRange(); r.selectNodeContents(n);
+            for (const b of r.getClientRects()) {
+                if (!b.width || !b.height) continue;
+                const interW = Math.min(b.right, er.right) - Math.max(b.left, er.left), interH = Math.min(b.bottom, er.bottom) - Math.max(b.top, er.top);
+                const xClip = /(hidden|clip)/.test(cs.overflowX), yClip = /(hidden|clip)/.test(cs.overflowY);
+                if (interW > 0 && interH > 0 && ((xClip && (b.right > er.right + 1 || b.left < er.left - 1)) || (yClip && (b.bottom > er.bottom + 1 || b.top < er.top - 1)))) { cut = n.textContent.replace(/\\s+/g, ' ').trim().slice(0, 30); break; }
+            }
+        }
+        if (cut) out.clipped.push(d(e) + ' cuts "' + cut + '"');
+    }
+    return out; })()`;
+
+/** The scene at 200% text: root font 32 px, measured, put back. Skipped with PHONE_TARGETS_NO_SCALE. */
+let scaleShot = null;
+/** A suite may give a function that saves a screenshot of a scene with 200% findings: fn(name). Used when looking at a failure; the census itself needs none. */
+function useScaleShot(fn) { scaleShot = fn; }
+async function scaleOf(ev, name) {
+    if (process.env.PHONE_TARGETS_NO_SCALE) return null;
+    const was = await ev(`document.documentElement.style.fontSize`);
+    try {
+        await ev(`document.documentElement.style.fontSize = '32px'; true`);
+        await new Promise(r => setTimeout(r, 350)); // sleep-ok: the page reflows at the new size
+        const r = await ev(SCALE);
+        if (scaleShot && (r.hscroll || r.offscreen.length || r.overlap.length || r.clipped.length)) await scaleShot(name).catch(() => {});
+        return r;
+    } finally { await ev(`document.documentElement.style.fontSize = ${JSON.stringify(was)}; true`).catch(() => {}); }
+}
+
+// Reviewed exceptions for the 200% pass: [scene pattern, finding pattern, why]. Empty: a clipped, overlapping or cut-off control is fixed by its rule, not listed.
+const ALLOW_SCALE = [];
+const allowedScale = (scene, text) => ALLOW_SCALE.some(([s, f]) => new RegExp(s).test(scene) && new RegExp(f).test(text));
+
 const allowed = (scene, c) => ALLOW.some(([s, d]) => new RegExp(s).test(scene) && new RegExp(d).test(`${c.d} ${c.t}`));
 
 /** Click a control a person could tap: it throws when the selector matches nothing or the match is not on screen, so a scene that depends on it fails as "did not open" instead of measuring the screen it was already on. */
@@ -78,7 +159,8 @@ async function scene(ev, results, name, setup, { min = 3, expect, contrastOnly =
     await new Promise(r => setTimeout(r, 600)); // sleep-ok: the scene's own transitions settle
     const m = contrastOnly ? { n: min, small: [], dups: [], unnamed: [] } : await ev(MEASURE); // contrastOnly (the desktop pass): only the colours are looked at
     const cr = await contrastOf(ev, name);
-    results.push({ name, contrast: cr.fails, contrastChecked: cr.checked, n: m.n, min, small: m.small.filter(c => !allowed(name, c)), dups: (m.dups || []).filter(d => !allowedDup(name, d)), unnamed: (m.unnamed || []).filter(u => !allowedUnnamed(name, u)) });
+    const sc = await scaleOf(ev, name);
+    results.push({ name, contrast: cr.fails, contrastChecked: cr.checked, n: m.n, min, small: m.small.filter(c => !allowed(name, c)), dups: (m.dups || []).filter(d => !allowedDup(name, d)), unnamed: (m.unnamed || []).filter(u => !allowedUnnamed(name, u)), scale: sc });
 }
 
 /** The problems in the results: a scene that failed to open, one with too few controls to be the real screen, and every control under 44 px. */
@@ -91,6 +173,14 @@ function problems(results) {
             for (const c of r.small) out.push(`${r.name}: ${c.d} "${c.t}" ${c.w}x${c.h}${c.via}`);
             if (r.contrastChecked === 0) out.push(`${r.name}: the contrast pass looked at nothing (the scene is empty or the audit did not run)`);
             for (const f of r.contrast || []) out.push(`${r.name}: [${f.theme}] ${f.what} ${f.sel} "${f.text}" ${f.ratio}:1, needs ${f.need}:1 (${f.fg} on ${f.bg})`);
+            if (r.scale) {
+                const sf = [];
+                if (r.scale.hscroll) sf.push(`sideways scroll ${r.scale.hscroll}`);
+                for (const o of r.scale.offscreen) sf.push(`cut off by the screen's edge: ${o}`);
+                for (const o of r.scale.overlap) sf.push(`overlap: ${o}`);
+                for (const o of r.scale.clipped) sf.push(`clipped text: ${o}`);
+                for (const f of sf) if (!allowedScale(r.name, f)) out.push(`${r.name}: [200% text] ${f}`);
+            }
             for (const u of r.unnamed || []) out.push(`${r.name}: ${u} has no accessible name`);
             if (!process.env.PHONE_TARGETS_NO_DUPS) for (const d of r.dups || []) out.push(`${r.name}: ${d.count} ${d.role} controls are all named "${d.name}" (${d.where.join(', ')})`);
         }
@@ -104,4 +194,4 @@ function required(results, names) {
     return names.filter(n => !have.has(n)).map(n => `${n}: the scene was never visited`);
 }
 
-module.exports = { MEASURE, ALLOW, ALLOW_DUPS, ALLOW_UNNAMED, ALLOW_CONTRAST, useThemeSetter, scene, tap, problems, required };
+module.exports = { useScaleShot, SCALE, MEASURE, ALLOW, ALLOW_DUPS, ALLOW_UNNAMED, ALLOW_CONTRAST, useThemeSetter, scene, tap, problems, required };
