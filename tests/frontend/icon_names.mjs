@@ -26,7 +26,7 @@ function walk(dir, out = []) {
 /** Everything in `src` that is a whole string literal or the whole text of an element: the places an icon name is written. */
 export function candidates(src) {
     // An ARIA role is never an icon's text (role="list", setAttribute('role', 'list')): left out, so the roles the pages need do not pull the icons named like them into the font (#5813).
-    src = src.replace(/\brole\s*=\s*(["'])[a-z]+\1/g, 'role=').replace(/(['"])role\1\s*,\s*(['"])[a-z]+\2/g, "'role', ''");
+    src = src.replace(/\baria-autocomplete\s*=\s*(["'])[a-z]+\1/g, 'aria-autocomplete=').replace(/\brole\s*=\s*(["'])[a-z]+\1/g, 'role=').replace(/(['"])role\1\s*,\s*(['"])[a-z]+\2/g, "'role', ''");
     const found = new Set();
     for (const m of src.matchAll(/(['"`])([a-z0-9_]{1,40})\1/g)) found.add(m[2]);                  // 'close'
     for (const m of src.matchAll(/>\s*([a-z0-9_]{1,40})\s*</g)) found.add(m[1]);                   // <span class="material-icons">close</span>

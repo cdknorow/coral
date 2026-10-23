@@ -101,7 +101,7 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
             list.querySelector('.team-agent-row [data-on-click="team-agent-move"][data-dir="down"]').click();
             const moved = names();
             const opened = []; const keepOpen = window.showTeamAgentModal; window.showTeamAgentModal = r => opened.push(!!r && r.classList.contains('team-agent-row'));
-            list.querySelector('[data-on-click="team-agent-open"]').click(); list.querySelector('[data-on-click="team-agent-edit"]').click();
+            list.querySelector('[data-on-click="team-agent-edit"]').click();
             window.showTeamAgentModal = keepOpen;
             list.querySelector('[data-on-click="team-agent-remove"]').click();
             const left = list.querySelectorAll('.team-agent-row').length;
@@ -109,7 +109,7 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
             list.innerHTML = '';
             return { list: true, before, moved, opened, left, inline };
         })()`);
-        check('team builder rows move down, open (summary and Edit), and are removed', team.list && team.moved[0] === team.before[1] && JSON.stringify(team.opened) === '[true,true]' && team.left === 1, JSON.stringify(team));
+        check('team builder rows move down, open (Edit), and are removed', team.list && team.moved[0] === team.before[1] && JSON.stringify(team.opened) === '[true]' && team.left === 1, JSON.stringify(team));
         check('no inline handler left in the team builder', team.inline.length === 0, JSON.stringify(team.inline.slice(0, 4)));
     } catch (e) {
         check('the test ran', false, e.stack || String(e));

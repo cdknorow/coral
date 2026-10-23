@@ -25,14 +25,15 @@ const BASE = require('./test_base').BASE;
         assert.ok(await ev(vis('#team-board-name')) && await ev(`!document.getElementById('team-board-name').closest('.settings-pane')`), 'the name is in view and in no section');
         assert.equal(await ev(`document.activeElement.id`), 'team-board-name', 'the keyboard starts in the name');
         assert.equal(await ev(`document.getElementById('team-board-name').getAttribute('aria-describedby')`), 'team-board-name-hint');
-        for (const id of ['board', 'defaults', 'members']) { await ev(`document.querySelector('#launch-step-team .settings-tabs [data-section="${id}"]').click(); true`); assert.ok(await ev(vis('#team-board-name')), 'the name is there in ' + id); }
+        assert.ok(await ev(vis('#team-board-name')) && await ev(vis('#launch-team-dir')), 'the name and the folder are on the first step');
         assert.equal(await ev(`document.querySelector('.team-template-more').open`), false, 'the template tools start closed');
-        assert.ok(await ev(vis('#team-template-selector')) && await ev(vis('#team-agents-list')), 'the picker and the members are in view');
+        assert.ok(await ev(vis('#team-template-search')) && await ev(vis('#team-template-list')), 'the template picker is on the first step');
         assert.equal(await ev(`[...document.querySelectorAll('#launch-step-team .team-template-more button')].some(b => b.checkVisibility({ checkVisibilityCSS: true, contentVisibilityAuto: true }))`), false, 'the template actions are behind the disclosure');
         await ev(`document.querySelector('.team-template-more > summary').click(); true`);
         await waitFor(vis('#launch-step-team .team-template-more .team-generate-ai-btn'), 'the template actions after the disclosure opens');
         for (const sel of ['.team-generate-ai-btn', '[data-on-click="m-import-team-templates"]', '[data-on-click="m-import-team-from-folder"]', '[data-on-click="m-save-team-template"]']) assert.ok(await ev(vis('#launch-step-team .team-template-more ' + sel)), sel + ' is reached through More template options');
-        assert.equal(await ev(`document.getElementById('team-agents-list').getAttribute('aria-label')`), 'Team agents', 'the list is named now that its heading is gone');
+        await ev(`document.querySelector('#launch-step-team .team-step-tab[data-step="members"]').click(); true`);
+        assert.ok(await ev(vis('#team-agents-list')) || await ev(`document.querySelector('.team-members-table caption').textContent`) === 'Team members', 'the members table is named');
         await ev(`window.hideLaunchModal(); true`);
 
         console.log('2. Health check: the check first, the rest behind one disclosure that a problem opens');

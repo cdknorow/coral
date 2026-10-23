@@ -52,18 +52,64 @@ const BUILTIN_TEAM_TEMPLATES = [
     },
 ];
 
-function _renderTeamTemplateSelector() {
-    const select = document.getElementById("team-template-selector");
-    if (!select) return;
-    const saved = _getSavedTeamTemplates();
-    const all = [...BUILTIN_TEAM_TEMPLATES, ...saved];
+// The template picker: a searchable list (#6397). It scales past the dozen built-in templates: the search narrows it, the list scrolls after four rows, and the chosen one is marked.
+let _chosenTemplate = '';
+let _activeTemplate = -1;
 
-    let html = '<option value="">Select a template...</option>';
-    for (const t of all) {
-        const suffix = t.builtin ? '' : ' (saved)';
-        html += `<option value="${escapeAttr(t.name)}">${escapeHtml(t.name)} (${t.agents.length} agents)${suffix}</option>`;
+function _allTemplates() { return [...BUILTIN_TEAM_TEMPLATES, ..._getSavedTeamTemplates()]; }
+
+function _templateOptions() { return [...document.querySelectorAll('#team-template-list [role="option"]')]; }
+
+function _setActiveTemplate(i) {
+    const options = _templateOptions();
+    _activeTemplate = options.length ? Math.max(0, Math.min(options.length - 1, i)) : -1;
+    const search = document.getElementById('team-template-search');
+    options.forEach((o, j) => o.classList.toggle('active', j === _activeTemplate));
+    const active = options[_activeTemplate];
+    if (active) { search?.setAttribute('aria-activedescendant', active.id); active.scrollIntoView({ block: 'nearest' }); }
+    else search?.removeAttribute('aria-activedescendant');
+}
+
+function _renderTeamTemplateSelector(query = '') {
+    const list = document.getElementById('team-template-list');
+    if (!list) return;
+    const all = _allTemplates();
+    const q = query.trim().toLowerCase();
+    const shown = all.filter(t => !q || t.name.toLowerCase().includes(q));
+    list.innerHTML = shown.map((t, i) => {
+        const members = t.agents.length === 1 ? '1 member' : `${t.agents.length} members`;
+        const suffix = t.builtin ? '' : ', saved';
+        return `<li role="option" id="team-template-opt-${Number(i)}" class="team-template-option" aria-selected="${escapeAttr(String(t.name === _chosenTemplate))}" data-on-click="team-template-pick" data-name="${escapeAttr(t.name)}"><span class="team-template-name">${escapeHtml(t.name)}</span><span class="team-template-size">${escapeHtml(members + suffix)}</span></li>`;
+    }).join('');
+    const count = document.getElementById('team-template-count');
+    if (count) count.textContent = q ? `${shown.length} of ${all.length}` : '';
+    const none = document.getElementById('team-template-none');
+    if (none) {
+        none.hidden = shown.length > 0;
+        none.textContent = shown.length ? '' : `No template matches "${query.trim()}". Add members one by one on the next step.`;
     }
-    select.innerHTML = html;
+    _setActiveTemplate(shown.length ? 0 : -1);
+}
+
+function markTeamTemplate(name) {
+    _chosenTemplate = name;
+    for (const o of _templateOptions()) o.setAttribute('aria-selected', o.dataset.name === name ? 'true' : 'false');
+}
+
+function teamTemplateKey(event) {
+    if (event.key === 'ArrowDown') { event.preventDefault(); _setActiveTemplate(_activeTemplate + 1); }
+    else if (event.key === 'ArrowUp') { event.preventDefault(); _setActiveTemplate(_activeTemplate - 1); }
+    else if (event.key === 'Enter') {
+        const active = _templateOptions()[_activeTemplate];
+        if (active) { event.preventDefault(); window._loadTeamTemplateFromSelect(active.dataset.name); }
+    }
+}
+
+function resetTeamTemplatePicker() {
+    _chosenTemplate = '';
+    const search = document.getElementById('team-template-search');
+    if (search) search.value = '';
+    _renderTeamTemplateSelector();
 }
 
 let _pendingSaveTemplateAgents = null;
@@ -130,4 +176,4 @@ async function _confirmSaveTemplate() {
 }
 window._confirmSaveTemplate = _confirmSaveTemplate;
 
-export { BUILTIN_TEAM_TEMPLATES, _renderTeamTemplateSelector };
+export { BUILTIN_TEAM_TEMPLATES, _renderTeamTemplateSelector, markTeamTemplate, teamTemplateKey, resetTeamTemplatePicker };
