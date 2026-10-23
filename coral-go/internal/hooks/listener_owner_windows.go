@@ -56,8 +56,9 @@ func checkListener(host string, port int) error {
 		}
 		sid, image, err := pidOwner(pid)
 		if err != nil {
+			// Not "stop that program": a check that fails on Coral's own process would tell the person to stop their Coral (Security, #280).
 			return &ForeignListenerError{Port: port, PID: pid, Why: fmt.Sprintf("Coral couldn't check who runs the program on that port (PID %d): %v. "+
-				"Start Coral, or stop that program.", pid, err)}
+				"Check what is listening on port %d, or start Coral.", pid, err, port)}
 		}
 		if !ownedByOneOf(sid, owners) {
 			who := "another account"
