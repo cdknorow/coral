@@ -153,7 +153,8 @@ async function openTab({ contextId, width, height, mobile, fakeHubView = false, 
         try { await client.close(); } catch {}
     };
     await load();
-    return { ev, waitFor, load, close };
+    const metrics = (w, h) => Emulation.setDeviceMetricsOverride({ width: w, height: h, deviceScaleFactor: dpr, mobile });
+    return { ev, waitFor, load, close, metrics };
 }
 
 // Shows agent `a` in the terminal view and waits until the xterm renders the pane (cols x rows).
@@ -302,6 +303,13 @@ function assertFits(v, what) {
             const shown = Math.floor(v.clientW / cellPx(v));
             assert.ok(shown >= 58, `DPR ${dpr}: a 390 px phone shows about 60 columns of an 80-column pane at ${PHONE_BASE} px, not 46 (${shown}; ${JSON.stringify(v)})`);
             seen[dpr] = { font: v.font, cell: Math.round(cellPx(v) * 100) / 100, columns: shown };
+            if (dpr === 1) { // turned to landscape (wider than a phone) and back: the font is read when the terminal is built, so nothing redraws it under the person
+                await tab.metrics(844, 390); await sleep(500); // sleep-ok: no event for a window resize settling
+                assert.equal((await tab.ev(VIEW)).font, PHONE_BASE, 'turning the phone to landscape does not change the font');
+                await tab.metrics(390, 844); await sleep(500); // sleep-ok: as above
+                assert.equal((await tab.ev(VIEW)).font, PHONE_BASE, 'and back again');
+                setPane(A.name, eighty.cols, eighty.rows); // a window wide enough to own the pane sized it to itself: the next steps want the 80 columns back
+            }
             await tab.close(); tabs.pop();
         }
         console.log(`   ✓ ${PHONE_BASE} px at DPR 1 and 3: ${JSON.stringify(seen)}`);
