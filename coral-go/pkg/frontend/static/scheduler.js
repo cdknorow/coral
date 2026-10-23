@@ -21,12 +21,29 @@ let openedJob = null;
 
 // ── API helpers ──────────────────────────────────────────────────────────
 
+// A job whose run fails for its worktree or branch is said once in the status that is always in the page (#6707): which job and why. The first list read only sets the baseline, so what failed
+// before this page was opened is on its row, not announced. jobsSeen maps a job to its last run's identity and status.
+let jobsSeen = null;
+const runError = r => String(r.error_msg || r.error || '').trim(); // the run's error as the server words it (error_msg; a plain sentence when error_code is set)
+const runKey = job => { const r = job.last_run; return r ? `${r.id ?? r.started_at ?? ''}:${r.status}` : ''; };
+function announceFailedRuns(before) {
+    const now = new Map(scheduledJobs.map(j => [j.id, runKey(j)]));
+    jobsSeen = now;
+    if (!before) return;
+    const said = scheduledJobs.filter(j => j.last_run && j.last_run.status === 'failed' && before.get(j.id) !== now.get(j.id))
+        .map(j => `${j.name}: the last run failed${j.last_run.error_code && runError(j.last_run) ? `. ${runError(j.last_run)}` : '.'}`);
+    const live = document.getElementById('jobs-live');
+    if (said.length && live) live.textContent = said.join(' ');
+}
+
 async function fetchJobs() {
     try {
         const resp = await fetch('/api/scheduled/jobs');
         const data = await resp.json();
+        const before = jobsSeen;
         scheduledJobs = data.jobs || [];
         renderJobsSidebar();
+        announceFailedRuns(before);
     } catch (e) {
         console.error('Failed to fetch scheduled jobs:', e);
     }
@@ -69,10 +86,13 @@ function renderJobsSidebar() {
             ? `<span class="sched-fail-badge" title="The last ${escapeAttr(fails)} runs all failed">${fails} failed</span>`
             : '';
         const meta = [cronWords(job.cron_expr), lastWords(job.last_run), job.enabled && job.next_fire_at ? `next ${awayWords(job.next_fire_at)}` : ''].filter(Boolean).join(' · ');
+        // A run that failed for its folder or branch says so on the row, in the server's plain sentence (error_code names those; other errors stay in the Runs table), not "never run" with the cause out of sight (#6707).
+        const problem = job.last_run && job.last_run.status === 'failed' && job.last_run.error_code ? runError(job.last_run) : '';
         const nextTitle = job.enabled && job.next_fire_at ? `Next run ${atWords(job.next_fire_at)} your time` : '';
         return `<li class="session-list-item sched-row ${escapeAttr(active)}" data-on-click="job-select" data-job-id="${Number(job.id)}" title="${escapeAttr(nextTitle)}">
             <span class="sched-row-head"><span class="sched-dot sched-dot-${dot}" role="img" aria-label="${escapeAttr(dotWords)}" title="${escapeAttr(dotWords)}"></span> <span class="sched-row-name">${escapeHtml(job.name)}</span> ${paused} ${failBadge}</span>
             <span class="sched-row-meta">${escapeHtml(meta)}</span>
+            ${problem ? `<span class="sched-row-problem">${escapeHtml(problem)}</span>` : ''}
         </li>`;
     }).join('');
     updateJobsSectionCount();
@@ -153,7 +173,7 @@ function renderJobDetail(job, runs) {
 
     const settingsRows = [
         job.repo_path ? ['Folder', `<span class="sched-path">${escapeHtml(job.repo_path)}</span>`] : null,
-        !isWorkflow ? ['Base branch', escapeHtml(job.base_branch || 'main')] : null,
+        !isWorkflow ? ['Base branch', escapeHtml(job.base_branch || "The repo's current branch")] : null,
         ['Time limit', escapeHtml(limitWords(job.max_duration_s) || `${job.max_duration_s} seconds`)],
         !isWorkflow ? ['Cleanup worktree', job.cleanup_worktree ? 'Yes' : 'No'] : null,
         job.flags ? ['Flags', `<code>${escapeHtml(job.flags)}</code>`] : null,
@@ -366,7 +386,7 @@ export function showJobModal() {
     const customRow = document.getElementById('sched-custom-row');
     if (customRow) customRow.hidden = true;
     document.getElementById('job-modal-repo').value = document.getElementById('job-modal-repo').dataset.coralRoot || '';
-    document.getElementById('job-modal-branch').value = 'main';
+    document.getElementById('job-modal-branch').value = ''; // the repo's current branch (placeholder), not a guessed "main"
     document.getElementById('job-modal-agent').value = 'claude';
     document.getElementById('job-modal-prompt').value = '';
     showLimit(3600);
@@ -400,14 +420,14 @@ export async function editScheduledJob(jobId) {
     document.getElementById('job-modal-cron').value = job.cron_expr;
     document.getElementById('job-modal-timezone').value = job.timezone || 'UTC';
     document.getElementById('job-modal-repo').value = job.repo_path;
-    document.getElementById('job-modal-branch').value = job.base_branch || 'main';
+    document.getElementById('job-modal-branch').value = job.base_branch || '';
     document.getElementById('job-modal-agent').value = job.agent_type || 'claude';
     document.getElementById('job-modal-prompt').value = job.prompt;
     showLimit(job.max_duration_s || 3600);
     document.getElementById('job-modal-cleanup').checked = !!job.cleanup_worktree;
     document.getElementById('job-modal-flags').value = job.flags || '';
     document.getElementById('cron-preview').textContent = '';
-    say('job-modal-limit-msg', ''); say('job-modal-zone-msg', '');
+    say('job-modal-limit-msg', ''); say('job-modal-zone-msg', ''); say('job-modal-branch-msg', ''); markInvalid(document.getElementById('job-modal-branch'), false);
     // Nothing a job already has is hidden: More options opens when it holds something other than the defaults.
     document.getElementById('job-modal-more').open = !!(job.description || (job.timezone && job.timezone !== 'UTC') || (job.max_duration_s && job.max_duration_s !== 3600) || job.flags || (job.base_branch && job.base_branch !== 'main'));
     // Sync flag button active states
@@ -443,7 +463,7 @@ function jobFormValues() {
         values.workflow_id = wfId ? parseInt(wfId) : null;
     } else {
         values.repo_path = v('job-modal-repo').trim();
-        values.base_branch = v('job-modal-branch').trim() || 'main';
+        values.base_branch = v('job-modal-branch').trim(); // empty: the repo's current branch (the server's default), not a guessed "main"
         values.agent_type = v('job-modal-agent');
         values.prompt = v('job-modal-prompt').trim();
         values.flags = v('job-modal-flags').trim();
@@ -551,6 +571,15 @@ export async function saveScheduledJob() {
             body: JSON.stringify(body),
         });
         const data = await resp.json();
+        if (data.error && data.field === 'base_branch') { // a base branch the repo does not have: said under the field (an alert), the section opened, the field focused (#6707)
+            const branch = document.getElementById('job-modal-branch');
+            document.getElementById('job-modal-more').open = true;
+            say('job-modal-branch-msg', data.error);
+            markInvalid(branch, true);
+            branch.addEventListener('input', () => { say('job-modal-branch-msg', ''); markInvalid(branch, false); }, { once: true });
+            branch.focus();
+            return;
+        }
         if (data.error) {
             showToast(data.error, true);
             return;
@@ -574,6 +603,9 @@ function toggleJobMore(btn, open) {
     btn.setAttribute('aria-expanded', String(to));
 }
 
+/** Read the jobs again now (the 30 s poll's own call; the tests ask it too). */
+export function refreshJobs() { return fetchJobs(); }
+
 export function initScheduler() {
     // A click elsewhere and Escape close an open More (it is redrawn with the page, never kept)
     document.addEventListener('click', (e) => { for (const b of document.querySelectorAll('.sched-more-btn[aria-expanded="true"]')) if (!b.parentElement.contains(e.target)) toggleJobMore(b, false); });
@@ -581,7 +613,7 @@ export function initScheduler() {
     document.addEventListener('keydown', (e) => { if (e.key !== 'Escape') return; const b = document.querySelector('.sched-more-btn[aria-expanded="true"]'); if (b) { toggleJobMore(b, false); b.focus(); e.stopPropagation(); } }, true);
     fetchJobs();
     // Refresh jobs every 30s
-    pollEvery(fetchJobs, 30000, { whenHidden: true }); // job notifications
+    pollEvery(refreshJobs, 30000, { whenHidden: true }); // job notifications
 }
 
 // The scheduled jobs' markup (#3645): data-on-* names, never code.

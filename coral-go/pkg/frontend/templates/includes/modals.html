@@ -1353,8 +1353,9 @@
                     <div id="job-modal-limit-msg" class="field-error" role="alert" hidden></div>
                     <div id="job-modal-prompt-more" hidden>
                         <label class="job-field">Base branch
-                            <input type="text" id="job-modal-branch" placeholder="main" value="main">
+                            <input type="text" id="job-modal-branch" placeholder="the repo's current branch" value="">
                         </label>
+                        <div id="job-modal-branch-msg" class="field-error" role="alert" hidden></div>
                         <label class="job-field">Flags <span class="job-optional">(optional)</span>
                             <input type="text" id="job-modal-flags" placeholder="e.g. --verbose">
                         </label>
