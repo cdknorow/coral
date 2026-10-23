@@ -18,7 +18,7 @@
 #   5 crash       the apply dies right after the swap: the next apply leaves a consistent install (N or N+1, never half) and a server starts from it
 #   6 ask         the same swap, started the way a person starts it (#6297): the real server of N with a stand-in coral-update beside it (status passes through to the real one, apply
 #                 runs the rehearsal program), a staged update, and the server's relaunch control. Not the person (an API key, an agent's token, no credential) is refused and nothing
-#                 starts; the person (a request signed with the data folder's command-line token) starts it; the server ends, N+1 answers /api/health, the board message is kept
+#                 starts; the person (a request signed with the data folder's command-line token) starts it; the server ends, N+1 answers /api/health, the board message is kept, a pty agent (the mock agent) listed before comes back as a new process
 #
 # Output: one table; exit status 0 only when no item FAILs. Processes are stopped by pid this script recorded or found under its own install folders; the
 # work folder is removed by its own path (--keep leaves it). Linux only; needs go, curl, python3, tar. Nothing is sent anywhere.
@@ -86,6 +86,7 @@ pack() { tar czf "$2" -C "$1" .; } # as build-linux.sh makes its tarball
   CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=$N1" -o "$work/pkg/nunh/coral" ./internal/updater/testrig/cmd/unhealthy-coral &&
   CGO_ENABLED=0 go build -o "$work/bin/rehearsal-update" ./internal/updater/testrig/cmd/rehearsal-update &&
   CGO_ENABLED=0 go build -o "$work/bin/person-call" ./internal/updater/testrig/cmd/person-call &&
+  CGO_ENABLED=0 go build -o "$work/bin/mock-agent" ./cmd/mock-agent &&
   pack "$work/pkg/n" "$work/pkg/n.tar.gz" && pack "$work/pkg/n1" "$work/pkg/n1.tar.gz" && pack "$work/pkg/nbad" "$work/pkg/nbad.tar.gz" && pack "$work/pkg/nunh" "$work/pkg/nunh.tar.gz"
 } > "$work/build.log" 2>&1
 if [ $? -ne 0 ]; then echo "update_rehearsal: the build failed:" >&2; tail -20 "$work/build.log" >&2; exit 2; fi
@@ -247,11 +248,20 @@ SHIM
   chmod 755 "$inst/coral-update"
   base="http://127.0.0.1:$PORT"
   person() { "${CENV[@]}" "$work/bin/person-call" --data-dir "$dd" --url "$base" "$@"; } # PERSON args: --method M --path P [--body B]: prints "CODE body"
+  # an agent on a pty (the mock agent, as the CLI), so that "the agents come back" is looked at: its process before and after
+  agent_pids() { for d in /proc/[0-9]*; do exe=$(readlink "$d/exe" 2>/dev/null) || continue; [ "$exe" = "$work/bin/mock-agent" ] && echo "${d#/proc/}"; done | sort -n | tr '\n' ' '; }
+  person --method PUT --path /api/settings --body "{\"cli_path_claude\":\"$work/bin/mock-agent\"}" > "$s/cli.out"
+  mkdir -p "$s/agentdir"
+  person --method POST --path /api/sessions/launch --body "{\"working_dir\":\"$s/agentdir\",\"agent_type\":\"claude\",\"backend\":\"pty\",\"board_name\":\"rhsproj\",\"display_name\":\"Rig\"}" > "$s/launch.out"
+  for _ in $(seq 1 50); do [ -n "$(agent_pids)" ] && break; sleep 0.2; done
+  agents_before=$(agent_pids)
   st=$(person --path /api/system/update | cut -d' ' -f2-)
   staged=$(printf '%s' "$st" | jget staged.version); source_=$(printf '%s' "$st" | jget staged.source)
   avail=$(printf '%s' "$st" | jget relaunch.available); hub_allowed=$(printf '%s' "$st" | jget relaunch.hub_allowed)
   tok=$(printf '%s' "$st" | jget relaunch.ack); reason=$(printf '%s' "$st" | jget relaunch.reason)
   ok=1; why=""
+  restarts=$(printf '%s' "$st" | jget relaunch.restarts)
+  { [ -n "$agents_before" ] && [ -n "$restarts" ] && [ "$restarts" != "[]" ]; } || { ok=0; why="$why the agent is not running or not listed (pids=[$agents_before] restarts=[$restarts]); launch: $(cut -c1-120 "$s/launch.out");"; }
   [ "$staged" = "$N1" ] || { ok=0; why="$why staged=[$staged] reason=[$reason];"; }
   [ "$source_" = "subgentic/coral" ] || { ok=0; why="$why source=[$source_];"; }
   [ "$avail" = True ] || [ "$avail" = true ] || { ok=0; why="$why available=[$avail];"; }
@@ -279,8 +289,11 @@ SHIM
   alive=no; kill -0 "$pid0" 2>/dev/null && alive=yes
   iv=$(installed_version); nsrv=$(count_servers); mb=$(message_back)
   [ "$v" = "$N1" ] && [ "$alive" = no ] && [ "$iv" = "$N1" ] && [ "$nsrv" = 1 ] && [ "$mb" -ge 1 ] || { ok=0; why="$why after the yes health=[$v] old alive=$alive install=[$iv] servers=$nsrv message back=$mb;"; }
+  # the agent comes back: a new process of the mock agent, not the old one (the old server ended it with the swap)
+  agents_after=""; for _ in $(seq 1 150); do agents_after=$(agent_pids); [ -n "$agents_after" ] && [ "$agents_after" != "$agents_before" ] && break; sleep 0.4; done
+  { [ -n "$agents_after" ] && [ "$agents_after" != "$agents_before" ]; } || { ok=0; why="$why the agent did not come back (pids before=[$agents_before] after=[$agents_after]);"; }
   if [ "$ok" = 1 ]; then
-    result "6 ask" PASS "staged $N1 (source subgentic/coral, Hub switch off); an API key, an agent token, no credential and the Hub's route got 403/401/401/403 and started nothing; the person's signed request got 202 and the server of $N was replaced by $N1 (board message kept, one server)"
+    result "6 ask" PASS "staged $N1 (source subgentic/coral, Hub switch off); an API key, an agent token, no credential and the Hub's route got 403/401/401/403 and started nothing; the person's signed request got 202 and the server of $N was replaced by $N1 (board message kept, one server); the pty agent listed before came back as a new process (pids [$agents_before] then [$agents_after])"
   else
     result "6 ask" FAIL "$why status: $(printf '%s' "$st" | cut -c1-300); stage: $(tail -c 200 "$s/stage.out" | tr '\n' ' ') $(tail -c 200 "$s/stage.err" | tr '\n' ' ')"
   fi
