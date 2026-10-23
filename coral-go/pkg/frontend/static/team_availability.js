@@ -189,7 +189,8 @@ const remindAgent = async (team, subscriber, existing = null, onChanged = null) 
         title: existing?.reminder ? `Edit the reminder for ${name}` : `Remind ${name}`,
         intro: (every) => `Sends this instruction to ${name} ${every} until you stop it.`,
         askMessage: true,
-        minutes: existing?.reminder_interval_seconds ? Math.round(existing.reminder_interval_seconds / 60) : 5,
+        minutes: existing?.reminder_interval_seconds ? existing.reminder_interval_seconds / 60 : 5, // exact: 30 seconds opens as 0.5, 150 as 2.5
+        message: typeof existing?.reminder_message === 'string' ? existing.reminder_message : '', // the instruction in force, when the server tells it
         submitLabel: existing?.reminder ? 'Save reminder' : 'Start reminder',
         onSubmit: async ({ message, seconds }) => {
             const response = await boardFetch(team, `/reminder`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({subscriber_id:subscriber,message,interval_seconds:seconds}) });

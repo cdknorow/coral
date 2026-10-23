@@ -1,5 +1,5 @@
 // The reminder dialog (#6329), which replaces window.prompt (not available in the native app): the instruction and how often, the checks said next to the field, a refusal from the server said
-// in the dialog, the keyboard (Enter in the minutes box starts it, Ctrl+Enter in the instruction box does, Enter there adds a line, Escape closes), focus in and back, 44 px controls on a touch screen,
+// in the dialog, the keyboard (Enter in either box starts it, Escape closes), an instruction that is one line like the server's, an edit that opens with the exact minutes, focus in and back, 44 px controls on a touch screen,
 // 4.5:1 contrast, desktop and 390 px, both themes. Drives Chrome over CDP through agent_view_harness.js against the isolated dev server. SHOT_DIR=<dir> saves a picture of each state.
 const fs = require('node:fs');
 const { connect } = require('./agent_view_harness');
@@ -31,7 +31,7 @@ const BASE = require('./test_base').BASE;
             inView: d.getBoundingClientRect().left >= 0 && d.getBoundingClientRect().right <= innerWidth + 1 && d.getBoundingClientRect().bottom <= innerHeight + 1 }; })()`);
     const typeInto = async (id, text) => { await ev(`(() => { const e = document.getElementById(${JSON.stringify(id)}); e.focus(); e.select && e.select(); return true; })()`); await Input.insertText({ text }); };
     const open = (opts) => ev(`(async () => { window.__subs = []; window.__open = document.getElementById('opener'); const m = await import(${S} + 'reminder_dialog.js'); window.__res = ${JSON.stringify(opts.res || { ok: true })};
-        window.__opener.focus(); m.openReminderDialog({ title: ${JSON.stringify(opts.title)}, intro: (every) => 'Sends this instruction to QA ' + every + ' until you stop it.', askMessage: ${!!opts.ask}, minutes: ${opts.minutes || 5}, submitLabel: ${JSON.stringify(opts.label || 'Start reminder')},
+        window.__opener.focus(); m.openReminderDialog({ title: ${JSON.stringify(opts.title)}, intro: (every) => 'Sends this instruction to QA ' + every + ' until you stop it.', askMessage: ${!!opts.ask}, minutes: ${opts.minutes || 5}, message: ${JSON.stringify(opts.message || '')}, submitLabel: ${JSON.stringify(opts.label || 'Start reminder')},
             onSubmit: async (v) => { window.__subs.push(v); return window.__res; } }); return true; })()`);
 
     try {
@@ -90,15 +90,25 @@ const BASE = require('./test_base').BASE;
             const sent = await ev('window.__subs');
             check(`${tag}: what was sent is the instruction and 2.5 minutes as 150 seconds`, sent.length === 1 && sent[0].message === 'Check the build and report' && sent[0].seconds === 150, JSON.stringify(sent));
 
-            // keyboard: Enter in the instruction adds a line; Ctrl+Enter sends; success closes and focus goes back
-            await ev(`window.__res = { ok: true }; document.getElementById('reminder-message').focus(); true`);
-            await press('Enter', 'Enter', 13); await new Promise(r => setTimeout(r, 150)); // sleep-ok: the check runs in the key's own task
+            // the instruction is one line, as the server delivers it (board.OneLine): the hint says so, a typed or pasted text with breaks and runs of spaces becomes one line, Enter starts it
+            check(`${tag}: the instruction box is a single-line field with the hint "One line. Line breaks and extra spaces are turned into single spaces."`, (await ev(`document.getElementById('reminder-message').tagName`)) === 'INPUT' && (await ev(`document.getElementById('reminder-message-hint').textContent`)) === 'One line. Line breaks and extra spaces are turned into single spaces.');
+            await ev(`window.__res = { ok: true }; (() => { const e = document.getElementById('reminder-message'); e.value = ' Run the  tests then\\treport now '; e.focus(); return true; })()`);
+            await press('Enter', 'Enter', 13); await new Promise(r => setTimeout(r, 300)); // sleep-ok: the request is a resolved promise
             s = await state();
-            check(`${tag}: Enter in the instruction box adds a line and sends nothing`, s.open && /\n$/.test(s.msgVal) && (await ev('window.__subs.length')) === 1, JSON.stringify(s.msgVal));
-            await press('Enter', 'Enter', 13, 2); await new Promise(r => setTimeout(r, 300)); // sleep-ok: the request is a resolved promise
-            s = await state();
-            check(`${tag}: Ctrl+Enter in the instruction box starts it and the dialog closes`, !s.open && (await ev('window.__subs.length')) === 2);
+            const sent2 = await ev('window.__subs');
+            check(`${tag}: Enter in the instruction box starts it with tabs and double spaces turned into single spaces and the ends trimmed, and the dialog closes`, !s.open && sent2.length === 2 && sent2[1].message === 'Run the tests then report now', JSON.stringify(sent2[1]));
             check(`${tag}: focus is back on the button that opened it`, (await ev(`document.activeElement && document.activeElement.id`)) === '__opener');
+
+            // the same rule as the server's (board.OneLine) for what a field cannot hold itself: line breaks, the line and paragraph separators, other control characters
+            const ol = await ev(`(async () => { const m = await import(${S} + 'reminder_dialog.js'); return [m.oneLine('a\\nb\\r\\nc'), m.oneLine('x\\u2028y\\u2029z'), m.oneLine('k\\u001b[2Jl\\u0085m'), m.oneLine('  p   q  '), m.oneLine(' p  ', false)]; })()`);
+            check(`${tag}: oneLine turns breaks, separators and control characters into one space and trims like the server's`, JSON.stringify(ol) === JSON.stringify(['a b c', 'x y z', 'k [2Jl m', 'p q', ' p ']), JSON.stringify(ol));
+            // Edit reminder: the exact interval and the instruction in force, shown as the agent will get it
+            for (const [mins, shown] of [[0.5, '0.5'], [2.5, '2.5'], [1, '1'], [90, '90']]) {
+                await open({ title: 'Edit the reminder for QA', ask: true, minutes: mins, message: 'Check\nthe  build' });
+                s = await state();
+                check(`${tag}: an edit opens with ${shown} minutes (not rounded) and the instruction as one line`, s.min === shown && s.msgVal === 'Check the build', JSON.stringify([s.min, s.msgVal]));
+                await press('Escape', 'Escape', 27); await new Promise(r => setTimeout(r, 200)); // sleep-ok: the dialog closes over a frame
+            }
 
             // the task's reminder: minutes only; Escape closes
             await open({ title: 'Remind the assignee', ask: false, label: 'Start reminders', minutes: 10 });
