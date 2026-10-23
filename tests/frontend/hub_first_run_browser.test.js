@@ -1,4 +1,4 @@
-// Coral Hub's first run (#4586, coral-hub's copy): an account whose machine list loaded and is empty gets "Connect your computers" (install Coral on each, then Settings > Network and Hub > Connect to Coral Hub) with an Add a computer link (the hub's /machines/add, same tab, #6351)
+// Coral Hub's first run (#4586, coral-hub's copy): an account whose machine list loaded and is empty gets "Connect your first computer" (install Coral on each, then Settings > Network and Hub > Connect to Coral Hub) with an Add a computer link (the hub's /machines/add, same tab, #6351)
 // instead of launch cards that go nowhere, and the empty agent list says so too (it is the phone's Agents page); computers that are all offline get "Your computers are offline"; a usable
 // machine with no agents gets "No agents yet"; a list that failed to load is never shown as a first run. A folder Browse says "Connect a computer first" instead of "Failed to load".
 // A local Coral never shows any of it. Served as the hub would serve it (the boot flag says mode
@@ -57,7 +57,7 @@ const { settle } = require('./helpers/wait');
         assert.equal(await ev(`document.querySelector('.welcome-connect-btn').getAttribute('href')`), '/machines/add', 'a real link, same tab (no target)');
         assert.equal(await ev(`document.querySelector('.welcome-connect-btn').target`), '');
         assert.equal(await ev(shown('.welcome-connect-another')), false, 'no Connect another computer link with none connected');
-        assert.equal(await ev(`document.querySelector('.welcome-first-run h2').textContent`), 'Connect your computers');
+        assert.equal(await ev(`document.querySelector('.welcome-first-run h2').textContent`), 'Connect your first computer');
         assert.deepEqual(await ev(`[...document.querySelectorAll('.welcome-first-run p')].map(p => p.textContent)`), ['Install Coral on each computer. In Coral, go to Settings > Network and Hub > Connect to Coral Hub, and the computer appears here.']);
         assert.equal(await ev(shown('.welcome-offline')), false);
         const side = await ev(`({ text: document.getElementById('live-sessions-list').innerText.replace(/\\s+/g, ' ').trim(), open: !document.querySelector('[data-section="live-sessions"]').classList.contains('collapsed') })`);
@@ -116,7 +116,7 @@ const { settle } = require('./helpers/wait');
         machines = []; listFails = true;
         await open(1280, 756);
         assert.equal(await ev(`document.body.classList.contains('hub-no-machine') || document.body.classList.contains('hub-machines-offline')`), false, 'a list that failed to load is not a first run');
-        assert.equal(await ev(`/Connect your computers|Your computers are offline|No agents yet/.test(document.getElementById('live-sessions-list').innerText)`), false);
+        assert.equal(await ev(`/Connect your first computer|Your computers are offline|No agents yet/.test(document.getElementById('live-sessions-list').innerText)`), false);
         assert.equal(await ev(shown('.welcome-first-run')), false);
         listFails = false;
 

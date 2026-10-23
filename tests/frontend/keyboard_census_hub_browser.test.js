@@ -55,11 +55,11 @@ const { setupHubWorld, BASE } = require('./helpers/hub_world');
         const dlg = async (name, { opener, open }) => { try { const bad = await kb.dialogCheck(ev, client.Input, { opener, box: '[data-census-box]', open: async () => { await open(); for (let i = 0; i < 30 && !(await tagVisibleModal()); i++) await new Promise(r => setTimeout(r, 100)); } }); results.push({ name, stops: 0, path: '' }); found.push(...bad.map(b => `${name}: ${b}`)); } catch (e) { results.push({ name, error: String(e && e.message || e).slice(0, 300) }); } }; // sleep-ok: the dialog appears when its code has loaded
         await dlg(`${tag}: hub: dialog launch`, { opener: '[aria-label="Account menu"]', open: () => ev(`(async () => { await window.showLaunchModal(); return true; })()`) });
         await dlg(`${tag}: hub: dialog settings`, { opener: '[aria-label="Account menu"]', open: () => ev(`(async () => { await window.showSettingsModal(); return true; })()`) });
-        // no computer connected (#6351): the home is one "Connect your computers" panel with its link
+        // no computer connected (#6351): the home is one "Connect your first computer" panel with its link
         const noComputers = await Page.addScriptToEvaluateOnNewDocument({ source: 'window.__noComputers = true;' });
         await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired();
         await waitFor(`typeof window.switchNavTab==='function' && !!window.__coralReady`, 'dashboard'); await ev(`window.__coralReady.startup('liveList','settings')`);
-        await sc(`${tag}: hub: home, no computer connected`, async () => { await waitFor(`/Connect your computers/.test(document.body.textContent) && !!document.querySelector('a[href="/machines/add"]')`, 'the connect panel', 10000); }, { expect: `[...document.querySelectorAll('a[href="/machines/add"]')].some(a => a.getClientRects().length > 0)` });
+        await sc(`${tag}: hub: home, no computer connected`, async () => { await waitFor(`/Connect your first computer/.test(document.body.textContent) && !!document.querySelector('a[href="/machines/add"]')`, 'the connect panel', 10000); }, { expect: `[...document.querySelectorAll('a[href="/machines/add"]')].some(a => a.getClientRects().length > 0)` });
         await Page.removeScriptToEvaluateOnNewDocument({ identifier: noComputers.identifier });
         };
         await run('desktop');
