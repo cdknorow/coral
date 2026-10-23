@@ -8,6 +8,8 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -314,7 +316,11 @@ func (a *CodexAgent) LaunchCommand(params LaunchParams) (string, error) {
 		raw = append(raw, instructions)
 		parts = append(parts, "-c", instructions)
 	}
-	parts = append(parts, codexHookArgs(params.SessionID)...)
+	version := ""
+	if CodexVersionProbe != nil {
+		version = CodexVersionProbe(params.CLIPath)
+	}
+	parts = append(parts, codexHookArgsFor(params.SessionID, codexHookEventsFor(version))...)
 	// Note: Codex's sandbox may strip env vars from child processes.
 	// coral-board handles this via board_state file fallback (reads job_title
 	// from ~/.coral/board_state_{session}.json when CORAL_SUBSCRIBER_ID is unavailable).
@@ -400,6 +406,53 @@ func codexInstructions(files *launchFiles, params LaunchParams) string {
 // codexHookEvents are the Codex hooks Coral's activity hook is installed for.
 var codexHookEvents = []string{"SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop"}
 
+// A Codex that shows an approval dialog (a command, a file change, a permission) says so to a PermissionRequest hook, and the hook is what puts the agent's row at Needs input and holds a
+// person's chat message behind the dialog (#6615, #6610): without it Codex's approval prompts sent no event at all, so Coral saw an agent at a dialog as a working one. The Codex 0.163.0 program
+// has the event (its hook input names hook_event_name PermissionRequest with tool_name and tool_input, its config key is permission_request); how far back it goes is not known, and a Codex
+// that does not know a hook key may refuse the launch's -c flag, so the hook is installed only for a Codex known to be at least this version, and for none whose version is not known.
+const codexPermissionRequestMin = "0.163.0"
+
+// codexHookEventsFor are the hooks to install for a Codex of this version ("" when unknown).
+func codexHookEventsFor(version string) []string {
+	events := append([]string(nil), codexHookEvents...)
+	if codexVersionAtLeast(version, codexPermissionRequestMin) {
+		events = append(events, "PermissionRequest")
+	}
+	return events
+}
+
+var codexVersionRe = regexp.MustCompile(`^(\d+)\.(\d+)\.(\d+)`)
+
+// codexVersionAtLeast reports whether version (as a CLI prints it: "0.163.0", "0.164.0-alpha.2") is at least min. An empty or unreadable version is not.
+func codexVersionAtLeast(version, min string) bool {
+	parse := func(s string) ([3]int, bool) {
+		var out [3]int
+		m := codexVersionRe.FindStringSubmatch(strings.TrimSpace(s))
+		if m == nil {
+			return out, false
+		}
+		for i := 0; i < 3; i++ {
+			out[i], _ = strconv.Atoi(m[i+1])
+		}
+		return out, true
+	}
+	v, ok := parse(version)
+	if !ok {
+		return false
+	}
+	m, _ := parse(min)
+	for i := 0; i < 3; i++ {
+		if v[i] != m[i] {
+			return v[i] > m[i]
+		}
+	}
+	return true
+}
+
+// CodexVersionProbe gives the version of the Codex at cliPath ("" for the default one), set once at startup from the CLI's own --version; nil (a test) knows no version, so only the
+// base hooks are installed and no CLI is ever run.
+var CodexVersionProbe func(cliPath string) string
+
 // codexHookArgs install Coral's activity hook in Codex's config: Codex does not read Claude's settings.json, and
 // without these hooks a Codex session can still appear active, but no tool, thinking or stop events reach the
 // activity view.
@@ -407,7 +460,10 @@ var codexHookEvents = []string{"SessionStart", "UserPromptSubmit", "PreToolUse",
 // On Windows, with no absolute path to the hook (no tools folder, or no hook in it), there are
 // none: Codex runs without Coral's state tracking, logged once for the launch, rather than with
 // a bare name a repository could shadow (#49).
-func codexHookArgs(sessionID string) []string {
+func codexHookArgs(sessionID string) []string { return codexHookArgsFor(sessionID, codexHookEvents) }
+
+// codexHookArgsFor is codexHookArgs for the hooks (events) to install.
+func codexHookArgsFor(sessionID string, events []string) []string {
 	command, ok := ResolvePowerShellHookCommand("coral-hook-agentic-state")
 	if !ok {
 		slog.Warn("codex runs without Coral's hooks, so its state isn't tracked: the hook tool has no absolute path (no tools folder, or no tool in it)",
@@ -415,12 +471,12 @@ func codexHookArgs(sessionID string) []string {
 		return nil
 	}
 	var args []string
-	for _, event := range codexHookEvents {
+	for _, event := range events {
 		args = append(args, "-c", fmt.Sprintf(`hooks.%s=[{hooks=[{type="command",command=%s}]}]`, event, tomlString(command)))
 	}
 	// Trusted for this launch when the hooks can't be changed by anyone but an administrator (#153, codex_trust.go):
 	// the hash is of this same command, so the two can't drift.
-	return append(args, codexHookTrustFor(sessionID, command)...)
+	return append(args, codexHookTrustFor(sessionID, command, events)...)
 }
 
 // codexCapabilityFlags are the permission flags from the agent's capabilities, when it has them: bypass, full

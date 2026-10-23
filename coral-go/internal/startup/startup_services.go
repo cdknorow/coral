@@ -121,6 +121,10 @@ func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Conf
 	// user connects; when off it opens no outbound connection and starts no goroutine.
 	// "Trust Coral's hooks in Codex", read on each Codex launch (#153).
 	agent.SetCodexHookTrust(routes.CodexTrustFromSettings(sessStore))
+	// The version of the Codex a launch uses decides which of Coral's hooks it gets (#6615: PermissionRequest only for one that has it). Read from the CLI's own --version, remembered per binary.
+	agent.CodexVersionProbe = func(cliPath string) string {
+		return agent.CLIVersion(map[string]string{agent.CLIPathSettingKey("codex"): cliPath}, "codex")
+	}
 
 	startCloudConnector(ctx, db, cfg, srv, sessStore)
 
