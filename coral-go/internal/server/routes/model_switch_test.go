@@ -668,3 +668,51 @@ func TestACommandThatNeverReachesTheTranscriptIsTypedOnceMore(t *testing.T) {
 		assert.Equal(t, []string{"/effort low"}, r.typed())
 	})
 }
+
+// #6225: after Claude's own /effort or /model entry confirmed a switch, the row shows the new level and model as the agent's own at once (thinking_actual, model from the transcript), not as the request the agent
+// has "not confirmed yet" until a reply: and a newer turn the transcript records takes over again.
+func (r *switchRig) row(t *testing.T) map[string]any {
+	t.Helper()
+	resp, err := http.Get(r.server.URL + "/api/sessions/live")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	var rows []map[string]any
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&rows))
+	for _, row := range rows {
+		if row["session_id"] == r.sid {
+			return row
+		}
+	}
+	t.Fatalf("no row for %s in %v", r.sid, rows)
+	return nil
+}
+
+func TestAConfirmedSwitchShowsAsTheAgentsOwnAtOnce(t *testing.T) {
+	for _, userFormat := range []bool{false, true} {
+		name := "system local_command"
+		if userFormat {
+			name = "type user (2.1.309)"
+		}
+		t.Run(name, func(t *testing.T) {
+			r := newSwitchRig(t, "claude")
+			r.userFormat = userFormat
+			startedAt(t, r, "medium")
+			r.assistant(t, "medium") // a reply at the old level is in the transcript
+			require.Equal(t, "medium", r.row(t)["thinking_actual"])
+
+			_, _ = r.post(t, map[string]any{"thinking": "low", "model": "claude-sonnet-5-5"})
+			r.waitTyped(t, "/model claude-sonnet-5-5")
+			r.localCommand(t, "/model", "claude-sonnet-5-5", "Set model to Sonnet 5.5")
+			r.waitTyped(t, "/effort low")
+			r.localCommand(t, "/effort", "low", "Set effort level to low (saved as your default for new sessions)")
+			r.waitState(t, switchDone)
+			row := r.row(t)
+			assert.Equal(t, "low", row["thinking_actual"], "the level Claude confirmed, before any reply at it")
+			assert.Equal(t, "claude-sonnet-5-5", row["model"])
+			assert.Equal(t, "transcript", row["model_source"], "the model Claude confirmed is the agent's own, not a request")
+
+			r.assistant(t, "high") // a newer turn at another level: the transcript's record wins again
+			assert.Equal(t, "high", r.row(t)["thinking_actual"])
+		})
+	}
+}
