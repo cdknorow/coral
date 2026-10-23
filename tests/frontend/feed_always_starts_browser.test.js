@@ -42,7 +42,7 @@ const BASE = require('./test_base').BASE;
         await ev(`window.__marker = 1; const real = window.fetch; window.fetch = (u, o) => String(u).includes('/api/settings') ? Promise.resolve(new Response('{}', { status: 401 })) : real(u, o);
             import((window.__coralStatic || '/static/') + 'signed_out.js').then(m => m.enterSignedOut()); true`);
         await waitFor(`!!document.getElementById('signed-out-panel')`, 'the signed-out panel (a real sign-out)');
-        await sleep(7000); // sleep-ok: a real sign-out must NOT reload the page: the test waits out the four retry ticks (2, 4, 8, 15 s) to see that nothing happens
+        await sleep(7000); // sleep-ok: absence has no event to wait for: a real sign-out must NOT reload the page, so the test waits past the early live-feed retry ticks and then checks nothing happened
         assert.equal(await ev('window.__marker'), 1, 'a real sign-out does not reload the page');
         assert.ok(await ev(`!!document.getElementById('signed-out-panel')`), 'and keeps its panel');
         console.log('PASS the live feed always starts and retries');
