@@ -82,9 +82,9 @@ type MSI interface {
 	// Start starts Coral (coral-tray) from the install folder as this user; Healthy waits until it is up.
 	Start(ctx context.Context, install string) error
 	Healthy(ctx context.Context, install string) error
-	// IsApplyProcess reports whether pid is a running coral-update.exe whose image is under one of dirs (the install folder or the updater's own folder): checked from the process, not
-	// assumed from a lock file that names it.
-	IsApplyProcess(pid int, dirs ...string) bool
+	// ApplyProcessRunning reports whether any other process is a running coral-update.exe whose image is under one of dirs (the install folder or the updater's own folder): the
+	// deciding check for "another apply is replacing the install", made from the processes, not from a lock file (which can be planted, or unreadable while a live apply moves it).
+	ApplyProcessRunning(dirs ...string) bool
 	// Notify tells the person something while Coral is down (a message box).
 	Notify(title, text string)
 }
@@ -169,15 +169,16 @@ func RunMSI(ctx context.Context, mc MSIConfig) Result {
 	}
 	release, err := stage.TakeLock(dir, stage.ApplyLockFile, now)
 	if err != nil {
-		// Busy only when the lock names a live coral-update.exe of the install or the updater folder (checked). A lock that cannot be made, an unreadable or non-plain one, a
-		// dead holder, a reused pid whose image is something else, or a file someone planted: nobody is applying, the server has quit for the click, so Coral is started again.
+		// Busy only when a live coral-update.exe is running from the updater's folder or the install (checked from the processes, whatever the lock says or whether it can be read).
+		// Otherwise (a lock that cannot be made, a planted or dead one) nobody is applying, the server has quit for the click, and Coral is started again.
 		if errors.Is(err, stage.ErrBusy) {
 			dirs := []string{dir}
 			if inst, ierr := mc.MSI.Install(); ierr == nil {
 				dirs = append(dirs, inst)
 			}
-			if pid, ok := stage.LockHolder(dir, stage.ApplyLockFile); ok && mc.MSI.IsApplyProcess(pid, dirs...) {
+			if mc.MSI.ApplyProcessRunning(dirs...) {
 				res.Result, res.FailedStage = ResultBusy, BusyApply // a real apply is replacing the install: nothing may start Coral under it
+				mc.MSI.Notify("Coral update", "Another update may be running; start Coral from the Start menu when it's done.")
 				return res
 			}
 		}

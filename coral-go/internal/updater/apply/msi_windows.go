@@ -170,28 +170,36 @@ func underFold(path, dir string) bool {
 	return path == dir || strings.HasPrefix(path, dir+`\`)
 }
 
-// IsApplyProcess reports whether pid is a running coral-update.exe whose image is under one of dirs.
-func (w *WindowsMSI) IsApplyProcess(pid int, dirs ...string) bool {
-	if pid <= 0 {
-		return false
-	}
-	h, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, uint32(pid))
+// ApplyProcessRunning reports whether a process other than this one is a running coral-update.exe whose image is under one of dirs.
+func (w *WindowsMSI) ApplyProcessRunning(dirs ...string) bool {
+	snap, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPPROCESS, 0)
 	if err != nil {
 		return false
 	}
-	defer windows.CloseHandle(h)
-	buf := make([]uint16, windows.MAX_LONG_PATH)
-	size := uint32(len(buf))
-	if windows.QueryFullProcessImageName(h, 0, &buf[0], &size) != nil {
-		return false
-	}
-	image := windows.UTF16ToString(buf[:size])
-	if !strings.EqualFold(filepath.Base(image), "coral-update.exe") {
-		return false
-	}
-	for _, d := range dirs {
-		if d != "" && underFold(image, d) {
-			return true
+	defer windows.CloseHandle(snap)
+	var e windows.ProcessEntry32
+	e.Size = uint32(unsafe.Sizeof(e))
+	self := uint32(os.Getpid())
+	for err = windows.Process32First(snap, &e); err == nil; err = windows.Process32Next(snap, &e) {
+		if e.ProcessID == 0 || e.ProcessID == self || !strings.EqualFold(windows.UTF16ToString(e.ExeFile[:]), "coral-update.exe") {
+			continue
+		}
+		h, oerr := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, e.ProcessID)
+		if oerr != nil {
+			continue
+		}
+		buf := make([]uint16, windows.MAX_LONG_PATH)
+		size := uint32(len(buf))
+		qerr := windows.QueryFullProcessImageName(h, 0, &buf[0], &size)
+		windows.CloseHandle(h)
+		if qerr != nil {
+			continue
+		}
+		image := windows.UTF16ToString(buf[:size])
+		for _, d := range dirs {
+			if d != "" && underFold(image, d) {
+				return true
+			}
 		}
 	}
 	return false
