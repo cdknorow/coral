@@ -1431,6 +1431,19 @@ button.subscriber-history-link {
 }
 #warning-toasts > .security-warning-toast { position: static; min-width: 0; pointer-events: auto; animation: none; }
 #warning-toasts .security-warning-text { max-height: 26vh; } /* three can show at once: each scrolls its own text before the column outgrows the window */
+/* The update notice is a child of the column too: on a desktop it stays fixed at the top right, as it was. */
+#warning-toasts > .update-toast:not(.security-warning-toast) { pointer-events: auto; }
+/* The short toasts share one column (a second no longer hides the first): bottom right, as each was. */
+#toast-host { position: fixed; right: 20px; bottom: 20px; z-index: 200; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; max-width: min(520px, calc(100vw - 40px)); pointer-events: none; }
+#toast-host > .toast { position: static; pointer-events: auto; animation: slideIn 0.3s ease, fadeOut 0.3s ease 2.7s; }
+#toast-host > .toast.has-action { animation: slideIn 0.3s ease; }
+/* On a phone the notices and the short toasts are at the top: at the bottom they sat over the composer, Send, Wake and a dialog's buttons (#6162, found on a Windows run where the data-folder warning covered Wake). The column scrolls when several are open. */
+@media (max-width: 767px) {
+    #warning-toasts { top: calc(env(safe-area-inset-top, 0px) + 8px); bottom: auto; left: 8px; right: 8px; width: auto; flex-direction: column; max-height: 45vh; }
+    #warning-toasts > .update-toast { position: static; min-width: 0; max-width: none; animation: none; }
+    #toast-host { top: calc(env(safe-area-inset-top, 0px) + 8px); bottom: auto; left: 8px; right: 8px; max-width: none; align-items: stretch; z-index: 310; } /* above the notices: a short toast must be seen */
+    #toast-host > .toast { max-width: none; }
+}
 
 .update-toast-body {
     display: flex;

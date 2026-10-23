@@ -86,7 +86,7 @@ function showUpdateToast(data) {
             ${downloadBtn}
         </div>`;
 
-    document.body.appendChild(toast);
+    warningStack().prepend(toast); // first in the column: on a desktop it is still drawn at the top right; on a phone it heads the column of notices at the top, above the warnings (#6162)
     reportUpdate('update_notice_shown', data.latest, data.channel); // the toast is on the page (#5952)
 }
 

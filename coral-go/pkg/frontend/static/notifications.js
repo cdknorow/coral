@@ -59,9 +59,20 @@ export function showToast(message, isError = false, duration = 4000, opts = {}) 
     toast.appendChild(close);
     toast.addEventListener("keydown", (e) => { if (e.key === "Escape") dismiss(); });
 
-    document.body.appendChild(toast);
+    toastHost().appendChild(toast);
     timer = setTimeout(dismiss, duration);
     return toast;
+}
+
+// The short toasts share one column, so two at once do not sit on each other (the second hid the first, #6162): bottom right on a desktop, the top on a phone (css).
+function toastHost() {
+    let host = document.getElementById("toast-host");
+    if (!host) {
+        host = document.createElement("div");
+        host.id = "toast-host";
+        document.body.appendChild(host);
+    }
+    return host;
 }
 
 export function showWorkflowNotification(title, message, level = 'info', duration = 8000) {
