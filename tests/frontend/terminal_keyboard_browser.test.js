@@ -28,14 +28,30 @@ const BASE = require('./test_base').BASE;
             await size(w, kb, touch);
             await new Promise(r => setTimeout(r, 700)); // sleep-ok: the viewport change reaches the page's resize listener
             const open = await boxes();
-            if (!touch && w <= 767 || w > 767 && !touch) { assert.equal(open.cls, false, at + 'not a phone with a keyboard: nothing changes: ' + JSON.stringify(open)); continue; }
+            if (!touch) { assert.equal(open.cls, false, at + 'not a phone with a keyboard: nothing changes: ' + JSON.stringify(open)); continue; }
             assert.equal(open.cls, true, at + 'the keyboard is open: the layout is compact: ' + JSON.stringify(open));
             assert.equal(open.banner, null, at + 'the sign-in banner steps aside');
             assert.equal(open.chips, null, at + 'the model chips step aside');
             assert.equal(open.status, null, at + 'the status bar steps aside');
             assert.ok(open.input && open.input <= 48, at + 'the message box is one line: ' + open.input);
             assert.ok(open.keys >= 44, at + 'the key bar stays: ' + JSON.stringify(open));
-            if (w > 767) { await shot(`terminal-keyboard-landscape`); await size(w, h, touch); await new Promise(r => setTimeout(r, 700)); /* sleep-ok: the viewport change reaches the resize listener */ assert.equal((await boxes()).cls, false, at + 'the keyboard closed: the layout is back'); continue; }
+            if (w > 767) {
+                // a short screen (a phone sideways, 200 px with the keyboard): the top bar steps aside, the message box too while the terminal has the focus (typing goes to the terminal), the key bar stays whole on one row
+                const short = () => ev(`(() => { const v = s => { const e = document.querySelector(s); return !e || !e.checkVisibility() ? null : e.getBoundingClientRect(); }; const bar = v('#terminal-key-bar'), x = v('#xterm-container'); return { top: v('.top-bar') && Math.round(v('.top-bar').height), input: v('#command-input') && Math.round(v('#command-input').height), keys: bar && { top: Math.round(bar.top), bottom: Math.round(bar.bottom), h: Math.round(bar.height) }, xterm: x && Math.round(x.height), vh: innerHeight, focusInTerminal: !!document.activeElement && !!document.activeElement.closest('#xterm-container') }; })()`);
+                const rowsNow = () => ev(`(async () => (await import((window.__coralStatic||'/static/')+'xterm_renderer.js')).getTerminal().rows)()`);
+                await ev(`document.querySelector('#xterm-container textarea').focus(); true`); await new Promise(r => setTimeout(r, 500)); // sleep-ok: the focus reaches the layout
+                const sh = await short();
+                assert.equal(sh.focusInTerminal, true, at + 'the terminal has the focus');
+                assert.equal(sh.top, null, at + 'the top bar steps aside on a short screen: ' + JSON.stringify(sh));
+                assert.equal(sh.input, null, at + 'the message box steps aside while the terminal has the focus: ' + JSON.stringify(sh));
+                assert.ok(sh.keys && sh.keys.top >= 0 && sh.keys.bottom <= sh.vh && sh.keys.h <= 60, at + 'the key bar is whole, on one row: ' + JSON.stringify(sh));
+                const rws = await rowsNow();
+                assert.ok(rws >= 4, at + `the terminal keeps at least 4 rows: ${rws} (${sh.xterm} px)`);
+                await shot(`terminal-keyboard-landscape-focused`);
+                await ev(`document.activeElement.blur(); true`); await new Promise(r => setTimeout(r, 500)); // sleep-ok: the focus reaches the layout
+                const blurred = await short();
+                assert.ok(blurred.input && blurred.input >= 40, at + 'the message box is back when the terminal does not have the focus: ' + JSON.stringify(blurred));
+                await shot(`terminal-keyboard-landscape`); await size(w, h, touch); await new Promise(r => setTimeout(r, 700)); /* sleep-ok: the viewport change reaches the resize listener */ assert.equal((await boxes()).cls, false, at + 'the keyboard closed: the layout is back'); continue; }
             const rows = await ev(`(async () => (await import((window.__coralStatic||'/static/')+'xterm_renderer.js')).getTerminal().rows)()`);
             assert.ok(open.xterm >= 170 && rows >= 13, at + `the terminal keeps its rows (it had 10 rows in 130 px before): ${rows} rows in ${open.xterm} px`);
             await shot(`terminal-keyboard-${w}`);

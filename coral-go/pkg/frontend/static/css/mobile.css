@@ -1434,3 +1434,10 @@
     html.kb-open #command-pane:not(.chat-mode) #model-chip-note { display: none !important; }
     html.kb-open #command-pane:not(.chat-mode) #command-input { height: var(--control-touch-height, 44px) !important; min-height: var(--control-touch-height, 44px) !important; max-height: var(--control-touch-height, 44px) !important; }
 }
+
+/* A short screen with the keyboard open (a phone sideways, about 200 px: #6725): the top bar steps aside, and so does the message box while the terminal has the focus (what is typed goes to the terminal); the key bar stays. */
+@media (max-height: 300px) and (max-width: 767px), (max-height: 300px) and (pointer: coarse) {
+    html.kb-open { --top-bar-height: 0px !important; }
+    html.kb-open .top-bar { display: none !important; }
+    html.kb-open:has(#xterm-container:focus-within) #command-pane:not(.chat-mode) { display: none !important; }
+}
