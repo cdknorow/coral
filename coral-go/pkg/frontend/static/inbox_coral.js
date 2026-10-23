@@ -77,4 +77,4 @@ export function coralInbox() {
 export function refreshTasks() { const i = coralInbox(); if (i) i.refresh(); }
 
 /** The "Read the whole message" control for a saved item, or null. */
-export function savedExpandFor(item) { const i = coralInbox(); return i ? i.savedExpand(item) : null; }
+export function savedExpandFor(item, which) { const i = coralInbox(); return i ? i.savedExpand(item, which) : null; }

@@ -80,7 +80,7 @@ const SAVED_WORDS = {
 /**
  * Mount the Inbox panel into `host`. Returns { refresh, savedExpand, destroy }.
  *   refresh()            reads the tasks again
- *   savedExpand(item)    the "Read the whole message" control for one saved item: { root, button, region } (the host puts `root` in the item)
+ *   savedExpand(item, which)    the "Read the whole message" control for one saved item: { root, button, region } (the host puts `root` in the item)
  *   destroy()            removes what was mounted and forgets the drafts
  * options.load === false: do not read the tasks at once (the host calls refresh() when the list is shown).
  * @param {HTMLElement} host @param {object} adapter @param {{ load?: boolean }} [options]
@@ -245,14 +245,14 @@ export function mountInbox(host, adapter, options) {
         }
     }
 
-    function savedExpand(item) {
+    function savedExpand(item, givenWhich) {
         const wrap = el('div', 'ibx-saved');
         const regionId = uid('ibx-saved-body');
         const button = el('button', 'btn ibx-saved-toggle', SAVED_OPEN_LABEL);
         button.type = 'button';
         button.setAttribute('aria-expanded', 'false');
         button.setAttribute('aria-controls', regionId);
-        const which = (() => { const t = String(item && item.snippet || '').replace(/\s+/g, ' ').trim(); const src = item && (item.title || item.ref) || ''; return [src, t.length > 40 ? t.slice(0, 40) + '…' : t].filter(Boolean).join(', '); })();
+        const which = typeof givenWhich === 'string' ? givenWhich : (() => { const t = String(item && item.snippet || '').replace(/\s+/g, ' ').trim(); const src = item && (item.title || item.ref) || ''; const c = [...t]; return [src, c.length > 40 ? c.slice(0, 40).join('') + '…' : t].filter(Boolean).join(', '); })(); // the host may say which message this is (it names apart two that start alike)
         const nameIt = text => { if (which) button.setAttribute('aria-label', `${text}: ${which}`); }; // the words on the button, then the message they are for (several items read as the same button otherwise, #6541)
         nameIt(SAVED_OPEN_LABEL);
         const region = el('div', 'ibx-saved-body');

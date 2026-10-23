@@ -102,7 +102,20 @@ function liveAgent(it) {
 
 function srcLabel(it) { return it.title || it.ref; }
 /** Which saved message a button is for: its source and the start of its text, so four items do not read as the same three buttons four times (#6541). */
-function whichOne(it) { const t = String(it.snippet || '').replace(/\s+/g, ' ').trim(); return t ? `${srcLabel(it)}, ${t.length > 40 ? t.slice(0, 40) + '…' : t}` : srcLabel(it); }
+const nameSuffix = new Map(), openSuffix = new Map(); // uid -> " (2 of 3)" for items shown together whose button names would otherwise match (same source and first words; same source for Open), so each reads apart
+function baseName(it) { const t = String(it.snippet || '').replace(/\s+/g, ' ').trim(); const c = [...t]; return t ? `${srcLabel(it)}, ${c.length > 40 ? c.slice(0, 40).join('') + '…' : t}` : srcLabel(it); } // cut by characters, not UTF-16 units, so an emoji is never split
+const whichOne = it => baseName(it) + (nameSuffix.get(uid(it)) || '');
+/** Work out the suffixes for the items about to be drawn together. */
+function nameApart(items) {
+    const number = (map, keyOf) => {
+        map.clear();
+        const seen = new Map(), total = new Map();
+        for (const it of items) total.set(keyOf(it), (total.get(keyOf(it)) || 0) + 1);
+        for (const it of items) { const k = keyOf(it); if (total.get(k) > 1) { const n = (seen.get(k) || 0) + 1; seen.set(k, n); map.set(uid(it), ` (${n} of ${total.get(k)})`); } }
+    };
+    number(nameSuffix, baseName);
+    number(openSuffix, it => openLabel(it).name);
+}
 
 function chipFor(it) {
     const c = checks.get(uid(it));
@@ -163,14 +176,14 @@ function itemNode(it) {
     li.append(meta);
     const acts = document.createElement('div'); acts.className = 'acts';
     if (!gone) {
-        const o = openLabel(it);
+        const o = openLabel(it); o.name += openSuffix.get(uid(it)) || '';
         if (!noopen) acts.append(btn('btn-primary saved-open', o.text, o.name, 'launch', () => openItem(it, li)));
         acts.append(btn('saved-done', done ? 'Reopen' : 'Done', `${done ? 'Reopen, move back to Open' : 'Mark done'}: ${whichOne(it)}`, done ? 'replay' : 'done', () => setDone(it, !done)));
     }
     acts.append(btn('saved-remove', 'Remove', `Remove from saved: ${whichOne(it)}`, 'close', () => remove(it)));
     li.append(acts);
     // "Read the whole message": the shared Inbox component's control (inbox_panel.js), inline under the snippet; not for an item whose source is gone.
-    if (!gone) { const x = savedExpandFor(it); if (x && !x.root.hidden) li.insertBefore(x.root, why); }
+    if (!gone) { const x = savedExpandFor(it, whichOne(it)); if (x && !x.root.hidden) li.insertBefore(x.root, why); }
     return li;
 }
 
@@ -215,6 +228,7 @@ function render() {
     const shown = items.filter(i => (tab === 'done') === !!i.done_at);
     syncBar(shown.length);
     verify(shown); // before the items are drawn: their chips and actions read the marks
+    nameApart(shown);
     list.replaceChildren(...down.map(noticeNode), ...shown.map(itemNode));
     if (!shown.length) {
         const li = document.createElement('li');
