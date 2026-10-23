@@ -177,11 +177,13 @@ try {
     if (-not (Wait-Health 10)) { Fail 'a refused click stopped the server' }
     Pass 'no cookie 401; an agent token refused; a body naming a version 400; apply by hand not_requested; nothing installed, the server kept running'
 
-    # Row 8: not a registered install.
+    # Row 8: not a registered install. (A copy run BESIDE a registered product is judged by the registered product's folder, not its own: run 39938757641's
+    # finding, reported to Backend; so the copy here runs with no registered product at all.)
     New-Scenario 'unregistered' @{}
     Stop-Coral
     $portable = Join-Path $Work 'portable'
     Copy-Item -Recurse -LiteralPath $installDir -Destination $portable
+    Remove-Coral
     & (Join-Path $portable 'coral-update.exe') serve $portable
     if (-not (Wait-Health)) { Fail 'the copied Coral did not come up' }
     & (Join-Path $portable 'coral-update.exe') check
@@ -191,7 +193,7 @@ try {
     $r = Click -websession $sv2
     if ($r.StatusCode -ne 409 -or $r.Content -notmatch 'install_not_supported') { Fail "a copy that is no registered install: expected 409 install_not_supported, got $($r.StatusCode) $($r.Content)" }
     if (-not (Wait-Health 10)) { Fail 'the refusal stopped the server' }
-    Pass 'a Coral that is no registered per-machine install: 409 install_not_supported, the server kept running'
+    Pass 'a Coral with no registered per-machine install: 409 install_not_supported, the server kept running'
 
     # Rows 1, 3, 4, 5: the click that installs, and the ones that must not install.
     $scenarios = @(
