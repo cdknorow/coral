@@ -4415,7 +4415,7 @@ a.ibx-open, a.ibx-open:visited { color: var(--link-text); }
 #launch-modal .modal-content:not(.sd-modal-content) { min-height: 0; } /* the chooser and the terminal form hold the hidden New Agent step's .settings-shell, which gave them the tabbed dialogs' 30rem floor: half the chooser was empty (#6316) */
 #launch-agent-more .settings-pane-title { display: none; } /* the section's name is on the tab (or the phone's select) beside it: said twice (#6316); the pane keeps its name from it */
 /* New Agent is two steps (#6333; the stage is data-stage on the step, set by launch_core.js setLaunchMore): the folder with Next, then everything else with Back and Launch; the folder shows as one line with Change in the second. */
-#launch-step-agent[data-stage="folder"] :is(#launch-agent-pick, #launch-agent-more, #launch-agent-back, #launch-agent-go, #launch-dir-summary) { display: none; }
+#launch-step-agent[data-stage="folder"] :is(#launch-agent-summary, #launch-agent-more, #launch-agent-back, #launch-agent-go, #launch-dir-summary) { display: none; }
 #launch-step-agent[data-stage="details"] :is(.launch-dir-field, #launch-dir-note, #dir-browser, #launch-agent-cancel, #launch-agent-next, #launch-dir-recents, #launch-dir-hint) { display: none; }
 .launch-dir-recents { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
 .launch-dir-recents:empty { display: none; }
@@ -4695,3 +4695,13 @@ dialog.reminder-dialog::backdrop { background: rgba(var(--black-rgb), 0.5); }
 .team-agent-summary-actions .team-agent-reorder-btn:disabled { opacity: .45; }
 @media (pointer: coarse), (max-width: 767px) { .team-agent-summary-actions .team-agent-reorder-btn { width: var(--control-touch-height, 44px); height: var(--control-touch-height, 44px); } }
 .team-mode-warn { color: var(--warning); font-weight: 600; }
+/* New Agent's second step as compact rows, like the members table (#6457): the value that will be used, a Change that opens its section. */
+.launch-agent-summary { width: 100%; border-collapse: collapse; margin: 8px 0 4px; font-size: .8125rem; }
+.launch-agent-summary th { text-align: left; font-weight: 600; color: var(--text-secondary); padding: 6px 12px 6px 0; width: 1%; white-space: nowrap; vertical-align: middle; }
+.launch-agent-summary td { padding: 6px 0; vertical-align: middle; border-top: 1px solid var(--border); }
+.launch-agent-summary th { border-top: 1px solid var(--border); }
+.launch-agent-summary .las-act { width: 1%; text-align: right; }
+.launch-agent-summary .launch-agent-pick { margin: 0; }
+.launch-agent-summary .las-change { margin: 0; }
+.launch-agent-summary tr[hidden] { display: none; }
+@media (pointer: coarse), (max-width: 767px) { .launch-agent-summary .las-change { min-height: var(--control-touch-height, 44px); } }

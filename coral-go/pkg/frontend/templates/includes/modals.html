@@ -104,7 +104,14 @@
                             <li class="empty-state">Loading...</li>
                         </ul>
                     </div>
-                    <div id="launch-agent-pick" class="launch-agent-pick" role="radiogroup" aria-labelledby="launch-agent-pick-label" hidden><span id="launch-agent-pick-label" class="launch-agent-pick-label">Agent:</span></div>
+                    <table id="launch-agent-summary" class="launch-agent-summary" aria-label="What this agent will use">
+                        <tbody>
+                            <tr data-row="provider"><th scope="row">Provider</th><td class="las-value" colspan="2"><div id="launch-agent-pick" class="launch-agent-pick" role="radiogroup" aria-labelledby="launch-agent-pick-label" hidden><span id="launch-agent-pick-label" class="launch-agent-pick-label sr-only">Agent:</span></div></td></tr>
+                            <tr data-row="model"><th scope="row">Model</th><td class="las-value"></td><td class="las-act"><button type="button" class="btn btn-small btn-subtle las-change" data-on-click="launch-agent-section" data-arg="Agent" aria-label="Change the model">Change</button></td></tr>
+                            <tr data-row="thinking"><th scope="row">Thinking</th><td class="las-value"></td><td class="las-act"><button type="button" class="btn btn-small btn-subtle las-change" data-on-click="launch-agent-section" data-arg="Agent" aria-label="Change the thinking level">Change</button></td></tr>
+                            <tr data-row="mode"><th scope="row">Mode</th><td class="las-value"></td><td class="las-act"><button type="button" class="btn btn-small btn-subtle las-change" data-on-click="launch-agent-section" data-arg="Permissions" aria-label="Change the mode">Change</button></td></tr>
+                        </tbody>
+                    </table>
                     <p id="launch-codex-note" class="settings-hint launch-codex-note" hidden>Codex will ask you to trust Coral's hooks on this computer. Answer it in the chat.</p>
                     </div>
                     <div id="launch-cli-slot" class="launch-cli-slot"></div>

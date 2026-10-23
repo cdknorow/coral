@@ -414,6 +414,7 @@ export function _syncACFModelField(container) {
         }
         modelInput.value = defaults[currentType] || '';
         syncModelPicker(container);
+        container.dispatchEvent(new Event('acf-synced', { bubbles: true })); // a summary of the form (New Agent's rows) follows the default arriving
     });
 }
 window.renderAgentConfigForm = renderAgentConfigForm;

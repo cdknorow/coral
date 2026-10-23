@@ -18,6 +18,7 @@ const { _checkPermissionFlag } = await importOnce('./cli_dialogs.js');
 const { _checkTeamGitDir, _initTeamForm, _loadExistingTeamBoards } = await importOnce('./team_dialogs.js');
 const { _initAgentPresets } = await importOnce('./persona_io.js');
 const { markFieldInvalid, _launchBlocked, _launchOn, _refreshAfterLaunch, _resetDirInputs, _showLaunchStep, _syncMobileLaunchSections, hideLaunchModal, setLaunchMore } = await importOnce('./launch_core.js');
+const { wireAgentSummary, syncAgentSummary } = await importOnce('./launch_agent_summary.js');
 
 /** New Agent's two steps (#6333): Next goes from the folder to the details (a folder is needed first), Back or Change returns. Focus follows, and a screen reader hears which step. */
 function _launchStage(stage) {
@@ -58,6 +59,7 @@ function _selectLaunchType(type) {
         // The agent is chosen in this step, not only under More options (#6199): a radio group that follows the form's own select, the installed agents first.
         importOnce('./launch_agent_pick.js').then(m => m.buildAgentPick({ group: document.getElementById('launch-agent-pick'), form: document.getElementById('launch-agent-acf'), server: _effectiveServer(launch.server), implicitDefault: !_settingsFor(_effectiveServer(launch.server)).default_agent_type })).catch(() => {});
         _wireDirNote(); _syncDirNote(); _syncLaunchBlock(); _renderDirRecents();
+        wireAgentSummary(); syncAgentSummary();
         _checkTmuxHere(); // tmux missing: said once, Launch off (#6046)
         document.getElementById('launch-dir')?.focus(); // the one thing most launches need: the folder
     } else if (type === "team") {
