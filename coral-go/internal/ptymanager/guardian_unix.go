@@ -99,12 +99,26 @@ func runGuardian(in io.Reader) {
 	var mu sync.Mutex
 	guard := map[int]*guarded{}
 	sample := func(pid int) {
+		// What each set holds is taken before the table is read, and only that is judged by it: another sample may merge a newer member while this table is read, and a
+		// member the table (older than it) lacks has not ended (#6584).
+		mu.Lock()
+		before := make(map[int][]member, len(guard))
+		for p, g := range guard {
+			before[p] = append([]member(nil), g.seen...)
+		}
+		mu.Unlock()
 		snap := takeSnap()
 		mu.Lock()
 		defer mu.Unlock()
 		for p, g := range guard {
 			if pid == 0 || p == pid {
-				g.seen, _ = mergeCapped(stillThereBy(g.seen, snap.has), snap.tree(g.root, g.tag), maxRemembered) // what has ended is forgotten, and the set is capped like Coral's own
+				kept := stillThereBy(before[p], snap.has) // what has ended is forgotten
+				for _, m := range g.seen {
+					if !contains(before[p], m) {
+						kept = append(kept, m) // recorded since: newer than the table
+					}
+				}
+				g.seen, _ = mergeCapped(kept, snap.tree(g.root, g.tag), maxRemembered) // the set is capped like Coral's own
 			}
 		}
 	}

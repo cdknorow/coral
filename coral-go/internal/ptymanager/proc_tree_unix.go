@@ -300,10 +300,12 @@ func (s *seen) add(ms []member) []member {
 func (s *seen) prune() { s.pruneBy(member.current) }
 
 // pruneBy is prune with isLive deciding who is still there (see stillThereBy).
-func (s *seen) pruneBy(isLive func(member) bool) {
-	s.mu.Lock()
-	ms := append([]member(nil), s.ms...)
-	s.mu.Unlock()
+func (s *seen) pruneBy(isLive func(member) bool) { s.pruneAmong(s.all(), isLive) }
+
+// pruneAmong forgets the members of candidates that isLive says have ended. A member recorded after candidates was taken is not looked at and stays: when isLive reads
+// a process table taken earlier than the members now in the set, a member added since is not in that table and must not be taken for one that ended (#6584: a later
+// kill would miss it, the #6125 orphan class). So the caller takes candidates before it takes the table.
+func (s *seen) pruneAmong(ms []member, isLive func(member) bool) {
 	live := stillThereBy(ms, isLive)
 	s.mu.Lock()
 	defer s.mu.Unlock()
