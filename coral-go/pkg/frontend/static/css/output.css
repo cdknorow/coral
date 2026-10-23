@@ -895,6 +895,6 @@ body.panel-dragging .xterm-container {
     width: max-content;
 }
 /* Fit to width (#3455): terminal view only; pressed while the font is scaled to fit. */
-.capture-wrapper.chat-mode .terminal-fit-width-btn { display: none; }
+.capture-wrapper.chat-mode .terminal-fit-width-btn, .capture-wrapper.chat-mode .terminal-copy-screen-btn { display: none; }
 /* 44x44 on touch screens: beats the header's own min-height (popout.css). */
-@media (pointer: coarse) { .terminal-header-actions .terminal-header-btn.terminal-fit-width-btn { min-width: 44px; min-height: 44px; justify-content: center; } }
+@media (pointer: coarse) { .terminal-header-actions .terminal-header-btn.terminal-fit-width-btn, .terminal-header-actions .terminal-header-btn.terminal-copy-screen-btn { min-width: 44px; min-height: 44px; justify-content: center; } }

@@ -998,6 +998,19 @@ export function getTerminal() {
     return terminal;
 }
 
+/** The text of the screen as it is now (what the Terminal view shows, not the scrollback), one line per row, trailing spaces and blank rows dropped (#6694). '' when there is no terminal. */
+export function terminalScreenText() {
+    if (!terminal) return '';
+    const buf = terminal.buffer.active;
+    const lines = [];
+    for (let y = buf.viewportY; y < buf.viewportY + terminal.rows; y++) {
+        const line = buf.getLine(y);
+        lines.push(line ? line.translateToString(true).trimEnd() : '');
+    }
+    while (lines.length && !lines[lines.length - 1]) lines.pop();
+    return lines.join('\n');
+}
+
 export function focusTerminal() {
     if (terminal) {
         terminal.focus();

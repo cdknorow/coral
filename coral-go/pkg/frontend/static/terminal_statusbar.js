@@ -13,12 +13,20 @@ const STATES = {
 
 const bar = () => document.getElementById('terminal-statusbar');
 
+import { startKeyboardWatch } from './keyboard_open.js';
+import { importOnce } from './import_once.js';
+import { registerActions } from './actions.js';
+import { copyText, showToast } from './utils.js';
+
 /** Show the bar with the terminal (the Terminal view) or hide it with it. */
 let keyBarWired = false;
 
 export function showTerminalStatusbar(on) {
     const b = bar();
     if (b) b.style.display = on ? '' : 'none';
+    if (on) startKeyboardWatch();
+    const copy = document.getElementById('terminal-copy-screen-btn');
+    if (copy) copy.hidden = !on;
     // The phone's key bar (#6676) is part of the Terminal view: shown with it (its CSS shows it at phone width only, and not in the Chat view).
     const keys = document.getElementById('terminal-key-bar');
     if (keys) {
@@ -53,3 +61,12 @@ export function setTerminalSize(cols, rows) {
 export function setTerminalFocused(on) {
     bar()?.classList.toggle('terminal-statusbar-focused', !!on);
 }
+
+registerActions({
+    // Copy screen (#6694): the text on the screen, for a phone where a long press selects nothing.
+    'terminal-copy-screen': async () => {
+        const text = (await importOnce('./xterm_renderer.js')).terminalScreenText();
+        if (!text) { showToast('The terminal screen is empty'); return; }
+        { const ok = await copyText(text); showToast(ok ? 'Terminal text copied' : 'Could not copy the terminal text', !ok); };
+    },
+});
