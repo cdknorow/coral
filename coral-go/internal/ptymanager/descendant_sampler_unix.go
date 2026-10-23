@@ -141,7 +141,7 @@ func (d *descendantSampler) sample() {
 	}
 	snap := takeSnap()
 	for root, set := range pty {
-		set.prune()                  // what has ended first, so it does not count against the cap
+		set.pruneBy(snap.has)        // what has ended first, so it does not count against the cap (read from the snapshot: nothing is asked per member)
 		set.add(snap.tree(root, "")) // descent only: the tag is read at the kill, never here
 	}
 	d.mu.Lock()
@@ -152,12 +152,8 @@ func (d *descendantSampler) sample() {
 	d.mu.Unlock()
 	next := make(map[member]*seen, len(paneShells)) // computed without d.mu: a Kill asking for a pane's set (rememberedPane) never waits for the trees
 	for _, pid := range paneShells {
-		p := snap.byPID[pid]
-		if p == nil {
-			continue
-		}
-		created, err := p.CreateTime()
-		if err != nil {
+		created, ok := snap.started[pid]
+		if !ok {
 			continue
 		}
 		root := member{pid, created}
@@ -168,7 +164,7 @@ func (d *descendantSampler) sample() {
 		if set == nil {
 			set = &seen{}
 		}
-		set.prune()
+		set.pruneBy(snap.has)
 		set.add(snap.tree(root, ""))
 		next[root] = set
 	}
