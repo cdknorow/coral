@@ -643,7 +643,7 @@ func (h *SessionsHandler) SessionStatus(w http.ResponseWriter, r *http.Request) 
 		"waiting_for_input": waiting,
 		"awaiting_user":     done,
 		"waiting_reason":    ptr.NullIfEmpty(liveState.WaitingReason),
-		"waiting_summary":   ptr.NullIfEmpty(liveState.WaitingSummary),
+		"waiting_summary":   waitingLine(liveState.WaitingSummary),
 		"waiting_kind":      ptr.NullIfEmpty(liveState.WaitingKind),
 		"done":              done,
 		"sleeping":          sleeping,

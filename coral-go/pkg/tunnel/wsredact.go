@@ -41,6 +41,8 @@ const wsRedactFailed = "this stream could not be checked for secrets"
 type wsRedact struct {
 	on     func() bool // the setting, read for every frame
 	stream bool        // binary frames are one terminal stream (/ws/terminal)
+	// viewOnly, when set, is read for every text frame: while it says the viewer can only look, the fields in viewDroppedFields are nulled in the frame (viewdrop.go), whatever on says.
+	viewOnly func() bool
 
 	mu  sync.Mutex // one writer to dst
 	ctx context.Context
@@ -62,6 +64,12 @@ func (w *wsRedact) write(typ websocket.MessageType, data []byte) error {
 	defer w.mu.Unlock()
 	if w.err != nil {
 		return w.err
+	}
+	if w.viewOnly != nil && typ == websocket.MessageText && !w.stream && w.viewOnly() {
+		var ok bool
+		if data, ok = stripViewDropped(data); !ok {
+			return w.fail()
+		}
 	}
 	on := w.on()
 	if w.red != nil && (!on || (typ == websocket.MessageText && terminalClosing(data))) {

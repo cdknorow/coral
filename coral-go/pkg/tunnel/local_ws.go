@@ -73,6 +73,9 @@ func (l *LocalHandler) serveWS(ctx context.Context, s *Stream) {
 	if redactsRoute(http.MethodGet, dec) {
 		// What a View stream sends to the hub is redacted (#3562); the setting is read per frame.
 		toHub = newWSRedact(ctx, down, l.redactor(), l.redactFor(viewerTier(h)), strings.HasPrefix(dec, "/ws/terminal/"))
+		if dec == "/ws/coral" {
+			toHub.viewOnly = l.viewOnly(viewerTier(h)) // the live feed carries every row's waiting_summary (viewdrop.go)
+		}
 	}
 	// Registered while it is open, so that lowering this computer's mode can end the streams that were allowed more than the new mode (CloseAbove, #5918).
 	unregister := l.registerWS(viewerTier(h), func() {
