@@ -125,3 +125,18 @@ func TestReplyCommandUsageAndExitCodes(t *testing.T) {
 		t.Fatalf("artifact --help: exit %d", help)
 	}
 }
+
+// The path carries the parsed number, exactly its digits ("+5" and "0005" are the comment 5).
+func TestReplyPathIsExactlyTheDigitsOfTheCommentId(t *testing.T) {
+	for _, in := range []string{"5", "+5", "0005"} {
+		var got struct{ method, path, ctype, body string }
+		srv := replyServer(t, http.StatusCreated, `{"id":1}`, &got)
+		if err := replyToComment(srv.URL, "coral://artifacts/"+replyDigest, in, "text", io.Discard); err != nil {
+			t.Fatalf("%q: %v", in, err)
+		}
+		srv.Close()
+		if got.path != "/api/artifacts/"+replyDigest+"/comments/5/reply" {
+			t.Fatalf("%q reached %q", in, got.path)
+		}
+	}
+}
