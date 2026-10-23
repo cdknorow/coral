@@ -195,6 +195,9 @@ function _hasActiveFilter(table, field) {
     return s && s.size > 0;
 }
 
+// What each table is called, as its section's heading says (#6432): a sort or filter button is named for its column and its table, so "Cost" is not six buttons that read the same.
+const TABLE_TITLES = { provider: 'By Provider', model: 'By Model', thinking: 'By Thinking Level', agent: 'By Agent', team: 'By Team', branch: 'By Branch', task: 'By Task' };
+
 // Sort header with optional filter icon
 function _sortHeader(table, field, label, extraClass, filterable, valueExtractor) {
     const cls = extraClass ? `${extraClass} cost-th-sort` : 'cost-th-sort';
@@ -205,9 +208,9 @@ function _sortHeader(table, field, label, extraClass, filterable, valueExtractor
     let filterIcon = '';
     if (filterable) {
         const active = _hasActiveFilter(table, field) ? ' cost-filter-active' : '';
-        filterIcon = `<button type="button" class="cost-col-filter${escapeAttr(active)}" data-on-click="cost-filter" data-table="${escapeAttr(table)}" data-field="${escapeAttr(field)}" title="Filter" aria-label="Filter ${escapeAttr(label)}"><span class="material-icons" style="font-size:0.8125rem" aria-hidden="true">filter_list</span></button>`;
+        filterIcon = `<button type="button" class="cost-col-filter${escapeAttr(active)}" data-on-click="cost-filter" data-table="${escapeAttr(table)}" data-field="${escapeAttr(field)}" title="Filter" aria-label="Filter ${escapeAttr(label)}${escapeAttr(TABLE_TITLES[table] ? ', ' + TABLE_TITLES[table] : '')}"><span class="material-icons" style="font-size:0.8125rem" aria-hidden="true">filter_list</span></button>`;
     }
-    return `<th class="${escapeAttr(cls)}" aria-sort="${escapeAttr(ariaSort)}" data-on-click="cost-sort" data-table="${escapeAttr(table)}" data-field="${escapeAttr(field)}"><button type="button" class="cost-sort-btn">${label}${arrow}</button>${filterIcon}</th>`;
+    return `<th class="${escapeAttr(cls)}" aria-sort="${escapeAttr(ariaSort)}" data-on-click="cost-sort" data-table="${escapeAttr(table)}" data-field="${escapeAttr(field)}"><button type="button" class="cost-sort-btn"${TABLE_TITLES[table] ? ` aria-label="${escapeAttr(label + ', ' + TABLE_TITLES[table])}"` : ''}>${label}${arrow}</button>${filterIcon}</th>`;
 }
 
 // Open/close the column filter dropdown
@@ -414,7 +417,28 @@ export function stopCostDashboard() {
     }
 }
 
+// Each table is named by its section's heading, whenever the table is drawn again (a sort, a filter, a refresh) (#6432).
+let _tableNamer = null;
+function _nameCostTables() {
+    let n = 0;
+    for (const sec of document.querySelectorAll('#cost-dashboard-view .cost-section')) {
+        const h = sec.querySelector('.cost-section-title'), t = sec.querySelector('table');
+        n++;
+        if (!h || !t) continue;
+        if (!h.id) h.id = `cost-title-${n}`;
+        if (t.getAttribute('aria-labelledby') !== h.id) t.setAttribute('aria-labelledby', h.id);
+    }
+}
+function _watchCostTables() {
+    const view = document.getElementById('cost-dashboard-view');
+    if (_tableNamer || !view) return;
+    _tableNamer = new MutationObserver(_nameCostTables);
+    _tableNamer.observe(view, { childList: true, subtree: true });
+    _nameCostTables();
+}
+
 export async function _refreshCostDashboard() {
+    _watchCostTables();
     const period = document.getElementById('cost-time-range')?.value || 'day';
 
     // Map period to a 'since' timestamp for the unified token-usage API
@@ -1081,7 +1105,9 @@ function _renderSpendChart(buckets) {
         } catch { return ''; }
     };
 
-    const svg = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" class="spend-chart-svg">
+    // The chart's text alternative: what it shows and where it ends (the tables below carry the detail) (#6432).
+    const chartLabel = `Cumulative spend: ${_formatCost(buckets[buckets.length - 1].cumulative_cost || 0)} over ${n} intervals`;
+    const svg = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" class="spend-chart-svg" role="img" aria-label="${escapeAttr(chartLabel)}">
         <!-- Grid lines -->
         <line class="spend-grid" x1="${PAD.left}" y1="${PAD.top}" x2="${PAD.left + plotW}" y2="${PAD.top}" />
         <line class="spend-grid" x1="${PAD.left}" y1="${PAD.top + plotH / 2}" x2="${PAD.left + plotW}" y2="${PAD.top + plotH / 2}" stroke-dasharray="4,4" />
