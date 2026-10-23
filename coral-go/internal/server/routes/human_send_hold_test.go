@@ -204,7 +204,7 @@ func TestHeldPersonMessageIsRefusedWhenTheSessionEnds(t *testing.T) {
 	var mu sync.Mutex
 	var ended error
 	got := make(chan struct{})
-	held, err := r.h.deliverPersonSend(context.Background(), r.name, "claude", r.sid, "never typed", func(err error) { mu.Lock(); ended = err; mu.Unlock(); close(got) })
+	held, err := r.h.deliverPersonSend(context.Background(), r.name, "claude", r.sid, "never typed", false, func(err error) { mu.Lock(); ended = err; mu.Unlock(); close(got) })
 	require.NoError(t, err)
 	require.True(t, held)
 	r.post(`{"event_type":"session_end","summary":"Session ended: other","detail_json":{"reason":"other"}}`)
@@ -239,7 +239,7 @@ func TestHeldPersonMessageExpiresWhenTheBoxStaysOpen(t *testing.T) {
 	r := newHoldRig(t, true)
 	r.box("permission")
 	got := make(chan error, 1)
-	held, err := r.h.deliverPersonSend(context.Background(), r.name, "claude", r.sid, "too late", func(err error) { got <- err })
+	held, err := r.h.deliverPersonSend(context.Background(), r.name, "claude", r.sid, "too late", false, func(err error) { got <- err })
 	require.NoError(t, err)
 	require.True(t, held)
 	select {
@@ -340,4 +340,57 @@ func TestCodexApprovalDialogRaisesNeedsInputAndHoldsAPersonsMessage(t *testing.T
 	post(`{"event_type":"tool_use","summary":"Ran: ls","tool_name":"Bash"}`)
 	assert.False(t, needs(), "approved: the tool ran")
 	assert.False(t, h.blockedOnBox(ctx, name, "codex", sid))
+}
+
+// Security's SHOULD on #6610: a message that came through Coral Hub waited with the authority of a viewer at Interact; if this computer's mode is lowered to View while it waits, it is
+// refused at release, not typed. A message from the dashboard is not affected by the mode.
+func TestHeldHubMessageIsRefusedWhenTheComputersModeIsLoweredWhileItWaits(t *testing.T) {
+	r := newHoldRig(t, true)
+	ctx := context.Background()
+	ss := store.NewSessionStore(r.h.db)
+	require.NoError(t, ss.SetSetting(ctx, MaxModeSetting, "interact"))
+	r.box("permission")
+	fromHub := make(chan error, 1)
+	held, err := r.h.deliverPersonSend(ctx, r.name, "claude", r.sid, "from the hub", true, func(err error) { fromHub <- err })
+	require.NoError(t, err)
+	require.True(t, held)
+	fromDash := make(chan error, 1)
+	held, err = r.h.deliverPersonSend(ctx, r.name, "claude", r.sid, "from the dashboard", false, func(err error) { fromDash <- err })
+	require.NoError(t, err)
+	require.True(t, held)
+
+	require.NoError(t, ss.SetSetting(ctx, MaxModeSetting, "view")) // the owner lowers the computer's mode
+	r.answered()
+	select {
+	case err := <-fromHub:
+		assert.Equal(t, errSendModeLowered, err, "refused, and told why")
+	case <-time.After(5 * time.Second):
+		t.Fatal("the hub message is answered")
+	}
+	select {
+	case err := <-fromDash:
+		assert.NoError(t, err, "a person at the dashboard is not a Hub viewer")
+	case <-time.After(5 * time.Second):
+		t.Fatal("the dashboard message is answered")
+	}
+	assert.Equal(t, []string{"from the dashboard"}, r.typed(), "only the dashboard's message was typed")
+}
+
+func TestHeldHubMessageIsTypedWhenTheModeStillAllowsInteract(t *testing.T) {
+	r := newHoldRig(t, true)
+	ctx := context.Background()
+	require.NoError(t, store.NewSessionStore(r.h.db).SetSetting(ctx, MaxModeSetting, "interact"))
+	r.box("permission")
+	got := make(chan error, 1)
+	held, err := r.h.deliverPersonSend(ctx, r.name, "claude", r.sid, "from the hub", true, func(err error) { got <- err })
+	require.NoError(t, err)
+	require.True(t, held)
+	r.answered()
+	select {
+	case err := <-got:
+		assert.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("answered")
+	}
+	assert.Equal(t, []string{"from the hub"}, r.typed())
 }

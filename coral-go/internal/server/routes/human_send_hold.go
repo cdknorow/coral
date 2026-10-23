@@ -9,6 +9,7 @@ import (
 
 	"github.com/subgentic/coral/internal/ptymanager"
 	"github.com/subgentic/coral/internal/safego"
+	"github.com/subgentic/coral/pkg/tunnel"
 )
 
 // A person's chat message is not typed into a box that asks the person something (#6610). When an agent shows a permission or question box (a plan menu, an elicitation) its own
@@ -30,12 +31,15 @@ var (
 	personHoldMaxTotal    = 64
 )
 
+var errSendModeLowered = &errHumanSend{"hub_mode_lowered", "This computer's Coral Hub access was lowered to view-only while your message waited, so it was not sent."}
+
 var errSendHeldExpired = &errHumanSend{"held_expired", "The agent's question was still open after 30 minutes, so your message was not sent. Answer it, then send your message again."}
 
 // personHeld is a person's message waiting for an agent's boxes.
 type personHeld struct {
 	name, agentType, sessionID, text string
 	done                             func(error) // called once, with how it ended (nil: typed and submitted); may be nil
+	viaHub                           bool        // the message came through Coral Hub: it is typed only while this computer's mode still allows Interact
 }
 
 // personHolds is the messages waiting, per agent (key: its session id, else its terminal name). Its zero value is ready.
@@ -63,10 +67,10 @@ func (h *SessionsHandler) blockedOnBox(ctx context.Context, name, agentType, ses
 
 // deliverPersonSend is deliverHumanSend for a person's chat message, held while the agent waits on a box. held is true when the message was queued: it is typed later, and done (which
 // may be nil) is called then with how that ended. When it is not held the message was delivered here, and done is not used.
-func (h *SessionsHandler) deliverPersonSend(ctx context.Context, name, agentType, sessionID, text string, done func(error)) (held bool, err error) {
+func (h *SessionsHandler) deliverPersonSend(ctx context.Context, name, agentType, sessionID, text string, viaHub bool, done func(error)) (held bool, err error) {
 	key := personKey(name, sessionID)
 	if h.holds.waiting(key) || h.blockedOnBox(ctx, name, agentType, sessionID) { // behind an earlier held message, or a box is open now
-		if err := h.holdPerson(&personHeld{name: name, agentType: agentType, sessionID: sessionID, text: text, done: done}); err != nil {
+		if err := h.holdPerson(&personHeld{name: name, agentType: agentType, sessionID: sessionID, text: text, viaHub: viaHub, done: done}); err != nil {
 			return false, err
 		}
 		return true, nil
@@ -161,6 +165,9 @@ func (h *SessionsHandler) releaseOne(m *personHeld) error {
 		case clearSince.IsZero():
 			clearSince = time.Now()
 		case time.Since(clearSince) >= personHoldSettle:
+			if m.viaHub && MaxModeFromSettings(h.ss)() < tunnel.TierInteract {
+				return errSendModeLowered // the message waited with the authority a Coral Hub viewer at Interact had; it is not typed under a lower mode (Security's SHOULD on #6610)
+			}
 			sctx, scancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer scancel()
 			return h.deliverHumanSend(sctx, m.name, m.agentType, m.sessionID, m.text)
