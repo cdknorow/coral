@@ -173,11 +173,27 @@ func typedText(text string) (string, bool) {
 		}
 		text = text[len(m[0]):]
 	}
+	// The extension can put its context after the typed text as well (a selection): those blocks are not typed text either.
+	for {
+		t := strings.TrimRight(text, " \t\r\n")
+		m := ideTrailingCloseR.FindStringSubmatch(t)
+		if m == nil {
+			break
+		}
+		start := strings.LastIndex(t[:len(t)-len(m[0])], "<"+m[1]+">")
+		if start < 0 {
+			break // closed but never opened: left as typed
+		}
+		text = t[:start]
+	}
 	if injectedUserText(text) {
 		return "", false
 	}
 	return text, true
 }
+
+// ideTrailingCloseR is the closing tag of an IDE context block at the very end of the text.
+var ideTrailingCloseR = regexp.MustCompile(`</(ide_[a-z_]+)>$`)
 
 // injectedUserText reports whether a user entry's text is the CLI's own and not something the person typed: a slash command's tags, the output of one, or a system reminder or environment block.
 func injectedUserText(text string) bool {

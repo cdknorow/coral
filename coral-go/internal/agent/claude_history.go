@@ -358,8 +358,10 @@ func (c *claudeCursor) add(line []byte) {
 	if c.fts.b.Len() != before {
 		c.ftsVer++
 	}
-	if t, ok := typedText(text); e.Type == "user" && c.firstMsg == "" && !e.IsMeta && !e.IsSidechain && !e.IsCompactSummary && ok {
-		c.firstMsg = clipFirstMessage(t)
+	if e.Type == "user" && c.firstMsg == "" && !e.IsMeta && !e.IsSidechain && !e.IsCompactSummary {
+		if t, ok := typedText(text); ok {
+			c.firstMsg = clipFirstMessage(t)
+		}
 	}
 	if e.Type == "assistant" && c.summary == "" && text != "" {
 		c.summary = cursorSummary(text)

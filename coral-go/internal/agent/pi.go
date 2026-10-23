@@ -106,8 +106,8 @@ func parsePiSession(fpath string, mtime float64) (*IndexedSession, error) {
 			content, _ := entry["content"].(string)
 			fts.Add(content)
 			if firstMsg == "" {
-				if t, ok := typedText(content); ok {
-					if role, _ := entry["role"].(string); role == "user" {
+				if role, _ := entry["role"].(string); role == "user" {
+					if t, ok := typedText(content); ok {
 						firstMsg = clipFirstMessage(t)
 					}
 				}
