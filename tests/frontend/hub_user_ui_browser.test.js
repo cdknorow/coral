@@ -105,7 +105,7 @@ const BASE = require('./test_base').BASE;
         ], 'the Operator via Coral Hub post: its badge, and the prefix not shown twice');
         console.log("   ✓ team chat: the badge on the Hub user's message only");
 
-        console.log("2. Settings: \"Don't let Coral Hub act as the Operator\" (an opt-out, #3404)");
+        console.log("2. Settings: \"Let Coral Hub act as the Operator\" (on by default; the stored setting is still the opt-out \"disabled\", #3404, #6579)");
         const s = await ev(`(async () => {
             window.__coral.buildAllLazy(); // Settings is built on first open (#4500)
             const real = window.fetch;
@@ -143,8 +143,8 @@ const BASE = require('./test_base').BASE;
         const box = `document.getElementById('settings-cloud-hub-operator')`;
         const msg = `document.getElementById('settings-cloud-hub-operator-msg')`;
         await waitFor(`!${row}.hidden`, 'the row while linked');
-        assert.equal(await ev(`${box}.checked`), false, 'unchecked by default: Coral Hub may act as the Operator');
-        assert.match(await ev(`document.querySelector('#settings-cloud-hub-operator-row label').textContent`), /Don't let Coral Hub act as the Operator/);
+        assert.equal(await ev(`${box}.checked`), true, 'checked by default: Coral Hub may act as the Operator (not opted out)');
+        assert.match(await ev(`document.querySelector('#settings-cloud-hub-operator-row label').textContent`), /^Let Coral Hub act as the Operator$/);
         // The list holds every board write made through Coral Hub (#3428), not only the Operator's: it says so.
         assert.equal(await ev(`document.querySelector('[data-cloud="hub-operator-actions"] summary').textContent.trim()`), 'Coral Hub actions', 'the actions list is called Coral Hub actions');
         assert.match(await ev(`document.getElementById('settings-cloud-hub-operator-desc').textContent`), /At Interact or Launch.*Operator via Coral Hub · hub-user-.*Board settings can never be changed/s, 'the plain warning');
@@ -153,24 +153,24 @@ const BASE = require('./test_base').BASE;
         assert.equal(acts.items.length, 3);
         assert.match(acts.items[0], /POST \/api\/board\/team\/tasks \(team\) hub-user-0a1b2c3d → 200/);
         assert.ok(!/<b>|<i>/.test(acts.html.replace(/&lt;/g, '')) && acts.items[2].includes('<b>x</b>'), 'text only, never markup');
-        console.log('   ✓ shown while linked, unchecked by default, the warning, the recent actions as text');
+        console.log('   ✓ shown while linked, on by default, the warning, the recent actions as text');
 
-        await ev(`(() => { const b = ${box}; b.checked = true; b.dispatchEvent(new Event('change')); return true; })()`);
+        await ev(`(() => { const b = ${box}; b.checked = false; b.dispatchEvent(new Event('change')); return true; })()`);
         await waitFor(`window.__opPuts.length === 1`, 'the PUT');
         assert.deepEqual(await ev(`window.__opPuts[0]`), { disabled: true });
-        await waitFor(`${box}.checked === true && ${msg}.hidden`, 'opted out');
-        console.log('   ✓ opting out PUTs {disabled:true}');
+        await waitFor(`${box}.checked === false && ${msg}.hidden`, 'opted out');
+        console.log('   ✓ turning the switch off (opting out) PUTs {disabled:true}');
 
-        await ev(`window.__ctl.putFails(true); (() => { const b = ${box}; b.checked = false; b.dispatchEvent(new Event('change')); return true; })()`);
+        await ev(`window.__ctl.putFails(true); (() => { const b = ${box}; b.checked = true; b.dispatchEvent(new Event('change')); return true; })()`);
         await waitFor(`window.__opPuts.length === 2 && !${msg}.hidden`, 'the refusal');
-        assert.equal(await ev(`${box}.checked`), true, 'a failed change is put back');
+        assert.equal(await ev(`${box}.checked`), false, 'a failed change is put back');
         assert.match(await ev(`${msg}.textContent`), /not allowed now/);
         await ev(`window.__ctl.putFails(false); true`);
         console.log('   ✓ a refused change is put back and explained');
 
         await ev(`document.getElementById('settings-cloud-disconnect').click(); true`);
         await waitFor(`document.getElementById('settings-cloud-status').textContent.length > 0`, 'status after disconnect');
-        await waitFor(`!${row}.hidden && ${box}.checked`, 'the opt-out outlives the link: still shown and on');
+        await waitFor(`!${row}.hidden && !${box}.checked`, 'the opt-out outlives the link: still shown, and the switch still off');
         await ev(`(async () => { window.__ctl.op({ disabled: false, enabled: true }); (await import(${S}+'cloud_connect.js')).loadCloudStatus(); return true; })()`);
         await ev(`(async () => { window.__ctl.cloud({ state: 'connected' }); (await import(${S}+'cloud_connect.js')).loadCloudStatus(); window.__ctl.cloud({ state: 'idle' }); (await import(${S}+'cloud_connect.js')).loadCloudStatus(); return true; })()`);
         await waitFor(`${row}.hidden`, 'no link and not opted out: hidden');

@@ -40,6 +40,7 @@ const REPEAT_OK = new Set([]);
             for (const e of m.querySelectorAll('.settings-pane')) { e.hidden = false; e.style.display = 'block'; } for (const id of ['tb-autowake', 'settings-terminal-backend']) { const e = document.getElementById(id); if (e) { e.hidden = false; e.style.display = 'block'; } }
             for (const e of m.querySelectorAll('[hidden]')) if (e.contains(m.querySelector('input[type=checkbox]:not([data-x])')) === false && e.querySelector('input[type=checkbox]')) e.hidden = false; return true; })()`);
         await reveal();
+        await ev(`document.querySelectorAll('#settings-modal details.settings-cloud-more').forEach(d => { d.hidden = false; d.open = true; }); true`); // the closed "More Coral Hub permissions": its switches are in the tree once it is open (#6579)
         await Accessibility.enable(); await DOM.enable();
         const { root } = await DOM.getDocument({ depth: 0 });
         const ids = await ev(`[...document.querySelectorAll('#settings-modal input[type=checkbox]')].map((e, i) => { e.setAttribute('data-ax-probe', i); return e.id || e.name || ('#' + i); })`);

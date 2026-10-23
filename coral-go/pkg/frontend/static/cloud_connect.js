@@ -12,6 +12,7 @@
 
 import { copyText } from './utils.js';
 import { importOnce } from './import_once.js';
+const { morePermsWords, operatorLine, spellCode } = await importOnce('./cloud_words.js');
 const { HUB_RELAUNCH_ON, HUB_RELAUNCH_OFF } = await importOnce('./update_words.js'); // a lazy module loads the others through importOnce, so a failed load is retried
 
 const STATUS_URL = '/api/cloud/status';
@@ -23,8 +24,6 @@ const HUB_OPERATOR_URL = '/api/system/hub-operator';
     interact: 'Also type into agents that are already running (send text, keys, answer prompts), post on boards, change tasks and notes, and rename or archive agents. Typing can run commands: an agent with shell tools acts on it. It can also change a team\'s working mode.',
     launch: 'Also start, stop, sleep, wake and restart agents (one agent or a whole team), browse folders to choose where, pause boards, delete board messages and boards, and turn on auto-accept. Launching runs code on this computer as you.',
 };
-// The one line under the Hub access select: what the chosen level means in a few words (the full text, MODE_HELP, is behind the select's (i)).
- const MODE_SHORT = { view: 'Read only.', interact: 'Can type into running agents.', launch: 'Can start agents: runs code on this computer as you.' };
 // Said when this page is not the dashboard on the computer running Coral (the cloud routes
 // answer 403): connecting has to happen there.
  const ELSEWHERE_TEXT = 'Connecting has to happen on the computer running Coral. On that computer, run: coral cloud connect';
@@ -35,6 +34,9 @@ const HUB_OPERATOR_URL = '/api/system/hub-operator';
  const OFF_SHORT = "Start Coral with the Hub address, then connect:";
 // Said when this server has no hub (a dev build, or --cloud-url off); the CLI says the same (#3285).
  const OFF_TEXT = "Coral Hub isn't configured on this server. Start Coral with --cloud-url https://app.coralhub.dev (or CORAL_CLOUD_URL=https://app.coralhub.dev), then run: coral cloud connect";
+
+// What the Hub may do at each level, as the sentence after "may now:" said once a change is saved.
+const LEVEL_NOW = { view: 'look only', interact: 'send and answer', launch: 'start agents' };
 
 const ENROLLED = ['connecting', 'connected', 'retrying', 'revoked', 'key_unreadable', 'upgrade_required'];
 const LIVE = ['enrolling', 'connecting', 'retrying'];
@@ -196,6 +198,8 @@ class CloudPanel {
     }
 
     render(st) {
+        // A control the person was on may leave with the state (Connect when the code appears, Cancel when it is approved): focus is put on the one that took its place, never left on a removed button.
+        const had = document.activeElement && this.root.contains(document.activeElement) ? document.activeElement : null;
         this.say(describe(st));
         if (codeExpired(st)) this.sayExpired();
         const enrolling = st.state === 'enrolling';
@@ -210,6 +214,7 @@ class CloudPanel {
             }
             const uc = this.part('usercode');
             put(uc, st.user_code || '');
+            put(this.part('usercode-spoken'), st.user_code ? `The code is below: ${spellCode(st.user_code)}.` : ''); // read letter by letter; the visible code is hidden from a screen reader so it is not read twice
         }
         const show = (role, on) => { const el = this.part(role); if (el) el.hidden = !on; };
         // A server with no hub says what to run: the command is in the row, with Copy (a person copies it into a terminal).
@@ -229,7 +234,7 @@ class CloudPanel {
         const hasCancel = !!this.part('cancel');
         show('cancel', enrolling);
         show('disconnect', ENROLLED.includes(st.state) || (enrolling && !hasCancel));
-        show('mode-row', !!st.configured);
+        show('mode-row', !!st.configured && st.state !== 'enrolling' && st.state !== 'connecting'); // waiting for the approval: only the link, the code and Cancel are on the screen
         const sk = st.secret_key;
         show('rekey-row', !!sk && sk.state === 'refused');
         const rt = this.part('rekey-text');
@@ -240,10 +245,14 @@ class CloudPanel {
         // The Connect screen's one question, "What may Coral Hub do on this computer?" (ask-row, radios named by data-cloud-mode): before the connection the answer is held here and goes with Connect
         // in the same call (View preselected for an install that never chose, the lowest mode: nobody hands Coral Hub launch rights by pressing Enter, #6370; an install keeps what it saved); once connecting or connected it is the saved cap and a change saves at once.
         const ask = this.part('ask-row');
+        // Settings has no radio row: its select is the question before Connect (View preselected), held here and sent with Connect; linked, a change saves at once.
+        this.askBySelect = !ask && !!this.part('max-mode');
         this.asking = false;
-        if (ask) {
+        if (ask || this.askBySelect) {
             this.asking = st.state === 'idle' || st.state === 'revoked';
             if (this.asking) { if (!this.pick) this.pick = st.max_mode_saved ? mode : 'view'; mode = this.pick; } else this.pick = null;
+        }
+        if (ask) {
             ask.hidden = !st.configured || st.state === 'off' || st.state === 'enrolling' || st.state === 'connecting'; // waiting for the approval: the answer was given before Connect and went with it, so only the code, the link and Cancel are on the screen (#6323)
             for (const r of ask.querySelectorAll('input[data-cloud-mode]')) r.checked = r.value === mode;
         }
@@ -256,15 +265,17 @@ class CloudPanel {
             // A computer connected from the command line never chose either (no answer was sent): it is connected, so the words are not "until you connect".
             const linked = st.state !== 'idle' && st.state !== 'off';
             const phText = linked ? 'Not chosen yet (View)' : 'Not chosen yet (View until you connect)';
-            if (unchosen && !ph) { ph = document.createElement('option'); ph.value = ''; ph.dataset.unchosen = '1'; sel.insertBefore(ph, sel.firstChild); }
-            else if (!unchosen && ph) ph.remove();
+            const showUnchosen = unchosen && !(this.asking && this.askBySelect); // before Connect the question has an answer (View); the placeholder is for a link that never chose
+            if (showUnchosen && !ph) { ph = document.createElement('option'); ph.value = ''; ph.dataset.unchosen = '1'; sel.insertBefore(ph, sel.firstChild); }
+            else if (!showUnchosen && ph) ph.remove();
             if (ph) ph.textContent = phText;
-            sel.value = unchosen ? '' : mode;
+            sel.value = showUnchosen ? '' : mode;
         }
         const desc = this.part('mode-desc');
         const full = this.part('mode-full');
         if (full) put(full, MODE_HELP[mode] + ' Coral Hub\'s owner can limit this further for each server, never raise it.');
-        if (desc) put(desc, unchosen ? (st.state !== 'idle' && st.state !== 'off' ? 'Coral Hub can only view until you choose here.' : 'Chosen when you connect. Until then Coral Hub can only view.') : MODE_SHORT[mode]);
+        if (desc && this.asking && this.askBySelect) put(desc, 'You can change this later.'); // the levels are in the sentence above the select: no second line saying the chosen one again
+        else if (desc) put(desc, unchosen ? (st.state !== 'idle' && st.state !== 'off' ? 'Coral Hub can only view until you choose here.' : 'Chosen when you connect. Until then Coral Hub can only view.') : '');
         // Auto-accept from the hub (#3182): a local kill switch, shown only with Launch (the owner's opt-in),
         // on unless the owner turned it off here. Only changeable on this computer.
         show('auto-accept-row', mode === 'launch');
@@ -301,7 +312,38 @@ class CloudPanel {
         // Operator setting with it, so read it again.
         const enrolled = ENROLLED.includes(st.state);
         if (enrolled !== this.enrolled) { this.enrolled = enrolled; this.loadHubOperator(); }
+        this.syncMorePerms(st, enrolled);
+        this.restoreFocus(had, st);
         this.onState(st);
+    }
+
+    /** The closed "More Coral Hub permissions" (shown once the computer is linked: before that the switches do nothing): its summary names the permissive switches that are on and marks a protective one that is off;
+     *  the Operator's state is also said on the status area, outside the disclosure (Security's #6559). */
+    syncMorePerms(st, linked) {
+        const box = this.part('more-perms');
+        if (!box) return;
+        this.lastStatus = st;
+        box.hidden = !linked;
+        const sum = this.part('more-perms-summary');
+        if (sum) {
+            const w = morePermsWords(st, this.operatorOn === undefined ? null : this.operatorOn);
+            const warn = sum.querySelector('.settings-cloud-warn');
+            if (sum.dataset.text !== w.text + '|' + w.warn) {
+                sum.dataset.text = w.text + '|' + w.warn;
+                sum.replaceChildren(w.text);
+                if (w.warn) { const m = document.createElement('span'); m.className = 'settings-cloud-warn'; const i = document.createElement('span'); i.className = 'material-icons'; i.setAttribute('aria-hidden', 'true'); i.textContent = 'warning'; m.append(i, ' ' + w.warn); sum.append(m); }
+            } else if (warn === null && w.warn) { /* unchanged */ }
+        }
+        const line = this.part('operator-line');
+        if (line) { const t = linked ? operatorLine(this.operatorOn === undefined ? null : this.operatorOn) : ''; put(line, t); line.hidden = !t; }
+    }
+
+    /** After a state change: when focus was inside the panel and its control has gone, it goes to the control that took its place. */
+    restoreFocus(had, st) {
+        if (!had || !this.root.contains(had)) return;
+        if (had.isConnected && !had.closest('[hidden]') && had.getClientRects().length) return;
+        const order = st.state === 'enrolling' ? ['cancel', 'disconnect'] : ENROLLED.includes(st.state) ? ['disconnect'] : ['connect'];
+        for (const role of order) { const el = this.part(role); if (el && !el.hidden) { el.focus(); return; } }
     }
 
     // Confirm owner (#6108): the one account the Hub named as the owner in the last hour is shown, so the person knows who it will trust; pressing the button arms the adoption for a minute, and
@@ -371,7 +413,9 @@ class CloudPanel {
         const disabled = !!s && !!s.disabled;
         row.hidden = !local || !(s.linked || disabled);
         const box = this.part('hub-operator');
-        if (local && box) box.checked = disabled;
+        if (local && box) box.checked = !disabled; // the switch says "Let Coral Hub act as the Operator": on is the default, the opt-out is off (the stored setting is still "disabled")
+        this.operatorOn = local && row && !row.hidden ? !disabled : null;
+        if (this.lastStatus) this.syncMorePerms(this.lastStatus, ENROLLED.includes(this.lastStatus.state));
         this.showHubOperatorActions(local ? s.recent_actions : null);
         this.sayHubOperator('');
     }
@@ -406,11 +450,15 @@ class CloudPanel {
             const r = await post('PUT', HUB_OPERATOR_URL, { disabled });
             if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Request failed');
             const s = await r.json();
-            if (box) box.checked = s.disabled !== undefined ? !!s.disabled : !s.enabled;
+            const nowDisabled = s.disabled !== undefined ? !!s.disabled : !s.enabled;
+            if (box) box.checked = !nowDisabled;
+            this.operatorOn = !nowDisabled;
+            if (this.lastStatus) this.syncMorePerms(this.lastStatus, ENROLLED.includes(this.lastStatus.state));
             this.sayHubOperator('');
+            this.saved(nowDisabled ? 'Saved. Coral Hub may not act as the Operator.' : 'Saved. Coral Hub may act as the Operator.');
         } catch (e) {
-            if (box) box.checked = !disabled;
-            this.sayHubOperator('Could not change it: ' + (e.message || 'request failed'));
+            if (box) box.checked = disabled; // put back: the checkbox says "let", so it was on when the opt-out (disabled) was off
+            this.sayHubOperator('Not saved: ' + (e.message || 'request failed'));
         }
     }
 
@@ -456,12 +504,30 @@ class CloudPanel {
         }
     }
 
-    async act(method, url, body) {
+    /** What a switch or the level said it did, once, politely: "Saved. ..." for a minute of screen time, then gone. A refusal is an alert and the control goes back to what the computer has. */
+    saved(text) {
+        const el = this.part('saved');
+        if (!el) return;
+        this.part('error')?.setAttribute('hidden', '');
+        put(el, text); // the region stays in the page and only its words change: a live region that is shown with its text in one turn is usually not read
+        clearTimeout(this.savedTimer);
+        if (text) this.savedTimer = setTimeout(() => put(el, ''), 6000); // timeout-ok: the note leaves the screen by itself
+    }
+
+    refused(text) {
+        const el = this.part('error');
+        if (!el) { this.say(text); return; }
+        put(this.part('saved'), '');
+        put(el, text); el.hidden = !text;
+    }
+
+    async act(method, url, body, savedText) {
         const r = await post(method, url, body);
-        if (r.ok) { this.render(await r.json()); this.schedule(await (await fetch(STATUS_URL)).json()); return; }
+        if (r.ok) { this.render(await r.json()); this.schedule(await (await fetch(STATUS_URL)).json()); if (savedText) this.saved(savedText); return; }
         if (r.status === 403) { this.elsewhere(await r.json().catch(() => null)); return; }
         let msg = 'Request failed';
         try { msg = (await r.json()).error || msg; } catch { /* keep default */ }
+        if (savedText !== undefined) { this.refused(`Not saved: ${msg}`); await this.load(); return; } // a setting: say it as an alert and show what the computer really has
         this.say(msg);
     }
 
@@ -489,7 +555,7 @@ class CloudPanel {
         // With the question on screen the answer goes in the Connect call itself (the server saves it before the enrollment starts).
         this.part('connect')?.addEventListener('click', () => {
             const ask = this.part('ask-row'), allow = this.part('allow-auto-accept');
-            const answer = ask && !ask.hidden && this.pick ? { mode: this.pick, ...(this.pick === 'launch' && allow ? { allow_auto_accept: allow.checked } : {}) } : undefined;
+            const answer = ((ask && !ask.hidden) || this.askBySelect) && this.pick ? { mode: this.pick, ...(this.pick === 'launch' && allow ? { allow_auto_accept: allow.checked } : {}) } : undefined;
             this.pickAuto = undefined;
             this.act('POST', '/api/cloud/connect', answer);
         });
@@ -517,16 +583,20 @@ class CloudPanel {
             clearTimeout(this.copyCodeTimer);
             this.copyCodeTimer = setTimeout(() => { if (icon) icon.textContent = 'content_copy'; btn.setAttribute('aria-label', 'Copy code'); put(said, ''); }, 1500);
         });
-        this.part('max-mode')?.addEventListener('change', (e) => { if (e.target.value) this.act('PUT', '/api/cloud/max-mode', { mode: e.target.value }); }); // the "Not chosen yet" placeholder saves nothing
+        this.part('max-mode')?.addEventListener('change', (e) => {
+            if (!e.target.value) return;
+            if (this.asking && this.askBySelect) { this.pick = e.target.value; if (this.last) this.render(this.last); return; } // before Connect: held, and sent with it
+            this.act('PUT', '/api/cloud/max-mode', { mode: e.target.value }, `Saved. Coral Hub may now: ${LEVEL_NOW[e.target.value] || e.target.value}.`);
+        }); // the "Not chosen yet" placeholder saves nothing
         this.part('allow-auto-accept')?.addEventListener('change', (e) => {
             if (this.asking) { this.pickAuto = e.target.checked; return; } // held until Connect, which sends it
-            this.act('PUT', '/api/cloud/allow-auto-accept', { allow: e.target.checked });
+            this.act('PUT', '/api/cloud/allow-auto-accept', { allow: e.target.checked }, e.target.checked ? 'Saved. Coral Hub can turn on auto-accept.' : 'Saved. Coral Hub cannot turn on auto-accept.');
         });
         this.part('owner-record')?.addEventListener('click', () => this.confirmOwner());
-        this.part('redact-tokens')?.addEventListener('change', (e) => this.act('PUT', '/api/cloud/redact-tokens', { redact: e.target.checked }));
-        this.part('hub-relaunch')?.addEventListener('change', (e) => { this.hubRelaunchWords(e.target); this.act('PUT', '/api/cloud/hub-relaunch', { allow: e.target.checked }); });
-        this.part('hub-cross-team')?.addEventListener('change', (e) => this.act('PUT', '/api/cloud/hub-cross-team', { allow: e.target.checked }));
-        this.part('hub-operator')?.addEventListener('change', (e) => this.setHubOperator(e.target.checked));
+        this.part('redact-tokens')?.addEventListener('change', (e) => this.act('PUT', '/api/cloud/redact-tokens', { redact: e.target.checked }, e.target.checked ? 'Saved. Tokens are hidden from view-only hub users.' : 'Saved. Tokens are visible to view-only hub users.'));
+        this.part('hub-relaunch')?.addEventListener('change', (e) => { this.hubRelaunchWords(e.target); this.act('PUT', '/api/cloud/hub-relaunch', { allow: e.target.checked }, e.target.checked ? 'Saved. Coral Hub may relaunch Coral to install updates.' : 'Saved. Coral Hub may not relaunch Coral.'); });
+        this.part('hub-cross-team')?.addEventListener('change', (e) => this.act('PUT', '/api/cloud/hub-cross-team', { allow: e.target.checked }, e.target.checked ? 'Saved. Coral Hub may change cross-team settings.' : 'Saved. Coral Hub may not change cross-team settings.'));
+        this.part('hub-operator')?.addEventListener('change', (e) => this.setHubOperator(!e.target.checked)); // the checkbox is "let", the stored setting is "disabled": the opposite
     }
 
     // Cancel an enrollment in progress (#3285).

@@ -56,6 +56,7 @@ const BUDGET = { 'Network and Hub': 80, 'Agents': 61, 'Storage and cleanup': 65,
             assert.equal(r.btn, true, `${r.id}: has an (i)`); assert.equal(r.expanded, 'false'); assert.equal(r.boxHidden, true, `${r.id}: its text is closed`); assert.match(r.name, /^About /); assert.ok(r.words > 3);
             assert.ok(r.describes, `${r.id}: the control is still described by the text`);
         }
+        await ev(`document.querySelectorAll('#settings-cloud details.settings-cloud-more').forEach(d => { d.hidden = false; d.open = true; }); true`); // the permissions are behind the closed "More Coral Hub permissions" (#6579)
         await ev(`document.querySelector('#settings-cloud-redact-row .settings-info-btn').focus(); true`);
         await client.Input.dispatchKeyEvent({ type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r' }); await client.Input.dispatchKeyEvent({ type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
         await waitFor(`document.querySelector('#settings-cloud-redact-row .settings-info-btn').getAttribute('aria-expanded') === 'true' && !document.getElementById(document.querySelector('#settings-cloud-redact-row .settings-info-btn').getAttribute('aria-controls')).hidden`, 'the redaction text open by keyboard', 3000);

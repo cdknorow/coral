@@ -1,6 +1,6 @@
 // Two things the Coral Hub controls of Settings > Network and Hub say about a computer that has not connected yet (#5962), both themes are the page's own:
-//  (A) a computer that never chose what Coral Hub may do (status max_mode_saved false) shows "Not chosen yet (View until you connect)", not a plain View that contradicts the Connect screen's
-//      Launch; choosing a value saves it (PUT /api/cloud/max-mode) and the placeholder goes; a saved choice shows as itself, with no placeholder;
+//  (A) before Connect the level question has an answer, View, held on the page and sent with Connect (#6579); a computer linked without ever choosing (status max_mode_saved false, connected) shows
+//      "Not chosen yet (View)", not a plain View that contradicts the first-run screen's Launch; choosing a value there saves it (PUT /api/cloud/max-mode) and the placeholder goes; a saved choice shows as itself;
 //  (B) a hub that could not be reached is said in a sentence ("Coral could not reach Coral Hub. Check your connection and try again."), with the seconds until the next try counted down beside it
 //      in a plain element (not a live region: a screen reader hears the sentence once) and Connect off until the count is over.
 // Drives Chrome over CDP against the isolated dev server; the cloud routes are stood in for the page's fetch.
@@ -29,24 +29,29 @@ const { connect } = require('./agent_view_harness');
             const cc = await import(${S} + 'cloud_connect.js'); window.__cc = cc; cc.initCloudConnect(); await cc.loadCloudStatus(); return true; })()`);
         const sel = () => ev(`(() => { const s = document.getElementById('settings-cloud-max-mode'); return { options: [...s.options].map(o => o.textContent), value: s.value, shown: s.options[s.selectedIndex].textContent, desc: document.getElementById('settings-cloud-mode-desc').textContent }; })()`);
 
-        console.log('A. never chosen: "Not chosen yet", a choice saves and replaces it');
+        console.log('A. not connected: View is the answer before Connect (held, sent with Connect); a link that never chose says "Not chosen yet (View)" and a choice saves');
         let b = await sel();
-        assert.equal(b.shown, 'Not chosen yet (View until you connect)'); assert.equal(b.value, ''); assert.match(b.desc, /Chosen when you connect/);
-        assert.deepEqual(b.options.slice(1), ['View', 'Interact', 'Launch']);
+        assert.equal(b.shown, 'View'); assert.equal(b.value, 'view'); assert.equal(b.desc, 'You can change this later.');
+        assert.deepEqual(b.options, ['View', 'Interact', 'Launch'], 'no "Not chosen yet" option before Connect');
         await showHub(); await shot('hub-settings-unchosen');
+        await ev(`(() => { const s = document.getElementById('settings-cloud-max-mode'); s.value = 'interact'; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+        assert.equal(await ev(`window.__puts.length`), 0, 'a choice before Connect saves nothing: it goes with Connect');
+        b = await sel();
+        assert.equal(b.shown, 'Interact'); assert.equal(b.desc, 'You can change this later.');
+        console.log('   ok (before Connect)');
+
+        // connected from the command line (no answer was sent, so no cap is saved): connected, so not "until you connect"
+        await ev(`(async () => { window.__st = { configured: true, state: 'connected', hub_url: 'https://hub.example', max_mode: 'view', max_mode_saved: false, allow_hub_auto_accept: true }; await window.__cc.loadCloudStatus(); return true; })()`);
+        b = await sel();
+        assert.equal(b.shown, 'Not chosen yet (View)'); assert.equal(b.desc, 'Coral Hub can only view until you choose here.', 'a connected computer is not told "until you connect"');
+        assert.equal(b.value, '');
         await ev(`(() => { const s = document.getElementById('settings-cloud-max-mode'); s.value = ''; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
         assert.equal(await ev(`window.__puts.length`), 0, 'the placeholder saves nothing');
         await ev(`(() => { const s = document.getElementById('settings-cloud-max-mode'); s.value = 'interact'; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
         await waitFor(`window.__puts.length === 1 && !document.querySelector('#settings-cloud-max-mode option[data-unchosen]')`, 'the choice saved and the placeholder gone', 5000);
         b = await sel();
         assert.equal(b.shown, 'Interact'); assert.ok(!b.options.some(o => /Not chosen/.test(o)));
-        console.log('   ok');
-
-        // connected from the command line (no answer was sent, so no cap is saved): connected, so not "until you connect"
-        await ev(`(async () => { window.__st = { configured: true, state: 'connected', hub_url: 'https://hub.example', max_mode: 'view', max_mode_saved: false, allow_hub_auto_accept: true }; await window.__cc.loadCloudStatus(); return true; })()`);
-        b = await sel();
-        assert.equal(b.shown, 'Not chosen yet (View)'); assert.equal(b.desc, 'Coral Hub can only view until you choose here.', 'a connected computer is not told "until you connect"');
-        console.log('   ok (connected, never chosen)');
+        console.log('   ok (connected, never chosen; a choice saves)');
 
         console.log('B. an unreachable hub: a sentence, a countdown beside it, Connect off until it is over');
         await ev(`(async () => { window.__st = { configured: true, state: 'idle', hub_url: 'https://hub.example', max_mode: 'view', max_mode_saved: true, last_error: 'could not reach the hub to start enrollment', last_error_code: 'hub_unreachable', retry_in_s: 3 }; await window.__cc.loadCloudStatus(); return true; })()`);

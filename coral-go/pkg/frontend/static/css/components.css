@@ -4620,6 +4620,19 @@ body:has(#launch-modal[style*="flex"] :is(#launch-tmux-slot, #team-tmux-slot)[da
 .settings-row-hub #settings-hub-mode-desc, .settings-row-hub #settings-hub-mode-status, .settings-row-hub #settings-hub-mode-restart { grid-column: 1 / -1; justify-self: start; }
 #settings-cloud .settings-cloud-actions { margin: 6px 0; padding: 0; justify-content: flex-start; }
 #settings-cloud .settings-cloud-actions .btn { margin-left: 0; }
+/* The Coral Hub card (#6579): the status line and Disconnect or Cancel are one row; the level question and, once linked, a closed "More Coral Hub permissions" follow; Connect sits under the question. */
+#settings-cloud .settings-cloud-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; }
+#settings-cloud .settings-cloud-head > [data-cloud="status"] { flex: 1 1 14rem; min-width: 0; margin: 0; }
+#settings-cloud .settings-cloud-head .settings-cloud-actions { margin: 0; }
+#settings-cloud .settings-cloud-connect-row { margin: 10px 0 4px; }
+#settings-cloud .settings-cloud-notice { border: 1px solid var(--warning); border-radius: var(--radius-md); padding: 8px 10px; margin: 8px 0 12px; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+#settings-cloud .settings-cloud-notice[hidden] { display: none; }
+#settings-cloud .settings-cloud-mode > label[for="settings-cloud-max-mode"] { margin-top: 10px; display: block; }
+#settings-cloud .settings-cloud-more { margin-top: 10px; }
+#settings-cloud .settings-cloud-more > summary { color: var(--text-primary); font-weight: 600; overflow-wrap: anywhere; }
+#settings-cloud .settings-cloud-warn { display: block; color: var(--warning-text, var(--warning)); font-weight: 500; margin-top: 2px; }
+#settings-cloud .settings-cloud-warn .material-icons { font-size: 1rem; vertical-align: text-bottom; }
+#settings-cloud .settings-cloud-saved { margin: 4px 0 0; }
 .settings-row-hub .settings-info-text { grid-column: 1 / -1; }
 .info-grid.settings-grid .settings-row-hub > dt { align-self: center; padding-top: 0; }
 .settings-row-hub .settings-hub-mode-toggle { display: flex; align-items: center; min-height: var(--control-touch-height, 44px); }
