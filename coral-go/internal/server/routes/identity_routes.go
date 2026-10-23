@@ -35,6 +35,8 @@ var operatorOnlyRoutes = map[string]string{
 	"DELETE /api/board/{project}/messages/{messageID}": "delete a board message",
 	"POST /api/board/{project}/pause":                  "pause a board",
 	"POST /api/board/{project}/resume":                 "resume a board",
+	// #6329: the instruction of an agent's reminder is the Operator's own text to that agent; another agent's token cannot read it.
+	"GET /api/board/{project}/reminder": "read an agent's reminder instruction",
 	// #3665: resuming agents on the current hook set stops and restarts them.
 	"GET /api/system/hooks-status":                      "see which agents run an older hook set",
 	"POST /api/sessions/live/{sessionID}/refresh-hooks": "resume an agent on the current hook set",

@@ -71,6 +71,7 @@ func setupBoardTestServer(t *testing.T) (*httptest.Server, *BoardHandler) {
 	r.Delete("/api/board/{project}/tasks/{taskID}/reminder", handler.RemindTask)
 	r.Post("/api/board/{project}/reminder", handler.RemindSubscriber)
 	r.Delete("/api/board/{project}/reminder", handler.RemindSubscriber)
+	r.Get("/api/board/{project}/reminder", asLocalPerson(handler.GetSubscriberReminder))
 	r.Post("/api/board/{project}/pause", handler.PauseBoard)
 	r.Post("/api/board/{project}/resume", handler.ResumeBoard)
 	r.Get("/api/board/{project}/paused", handler.GetPaused)

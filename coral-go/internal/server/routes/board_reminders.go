@@ -100,6 +100,40 @@ func (h *BoardHandler) RemindSubscriber(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "active": true, "subscriber_id": body.SubscriberID, "interval_seconds": body.IntervalSeconds})
 }
 
+// GetSubscriberReminder: GET /api/board/{project}/reminder?subscriber_id=X. The reminder in force for an agent: its instruction and its interval, for the Team view's "Edit reminder" to open with
+// what is there (#6329). A person's alone: the text is the Operator's instruction to one agent, so an agent's session token is refused (it could read another agent's), and the route has no
+// rule in the tunnel table (never through Coral Hub) so a Hub viewer never sees it. Nothing is changed. It is not part of the availability read, which is shared and cached for every caller.
+func (h *BoardHandler) GetSubscriberReminder(w http.ResponseWriter, r *http.Request) {
+	if !humanInputCaller(r) {
+		writeError(w, http.StatusForbidden, "operator_only", "only the Operator can read a reminder's instruction")
+		return
+	}
+	project := urlParam(r, "project")
+	subscriber := strings.TrimSpace(r.URL.Query().Get("subscriber_id"))
+	if subscriber == "" {
+		errBadRequest(w, "subscriber_id is required")
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	seconds, active := h.SubscriberReminderInterval(project, subscriber)
+	if !active {
+		writeJSON(w, http.StatusOK, map[string]any{"active": false})
+		return
+	}
+	rows, err := h.bs.ListSubscriberReminders(r.Context())
+	if err != nil {
+		errInternalServer(w, "could not read the reminder")
+		return
+	}
+	for _, row := range rows {
+		if row.Project == project && row.SubscriberID == subscriber {
+			writeJSON(w, http.StatusOK, map[string]any{"active": true, "subscriber_id": subscriber, "message": row.Message, "interval_seconds": seconds})
+			return
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"active": false}) // running but not persisted any more (removed meanwhile)
+}
+
 // RestoreSubscriberReminders reloads durable reminders after a server restart.
 func (h *BoardHandler) RestoreSubscriberReminders(ctx context.Context) error {
 	if h.bs == nil {

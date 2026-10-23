@@ -324,6 +324,7 @@ var queryIdentityReads = map[string]string{
 	"board_task_create.go subscriber_id":   queryBoard,
 	"board_waits.go subscriber_id":         queryBoard,
 	"board_subscribers.go target":          queryTarget,
+	"board_reminders.go subscriber_id":     queryTarget, // GET /api/board/{project}/reminder?subscriber_id=: whose reminder the Operator reads (#6329); an agent's token is refused on the route
 	"board_remotes.go subscriber_id":       queryBoard,
 	"cross_team_send.go subscriber_id":     queryBoard,
 	"cross_team_send.go session_name":      queryBoardSession,

@@ -79,6 +79,7 @@ c GET /api/board/{project}/messages/search
 c GET /api/board/{project}/paused
 a GET /api/board/{project}/peek
 a GET /api/board/{project}/queue
+b GET /api/board/{project}/reminder
 a GET /api/board/{project}/relay-targets
 c GET /api/board/{project}/settings
 b GET /api/board/{project}/settings/log

@@ -72,6 +72,7 @@ GET /api/board/{project}/paused view
 GET /api/board/{project}/peek never
 GET /api/board/{project}/queue never
 GET /api/board/{project}/relay-targets never
+GET /api/board/{project}/reminder never
 GET /api/board/{project}/settings view
 GET /api/board/{project}/settings/log never
 GET /api/board/{project}/status view

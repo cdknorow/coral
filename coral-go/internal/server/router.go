@@ -794,6 +794,7 @@ func (s *Server) registerBoard(r *chi.Mux, h *routeHandlers) {
 		r.Delete("/api/board/{project}/tasks/{taskID}/reminder", boardHandler.RemindTask)
 		r.Post("/api/board/{project}/reminder", boardHandler.RemindSubscriber)
 		r.Delete("/api/board/{project}/reminder", boardHandler.RemindSubscriber)
+		r.Get("/api/board/{project}/reminder", boardHandler.GetSubscriberReminder) // the instruction in force, for a person only and never through the Hub (#6329)
 		r.Post("/api/board/{project}/tasks/{taskID}/publish", boardHandler.PublishTask)
 		r.Get("/api/board/{project}/tasks/{taskID}/cost", boardHandler.TaskLiveCost)
 		r.Get("/api/board/{project}/tasks/{taskID}/changes.diff", boardHandler.TaskChangesDiff)
