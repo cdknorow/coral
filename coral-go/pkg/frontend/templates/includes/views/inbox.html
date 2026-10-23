@@ -12,16 +12,16 @@
             <button type="button" class="inbox-tab" role="tab" id="inbox-tab-saved" aria-controls="inbox-panel-saved" aria-selected="false" tabindex="-1">Saved for later</button>
         </div>
         <section id="inbox-panel-needs" class="inbox-panel" role="tabpanel" aria-labelledby="inbox-tab-needs">
-            <section id="inbox-needs" class="inbox-needs" aria-label="Needs you">
+            <div id="inbox-needs" class="inbox-needs"><!-- not a named section: the tab panel already is the "Needs you" region, and a second one of the same name is listed twice by a screen reader (#6570) -->
                 <ul id="inbox-needs-list" class="inbox-needs-list"></ul>
                 <p id="inbox-needs-empty" class="inbox-needs-empty">Nothing needs your input.</p>
-            </section>
+            </div>
         </section>
         <section id="inbox-panel-tasks" class="inbox-panel" role="tabpanel" aria-labelledby="inbox-tab-tasks" hidden>
             <div id="inbox-tasks-host" class="inbox-tasks-host"></div>
         </section>
         <section id="inbox-panel-saved" class="inbox-panel" role="tabpanel" aria-labelledby="inbox-tab-saved" hidden>
-            <section id="saved-view" class="saved-view" aria-label="Saved for later"></section>
+            <div id="saved-view" class="saved-view"></div><!-- the panel is the "Saved for later" region (#6570); the hub names its own copy itself -->
         </section>
     </div>
 </div>
