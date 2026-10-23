@@ -42,6 +42,10 @@ const S = `(window.__coralStatic || '/static/')`;
                 await ev(`window.__computers[0].online = true; window.__computers[0].status = 'online'; true`);
                 await wait(6000); // sleep-ok: the list asks again every 5 s
             }, { must: [[/Laptop is offline/, 'Laptop going offline'], [/Laptop is online/, 'Laptop coming back']] });
+            await scene(`${tag}: hub: the Artifacts tab is opened`, async () => {
+                await ev(`window.switchNavTab('artifacts'); true`);
+                await waitFor(`!!document.getElementById('artifacts-frame')`, 'artifacts frame', 10000);
+            }, { forbid: [/./] }); // the tab says nothing of its own: the hub's page in the frame is its own document
             await scene(`${tag}: hub: toasts`, async () => {
                 await ev(`(async () => { const n = await import(${S} + 'notifications.js'); n.showToast('Saved to the board.'); n.showToast('Could not reach the computer.', true); return true; })()`);
                 await wait(1500); // sleep-ok: the two are said one after the other

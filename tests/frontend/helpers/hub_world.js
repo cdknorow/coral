@@ -27,6 +27,7 @@ async function setupHubWorld({ client, Page, Emulation, width, height, mobile })
    window.fetch=(u,o={})=>{
     const p=new URL(String(u),location.href); const m=(o.method||'GET').toUpperCase();
     if(p.pathname==='/auth/session')return json({authenticated:true,email:'tester@example.com',csrf:'test'});
+    if(p.pathname==='/api/account')return json({artifacts_tab:true,artifacts_frame:true});
     if(p.pathname==='/api/sessions/live')return json({sessions:[],servers:window.__noComputers?[]:computers});
     if(p.pathname==='/api/servers')return json({servers:computers});
     if(p.pathname==='/api/settings'&&m==='GET')return json({settings:{}});

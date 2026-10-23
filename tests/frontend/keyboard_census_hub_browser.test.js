@@ -37,6 +37,7 @@ const { setupHubWorld, BASE } = require('./helpers/hub_world');
         await sc(`${tag}: hub: servers, renaming`, async () => { await tap('#servers-tab-body .cs-rename-btn'); }, { expect: `!!document.querySelector('#servers-tab-body .cs-rename input')` });
         await ev(`document.querySelector('#servers-tab-body .cs-rename button[type=button]')?.click(); true`);
         await sc(`${tag}: hub: inbox`, async () => { await nav('hub-inbox'); }, { expect: `document.getElementById('nav-select').textContent.includes('Inbox') || !!document.getElementById('nav-tab-hub-inbox')` });
+        await sc(`${tag}: hub: artifacts`, async () => { await nav('artifacts'); await waitFor(`!!document.getElementById('artifacts-frame')`, 'artifacts frame'); });
         await sc(`${tag}: hub: docs`, async () => { await nav('docs'); });
         await sc(`${tag}: hub: account menu`, async () => { await tap('[aria-label="Account menu"]'); }, { expect: `document.querySelector('[aria-label="Account menu"]').getAttribute('aria-expanded') === 'true'` });
         await ev(`document.body.click(); true`);
@@ -52,7 +53,7 @@ const { setupHubWorld, BASE } = require('./helpers/hub_world');
         await Emulation.setDeviceMetricsOverride({ width: 390, height: 844, deviceScaleFactor: 1, mobile: true }); await Emulation.setTouchEmulationEnabled({ enabled: true });
         await run('phone');
         } finally { await client.close(); }
-    const bad = results.filter(r => r.error).map(r => `${r.name}: the scene did not open (${r.error})`).concat(found, required(results, ['hub: home', 'hub: chats list', 'hub: chat transcript', 'hub: chat tab commits', 'hub: boards list', 'hub: board', 'hub: servers', 'hub: servers, a computer opened', 'hub: servers, renaming', 'hub: inbox', 'hub: docs', 'hub: account menu', 'hub: dialog launch', 'hub: dialog settings'].flatMap(n => ['desktop', 'phone'].map(t => `${t}: ${n}`))));
+    const bad = results.filter(r => r.error).map(r => `${r.name}: the scene did not open (${r.error})`).concat(found, required(results, ['hub: home', 'hub: chats list', 'hub: chat transcript', 'hub: chat tab commits', 'hub: boards list', 'hub: board', 'hub: servers', 'hub: servers, a computer opened', 'hub: servers, renaming', 'hub: inbox', 'hub: artifacts', 'hub: docs', 'hub: account menu', 'hub: dialog launch', 'hub: dialog settings'].flatMap(n => ['desktop', 'phone'].map(t => `${t}: ${n}`))));
     if (process.env.KEYBOARD_REPORT) { require('node:fs').writeFileSync(process.env.KEYBOARD_REPORT, results.map(r => `${r.name}: ${r.error || r.stops + ' stops'}${process.env.KEYBOARD_PATHS ? '\n    ' + r.path : ''}`).join('\n') + '\n--\n' + bad.join('\n') + '\n'); process.exit(0); }
     assert.deepEqual(bad, [], 'keyboard-only problems through the Hub:\n  ' + bad.join('\n  '));
     console.log(`PASS ${results.length} Hub scenes: Tab reaches every control and shows where it is`);
