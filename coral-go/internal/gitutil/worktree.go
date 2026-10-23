@@ -89,3 +89,42 @@ func UnmergedCommits(ctx context.Context, repoDir, branch string) int {
 func oneLine(s string) string {
 	return strings.Join(strings.Fields(strings.ReplaceAll(s, "fatal: ", "")), " ")
 }
+
+// AddTeamWorktree makes the worktree at path on branch, from base when the branch is new, and says whether it made the branch (#6701). What an earlier run left is met, not tripped over: a registration whose
+// folder is gone is pruned, a branch that exists is checked out (its commits kept) instead of made again, a worktree already at path is reused, and an empty folder is used. A folder that is not empty and
+// no worktree is the one thing it refuses, in one line. Every failure is one plain line, not git's two.
+func AddTeamWorktree(ctx context.Context, repoDir, path, branch, base string) (branchCreated bool, err error) {
+	Command(ctx, repoDir, "worktree", "prune").Run()
+	if entries, readErr := os.ReadDir(path); readErr == nil && len(entries) > 0 {
+		if registered(ctx, repoDir, path) {
+			return false, nil // the worktree is still there (a stop that kept it): the team goes on in it
+		}
+		return false, fmt.Errorf("the folder %s is left over from an earlier run and is not empty: move or delete it, then launch again", path)
+	}
+	args := []string{"worktree", "add", "--", path, branch}
+	if !refExists(ctx, repoDir, "refs/heads/"+branch) {
+		args = []string{"worktree", "add", "-b", branch, "--", path, base}
+		branchCreated = true
+	}
+	if out, addErr := Command(ctx, repoDir, args...).CombinedOutput(); addErr != nil {
+		return false, fmt.Errorf("git worktree add: %s", oneLine(string(out)))
+	}
+	return branchCreated, nil
+}
+
+// registered reports whether path is one of the repository's worktrees.
+func registered(ctx context.Context, repoDir, path string) bool {
+	out, err := git(ctx, repoDir, "worktree", "list", "--porcelain")
+	if err != nil {
+		return false
+	}
+	want, _ := filepath.EvalSymlinks(path)
+	for _, line := range strings.Split(out, "\n") {
+		if p, ok := strings.CutPrefix(line, "worktree "); ok {
+			if got, _ := filepath.EvalSymlinks(p); got == want || p == path {
+				return true
+			}
+		}
+	}
+	return false
+}

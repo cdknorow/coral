@@ -71,3 +71,47 @@ func TestRemoveWorktree(t *testing.T) {
 	require.Error(t, err)
 	assert.NotContains(t, err.Error(), "\n")
 }
+
+// #6701: adding a team's worktree meets what an earlier run left: a branch that exists is checked out, a registration without a folder is pruned, a worktree already there is reused, and a branch
+// held by another worktree is one plain line.
+func TestAddTeamWorktree(t *testing.T) {
+	ctx := context.Background()
+	repo := baseRepo(t, "master", true)
+	wt := filepath.Join(t.TempDir(), "team")
+
+	created, err := AddTeamWorktree(ctx, repo, wt, "coral-team/team", "master")
+	require.NoError(t, err)
+	assert.True(t, created)
+	require.NoError(t, os.WriteFile(filepath.Join(wt, "w.txt"), []byte("w"), 0o644))
+	gitIn(t, wt, "add", "w.txt")
+	gitIn(t, wt, "commit", "-q", "-m", "w")
+
+	reused, err := AddTeamWorktree(ctx, repo, wt, "coral-team/team", "master")
+	require.NoError(t, err, "a worktree already there is reused")
+	assert.False(t, reused)
+
+	// the folder deleted by hand, then launched again: pruned, the branch with its commit checked out
+	require.NoError(t, os.RemoveAll(wt))
+	created, err = AddTeamWorktree(ctx, repo, wt, "coral-team/team", "master")
+	require.NoError(t, err)
+	assert.False(t, created, "the branch existed")
+	assert.FileExists(t, filepath.Join(wt, "w.txt"))
+
+	// the branch is held by that worktree: another folder cannot have it, said in one line
+	_, err = AddTeamWorktree(ctx, repo, filepath.Join(t.TempDir(), "other"), "coral-team/team", "master")
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "\n")
+
+	// a folder that is empty is used; one with something in it that is no worktree is refused
+	empty := filepath.Join(t.TempDir(), "empty")
+	require.NoError(t, os.MkdirAll(empty, 0o755))
+	_, err = AddTeamWorktree(ctx, repo, empty, "coral-team/empty", "master")
+	require.NoError(t, err)
+	full := filepath.Join(t.TempDir(), "full")
+	require.NoError(t, os.MkdirAll(full, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(full, "s.txt"), []byte("s"), 0o644))
+	_, err = AddTeamWorktree(ctx, repo, full, "coral-team/full", "master")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "is not empty")
+	assert.FileExists(t, filepath.Join(full, "s.txt"))
+}

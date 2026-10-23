@@ -474,15 +474,9 @@ func (h *SessionsHandler) createTeamWorktree(ctx context.Context, body launchTea
 	os.MkdirAll(worktreeDir, 0755)
 	worktreePath = filepath.Join(worktreeDir, body.BoardName)
 	worktreeBranch := fmt.Sprintf("coral-team/%s", body.BoardName)
-	cmd := gitutil.Command(ctx, body.WorkingDir, "worktree", "add", "-b", worktreeBranch, "--", worktreePath, branch)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		// Branch may already exist from a previous run — try without -b
-		cmd2 := gitutil.Command(ctx, body.WorkingDir, "worktree", "add", "--", worktreePath, worktreeBranch)
-		if out2, err2 := cmd2.CombinedOutput(); err2 != nil {
-			return "", "", false, fmt.Sprintf("git worktree add failed: %s / %s", string(out), string(out2))
-		}
-	} else {
-		branchCreated = true // the branch is new: a launch that starts nobody takes it back
+	branchCreated, err = gitutil.AddTeamWorktree(ctx, body.WorkingDir, worktreePath, worktreeBranch, branch)
+	if err != nil {
+		return "", "", false, err.Error()
 	}
 	log.Printf("[launch-team] created worktree at %s (branch %s from %s)", logsafe.Dir(worktreePath), worktreeBranch, branch)
 	return worktreePath, worktreePath, branchCreated, ""
