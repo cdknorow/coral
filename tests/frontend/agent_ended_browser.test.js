@@ -29,7 +29,7 @@ const BASE = require('./test_base').BASE;
             const bar = document.getElementById('sleeping-composer'); const t = document.getElementById('sleeping-composer-text');
             return { shown: !bar.hidden, role: bar.getAttribute('role'), text: t.textContent, restart: !document.getElementById('sleeping-restart-btn').hidden, tab: document.getElementById('sleeping-restart-btn').tabIndex }; })()`);
         let c = await composer('ended-a-id');
-        assert.deepEqual([c.shown, c.role, c.restart, c.tab], [true, 'status', true, 0]);
+        assert.deepEqual([c.shown, c.role, c.restart, c.tab], [true, null, true, 0], 'the bar carries no live role of its own (its buttons would be read with it): the state is said by the agent-state status (#6213)');
         assert.match(c.text, /has ended$/, 'no message waiting: just that it ended: ' + c.text);
         await ev(`(window.T.state.lastSendAt ||= new Map()).set('ended-a-id', Date.now()); window.T.render.renderLiveSessions(window.T.state.liveSessions); true`);
         c = await composer('ended-a-id');

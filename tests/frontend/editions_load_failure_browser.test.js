@@ -24,7 +24,8 @@ const BASE = require('./test_base').BASE;
         const t = await toasts();
         assert.equal(t.length, 1, JSON.stringify(t));
         assert.match(t[0].text, /^Could not load the connect screen\. Reload the page\./);
-        assert.equal(t[0].role, 'alert'); assert.equal(t[0].error, true);
+        assert.equal(t[0].role, null); assert.equal(t[0].error, true); // no role of its own: the notices' assertive region says it (#6213)
+        await waitFor(`document.getElementById('notice-alert').textContent.includes('Could not load the connect screen')`, 'the error is said by the alert region', 5000);
         assert.equal(await modalOpen(), false, 'no half-built screen');
 
         console.log('2. the file is back: pressing again opens the screen');
