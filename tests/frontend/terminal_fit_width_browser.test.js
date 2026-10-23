@@ -116,7 +116,9 @@ const VIEW = `(async () => {
         sent: window.__resizesSent, http: window.__httpResizes } : null;
 })()`;
 
-async function openTab({ contextId, width, height, mobile, fakeHubView = false }) {
+const PHONE_BASE = 10; // a phone-wide window with no size chosen in Settings draws at 10 px (terminal_font.js, #6577); a desktop at 13
+
+async function openTab({ contextId, width, height, mobile, fakeHubView = false, dpr = 1 }) {
     const b = await browserClient();
     const { targetId } = await b.Target.createTarget({ url: 'about:blank', browserContextId: contextId });
     await b.close();
@@ -124,7 +126,7 @@ async function openTab({ contextId, width, height, mobile, fakeHubView = false }
     const { Page, Runtime, Emulation } = client;
     await Promise.all([Page.enable(), Runtime.enable()]);
     await Page.addScriptToEvaluateOnNewDocument({ source: PRELOAD + (fakeHubView ? 'window.__fakeHubView = true;' : '') });
-    await Emulation.setDeviceMetricsOverride({ width, height, deviceScaleFactor: 1, mobile });
+    await Emulation.setDeviceMetricsOverride({ width, height, deviceScaleFactor: dpr, mobile });
     await Page.bringToFront();
     const ev = async expr => {
         const r = await Runtime.evaluate({ expression: expr, awaitPromise: true, returnByValue: true });
@@ -164,7 +166,7 @@ const click = tab => tab.ev(`(() => { document.getElementById('terminal-fit-widt
 const settled = (tab, what, ok) => tab.waitFor(`(async () => { const v = await ${VIEW}; return v && (${ok}) ? v : null; })()`, what);
 
 function assertFits(v, what) {
-    assert.ok(v.font >= MIN_FONT && v.font < 13, `${what}: the font shrank, not below ${MIN_FONT} (${JSON.stringify(v)})`);
+    assert.ok(v.font >= MIN_FONT && v.font < PHONE_BASE, `${what}: the font shrank from the phone's ${PHONE_BASE}, not below ${MIN_FONT} (${JSON.stringify(v)})`);
     assert.ok(!v.scrolls && v.screenW <= v.clientW, `${what}: every column fits (${JSON.stringify(v)})`);
 }
 
@@ -186,26 +188,26 @@ function assertFits(v, what) {
         console.log('1. A phone on an 80-column pane');
         let v = await show(phone, A, narrow);
         assert.equal(v.following, true, 'the phone renders the pane at its size');
-        assert.equal(v.font, 13, 'the Settings font');
+        assert.equal(v.font, PHONE_BASE, 'no size chosen: a phone draws at its own default, 10 (#6577)');
         assert.ok(v.scrolls, `the pane is wider than the phone (${JSON.stringify(v)})`);
         v = await settled(phone, 'the toggle shown', 'v.btn && v.btn.shown');
         assert.equal(v.btn.tag, 'BUTTON');
         assert.equal(v.btn.pressed, 'false');
         assert.equal(v.btn.label, 'Fit the terminal to the screen width');
         await click(phone);
-        v = await settled(phone, 'the font scaled', `v.font < 13 && v.btn.pressed === 'true'`);
+        v = await settled(phone, 'the font scaled', `v.font < ${PHONE_BASE} && v.btn.pressed === 'true'`);
         assertFits(v, 'fit on');
         assert.equal(v.btn.label, 'Show the terminal at full size (scroll sideways)');
         assert.deepEqual({ cols: v.cols, rows: v.rows }, narrow, 'the xterm keeps the pane\'s columns and rows');
         assert.deepEqual(paneSize(A.name), narrow, 'the pane is unchanged');
         assert.equal(v.sent, 0, 'no resize sent'); assert.equal(v.http, 0, 'no HTTP pane-width sync');
         const fitted = v.font;
-        console.log(`   ✓ 13 px scrolls; on: ${fitted} px, ${v.screenW} <= ${v.clientW} px, pane still ${narrow.cols}x${narrow.rows}, nothing sent`);
+        console.log(`   ✓ ${PHONE_BASE} px scrolls; on: ${fitted} px, ${v.screenW} <= ${v.clientW} px, pane still ${narrow.cols}x${narrow.rows}, nothing sent`);
 
         console.log('2. Remembered on this device');
         await phone.load();
         await show(phone, A, narrow);
-        v = await settled(phone, 'fitted after a reload', `v.btn && v.btn.pressed === 'true' && v.font < 13`);
+        v = await settled(phone, 'fitted after a reload', `v.btn && v.btn.pressed === 'true' && v.font < ${PHONE_BASE}`);
         assertFits(v, 'after a reload');
         assert.equal(v.font, fitted, 'the same size as before');
         console.log(`   ✓ ${v.font} px after a reload`);
@@ -224,13 +226,13 @@ function assertFits(v, what) {
 
         console.log('4. Off: the Settings font and scrolling, kept off after a reload');
         await click(phone);
-        v = await settled(phone, 'the Settings font', `v.font === 13 && v.btn.pressed === 'false'`);
+        v = await settled(phone, 'the Settings font', `v.font === ${PHONE_BASE} && v.btn.pressed === 'false'`);
         assert.ok(v.scrolls);
         await phone.load();
         v = await show(phone, A, wide);
         v = await settled(phone, 'the toggle after a reload', 'v.btn && v.btn.shown');
-        assert.equal(v.btn.pressed, 'false'); assert.equal(v.font, 13);
-        console.log('   ✓ 13 px and scrolling; still off after a reload');
+        assert.equal(v.btn.pressed, 'false'); assert.equal(v.font, PHONE_BASE);
+        console.log(`   ✓ ${PHONE_BASE} px and scrolling; still off after a reload`);
 
         console.log('5. Terminal view only');
         // A terminal agent has no transcript, so it never gets the chat view: set the class the chat
@@ -251,7 +253,7 @@ function assertFits(v, what) {
         v = await show(hub, A, narrow);
         await settled(hub, 'the toggle shown', 'v.btn && v.btn.shown');
         await click(hub);
-        v = await settled(hub, 'the font scaled', `v.font < 13 && v.btn.pressed === 'true'`);
+        v = await settled(hub, 'the font scaled', `v.font < ${PHONE_BASE} && v.btn.pressed === 'true'`);
         assertFits(v, 'through the hub');
         assert.deepEqual(paneSize(A.name), narrow);
         console.log(`   ✓ ${v.font} px through the hub, pane unchanged`);
@@ -283,6 +285,44 @@ function assertFits(v, what) {
         assert.ok(v.font >= DESKTOP_MIN_FONT, `a desktop never fits below ${DESKTOP_MIN_FONT} px (it was ${v.font}, ${v.cols} columns in ${v.clientW} px)`);
         console.log(`   ✓ ${v.font} px at 1280 px with ${v.cols} columns in ${v.clientW} px (${v.scrolls ? 'the rest scrolls' : 'all fit'}), never below ${DESKTOP_MIN_FONT}`);
         await deskHub.close(); tabs.pop();
+
+        console.log('9. A phone draws smaller by default, at 390 px with the pixel ratios of a phone (#6577)');
+        const eighty = { cols: 80, rows: 24 };
+        setPane(A.name, eighty.cols, eighty.rows);
+        const cellPx = v => v.screenW / v.cols;
+        const seen = {};
+        for (const dpr of [1, 3]) {
+            const ctx = await newContext(); contexts.push(ctx);
+            const tab = await openTab({ contextId: ctx, width: 390, height: 844, mobile: true, dpr });
+            tabs.push(tab);
+            v = await show(tab, A, eighty);
+            assert.equal(v.font, PHONE_BASE, `DPR ${dpr}: no size chosen, a phone draws at ${PHONE_BASE} px (was 13)`);
+            const shown = Math.floor(v.clientW / cellPx(v));
+            assert.ok(shown >= 58, `DPR ${dpr}: a 390 px phone shows about 60 columns of an 80-column pane at ${PHONE_BASE} px, not 46 (${shown}; ${JSON.stringify(v)})`);
+            seen[dpr] = { font: v.font, cell: Math.round(cellPx(v) * 100) / 100, columns: shown };
+            await tab.close(); tabs.pop();
+        }
+        console.log(`   ✓ ${PHONE_BASE} px at DPR 1 and 3: ${JSON.stringify(seen)}`);
+
+        console.log('10. A size chosen in Settings wins on the phone, and a desktop is unchanged');
+        const put = body => httpJson('PUT', '/api/settings', body);
+        try {
+            assert.equal((await put({ terminal_font_size: '14' })).status, 200);
+            const ctx = await newContext(); contexts.push(ctx);
+            const tab = await openTab({ contextId: ctx, width: 390, height: 844, mobile: true });
+            tabs.push(tab);
+            v = await show(tab, A, eighty);
+            assert.equal(v.font, 14, 'a chosen 14 is drawn at 14 on a phone');
+            await tab.close(); tabs.pop();
+            assert.equal((await put({ terminal_font_size: '13' })).status, 200);
+            const ctx2 = await newContext(); contexts.push(ctx2);
+            const tab2 = await openTab({ contextId: ctx2, width: 390, height: 844, mobile: true });
+            tabs.push(tab2);
+            v = await show(tab2, A, eighty);
+            assert.equal(v.font, 13, 'a chosen 13 (the old default) is a choice: it stays 13 on a phone');
+            await tab2.close(); tabs.pop();
+        } finally { await put({ terminal_font_size: '' }); }
+        console.log('   ✓ 14 and a chosen 13 hold on a phone; the desktop steps above keep 13');
 
         console.log('\nAll terminal fit-to-width checks passed');
     } finally {

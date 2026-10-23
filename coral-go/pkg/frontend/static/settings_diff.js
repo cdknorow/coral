@@ -5,6 +5,7 @@
  * open) overwrote a setting this tab never touched with the old value it still showed: a CLI path saved
  * elsewhere came back empty. Now a field is sent only when its value differs from what the dialog opened with. */
 
+import { defaultTerminalFont } from './terminal_font.js';
 const GIB = 1024 * 1024 * 1024;
 
 /** A setting's value as a comparable string: booleans (True, true, false) and empty or missing alike. */
@@ -21,7 +22,9 @@ const SHARED_INPUT = [['cli_path_agy', 'cli_path_gemini'], ['default_model_agy',
 
 // What a missing setting reads as in its field.
 // default_permission_mode: unset shows Auto (Claude's default, #5836), so a dialog saved without touching it does not turn the default into a saved mode
-const FIELD_DEFAULT = { artifact_retention_kinds: 'diffs', artifact_retention_days: '0', default_permission_mode: 'auto' };
+const FIELD_DEFAULT = { artifact_retention_kinds: 'diffs', artifact_retention_days: '0', default_permission_mode: 'auto',
+    // unset shows this window's default size (a phone's is smaller, #6577), so a dialog saved without touching it does not turn the default into a chosen size
+    get terminal_font_size() { return String(defaultTerminalFont()); } };
 
 /**
  * changedSettings returns the part of payload (what the dialog's fields hold now) that differs from baseline (the

@@ -1,5 +1,6 @@
 /* xterm.js terminal renderer — streams raw ANSI output via WebSocket */
 
+import { terminalFontFor, DESKTOP_FONT } from './terminal_font.js';
 import { setTerminalFocused, setTerminalSize, setTerminalState } from './terminal_statusbar.js';
 import { state } from './state.js';
 import { markRestarting, currentIsRestarting, showRestartingOverlay, hideSessionOverlay } from './session_overlay.js';
@@ -49,7 +50,7 @@ const FIT_WIDTH_KEY = 'coral-terminal-fit-width';
 const MIN_FIT_FONT = 11;       // a window with room (a desktop beside two sidebars): never smaller than this, a cell of about 6.5 px, so a prompt can be read at a glance (#6231); the rest scrolls sideways
 const MIN_FIT_FONT_PHONE = 7; // a phone that asked to see every column of a pane made for a wider screen: small, and the person's own choice (the toggle) until they turn it off
 const _minFitFont = () => (_isPhoneWidth() ? MIN_FIT_FONT_PHONE : MIN_FIT_FONT);
-let _baseFont = 13;      // the font size from Settings, used whenever not fitting
+let _baseFont = DESKTOP_FONT; // the font size from Settings (or this window's default), used whenever not fitting
 let _fitWidth = (() => { try { return browserLocal.get(FIT_WIDTH_KEY) === '1'; } catch { return false; } })();
 
 function _fitButton() {
@@ -458,7 +459,7 @@ function _reuseTerminal() {
 /** A new xterm terminal with the saved scrollback and font size, the theme and its add-ons. */
 function _buildTerminal() {
     const scrollback = parseInt((state.settings || {}).terminal_scrollback, 10) || 20000;
-    const fontSize = parseInt((state.settings || {}).terminal_font_size, 10) || 13;
+    const fontSize = terminalFontFor((state.settings || {}).terminal_font_size); // the Settings size, else this window's default (a phone's is smaller, #6577)
     _baseFont = fontSize;
     terminal = new Terminal({
         cursorBlink: true,

@@ -1,4 +1,5 @@
 /* Moved out of modals.js as it was (#4684): The Settings dialog: its sections, the API key, storage, database encryption, filling and saving it. No behaviour change. */
+import { defaultTerminalFont, terminalFontFor } from './terminal_font.js';
 import { importOnce } from './import_once.js';
 import { updatesUiOn } from './update_flag.js';
 import { state } from './state.js';
@@ -745,7 +746,7 @@ function _fillTerminalAndBrowserPrefs(s) {
 
     // Terminal Font Size
     const fontSizeSelect = document.getElementById("settings-terminal-font-size");
-    if (fontSizeSelect) fontSizeSelect.value = s.terminal_font_size || "13";
+    if (fontSizeSelect) fontSizeSelect.value = s.terminal_font_size || String(defaultTerminalFont()); // what is drawn when nothing is chosen: a phone's is smaller (#6577)
 
     // Terminal Scrollback
     const scrollbackSelect = document.getElementById("settings-terminal-scrollback");
@@ -909,7 +910,7 @@ function readSettingsForm() {
     const defaultModelPi = document.getElementById("settings-default-model-pi")?.value.trim() || "";
     const fitPaneWidth = document.getElementById("settings-fit-pane-width")?.checked || false;
     const notifyNeedsInput = document.getElementById("settings-notify-needs-input")?.checked || false;
-    const terminalFontSize = document.getElementById("settings-terminal-font-size")?.value || "13";
+    const terminalFontSize = document.getElementById("settings-terminal-font-size")?.value || String(defaultTerminalFont());
     const terminalScrollback = document.getElementById("settings-terminal-scrollback")?.value || "20000";
     const checkUpdates = document.getElementById("settings-check-updates")?.checked ?? true;
     const showScrollbars = document.getElementById("settings-show-scrollbars")?.checked ?? true;
@@ -1069,7 +1070,7 @@ async function applySettingsEffects({ themeSaved, theme, customTheme, fitPaneWid
     // Apply font size and scrollback to existing terminal
     const term = getTerminal();
     if (term) {
-        term.options.fontSize = parseInt(terminalFontSize, 10) || 13;
+        term.options.fontSize = terminalFontFor(terminalFontSize);
         term.options.scrollback = parseInt(terminalScrollback, 10) || 20000;
         const { fitTerminal } = await importOnce('./xterm_renderer.js');
         fitTerminal();

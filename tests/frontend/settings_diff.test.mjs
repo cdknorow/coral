@@ -18,6 +18,20 @@ assert.deepEqual(changedSettings({ terminal_font_size: '13', theme: 'dark', cust
 assert.deepEqual(changedSettings({ terminal_font_size: '13', theme: 'system', custom_theme: '' }, { terminal_font_size: '13' }, 'system', [], 'system'), {});
 assert.deepEqual(changedSettings({ terminal_font_size: '13', theme: 'light', custom_theme: '' }, { terminal_font_size: '13' }, 'light', [], 'system'), { theme: 'light', custom_theme: '' }, 'picking one writes it');
 
+// No terminal size stored: the field shows this window's default (13, a phone's 10, #6577), and a Save that leaves it alone writes no size, on either; a size the person picks is written whatever the window.
+{
+    const saved = globalThis.window;
+    try {
+        globalThis.window = { innerWidth: 1280 };
+        assert.deepEqual(changedSettings({ terminal_font_size: '13', theme: 'dark', custom_theme: '' }, {}, 'dark'), {}, 'a desktop: 13 shown, nothing stored, nothing written');
+        assert.deepEqual(changedSettings({ terminal_font_size: '10', theme: 'dark', custom_theme: '' }, {}, 'dark'), { terminal_font_size: '10' }, 'a desktop: picking 10 writes it');
+        globalThis.window = { innerWidth: 390 };
+        assert.deepEqual(changedSettings({ terminal_font_size: '10', theme: 'dark', custom_theme: '' }, {}, 'dark'), {}, 'a phone: 10 shown, nothing stored, nothing written');
+        assert.deepEqual(changedSettings({ terminal_font_size: '13', theme: 'dark', custom_theme: '' }, {}, 'dark'), { terminal_font_size: '13' }, 'a phone: picking 13 writes it');
+        assert.deepEqual(changedSettings({ terminal_font_size: '14', theme: 'dark', custom_theme: '' }, { terminal_font_size: '14' }, 'dark'), {}, 'a chosen size is a chosen size on a phone too');
+    } finally { if (saved === undefined) delete globalThis.window; else globalThis.window = saved; }
+}
+
 // A stale dialog (it opened before the path was saved elsewhere) holds an empty path and did not touch it: not sent.
 const stale = { terminal_font_size: '13', fit_pane_width: 'True', theme: 'dark' };
 assert.deepEqual(changedSettings({ cli_path_claude: '', cli_path_codex: '', terminal_font_size: '15', fit_pane_width: true, theme: 'dark', custom_theme: '' }, stale, 'dark'), { terminal_font_size: '15' });
