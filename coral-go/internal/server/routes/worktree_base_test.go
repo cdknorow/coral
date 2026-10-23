@@ -2,11 +2,17 @@ package routes
 
 import (
 	"context"
+	"github.com/go-chi/chi/v5"
+	"github.com/subgentic/coral/internal/store"
+	"io"
 	"net/http"
+	"net/http/httptest"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -73,4 +79,58 @@ func toJSON(m map[string]any) string {
 		b.WriteString(";")
 	}
 	return b.String()
+}
+
+// launchWorktreeTeam launches a one-agent team with a worktree in a fresh repository (on master) and returns the repository's git, the board's id and the worktree's folder.
+func launchWorktreeTeam(t *testing.T, serverURL string, cfg *config.Config, board string) (git func(args ...string) string, id, wt string) {
+	t.Helper()
+	repo, git := repoOn(t, "master", true)
+	status, out := postTeam(t, serverURL, map[string]any{"board_name": board, "working_dir": repo, "worktree": true, "agent_type": "claude", "agents": []map[string]any{{"name": "A", "prompt": "x"}}})
+	require.Equal(t, http.StatusOK, status, "%v", out)
+	id = out["board_id"].(string)
+	return git, id, filepath.Join(cfg.CoralDir(), "worktrees", id)
+}
+
+// teamServer serves launch, stop and resurrect of a team over a repository's worktree, backed by a team store.
+func teamServer(t *testing.T) (url string, cfg *config.Config) {
+	t.Helper()
+	cfg = config.Load(t.TempDir())
+	_, h, _, ss := setupSessionsTestServerWithConfig(t, cfg)
+	h.SetTeamStore(store.NewTeamStore(h.db))
+	stubCLIPaths(t, ss)
+	require.NoError(t, ss.SetSetting(context.Background(), "cli_path_claude", stubCLI(t)))
+	r := chi.NewRouter()
+	r.Use(testIdentity(h.db))
+	r.Post("/api/sessions/launch-team", h.LaunchTeam)
+	r.Post("/api/sessions/live/team/{boardName}/kill", h.KillTeam)
+	r.Post("/api/teams/detail/{name}/resurrect", h.ResurrectTeam)
+	srv := httptest.NewServer(r)
+	t.Cleanup(srv.Close)
+	return srv.URL, cfg
+}
+
+func apiPost(t *testing.T, url string) (int, string) {
+	t.Helper()
+	resp, err := http.Post(url, "application/json", strings.NewReader("{}"))
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, string(b)
+}
+
+// #6701 (QA #6692): stopping a team takes its worktree away: the folder and the repository's registration of it. The removal ran in the folder that holds the worktrees, which is no repository, so
+// it only logged an error and left both.
+func TestStopTeamRemovesItsWorktree(t *testing.T) {
+	url, cfg := teamServer(t)
+	git, id, wt := launchWorktreeTeam(t, url, cfg, "stopwt")
+	require.DirExists(t, wt)
+	require.Contains(t, git("worktree", "list"), id)
+
+	status, body := apiPost(t, url+"/api/sessions/live/team/"+id+"/kill")
+	require.Equal(t, http.StatusOK, status, body)
+	require.Eventually(t, func() bool {
+		_, err := os.Stat(wt)
+		return os.IsNotExist(err) && !strings.Contains(git("worktree", "list"), id)
+	}, 20*time.Second, 50*time.Millisecond, "the folder and the registration are gone")
+	assert.Contains(t, git("branch", "--list", "coral-team/"+id), "coral-team/"+id, "the branch, with its commits, stays")
 }
