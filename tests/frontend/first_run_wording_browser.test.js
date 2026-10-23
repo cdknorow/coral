@@ -33,7 +33,7 @@ const HISTORY = `(() => {
         const S = `(window.__coralStatic || '/static/')`;
 
         // (a) the hooks question
-        const a = await ev(`(async () => { const g = await import(${S} + 'terminal_gone.js'); const text = "Answer Codex's question about Coral's hooks above first: your message was not sent. Trusting hooks lets them run outside Codex's sandbox.";
+        const a = await ev(`(async () => { const g = await import(${S} + 'terminal_gone.js'); const text = "Answer Codex's question about Coral's hooks above first: your message was not sent. Trust them only if you want them to run outside Codex's sandbox.";
             g.reportSendError({ name: 'x', display_name: 'x' }, text, 'codex_hooks_review_pending');
             const box = document.getElementById('composer-error'); const shown = !box.hidden, words = box.querySelector('.composer-error-text').textContent.trim().split(/\\s+/).length;
             g.noteHooksAnswered(); const gone = box.hidden === true; await new Promise(r => setTimeout(r, 100));
