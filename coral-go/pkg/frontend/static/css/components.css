@@ -4705,3 +4705,4 @@ dialog.reminder-dialog::backdrop { background: rgba(var(--black-rgb), 0.5); }
 .launch-agent-summary .las-change { margin: 0; }
 .launch-agent-summary tr[hidden] { display: none; }
 @media (pointer: coarse), (max-width: 767px) { .launch-agent-summary .las-change { min-height: var(--control-touch-height, 44px); } }
+.launch-dir-summary .btn { margin: 0; } /* the folder's Change is flush right, in the column of the rows' Change buttons (#6460) */

@@ -29,6 +29,13 @@ const BASE = require('./test_base').BASE;
             const val = row => ev(`document.querySelector('#launch-agent-summary [data-row="${row}"] .las-value').textContent.replace(/\\s+/g, ' ').trim()`);
             assert.equal(await val('model'), 'CLI default', `${at}: no model chosen says what happens`);
             assert.equal(await val('mode'), await ev(`(() => { const s = document.querySelector('#launch-agent-acf .acf-permission-mode'); return s.options[s.selectedIndex].textContent.trim(); })()`), `${at}: Mode is the form's own Mode`);
+            // one rule at every width: Claude can take a thinking level, so its Thinking row is there once the levels have loaded (#6460 point 1)
+            await waitFor(`!!document.querySelector('#launch-agent-acf .acf-thinking-wrap') && !document.querySelector('#launch-agent-acf .acf-thinking-wrap').hidden`, `${at}: Claude's thinking levels loaded`, 8000);
+            assert.equal(await ev(vis('#launch-agent-summary [data-row="thinking"]')), true, `${at}: the Thinking row shows for Claude, as the form's Thinking field does`);
+            assert.equal(await val('thinking'), 'CLI default');
+            // the Change buttons line up in one column, the folder's too (#6460 point 2)
+            const rights = await ev(`['#launch-dir-summary .btn', '#launch-agent-summary [data-row="model"] .las-change', '#launch-agent-summary [data-row="thinking"] .las-change', '#launch-agent-summary [data-row="mode"] .las-change'].map(s => Math.round(document.querySelector(s).getBoundingClientRect().right))`);
+            assert.ok(Math.max(...rights) - Math.min(...rights) <= 1, `${at}: the Change buttons share a right edge: ${JSON.stringify(rights)}`);
             await shot(`rows-${w}`);
 
             console.log(`${at}: a value changed in the form shows in its row; Change opens the section`);

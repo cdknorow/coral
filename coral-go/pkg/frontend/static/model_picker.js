@@ -226,13 +226,14 @@ export function syncThinking(container) {
     // a custom model (#5480) lists exactly the levels its owner ticked: none ticked means no level choice (a built-in model with no list takes every level the type has)
     const efforts = hit && hit.custom === true ? (Array.isArray(hit.efforts) ? hit.efforts : []) : (hit && Array.isArray(hit.efforts) && hit.efforts.length ? hit.efforts : null);
     const allowed = efforts ? typeLevels.filter(l => efforts.includes(l)) : typeLevels;
-    if (!allowed.length) { wrap.hidden = true; if (note) note.textContent = ''; return; }
+    if (!allowed.length) { wrap.hidden = true; if (note) note.textContent = ''; container.dispatchEvent(new Event('acf-synced', { bubbles: true })); return; } // (a summary of the form follows it showing or hiding)
     const wanted = container._thinkingWanted !== undefined ? container._thinkingWanted : select.value;
     select.innerHTML = `<option value="">Default</option>` + allowed.map(l => `<option value="${escapeAttr(l)}">${escapeHtml(LEVEL_NAMES[l] || l)}</option>`).join('');
     const keep = wanted === '' || allowed.includes(wanted);
     select.value = keep ? wanted : '';
     if (note) note.textContent = keep ? '' : `${LEVEL_NAMES[wanted] || wanted} is not offered for ${model || 'this model'}: back to Default.`;
     wrap.hidden = false;
+    container.dispatchEvent(new Event('acf-synced', { bubbles: true }));
 }
 
 /** The form's thinking level: undefined when it was not chosen or given and so should not be sent, else "" (Default) or a level. */
