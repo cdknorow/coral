@@ -47,21 +47,16 @@ func RemoveWorktree(ctx context.Context, repoDir, path, branch string) (Worktree
 		return res, fmt.Errorf("%s is not a git worktree of a repository Coral knows", path)
 	}
 	if !gone {
-		out, err := Command(ctx, path, "status", "--porcelain", "--untracked-files=all").Output()
-		if err != nil {
-			res.State, res.Reason = "failed", "its state could not be read"
-			return res, nil
-		}
-		if strings.TrimSpace(string(out)) != "" {
-			res.State, res.Reason = "kept", "it has uncommitted changes"
-			return res, nil
-		}
+		// No --force, and no second try: git itself refuses a worktree with modified or untracked files, a locked one, a broken one; that worktree stays and the person is told.
 		if out, err := Command(ctx, repoDir, "worktree", "remove", "--", path).CombinedOutput(); err != nil {
 			Command(ctx, repoDir, "worktree", "prune").Run()
 			res.State = "kept"
-			if strings.Contains(string(out), "locked") {
+			switch text := string(out); {
+			case strings.Contains(text, "modified or untracked"):
+				res.Reason = "it has uncommitted changes"
+			case strings.Contains(text, "locked"):
 				res.Reason = "the worktree is locked"
-			} else {
+			default:
 				res.Reason = "git would not remove it"
 			}
 			return res, nil
