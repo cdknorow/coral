@@ -14,10 +14,10 @@ import (
 // binary until #3854. These checks keep that from coming back.
 
 const (
-	// staticBudget is the most the embedded static tree may hold. It is about 4.5 MB (4.1 MB plus the
-	// agent docs that `make` syncs into static/agent_docs); raise it deliberately, with the reason in
-	// the commit, when a real asset needs the room.
-	staticBudget = 6<<20 + 148<<10 // 6 MiB + 148 KiB (159: +12 KiB more for the first-run launch changes (the agent choice, Use this folder, the pending image bubble: 7 KB), measured the way CI does with the agent docs synced; +8 KiB before that for the Jobs list on a phone, the accessible names and contrast tokens, the keyboard fixes and the notices region, about 7 KB in all; #5987: the embedded tree passed 6 MiB with the hub's two Connect pictures and the small (i) module; the text cut removes more than it adds as it lands)
+	// staticBudget is the most the static tree a release ships may hold: its JS and CSS as the server serves them (minified, comments gone; a release embeds exactly those bytes, tools/strip-static, #6208)
+	// and every other file as it is, with the agent docs `make` syncs into static/agent_docs. It is 5.04 MB today (the source tree is 6.44 MB: comments and indentation are not shipped), so a comment
+	// never moves it and a real asset does. Raise it deliberately, with the reason in the commit, when a real asset needs the room.
+	staticBudget = 5 << 20 // 5 MiB: about 200 KB of room over what ships
 	// fileBudget is the most one embedded file may hold (the CodeMirror bundle, the largest, is ~1 MB).
 	fileBudget = 1536 << 10
 )
@@ -32,7 +32,7 @@ var unreferencedImages = map[string]string{
 }
 
 func TestStaticTreeWithinBudget(t *testing.T) {
-	var total int64
+	var total, source int64
 	err := fs.WalkDir(Static, "static", func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
@@ -41,19 +41,25 @@ func TestStaticTreeWithinBudget(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		total += info.Size()
 		if info.Size() > fileBudget {
 			t.Errorf("%s is %d bytes, over the %d-byte budget for one embedded file: every Coral binary carries it", p, info.Size(), fileBudget)
 		}
+		data, err := Static.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		source += info.Size()
+		// What a release carries: its JS and CSS are embedded already minified (tools/strip-static, #6208), the bytes the server serves; MinifyAsset is the identity for every other file.
+		total += int64(len(MinifyAsset(strings.TrimPrefix(p, "static/"), data)))
 		return nil
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if total > staticBudget {
-		t.Errorf("the embedded static tree is %d bytes, over its %d-byte budget (staticBudget): every Coral binary carries it", total, staticBudget)
+		t.Errorf("the static tree a release ships is %d bytes, over its %d-byte budget (staticBudget): every Coral binary carries it", total, staticBudget)
 	}
-	t.Logf("embedded static tree: %d bytes (budget %d)", total, staticBudget)
+	t.Logf("static tree a release ships: %d bytes (budget %d); its source: %d", total, staticBudget, source)
 }
 
 func isImage(name string) bool {
