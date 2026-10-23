@@ -1,5 +1,7 @@
 package backendchoice
 
+import "strings"
+
 import "testing"
 
 func TestResolve(t *testing.T) {
@@ -28,7 +30,9 @@ func TestResolve(t *testing.T) {
 		{"an unknown saved value is no choice", "", "screen", "linux", none, "pty", false, false},
 		{"--backend pty", "pty", "tmux", "darwin", boom, "pty", true, false},
 		{"--backend tmux", "tmux", "pty", "linux", boom, "tmux", true, false},
-		{"--backend tmux on Windows", "tmux", "", "windows", boom, "tmux", true, false},
+		{"--backend tmux on Windows is not honoured", "tmux", "", "windows", boom, "pty", false, false},
+		{"--backend TMUX on Windows is not honoured", "TMUX", "pty", "windows", boom, "pty", false, false},
+		{"--backend pty on Windows", "pty", "tmux", "windows", boom, "pty", true, false},
 		// the exception: never hide agents that are running
 		{"no choice, agents in tmux: this start runs tmux", "", "", "darwin", some, "tmux", false, true},
 		{"no choice, agents in tmux, Linux", "", "", "linux", some, "tmux", false, true},
@@ -60,5 +64,30 @@ func TestAnUpgradedInstallRunsTmuxOnceThenPty(t *testing.T) {
 	running = 0 // the agents ended; nothing was saved
 	if b, _, kept := Resolve("", "", "darwin", count); b != "pty" || kept {
 		t.Fatalf("next start: %s kept=%v", b, kept)
+	}
+}
+
+// A forced tmux is refused on Windows with one line; everything else is allowed (#304).
+func TestFlagProblem(t *testing.T) {
+	for _, c := range []struct {
+		goos, flag string
+		refused    bool
+	}{
+		{"windows", "tmux", true},
+		{"windows", "TMUX", true},
+		{"windows", " tmux ", true},
+		{"windows", "pty", false},
+		{"windows", "", false},
+		{"linux", "tmux", false},
+		{"darwin", "tmux", false},
+	} {
+		msg := FlagProblem(c.goos, c.flag)
+		if c.refused {
+			if !strings.Contains(msg, "tmux isn't supported on Windows") || !strings.Contains(msg, "its own terminals") {
+				t.Errorf("%s %q: %q", c.goos, c.flag, msg)
+			}
+		} else if msg != "" {
+			t.Errorf("%s %q: unexpected %q", c.goos, c.flag, msg)
+		}
 	}
 }

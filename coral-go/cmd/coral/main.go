@@ -7,6 +7,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/subgentic/coral/internal/backendchoice"
 	"golang.org/x/term"
 	"io"
 	"log"
@@ -113,6 +114,10 @@ func main() {
 		// a server and ignore it (#3506).
 		fmt.Fprintf(os.Stderr, "coral: unexpected argument %q\n", flag.Arg(0))
 		flag.Usage()
+		os.Exit(2)
+	}
+	if msg := backendchoice.FlagProblem(runtime.GOOS, *backendFlag); msg != "" {
+		fmt.Fprintf(os.Stderr, "coral: %s\n", msg)
 		os.Exit(2)
 	}
 	if *selfTest {
