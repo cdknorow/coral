@@ -162,6 +162,7 @@ export function attachVersions(dialog, hooks) {
     async function startCompare() {
         const i = cur(), row = st.rows[i], before = st.rows[i - 1];
         if (!TEXTY.test(row.media_type || '') && !/\.(md|markdown|txt|json|ya?ml|toml|csv|log)$/i.test(row.name || '')) { say('Compare is for text files.'); return; }
+        dialog.classList.toggle('av-keep-wide', dialog.classList.contains('ac-on')); // the dialog keeps the width the version had with its comments: no jump on Compare
         st.comparing = true; st.sheetWas = hooks.sheetOpen(); if (st.sheetWas) hooks.setSheet(false); draw(); // a phone's open comments sheet would keep the document out of the keyboard's reach
         st.abort?.abort(); st.abort = new AbortController();
         const gen = ++st.gen, signal = st.abort.signal;
@@ -208,13 +209,20 @@ export function attachVersions(dialog, hooks) {
         const box = el('div', 'av-lines');
         const keep = new Array(lines.length).fill(false);
         lines.forEach((l, i) => { if (l.t !== 'same') for (let k = Math.max(0, i - CONTEXT); k <= Math.min(lines.length - 1, i + CONTEXT); k++) keep[k] = true; });
+        // a run of one or two unchanged lines is shown, not folded into a note that costs as much as the lines
+        for (let i = 0; i < lines.length;) {
+            if (keep[i]) { i++; continue; }
+            let j = i; while (j < lines.length && !keep[j]) j++;
+            if (j - i < 3) for (let k = i; k < j; k++) keep[k] = true;
+            i = j;
+        }
         let skipped = 0;
         lines.forEach((l, i) => {
             if (!keep[i]) { skipped++; return; }
-            if (skipped) { box.append(el('div', 'av-gap', `${skipped} unchanged line${skipped === 1 ? '' : 's'}`)); skipped = 0; }
+            if (skipped) { box.append(el('div', 'av-gap', `${skipped} unchanged lines not shown`)); skipped = 0; }
             box.append(lineEl(l));
         });
-        if (skipped) box.append(el('div', 'av-gap', `${skipped} unchanged line${skipped === 1 ? '' : 's'}`));
+        if (skipped) box.append(el('div', 'av-gap', `${skipped} unchanged lines not shown`));
         return box;
     }
     function splitView(lines, row, before) {
@@ -228,7 +236,7 @@ export function attachVersions(dialog, hooks) {
     }
     function leaveCompare() {
         st.comparing = false; st.gen++; st.abort?.abort();
-        dialog.classList.remove('av-comparing');
+        dialog.classList.remove('av-comparing', 'av-keep-wide');
         draw();
         hooks.reload(); // the version is drawn again, with its comments
         if (st.sheetWas) hooks.setSheet(true);
@@ -241,7 +249,7 @@ export function attachVersions(dialog, hooks) {
         async open(hex, server, { switched = false } = {}) {
             const same = st.rows && st.hex !== hex && st.server === server && st.rows.some(r => r.digest === hex);
             st.hex = hex; st.server = server; st.listOpen = false;
-            if (!switched) { st.comparing = false; dialog.classList.remove('av-comparing'); }
+            if (!switched) { st.comparing = false; dialog.classList.remove('av-comparing', 'av-keep-wide'); }
             if (!same && !(st.rows && st.rows.some(r => r.digest === hex))) { st.rows = null; draw(); const gen = ++st.gen; const rows = await load(hex, server); if (gen !== st.gen || st.hex !== hex) return; st.rows = rows; }
             draw();
             if (switched && !bar.hidden) {
@@ -250,7 +258,7 @@ export function attachVersions(dialog, hooks) {
                 bar.querySelector('.av-current')?.focus();
             }
         },
-        close() { st.gen++; st.abort?.abort(); st.rows = null; st.hex = null; st.comparing = false; st.listOpen = false; dialog.classList.remove('av-comparing', 'av-has-versions'); bar.hidden = true; bar.replaceChildren(); },
+        close() { st.gen++; st.abort?.abort(); st.rows = null; st.hex = null; st.comparing = false; st.listOpen = false; dialog.classList.remove('av-comparing', 'av-has-versions', 'av-keep-wide'); bar.hidden = true; bar.replaceChildren(); },
         comparing: () => st.comparing,
     };
 }

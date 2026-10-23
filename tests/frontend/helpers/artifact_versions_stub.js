@@ -12,7 +12,7 @@ const STUB = `(() => {
     const at = n => new Date(Date.now() - n * 3600000).toISOString();
     const rows = [['${H1}', 1, 30], ['${H2}', 2, 3], ['${H3}', 3, 1]].map(([d, v, h]) => ({ digest: d, version: v, versions: 3, is_latest: v === 3, name: 'release-plan.md', size: 9000 + v * 1500, media_type: 'text/markdown', at: at(h), uploader: 'frontend-dev', role: 'Frontend Dev' }));
     const json = (o, status) => Promise.resolve(new Response(JSON.stringify(o), { status: status || 200, headers: { 'Content-Type': 'application/json' } }));
-    const who = n => ({ kind: 'owner', issuer: 'local', subject: n, name: n });
+    const who = n => (n === 'Operator' ? { kind: 'owner', issuer: 'local', subject: n, name: n } : { kind: 'agent', issuer: 'local', subject: n, name: n });
     const c = (id, art, ver, from, carried, quote, body, extra) => ({ id, artifact_id: art, parent_id: null, anchor: { quote }, body, author: who(extra && extra.by || 'Operator'), created_at: at(2), mine: true, can: { reply: true, edit: true, delete: true, resolve: true }, version: ver, ...(from ? { from_version: from, carried } : {}), ...(extra || {}) });
     window.fetch = (u, o) => {
         const url = String(u), method = (o && o.method) || 'GET';

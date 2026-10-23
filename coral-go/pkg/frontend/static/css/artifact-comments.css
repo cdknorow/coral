@@ -205,6 +205,7 @@
 .av-colhead { margin: 0 0 6px; font-size: var(--fs-sm, .8125rem); color: var(--text-secondary); }
 /* comparing: the comments are of the version, not of the changes */
 .artifact-viewer.av-comparing .ac-panel, .artifact-viewer.av-comparing .ac-toggle { display: none !important; }
+.artifact-viewer.av-keep-wide .artifact-viewer-content { width: min(1240px, 96vw); }
 .ac-from { color: var(--text-muted); font-size: .75rem; }
 .ac-from-note { margin: 0; }
 .ac-groupitem { list-style: none; }
@@ -214,6 +215,7 @@
 .ac-group > .ac-card { border: 0; border-top: 1px solid var(--border); border-radius: 0; }
 .ac-group > .ac-card:first-of-type { border-top: 0; }
 @media (max-width: 767px) {
+    .artifact-viewer.av-keep-wide .artifact-viewer-content { width: 100vw; max-height: 100%; height: 100%; border-radius: 0; }
     .av-bar { padding: 6px 8px; }
     .av-bar .btn, .av-icon, .av-seg .btn { min-height: var(--control-touch-height, 44px); }
     .av-icon { min-width: var(--control-touch-height, 44px); }
