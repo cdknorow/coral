@@ -53,6 +53,7 @@ type claudeCursor struct {
 	lastTS   string
 	msgCount int
 	summary  string
+	firstMsg string // the first thing the person typed (#6207)
 	fts      FTSBodyBuilder
 	ftsVer   int // counts the changes to the search body (its text or the summary it opens with)
 	ftsSent  int // the ftsVer of the body last returned, 0 when none was
@@ -69,7 +70,9 @@ func cursorSummary(text string) string {
 }
 
 // weight is the memory the cursor holds, for the bytes bound: the search text, its summary and tail, and a share for the rest.
-func (c *claudeCursor) weight() int { return c.fts.b.Cap() + len(c.summary) + cap(c.tail) + 512 }
+func (c *claudeCursor) weight() int {
+	return c.fts.b.Cap() + len(c.summary) + len(c.firstMsg) + cap(c.tail) + 512
+}
 
 const cursorTailLen = 64
 
@@ -127,14 +130,16 @@ func (h *claudeHistory) session(fpath string, info os.FileInfo, mtime float64, i
 		body = buildFTSBody(cur.summary, &cur.fts)
 	}
 	s := &IndexedSession{
-		SessionID:      strings.TrimSuffix(filepath.Base(fpath), ".jsonl"),
-		SourceType:     "claude",
-		SourceFile:     fpath,
-		FileMtime:      mtime,
-		MessageCount:   cur.msgCount,
-		DisplaySummary: cur.summary,
-		FTSBody:        body,
-		FTSUnchanged:   unchanged,
+		SessionID:        strings.TrimSuffix(filepath.Base(fpath), ".jsonl"),
+		SourceType:       "claude",
+		SourceFile:       fpath,
+		FileMtime:        mtime,
+		MessageCount:     cur.msgCount,
+		DisplaySummary:   cur.summary,
+		FirstUserMessage: cur.firstMsg,
+		IndexVersion:     HistoryIndexVersion,
+		FTSBody:          body,
+		FTSUnchanged:     unchanged,
 	}
 	if cur.firstTS != "" {
 		first, last := cur.firstTS, cur.lastTS
@@ -353,6 +358,9 @@ func (c *claudeCursor) add(line []byte) {
 	c.fts.Add(text)
 	if c.fts.b.Len() != before {
 		c.ftsVer++
+	}
+	if e.Type == "user" && c.firstMsg == "" && !injectedUserText(text) {
+		c.firstMsg = clipFirstMessage(text)
 	}
 	if e.Type == "assistant" && c.summary == "" && text != "" {
 		c.summary = cursorSummary(text)

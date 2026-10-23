@@ -37,11 +37,11 @@ func (s *SessionStore) UpsertSessionIndex(ctx context.Context, idx *SessionIndex
 		_, err := tx.ExecContext(ctx,
 			`INSERT OR REPLACE INTO session_index
 			 (session_id, source_type, source_file, first_timestamp, last_timestamp,
-			  message_count, display_summary, agent_name, display_name, indexed_at, file_mtime, index_version)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			  message_count, display_summary, first_user_message, agent_name, display_name, indexed_at, file_mtime, index_version)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			idx.SessionID, idx.SourceType, idx.SourceFile,
 			idx.FirstTimestamp, idx.LastTimestamp,
-			idx.MessageCount, idx.DisplaySummary,
+			idx.MessageCount, idx.DisplaySummary, idx.FirstUserMessage,
 			idx.AgentName, idx.DisplayName, now, idx.FileMtime, idx.IndexVersion)
 		return err
 	})
@@ -54,7 +54,7 @@ func (s *SessionStore) GetIndexedSession(ctx context.Context, sessionID string) 
 	var idx SessionIndex
 	err := s.reader().GetContext(ctx, &idx,
 		`SELECT session_id, source_type, source_file, first_timestamp, last_timestamp,
-			message_count, display_summary, agent_name, display_name, indexed_at, file_mtime, index_version
+			message_count, display_summary, first_user_message, agent_name, display_name, indexed_at, file_mtime, index_version
 		 FROM session_index WHERE session_id = ?`, sessionID)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -199,17 +199,16 @@ func (s *SessionStore) PruneHistoryExclusions(ctx context.Context, exists func(p
 	return removed, nil
 }
 
-// GetHistoryMtimes skips files checked by the current parser. Legacy Codex rows
-// are parsed once even with unchanged mtimes; excluded files keep only this
-// derived stat cache, so a later pass needn't reopen guardian rollouts either.
-// Version 1 is the guardian-aware Codex parser (#6081).
-func (s *SessionStore) GetHistoryMtimes(ctx context.Context) (map[string]float64, error) {
+// GetHistoryMtimes skips files checked by the current parser. A row written by an older parser (an index_version below version, whatever its source) is
+// read once more even with an unchanged mtime, so a field a newer parser adds (the first user message, #6207) is filled for sessions that are never written to again;
+// excluded files keep only this derived stat cache, so a later pass needn't reopen guardian rollouts either. Version 1 was the guardian-aware Codex parser (#6081).
+func (s *SessionStore) GetHistoryMtimes(ctx context.Context, version int) (map[string]float64, error) {
 	known, err := s.GetIndexedMtimes(ctx)
 	if err != nil {
 		return nil, err
 	}
 	var legacy []string
-	if err := s.reader().SelectContext(ctx, &legacy, `SELECT source_file FROM session_index WHERE source_type = 'codex' AND index_version < 1`); err != nil {
+	if err := s.reader().SelectContext(ctx, &legacy, `SELECT source_file FROM session_index WHERE index_version < ?`, version); err != nil {
 		return nil, err
 	}
 	for _, path := range legacy {
@@ -219,7 +218,7 @@ func (s *SessionStore) GetHistoryMtimes(ctx context.Context) (map[string]float64
 		SourceFile string  `db:"source_file"`
 		FileMtime  float64 `db:"file_mtime"`
 	}
-	if err := s.reader().SelectContext(ctx, &excluded, `SELECT source_file, file_mtime FROM history_exclusions WHERE source_type = 'codex' AND index_version = 1`); err != nil {
+	if err := s.reader().SelectContext(ctx, &excluded, `SELECT source_file, file_mtime FROM history_exclusions WHERE source_type = 'codex' AND index_version = ?`, version); err != nil {
 		return nil, err
 	}
 	for _, row := range excluded {

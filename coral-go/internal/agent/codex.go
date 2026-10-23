@@ -68,7 +68,7 @@ func (a *CodexAgent) forgetFailures(seen map[string]bool) {
 	}
 }
 
-const codexHistoryIndexVersion = 1
+const codexHistoryIndexVersion = HistoryIndexVersion
 
 func (a *CodexAgent) AgentType() string    { return "codex" }
 func (a *CodexAgent) SupportsResume() bool { return true }
@@ -158,6 +158,7 @@ func parseCodexSessionWithOpen(fpath string, mtime float64, open func(string) (*
 	var firstTS, lastTS *string
 	var msgCount int
 	var summary string
+	var firstTyped, firstItem string // the first user message: from the event the CLI records a typed message as, else from a user message item (#6207)
 	var previousRole, previousText, previousTS, previousKind string
 	var fts FTSBodyBuilder
 	var coralSessionID string
@@ -203,6 +204,13 @@ func parseCodexSessionWithOpen(fpath string, mtime float64, open func(string) (*
 			msgCount++
 			fts.Add(text)
 		}
+		if role == "user" && !injectedUserText(text) {
+			if kind == "event_msg" && firstTyped == "" {
+				firstTyped = clipFirstMessage(text)
+			} else if firstItem == "" {
+				firstItem = clipFirstMessage(text)
+			}
+		}
 		if summary == "" && role == "assistant" {
 			if len(text) > 200 {
 				text = text[:200]
@@ -226,7 +234,13 @@ func parseCodexSessionWithOpen(fpath string, mtime float64, open func(string) (*
 		LastTimestamp:  lastTS,
 		MessageCount:   msgCount,
 		DisplaySummary: summary,
-		FTSBody:        buildFTSBody(summary, &fts),
+		FirstUserMessage: func() string {
+			if firstTyped != "" {
+				return firstTyped
+			}
+			return firstItem
+		}(),
+		FTSBody: buildFTSBody(summary, &fts),
 	}, nil
 }
 

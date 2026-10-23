@@ -333,6 +333,7 @@ var columnMigrations = []struct {
 	{"session_index", "agent_name", "TEXT"},
 	{"session_index", "display_name", "TEXT"},
 	{"session_index", "index_version", "INTEGER NOT NULL DEFAULT 0"},
+	{"session_index", "first_user_message", "TEXT NOT NULL DEFAULT ''"}, // what the person typed first, for History titles (#6207)
 	{"token_usage", "cache_read_tokens", "INTEGER NOT NULL DEFAULT 0"},
 	{"token_usage", "cache_write_tokens", "INTEGER NOT NULL DEFAULT 0"},
 	{"token_usage", "session_start_at", "TEXT"},
