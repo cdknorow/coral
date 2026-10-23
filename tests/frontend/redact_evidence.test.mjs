@@ -15,6 +15,13 @@ assert.equal(r('Authorization: Bearer abc.def-ghi'), 'Authorization: REDACTED');
 assert.equal(r('authorization=Basic dXNlcjpwYXNz'), 'authorization=REDACTED');
 assert.equal(r('sent Bearer abc123xyz to the hub'), 'sent Bearer REDACTED to the hub');
 assert.equal(r('X-Coral-Session-Token: s3cr3t'), 'X-Coral-Session-Token: REDACTED');
+// Forms the first version missed (QA's adversarial strings): a colon with no quotes, single quotes, a Cookie header.
+assert.equal(r('token: abc123'), 'token: REDACTED');
+assert.equal(r('access_token: abc123 and more'), 'access_token: REDACTED and more');
+assert.equal(r("{'token':'abc'}"), "{'token':'REDACTED'}");
+assert.equal(r('Cookie: coral_session=abc; theme=dark'), 'Cookie: REDACTED');
+assert.equal(r('Set-Cookie: coral_session=abc; HttpOnly'), 'Set-Cookie: REDACTED');
+assert.equal(r('the tokens: many and a key idea: keyboard'), 'the tokens: many and a key idea: keyboard');
 // Names of four characters or more, everywhere; a shorter one is left alone.
 assert.equal(r('C:\\Users\\runneradmin\\x on RUNNERVM1', ['runneradmin', 'RUNNERVM1']), 'C:\\Users\\<redacted>\\x on <redacted>');
 assert.equal(r('a bob b', ['bob', 'ab']), 'a bob b');
