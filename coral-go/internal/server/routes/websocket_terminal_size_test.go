@@ -98,3 +98,21 @@ func TestWSTerminal_SizeIsNotRepeated(t *testing.T) {
 	assert.Nil(t, again, "no second terminal_size without a change")
 
 }
+
+// #6706: a viewer that opens right after a resize made elsewhere is told the size the pane has now, not the one the shared pane list had a moment ago.
+func TestWSTerminal_FirstSizeIsFreshAfterAResizeElsewhere(t *testing.T) {
+	backend, client := newTerminalTestTmuxBackend(t)
+	server := setupTerminalTestServer(t, backend)
+	tmuxName := spawnTestSession(t, backend, "size-fresh", "d0e1f2a3-1111-4222-8333-444455556666", "")
+	_, _, err := backend.PaneSize(tmuxName) // the shared pane list now has the old size
+	require.NoError(t, err)
+	require.NoError(t, exec.Command("tmux", "-S", client.SocketPath, "resize-window", "-t", "="+tmuxName+":", "-x", "91", "-y", "29").Run())
+
+	conn, ctx, cancel := dialTerminalWS(t, server, tmuxName)
+	defer cancel()
+	first := readWSFrame(t, ctx, conn, 5*time.Second, frameType("terminal_size"))
+	require.NotNil(t, first)
+	assert.Equal(t, true, first["initial"])
+	assert.EqualValues(t, 91, first["cols"], "the size now, not the list's")
+	assert.EqualValues(t, 29, first["rows"])
+}

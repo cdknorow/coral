@@ -41,6 +41,11 @@ type PaneSizer interface {
 	PaneSize(name string) (cols, rows int, err error)
 }
 
+// FreshPaneSizer is implemented by backends whose PaneSize may be a moment old: PaneSizeFresh asks the terminal itself, for a viewer's first report and the answer to its own resize (#6706).
+type FreshPaneSizer interface {
+	PaneSizeFresh(name string) (cols, rows int, err error)
+}
+
 // OutputStamper is implemented by backends that can tell cheaply whether a session's terminal has
 // written anything since an earlier stamp (#3439). The poll endpoint then reuses its last capture
 // instead of running capture-pane while nothing was written. ok is false when it cannot tell.
