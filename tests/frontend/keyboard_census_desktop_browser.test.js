@@ -25,6 +25,10 @@ const BUBBLES = [{ type: 'user', content: 'Is the build green?', key: 'c1', time
         const r = await kb.walk(ev, client.Input);
         results.push({ name, stops: r.stops.length, path: r.stops.map(x => x.d).join(' > ') });
         found.push(...kb.problems(name, r));
+        if (JSON.stringify(r.unreachable || []).includes('composer-error')) { // the 160 gate saw a visible composer error whose Dismiss Tab did not reach (Linux only): say what was on the screen
+            const st = await ev(`(() => { const b = document.getElementById('composer-error'); return b ? { hidden: b.hidden, text: (b.querySelector('.composer-error-text') || {}).textContent, restart: !(b.querySelector('.composer-error-restart') || { hidden: true }).hidden, tab: document.querySelector('.agentic-tab.active') && document.querySelector('.agentic-tab.active').id } : null; })()`).catch(() => null);
+            found.push(`${name}: [diagnostic] composer error on screen: ${JSON.stringify(st)}; ${r.stops.length} stops, the last three: ${r.stops.slice(-3).map(x => x.d).join(' > ')}`);
+        }
         if (!r.stops.length) found.push(`${name}: Tab reached no control at all`);
     };
     const tap = sel => tapSel(ev, sel);
