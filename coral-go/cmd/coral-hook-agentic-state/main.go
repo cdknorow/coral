@@ -510,10 +510,16 @@ func parseRequestEvent(d map[string]any, hookType, sessionID string) map[string]
 		if kind == "" {
 			kind = "permission"
 		}
+		detail := map[string]any{"kind": kind, "tool_name": tool}
+		if w := wantsOf(tool, hooks.GetToolInput(d)); w != "" {
+			// What the request wants to do, in the agent's own words (#6622): the server turns it into the one clean, redacted line before anything is stored. It is not in the summary:
+			// the summary is read by the classifiers and auto-accept, which an agent's command must not be able to address.
+			detail["wants"] = w
+		}
 		event := map[string]any{
 			"event_type":  "permission_request",
 			"summary":     "Waiting for the user: " + kind + " (" + hooks.Truncate(tool, 60) + ")",
-			"detail_json": map[string]any{"kind": kind, "tool_name": tool},
+			"detail_json": detail,
 			"session_id":  sessionID,
 		}
 		if tool != "" {
@@ -557,6 +563,61 @@ func parseRequestEvent(d map[string]any, hookType, sessionID string) map[string]
 		}
 	}
 	return nil
+}
+
+// maxWantsInput is how much of one tool input a request's wants reads.
+const maxWantsInput = 1 << 10
+
+// wantsOf is the sentence for what a PermissionRequest wants to do, from the tool's own input: "Wants to run: <command>" for a command, "Wants to edit <path>" for a file, "Wants to
+// fetch <url>", else "Wants to use <tool>". "" when it names no tool. Each input is cut to 1 KiB; the server cleans, redacts and cuts it again before it is stored.
+func wantsOf(tool string, inp map[string]any) string {
+	cut := func(s string) string {
+		if len(s) > maxWantsInput {
+			s = s[:maxWantsInput]
+		}
+		return strings.ToValidUTF8(s, "")
+	}
+	if cmd := commandOf(inp); cmd != "" {
+		return "Wants to run: " + cut(cmd)
+	}
+	for _, key := range []string{"file_path", "path", "filePath", "notebook_path"} {
+		if p, _ := inp[key].(string); p != "" {
+			verb := "use"
+			switch tool {
+			case "Write":
+				verb = "create"
+			case "Edit", "MultiEdit", "NotebookEdit", "apply_patch":
+				verb = "edit"
+			case "Read":
+				verb = "read"
+			}
+			return "Wants to " + verb + " " + cut(p)
+		}
+	}
+	if u, _ := inp["url"].(string); u != "" {
+		return "Wants to fetch " + cut(u)
+	}
+	if tool != "" {
+		return "Wants to use " + hooks.Truncate(tool, 60)
+	}
+	return ""
+}
+
+// commandOf is a shell tool's command: a string, or a list of words (Codex's exec form).
+func commandOf(inp map[string]any) string {
+	switch c := inp["command"].(type) {
+	case string:
+		return strings.TrimSpace(c)
+	case []any:
+		var words []string
+		for _, w := range c {
+			if s, ok := w.(string); ok {
+				words = append(words, s)
+			}
+		}
+		return strings.TrimSpace(strings.Join(words, " "))
+	}
+	return ""
 }
 
 func makeToolDetail(tool string, inp map[string]any) map[string]any {

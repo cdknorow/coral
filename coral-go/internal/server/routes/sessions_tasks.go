@@ -504,6 +504,9 @@ func (h *SessionsHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 	// A request's kind is shown on the dashboard: only the known kinds are stored (#3481,
 	// QA's review). The event comes from the agent's own hook, but its text is the agent's.
 	if body.EventType == "permission_request" || body.EventType == "request_resolved" {
+		if body.EventType == "permission_request" {
+			body.DetailJSON = sanitizeWants(body.DetailJSON) // what the request wants to do: stored as the line the row shows, never raw (#6622)
+		}
 		if d, ok := body.DetailJSON.(map[string]any); ok {
 			if k, _ := d["kind"].(string); !sessionstate.RequestKinds[k] {
 				d["kind"] = ""
