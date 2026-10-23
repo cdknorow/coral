@@ -75,15 +75,26 @@ const setupCodeMenuTitle = "Show setup code"
 // setupCodeItem is the menu item: hidden while there is no code to show (a password is set, or the server does not answer), "Show setup code" while there is, and the code and its
 // time left once the person has clicked it. It looks again every minute so it goes when a password is set, and the time left stays true.
 type setupCodeItem struct {
-	item     *systray.MenuItem
+	item     menuItem
 	revealed atomic.Bool
+	gen      atomic.Int64 // each click is a generation: only the last click's timer puts the title back
+	hideIn   time.Duration
 }
 
-const setupCodeLookEvery = time.Minute
+const (
+	setupCodeLookEvery = time.Minute
+	// The code is on the menu line only for a short while after the click: the menu is then the plain item again (Security's #6410 LOW), and a click shows it again.
+	setupCodeShownFor = 2 * time.Minute
+)
+
+func newSetupCodeItem(item *systray.MenuItem) *setupCodeItem {
+	return &setupCodeItem{item: item, hideIn: setupCodeShownFor}
+}
 
 func (s *setupCodeItem) look(baseURL, dataDir string) {
 	a, err := askServerForSetupCode(baseURL, dataDir)
 	if err != nil {
+		s.gen.Add(1)
 		s.revealed.Store(false)
 		s.item.Hide() // none to show (a password is set) or the server is not answering: nothing to offer
 		return
@@ -100,6 +111,7 @@ func (s *setupCodeItem) look(baseURL, dataDir string) {
 func (s *setupCodeItem) click(baseURL, dataDir string) {
 	a, err := askServerForSetupCode(baseURL, dataDir)
 	if err != nil {
+		s.gen.Add(1)
 		s.revealed.Store(false)
 		s.item.Hide()
 		if !errors.Is(err, errNoSetupCode) {
@@ -111,6 +123,13 @@ func (s *setupCodeItem) click(baseURL, dataDir string) {
 	s.revealed.Store(true)
 	s.item.SetTitle(setupCodeTitle(a))
 	s.item.Show()
+	g := s.gen.Add(1)
+	time.AfterFunc(s.hideIn, func() {
+		if s.gen.Load() != g || !s.revealed.Swap(false) { // a later click, or the item already went, owns the title
+			return
+		}
+		s.item.SetTitle(setupCodeMenuTitle)
+	})
 }
 
 func (s *setupCodeItem) run(ctx context.Context, baseURL, dataDir string) {

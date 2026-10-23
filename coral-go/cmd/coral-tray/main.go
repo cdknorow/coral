@@ -396,7 +396,7 @@ func runForeground(host string, port int, noBrowser, debugMode bool, backendType
 		// The one-time setup code another device asks for, where the person is and not only in a terminal (#6410): hidden until the server has a code to show
 		mSetupCode := systray.AddMenuItem(setupCodeMenuTitle, "The one-time code another device asks for when it signs in to Coral or links this computer to Coral Hub")
 		mSetupCode.Hide()
-		setup := &setupCodeItem{item: mSetupCode}
+		setup := newSetupCodeItem(mSetupCode)
 		go func() {
 			defer safego.Recover("coral-tray/main:setupCodeItem")
 			setup.run(context.Background(), url, dataDir)
