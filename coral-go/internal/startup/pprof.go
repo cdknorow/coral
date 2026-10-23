@@ -1,3 +1,7 @@
+//go:build dev
+
+// The profiler is for a dev build only (#6204): a shipped Coral has no profiler, and an environment variable cannot turn one on (pprof_release.go says so in the log).
+
 package startup
 
 import (

@@ -568,7 +568,10 @@ Check an agent with `ps -o ni= -p <pid>` (10 for Low, the same as Coral's for No
 
 ### Profiling a slow server
 
-Set `CORAL_PPROF_ADDR` to a loopback address, e.g.
+Only a **dev build** has a profiler (`go build -tags dev`, or `make dev`). A shipped
+Coral has none: it ignores `CORAL_PPROF_ADDR` and says so once in its log, so a
+variable left in the environment cannot turn one on. In a dev build, set
+`CORAL_PPROF_ADDR` to a loopback address, e.g.
 `CORAL_PPROF_ADDR=127.0.0.1:6060 coral`, and Go's profiler is served at
 `http://127.0.0.1:6060/debug/pprof/` (`go tool pprof http://127.0.0.1:6060/debug/pprof/profile`).
 It is off by default, runs on its own port (never the dashboard's), and
