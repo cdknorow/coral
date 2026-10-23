@@ -37,7 +37,10 @@ def step_blocks(lines):
 
 
 SEAM_TAG = "relaunchfixture"
-SEAM_ALLOWED = set()  # repository paths (from the root) that may name the tag: a reviewed edit adds one
+SEAM_ALLOWED = {
+    # go-tests.yml's relaunchfixture job runs the tests that only exist under the tag (#6290); it builds test binaries, never a program that ships.
+    ".github/workflows/go-tests.yml",
+}  # repository paths (from the root) that may name the tag: a reviewed edit adds one
 SEAM_ROOTS = [".github", "installers", "tools", "Casks", "coral-go/Makefile", "Makefile"]
 
 

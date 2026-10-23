@@ -55,6 +55,7 @@ jobs:
           bash tests/release/install_cli_tools_test.sh
           bash tests/release/require_cosign_test.sh
           bash tests/release/verify_release_strip_test.sh
+          bash tests/release/verify_release_fake_identity_test.sh   # verify-release refuses a program holding the updater rehearsal's fake identity (#6290)
           bash tests/release/release_homes_test.sh
           bash tests/release/download_section_test.sh   # the Download section of the notes (#5467); no network
           bash tests/release/test_release_upload_loop.sh # the upload step itself, with a stand-in gh and cosign, incl. the Dropbox tier with no MSI; no network
@@ -132,6 +133,7 @@ jobs:
               "./cmd/$cmd/"
           done
           ../tests/release/verify_standard_bundle.sh ../dist/linux "$ARCH"
+          ../tests/release/verify_no_fake_identity.sh ../dist/linux
 
       # The package's licenses/ folder: the notices of exactly the modules these binaries link, the
       # dashboard's vendored libraries and fonts, and Coral's license (installers/third-party-notices.sh).
@@ -251,6 +253,8 @@ jobs:
           go build -trimpath -overlay $overlay -tags $buildTags -ldflags "-H windowsgui $ldflags" -o "..\dist\windows\bin\coral-tray.exe" "./cmd/coral-tray/"
           go build -trimpath -overlay $overlay -tags $webviewTags -ldflags "-H windowsgui $ldflags" -o "..\dist\windows\bin\coral-app.exe" "./cmd/coral-app/"
           powershell -ExecutionPolicy Bypass -File ..\tests\release\verify_standard_bundle.ps1 -PackageDir ..\dist\windows\bin
+          bash ../tests/release/verify_no_fake_identity.sh ../dist/windows/bin
+          if ($LASTEXITCODE -ne 0) { throw "verify_no_fake_identity.sh failed" }
           } finally { go run ./tools/strip-static -clean $overlay }
 
       # dist\windows\bin\licenses goes into the portable ZIP (bin\*) and the MSI (Coral\licenses, tools/coral.wxs).
@@ -606,6 +610,7 @@ jobs:
           cp -R ../dist/macos-arm64/tmux-payload/licenses ../dist/macos/tmux-licenses
           cp -R ../dist/macos-arm64/licenses ../dist/macos/licenses
           ../tests/release/verify_standard_bundle.sh ../dist/macos
+          ../tests/release/verify_no_fake_identity.sh ../dist/macos
 
       - name: Copy .icns icon
         run: |
@@ -641,6 +646,7 @@ jobs:
           cp installers/install-cli.sh "$APP/Contents/MacOS/install-cli.sh"
           chmod +x "$APP/Contents/MacOS/install-cli.sh"
           tests/release/verify_standard_bundle.sh "$APP/Contents/MacOS"
+          tests/release/verify_no_fake_identity.sh "$APP/Contents/MacOS"
 
       - name: Smoke test Coral.app
         run: |
@@ -712,6 +718,7 @@ jobs:
       - name: Verify signed Standard app payload
         run: |
           tests/release/verify_standard_bundle.sh dist/Coral.app/Contents/MacOS
+          tests/release/verify_no_fake_identity.sh dist/Coral.app/Contents/MacOS
           codesign --verify --deep --strict --verbose=2 dist/Coral.app
 
       # Notarize and staple the app itself so it still passes Gatekeeper

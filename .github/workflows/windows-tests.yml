@@ -275,6 +275,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "go build coral-app failed" }
           powershell -ExecutionPolicy Bypass -File ..\tests\release\verify_standard_bundle.ps1 -PackageDir ..\dist\windows\bin
           if ($LASTEXITCODE -ne 0) { throw "verify_standard_bundle.ps1 failed" }
+          bash ../tests/release/verify_no_fake_identity.sh ../dist/windows/bin
+          if ($LASTEXITCODE -ne 0) { throw "verify_no_fake_identity.sh failed" }
           } finally { go run ./tools/strip-static -clean $overlay }
           Compress-Archive -Path "..\dist\windows\bin\*" -DestinationPath "..\dist\windows\Coral-$version-x64-portable.zip"
       - name: Third-party notices (the MSI holds them, as in release.yml)

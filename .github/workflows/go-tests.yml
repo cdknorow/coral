@@ -83,3 +83,30 @@ jobs:
           echo "go test (${TAGS:-default tags}), shard $SHARD: ${#pkgs[@]} of ${#all[@]} packages"
           [ "${#pkgs[@]}" -gt 0 ] || { echo "::error::an empty shard"; exit 1; }
           go test -count=1 -p 4 -timeout 45m ${TAGS:+-tags "$TAGS"} "${pkgs[@]}"
+
+  # The updater's relaunch fixture build (#6290): the tests that only exist under -tags relaunchfixture (the full relaunch path over the fixture, the build
+  # flavor and the guard that keeps the fixture out of a release) are run by the gate, not just written. Same trust and runner as the jobs above.
+  relaunchfixture:
+    name: go test (relaunchfixture)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CORAL_TELEMETRY_DISABLED: "1"
+    defaults:
+      run:
+        shell: bash
+        working-directory: coral-go
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: coral-go/go.mod
+          cache: false # nothing cached here: see the header
+      - name: go test (relaunchfixture)
+        run: |
+          set -euo pipefail
+          export TMPDIR=/tmp/gt
+          mkdir -p "$TMPDIR"
+          go test -count=1 -p 4 -timeout 25m -tags relaunchfixture ./internal/server/routes ./internal/config ./internal/testguard ./internal/safefs ./cmd/coral

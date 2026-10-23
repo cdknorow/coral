@@ -411,6 +411,11 @@ STRIP_MARKER="$(head -n1 "$(dirname "$0")/../tests/release/strip_marker.txt" 2>/
 unstripped() { # file -> 0 when the binary carries the source comment
   grep -aFq -- "$STRIP_MARKER" "$1"
 }
+# The updater rehearsal's fake identities (internal/updater/testrig) are for tests only (#6290): no shipped program may hold the marker of its fake issuer and repository.
+FAKE_IDENTITY_MARKER="rehearsal.invalid"
+holds_fake_identity() { # file -> 0 when the program carries the rehearsal's fake identity
+  grep -aFq -- "$FAKE_IDENTITY_MARKER" "$1"
+}
 check_programs() { # subject folder ext want-target
   local subject="$1" dir="$2" ext="$3" wtgt="$4" n=0 bad="" c f info v t tg trim rev mod verdict
   for c in $commands; do
@@ -425,6 +430,7 @@ check_programs() { # subject folder ext want-target
     if [ -z "$TAG_COMMIT" ]; then bad="$bad $c(the tag's commit could not be read from $REPO)"
     elif ! verdict="$(bi_verdict "$want_ver" "$TAG_COMMIT" "$v" "$trim" "$rev" "$mod" "$tg")"; then bad="$bad $c(${verdict#fail|})"; fi
     if [ "$t" != "$want_tags" ]; then bad="$bad $c(tags '${t:-none}')"; fi
+    if holds_fake_identity "$f"; then bad="$bad $c(holds the updater rehearsal's fake identity: it linked internal/updater/testrig)"; fi
     if [ "$c" = coral ] && unstripped "$f"; then bad="$bad $c(carries the dashboard's source comments: built without the strip-static overlay)"; fi
     if [ -n "$wtgt" ] && [ -n "$tg" ] && [ "$tg" != "$wtgt" ]; then bad="$bad $c(target $tg)"; fi
   done
