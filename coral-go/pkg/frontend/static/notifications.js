@@ -84,7 +84,12 @@ export function noticeColumn() {
         polite.id = "notice-live"; polite.className = "sr-only"; polite.setAttribute("role", "status"); polite.setAttribute("aria-live", "polite"); polite.setAttribute("aria-atomic", "true");
         const loud = document.createElement("div");
         loud.id = "notice-alert"; loud.className = "sr-only"; loud.setAttribute("role", "alert");
-        col.append(warnings, toasts, polite, loud);
+        col.append(warnings, toasts);
+        // Outside the column: the column is not drawn while it holds no notice (no empty landmark), and a region inside a hidden column is not announced by a browser.
+        const announcer = document.createElement("div");
+        announcer.id = "notice-announcer"; announcer.className = "sr-only";
+        announcer.append(polite, loud);
+        document.body.appendChild(announcer);
         // A named region, so a screen reader can jump to the notices (they are drawn fixed, wherever they are in the page).
         col.setAttribute("role", "region");
         col.setAttribute("aria-label", "Notifications");

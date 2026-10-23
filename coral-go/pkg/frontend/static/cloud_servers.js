@@ -23,6 +23,7 @@ import { h } from './cloud.js';
 import { formatLastSeen, updateNotice, RELEASES_URL, DOWNLOAD_URL, serverVersion, serverAgentCount, belowMinimumText } from './server_status.js';
 import { accessBlockedMessage, accessChanged } from './hub_access.js';
 import { pollEvery } from './overload.js';
+import { announceNotice } from './notifications.js';
 import { OWNER_LABEL_STEP } from './owner_label.js';
 import { healthDot, healthCard } from './machine_health.js';
 // This module is loaded lazily, so its search box is loaded the same way (a static import of a module not loaded at startup could not be retried: import_hygiene).
@@ -80,7 +81,10 @@ async function load() {
         if (!r.ok) loadError = 'Could not load your servers.';
         else {
             const d = await r.json();
+            const before = loaded ? new Map(servers.map(s => [s.id, s.online === true])) : null;
             servers = Array.isArray(d && d.servers) ? d.servers : [];
+            // A computer that goes offline or comes back is said once (#6226): the list redraws in place every 5 s and nothing in it is a live region.
+            if (before) for (const s of servers) { const was = before.get(s.id); if (was !== undefined && was !== (s.online === true)) announceNotice(`${s.label || 'A computer'} is ${s.online === true ? 'online' : 'offline'}`); }
             loaded = true;
             loadError = '';
             syncRelaunchReads(servers, render);
