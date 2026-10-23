@@ -217,6 +217,13 @@ func (g *inputGate) pasteRetryTurn(ctx context.Context, in AutomatedInput, sr Sc
 		g.holdPaste(in, whyDraft, false, "")
 		return true, nil, true
 	default:
+		if agentType == at.Codex && in.signalsSayEnded(ctx) {
+			// The same signal rule as before the first paste (#6466): a Codex that has stopped and whose composer the screen reader cannot find has either our paste in it or nothing, and an
+			// Enter on nothing submits nothing; held for ever it blocks every later send.
+			slog.Info("automated input: the input box isn't on the rendered screen but the agent's signals say its turn ended; sending only the Enter", "session", in.Name, "sender", in.What)
+			held, err := g.enterAndConfirm(ctx, in, sr, rendered, agentType, sessionID)
+			return held, err, true
+		}
 		if g.pasteStuck(in) {
 			return false, g.giveUpPaste(in, "the input box couldn't be found on screen"), true
 		}
@@ -252,7 +259,11 @@ func (g *inputGate) boxBeforeFirstPaste(ctx context.Context, in *AutomatedInput,
 		held, err := g.enterAndConfirm(ctx, *in, sr, rendered, agentType, sessionID)
 		return held, err, true
 	case boxUnknown:
-		if agentType == at.Codex {
+		if agentType == at.Codex && in.signalsSayEnded(ctx) {
+			// Its own signals say the turn has ended (#6466): a composer drawn without the marker the gate looks for (the soak's idle Codex showed only "Ask Codex to do anything")
+			// is not a Codex mid-turn, so the send goes (the paste is checked and Entered below as for any agent). The hold below is for a Codex whose signals do not say so.
+			slog.Info("automated input: the input box isn't on the rendered screen but the agent's signals say its turn ended; pasting", "session", in.Name, "sender", in.What)
+		} else if agentType == at.Codex {
 			// Never pasted blind into Codex (#247): with no input box on screen it is most likely mid-turn (streaming
 			// output hides its box on the rendered screen), and what is pasted then stays in its composer. Held until
 			// the box shows (after a long reply the rendered screen can miss it: Codex is asked to redraw); reported as

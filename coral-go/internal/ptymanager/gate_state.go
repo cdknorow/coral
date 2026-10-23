@@ -169,6 +169,20 @@ func (in AutomatedInput) signalDecision(ctx context.Context) (waiting bool, why,
 	return waiting, why, kind, st, true
 }
 
+// signalsSayEnded reports whether the agent's OWN signals say its turn has ended: it is idle by them, with a Stop seen and no request of its own open (#6466). It reads the state alone (no screen,
+// no disagreement log): the caller is about to decide what a screen that cannot show the input box means, and an agent that has stopped is not one that is mid-turn.
+func (in AutomatedInput) signalsSayEnded(ctx context.Context) bool {
+	stateFunc.RLock()
+	fn := stateFunc.fn
+	stateFunc.RUnlock()
+	if fn == nil {
+		return false
+	}
+	agentType, sessionID := in.identity()
+	st, ok := fn(ctx, in.Name, agentType, sessionID)
+	return ok && st.State == StateIdle && !st.LastStop.IsZero()
+}
+
 // signalScreen is the agent's screen, when its terminal can show it.
 func (in AutomatedInput) signalScreen(ctx context.Context, agentType, sessionID string) (screen string, ok bool) {
 	if r, isReader := in.Term.(ScreenReader); isReader {
