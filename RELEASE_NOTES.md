@@ -1,5 +1,44 @@
 # Release Notes
 
+## v1.4.158 — Quitting Coral ends its agents on the built-in terminal, Add image on a phone, and a Hub that says what to do when it cannot confirm you own a computer
+
+DRAFT (DevOps, 22 Oct), against ci/v158 38e175f4e: every bullet is taken from a landed commit's own message and is to be checked against the final batch list.
+
+### Features
+
+- **Add image in the message box:** an icon in the corner of the text box opens the file picker (a phone offers Photo Library, Take Photo and Browse); files go up one after another. A photo over 2 MB is made smaller in the browser, a PNG is not; an image over 20 MB (16 MB through Coral Hub) is refused before any request; a HEIC is refused with what to do. An upload that fails, or that Coral Hub cut because it was slow ("Upload timed out. Try a smaller image."), shows Retry. An image sent through Coral Hub keeps the Hub account on its upload record, and a Hub account has half of the owner's hourly allowance in its own window, so it cannot use up the owner's. On a phone the attached images sit in a row above the message box, which keeps its width; the Sent toast is one short line; a sent image's remove control is a trash icon labelled "Remove shared copy".
+- **Coral Hub can say what to do when it cannot confirm you own a computer:** a computer linked to Coral Hub before Coral recorded the owner label used to refuse the owner's own requests on the owner-only routes (artifacts, image thumbnails, saved messages, custom models) with the same answer a stranger gets. Now the answer is "Coral Hub can't confirm you own this computer yet. On the computer, open Settings > Network and Hub and choose Confirm owner.", and Settings > Network and Hub has a Confirm owner button, shown only while the label is missing. Pressing it allows one adoption for 60 seconds (a restart cancels it; at most three presses an hour): the first owner-only request in that minute that comes through the connector from a Hub account becomes the owner label, and nothing is ever replaced. The Servers list marks such a computer "Owner not confirmed" with the same step.
+- **Artifact documents open before Comments on a phone:** the Comments sheet starts closed below the phone breakpoint unless a choice is saved, an artifact you open takes the whole screen, a docked or expanded preview can hide Comments, and the side panel's tab strip shows a shadow where more tabs are hidden.
+- **History and Board on a phone through Coral Hub:** the nav opens a linked computer's Chats and Board on a phone; the nav menu, the Chats list and the boards list are 44 px targets.
+
+### Changes
+
+- **On the built-in terminal, quitting Coral, or killing, restarting or putting an agent to sleep, ends the agent's whole process tree:** the agent and what it started (a Codex's code-mode host, programs that detached themselves) are stopped, then killed after a short grace period; a program the agent started on purpose in the background ends with its terminal too. Before, a real Codex could keep running after Coral quit (reparented to PID 1), which broke "agents stop when you quit" from 157. Limits: on macOS, a helper that had already detached from the agent is found only if it is an ordinary program; one of Apple's own (such as perl or sleep) is not. If Coral itself crashes or is force-killed, its agents keep running. tmux is unchanged.
+- **Quit Coral in the tray no longer removes your agents on the built-in terminal (pty):** they stop, and wake the next time you open Coral when "Wake agents after a restart" is on (the item says so, with the count); otherwise the item says they stop and you wake them from Coral. In 157, Quit ended them for good. tmux is unchanged.
+- **The tools prove Coral is Coral before they send a credential (macOS and Linux):** before the agent's tools or the command line send a credential to a Coral on this computer, the program answering the port proves it is Coral, on the very connection the credential then travels on, so a program that took the port, or a relay in front of the real Coral, gets nothing. A refusal exits "refused" (5) with its own sentence, and the troubleshooting guide explains each one. Only this computer is answered. Windows already checked who owns the port. Agents started before this release keep working with their old token, and are verified once restarted.
+- **Windows: the Coral app's WebView2 profile is under `%LOCALAPPDATA%\Coral`,** set before the window is created, so the sign-in cookie does not roam: sign in once after the update, and you can delete the old `%APPDATA%\coral-app.exe` folder (optional; Coral never deletes it). The "what Coral stores" page says where it lives.
+- **Settings no longer flips a light phone to Dark:** with nothing stored, the theme control shows System (on Coral Hub; Dark on this computer) and a Save writes no theme you did not pick.
+- **Coral Hub sign-in and connect pages follow the system's light or dark theme when nothing is saved.**
+- **The Sessions page names the Coral app's sign-in:** "Coral app on <system>" for a session the app opened.
+- **Small touch and keyboard fixes:** the launch dialog's vendor install link is a 44 px row on touch; the sidebar search shows a visible focus ring; the toast's Dismiss and the "Wake agents after a restart" row in Settings > Terminal are 44 px on touch; a test pins that Tab stays inside Team settings on a phone; on touch, the chat find bar, History's Chat tab, the board's First filter, History's Edit & Resubmit, the History chat's tab bar, a board message's Save and Delete, and the Workflows editor and run controls are 44 px, and a test now fails on any new control under 44 px at phone width.
+
+### Fixes
+
+- **A message to an agent whose hooks are gone:** when the app an agent started from is replaced while it runs, its hook programs are gone; the agent took the message but sent no event, and Chat said "may not have been sent" for a message that arrived. Coral now records where each agent's tools live; a message is confirmed by the agent's transcript gaining it, then by its echo on the screen, and with no signal the agent gets "Coral can't reach this agent's hooks, so it can't tell whether your message arrived… reopen Coral or restart the agent". A running agent whose hooks are gone is flagged once on its row, "Hooks can't run". Resume refreshes the hooks of any agent type.
+- **A message could be reported as possibly not sent when the computer was busy,** even though the agent's transcript had it.
+- **History search upkeep:** exclusions of Codex rollouts that are gone are forgotten; a Codex rollout that never parses is left alone after three passes at the same modification time, and tried again only when it changes.
+- **Uploads through Coral Hub are bounded:** the header wait starts after the upload; an upload that sends nothing for 30 seconds is cut, and the total is capped at 10 minutes (a slow but moving upload passes).
+- **Lists that were ordered by a time that could tie are now stable:** artifact comments, saved bookmarks, pinned folders and every other time-ordered list come back in the same order every time, with a test that fails a new one without it. (Fixes a rare out-of-order comment thread and a flaky test.)
+- **Windows:** when an agent's terminal ends on its own, the dashboard now says it closed instead of staying on a dead terminal (a ConPTY pipe never reported the end).
+
+### Internal
+
+- Tooling: store lints for time-ordered lists and the RFC3339Nano writers; release provenance judges the gated commit named in the notes commit by name; every release and installer build uses `-trimpath` so a shipped stack trace holds no path of the machine that built it; the Windows runner dry run follows the latest published release.
+
+### For the notes' reviewers (not for publication)
+
+- Coral Hub items to send through the Orchestrator: the owner-label routes (never through the Hub), the proof route (never through the Hub), POST /api/upload's Hub-account stamp, the 503 text, and the Servers row's needs_relink.
+
 ## v1.4.157 — The built-in terminal is the default, a first run that says what is wrong, and less text in more places
 
 ### Features
