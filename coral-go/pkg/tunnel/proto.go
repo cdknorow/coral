@@ -31,6 +31,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
@@ -144,6 +145,47 @@ type Welcome struct {
 	// can place the tunnel near the account's other sessions. Exactly 32 lowercase hex
 	// characters; anything else is ignored. Old hubs never send it (no version change).
 	RouteKey string `json:"route_key,omitempty"`
+	// RetryAfter (optional, #6318, coral-hub's ask) is how many whole seconds a hub busy with a reconnect storm asks the connector to wait before it dials again, sent with a
+	// retry_later refusal. The connector uses it as the floor of its next delay, never longer than MaxRetryAfter whatever the hub says. Old hubs never send it (no version change), and an
+	// old connector ignores it.
+	RetryAfter int `json:"retry_after,omitempty"`
+}
+
+// MaxRetryAfter is the longest wait a hub's retry_after can ask for: a hub (or a hostile peer) cannot park a connector for longer.
+const MaxRetryAfter = 300 * time.Second
+
+// retryLaterError is ErrRetryLater with the wait the hub asked for.
+type retryLaterError struct{ after time.Duration }
+
+func (e retryLaterError) Error() string        { return ErrRetryLater.Error() }
+func (e retryLaterError) Is(target error) bool { return target == ErrRetryLater }
+
+// RetryLater is what a hub's AuthFunc returns to refuse a connection for now and ask for a wait of at least after (whole seconds, at most MaxRetryAfter). It is an ErrRetryLater.
+// With no wait (or none that is a whole second) it is ErrRetryLater itself, as an old hub's refusal is.
+func RetryLater(after time.Duration) error {
+	if after = clampRetryAfter(after); after == 0 {
+		return ErrRetryLater
+	}
+	return retryLaterError{after: after}
+}
+
+// RetryAfterOf is the wait a refusal asked for: zero for an error that is not a retry_later with one, and never more than MaxRetryAfter.
+func RetryAfterOf(err error) time.Duration {
+	var r retryLaterError
+	if errors.As(err, &r) {
+		return r.after
+	}
+	return 0
+}
+
+func clampRetryAfter(d time.Duration) time.Duration {
+	switch {
+	case d <= 0:
+		return 0
+	case d > MaxRetryAfter:
+		return MaxRetryAfter
+	}
+	return d.Truncate(time.Second)
 }
 
 // RouteHeader carries a hub's last route key on a tunnel dial to that same hub (#3683).

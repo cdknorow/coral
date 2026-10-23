@@ -41,8 +41,46 @@ type HandlerFunc func(ctx context.Context, s *Stream)
 func (f HandlerFunc) ServeStream(ctx context.Context, s *Stream) { f(ctx, s) }
 
 // Backoff controls reconnects: delay doubles from Min up to Max with ±25%
-// jitter. Defaults 1s and 60s.
-type Backoff struct{ Min, Max time.Duration }
+// jitter. Defaults 1s and 60s. The first reconnect after a session that was up
+// is spread evenly over FirstJitter instead (#6318): a hub that restarts drops every
+// connector at once, and a delay of about a second each brings them all back together.
+type Backoff struct {
+	Min, Max time.Duration
+	// FirstJitter is the window of that first reconnect, uniform from 0. Zero: 10 s with the defaults (Min and Max both unset), and Max when they are set (a test's small
+	// delays stay small).
+	FirstJitter time.Duration
+}
+
+// firstDelay is the wait before the first reconnect after a session that was up: uniform over the window.
+func (b Backoff) firstDelay() time.Duration {
+	w := b.FirstJitter
+	if w <= 0 {
+		if b.Min <= 0 && b.Max <= 0 {
+			w = 10 * time.Second
+		} else {
+			w = b.Max
+			if w <= 0 {
+				w = b.Min
+			}
+		}
+	}
+	return time.Duration(rand.Float64() * float64(w))
+}
+
+// nextDelay is the wait before the next dial: the backoff for attempt (or, for the first reconnect after a session that was up, the uniform spread), and never less than a
+// retry_later's retry_after (floor), which is the hub's own word for how long it needs.
+func (b Backoff) nextDelay(attempt int, first bool, floor time.Duration) time.Duration {
+	var d time.Duration
+	if first {
+		d = b.firstDelay()
+	} else {
+		d = b.delay(attempt)
+	}
+	if d < floor {
+		d = floor
+	}
+	return d
+}
 
 func (b Backoff) delay(attempt int) time.Duration {
 	if b.Min <= 0 {
@@ -262,7 +300,7 @@ func Dial(ctx context.Context, rawURL, token string, o ClientOptions) (*ClientSe
 	case w.Error == CodeUnsupportedVersion:
 		return nil, ErrUnsupportedVersion
 	case w.Error == CodeRetryLater:
-		return nil, ErrRetryLater
+		return nil, RetryLater(time.Duration(w.RetryAfter) * time.Second)
 	case w.Error != "":
 		return nil, fmt.Errorf("%w: %s", ErrBadHandshake, w.Error)
 	case w.AcceptedVersion < MinProtocolVersion || w.AcceptedVersion > ProtocolVersion:
@@ -529,6 +567,8 @@ func (s *Stream) AcceptWS(subprotocol string) (*WSConn, error) {
 // forever.
 func Run(ctx context.Context, rawURL, token string, o ClientOptions) error {
 	attempt := 0
+	first := false          // the next dial is the first after a session that was up (#6318)
+	var floor time.Duration // a retry_later's retry_after: the least the next wait may be
 	note := func(connected bool, err error) {
 		if o.OnState != nil {
 			o.OnState(connected, err)
@@ -557,7 +597,7 @@ func Run(ctx context.Context, rawURL, token string, o ClientOptions) error {
 			}
 			note(false, ErrSessionClosed)
 			if time.Since(start) > 30*time.Second {
-				attempt = 0
+				attempt, first = 0, true
 			} else {
 				attempt++
 			}
@@ -569,9 +609,11 @@ func Run(ctx context.Context, rawURL, token string, o ClientOptions) error {
 			if errors.Is(err, ErrUnauthorized) || errors.Is(err, ErrUnsupportedVersion) {
 				return err
 			}
+			floor = RetryAfterOf(err)
 			attempt++
 		}
-		t := time.NewTimer(o.Backoff.delay(attempt - 1))
+		t := time.NewTimer(o.Backoff.nextDelay(attempt-1, first, floor))
+		first, floor = false, 0
 		select {
 		case <-ctx.Done():
 			t.Stop()

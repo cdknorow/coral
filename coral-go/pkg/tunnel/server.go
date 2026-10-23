@@ -191,7 +191,11 @@ func Accept(ctx context.Context, c *websocket.Conn, auth AuthFunc, cfg SessionCo
 	defer hcancel()
 
 	reject := func(code string, werr error) (*Session, error) {
-		b, _ := json.Marshal(Welcome{Error: code})
+		w := Welcome{Error: code}
+		if code == CodeRetryLater {
+			w.RetryAfter = int(RetryAfterOf(werr) / time.Second) // the wait the AuthFunc asked for, if it did (RetryLater), already at most MaxRetryAfter
+		}
+		b, _ := json.Marshal(w)
 		_ = c.Write(hctx, websocket.MessageBinary, b)
 		_ = c.Close(websocket.StatusPolicyViolation, code)
 		return nil, werr
@@ -209,7 +213,7 @@ func Accept(ctx context.Context, c *websocket.Conn, auth AuthFunc, cfg SessionCo
 	// unauthenticated peer learns nothing about the hub.
 	identity, err := auth(hctx, hello.ServerToken)
 	if errors.Is(err, ErrRetryLater) {
-		return reject(CodeRetryLater, ErrRetryLater)
+		return reject(CodeRetryLater, err)
 	}
 	if err != nil {
 		return reject(CodeUnauthorized, ErrUnauthorized)
