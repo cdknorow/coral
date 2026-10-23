@@ -192,3 +192,48 @@ func TestTeamLaunchWithAMissingBaseBranchNamesTheBranches(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, status, "%v", out)
 	assert.Equal(t, `the branch "release" does not exist in this repository; the branches that do: master`, out["error"])
 }
+
+// #6701: a stopped team resurrects into a worktree on its own branch (coral-team/<board>), with the commits the branch kept: it used to add the base branch itself, which is checked out in the repository.
+func TestResurrectTeamRecreatesItsWorktreeOnItsOwnBranch(t *testing.T) {
+	url, cfg := teamServer(t)
+	git, id, wt := launchWorktreeTeam(t, url, cfg, "resurrectwt")
+	require.NoError(t, os.WriteFile(filepath.Join(wt, "work.txt"), []byte("work"), 0o644))
+	git("-C", wt, "add", "work.txt")
+	git("-C", wt, "commit", "-q", "-m", "work")
+	stopTeam(t, url, id)
+	require.NoDirExists(t, wt)
+
+	status, body := apiPost(t, url+"/api/teams/detail/"+id+"/resurrect")
+	require.Equal(t, http.StatusOK, status, body)
+	assert.FileExists(t, filepath.Join(wt, "work.txt"), "on the team's branch, with its commits")
+	assert.Equal(t, "coral-team/"+id, strings.TrimSpace(git("-C", wt, "rev-parse", "--abbrev-ref", "HEAD")))
+}
+
+// A worktree folder deleted by hand leaves its registration: the resurrect (and so a launch) prunes it and goes on.
+func TestResurrectTeamAfterTheWorktreeFolderWasDeleted(t *testing.T) {
+	url, cfg := teamServer(t)
+	git, id, wt := launchWorktreeTeam(t, url, cfg, "resurrectgone")
+	status, body := apiPost(t, url+"/api/sessions/live/team/"+id+"/kill")
+	require.Equal(t, http.StatusOK, status, body)
+	git("worktree", "add", "-b", "coral-team/"+id, "--", wt, "master") // the stop's removal undone: a registration and a folder
+	require.NoError(t, os.RemoveAll(wt))                               // and the folder deleted by hand: only the registration is left
+
+	status, body = apiPost(t, url+"/api/teams/detail/"+id+"/resurrect")
+	require.Equal(t, http.StatusOK, status, body)
+	assert.DirExists(t, wt)
+}
+
+// A folder that is not empty and no worktree is the one thing refused, in one line that says what to do.
+func TestResurrectTeamOverANonEmptyLeftoverFolder(t *testing.T) {
+	url, cfg := teamServer(t)
+	_, id, wt := launchWorktreeTeam(t, url, cfg, "resurrectfull")
+	stopTeam(t, url, id)
+	require.NoError(t, os.MkdirAll(wt, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(wt, "stray.txt"), []byte("x"), 0o644))
+
+	status, body := apiPost(t, url+"/api/teams/detail/"+id+"/resurrect")
+	assert.Equal(t, http.StatusBadRequest, status, body)
+	assert.Contains(t, body, "left over from an earlier run and is not empty")
+	assert.NotContains(t, body, "\\n")
+	assert.FileExists(t, filepath.Join(wt, "stray.txt"), "nothing of the operator's is touched")
+}
