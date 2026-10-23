@@ -341,6 +341,23 @@ func TestAnythingThatFailsVerificationAgainChangesNothing(t *testing.T) {
 			s := r.staged()
 			require.NoError(t, os.WriteFile(filepath.Join(s.Dir, stage.SumsFile), append(s.Candidate.Sums, '\n'), 0o600))
 		},
+		// #6290: one byte of the staged package, the staged manifest swapped for another version's, and a promotion lower than the last accepted are each refused at the apply.
+		"one byte of the package changes": func(r *rig) {
+			p := r.staged().PackagePath
+			b, err := os.ReadFile(p)
+			require.NoError(t, err)
+			b[len(b)/2] ^= 1
+			require.NoError(t, os.WriteFile(p, b, 0o600))
+		},
+		"the staged manifest is swapped for another": func(r *rig) {
+			s := r.staged()
+			other, _ := json.Marshal(verify.Manifest{Schema: 1, Repo: verify.Repo, Tag: "v1.4.131", Version: "1.4.131", SourceSHA: testCommit, SHA256SumsSHA: sum(s.Candidate.Sums), Sequence: 7,
+				PromotedAt: "2026-10-20T10:00:00Z", ExpiresAt: "2026-11-20T10:00:00Z", Revoked: []string{}})
+			require.NoError(t, os.WriteFile(filepath.Join(s.Dir, stage.ManifestFile), other, 0o600))
+		},
+		"a lower sequence than the last accepted": func(r *rig) {
+			require.NoError(t, verify.SaveState(filepath.Join(r.data, stage.UpdatesDir), verify.State{Sequence: 99}))
+		},
 		"the signer now refuses":             func(r *rig) { r.signer.verdict = errors.New("not the pinned identity") },
 		"the installed version is now newer": func(r *rig) { r.cfg.Installed = "1.4.131" },
 		"the manifest has expired":           func(r *rig) { r.cfg.Now = func() time.Time { return testNow.Add(90 * 24 * time.Hour) } },
