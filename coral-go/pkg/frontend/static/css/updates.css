@@ -56,7 +56,7 @@
 /* the ready notice (#6292): the same banner in the accent colour; on a phone the buttons go under the text, 44 px */
 .leftover-tmux-banner.update-ready { border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); background: color-mix(in srgb, var(--accent) 8%, var(--bg-secondary)); }
 .leftover-tmux-banner.update-ready .material-icons { color: var(--accent); }
-.leftover-tmux-banner.update-ready:has(.update-ready-lead:empty) { margin: 0; padding: 0; border: 0; height: 0; overflow: hidden; } /* in the page with nothing to say: no room, still a live region */
+.leftover-tmux-banner.update-ready:has(.update-ready-lead:empty) { position: absolute; width: 1px; height: 1px; margin: 0; padding: 0; border: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; } /* in the page with nothing to say: out of the layout (no room, no flex gap), still a live region (#6679) */
 .leftover-tmux-banner.update-ready .update-ready-acts { display: flex; align-items: center; gap: 8px; flex: none; }
 @media (max-width: 767px) { .leftover-tmux-banner.update-ready .leftover-tmux-text { flex: 1 1 calc(100% - 44px); min-width: 0; } .leftover-tmux-banner.update-ready .update-ready-acts { flex: 1 1 100%; justify-content: flex-end; } }
 @media (pointer: coarse) { .leftover-tmux-banner.update-ready .btn { min-height: 44px; min-width: 44px; } }
