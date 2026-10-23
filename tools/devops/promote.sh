@@ -14,7 +14,10 @@
 #   sums      SHA256SUMS.txt of TAG, verified against release.yml's identity for exactly that tag and the tag's commit (an annotated tag peeled)
 #   previous  the highest REAL promotion: down the promote-<n> tags that exist, the first whose manifest verifies and whose sequence is n
 #             (anyone who can create releases could publish a junk promote-<n>, and a published release can't be removed), and the list of
-#             every promote-<n> name taken, for the next sequence
+#             every promote-<n> name taken, for the next sequence. A name is junk only when what it holds was READ and is wrong (no release,
+#             no promote.json, a signature cosign refuses, another sequence); a name that couldn't be read or checked (the network, GitHub,
+#             cosign unable to reach Sigstore) is tried 3 times and then stops the run, never skipped. Every name junk, fewer than MAX_JUNK:
+#             no promotion yet.
 #   check     the built promote.json is for TAG, and its sequence is still the smallest free name above the previous real promotion, by the
 #             tags read again now (before it signs)
 #   publish   promote-<sequence> (and promote-v<version> the first time), then Latest read back unchanged and the manifest read back
@@ -60,6 +63,54 @@ next_free() {
 
 # The most promote-<n> that exist but aren't real promotions the walk down passes over: more than the updater's 64, with a margin.
 MAX_JUNK=128
+TRIES=3
+RETRY_SLEEP="${PROMOTE_RETRY_SLEEP:-10}"   # seconds between tries (a test sets 0)
+
+# api_status PATH OUT: GET PATH; the body goes to OUT and the HTTP status is printed ("000" when GitHub didn't answer)
+api_status() {
+  local raw st
+  raw="$(gh api -i "$1" 2>/dev/null)" || true
+  st="$(head -1 <<<"$raw" | sed -n 's#^HTTP/[0-9.]* \([0-9][0-9][0-9]\).*#\1#p')"
+  sed '1,/^\r\{0,1\}$/d' <<<"$raw" > "$2"
+  echo "${st:-000}"
+}
+
+# verify_sums_canary: the sums file the "sums" step verified, verified again. It tells "cosign refused that bundle" (the canary still
+# verifies) from "cosign couldn't check anything" (it doesn't: Sigstore unreachable, a broken tool).
+verify_sums_canary() {
+  cosign verify-blob work/SHA256SUMS.txt --bundle work/SHA256SUMS.txt.sigstore.json \
+    --certificate-identity "https://github.com/$REPO/.github/workflows/release.yml@refs/tags/$TAG" --certificate-oidc-issuer "$OIDC_ISSUER" \
+    --certificate-github-workflow-repository "$REPO" --certificate-github-workflow-ref "refs/tags/$TAG" \
+    --certificate-github-workflow-trigger push --certificate-github-workflow-sha "$(cat work/source_sha)" >/dev/null 2>&1
+}
+
+# read_promotion N: what promote-N holds, into work/candidate. Prints "real", or "junk: <why>" for something read and wrong; dies after TRIES
+# when it can't be read or checked.
+read_promotion() {
+  local n="$1" try st
+  for try in $(seq 1 "$TRIES"); do
+    rm -rf work/candidate && mkdir -p work/candidate
+    st="$(api_status "repos/$REPO/releases/tags/promote-$n" work/candidate/release.json)"
+    case "$st" in
+      404) echo "junk: a tag with no release"; return ;;
+      200) ;;
+      *) echo "::warning::promote-$n: GitHub answered $st (try $try of $TRIES)" >&2; sleep "$RETRY_SLEEP"; continue ;;
+    esac
+    if ! jq -e 'any(.assets[]; .name == "promote.json") and any(.assets[]; .name == "promote.json.sigstore.json")' work/candidate/release.json >/dev/null 2>&1; then
+      echo "junk: no promote.json and bundle"; return
+    fi
+    if ! gh release download "promote-$n" --repo "$REPO" --pattern promote.json --pattern promote.json.sigstore.json --dir work/candidate --clobber 2>/dev/null; then
+      echo "::warning::promote-$n: the files could not be downloaded (try $try of $TRIES)" >&2; sleep "$RETRY_SLEEP"; continue
+    fi
+    if verify_promote work/candidate/promote.json work/candidate/promote.json.sigstore.json 2>/dev/null; then
+      if [ "$(jq -r .sequence work/candidate/promote.json 2>/dev/null)" = "$n" ]; then echo real; else echo "junk: another sequence"; fi
+      return
+    fi
+    if verify_sums_canary; then echo "junk: a signature cosign refuses"; return; fi
+    echo "::warning::promote-$n: cosign could not check anything, not even the verified sums (try $try of $TRIES)" >&2; sleep "$RETRY_SLEEP"
+  done
+  die "promote-$n could not be read or checked after $TRIES tries: the run stops rather than skip it"
+}
 
 cmd="${1:-}"
 case "$cmd" in
@@ -115,24 +166,25 @@ case "$cmd" in
     echo 0 > work/previous/sequence
     echo 0 > work/previous/junk_above
     if [ ! -s work/previous/taken ]; then echo "no promotion yet"; exit 0; fi
+    valid_tag "${TAG:-}" || die "bad tag"
     # Down the names that exist, past junk, to the highest real promotion (names that don't exist cost nothing).
     found=0; junk=0
     for n in $(sort -n -r work/previous/taken); do
-      rm -rf work/candidate && mkdir work/candidate
-      if gh release download "promote-$n" --repo "$REPO" --pattern promote.json --pattern promote.json.sigstore.json --dir work/candidate 2>/dev/null \
-        && verify_promote work/candidate/promote.json work/candidate/promote.json.sigstore.json 2>/dev/null \
-        && [ "$(jq -r .sequence work/candidate/promote.json 2>/dev/null)" = "$n" ]; then
-        found="$n"; break
-      fi
-      echo "::warning::promote-$n is not a real promotion (no verified manifest of sequence $n): skipped"
+      verdict="$(read_promotion "$n")" || exit 1
+      if [ "$verdict" = real ]; then found="$n"; break; fi
+      echo "::warning::promote-$n is not a real promotion (${verdict#junk: }): skipped"
       junk=$(( junk + 1 ))
-      [ "$junk" -lt "$MAX_JUNK" ] || break
+      [ "$junk" -lt "$MAX_JUNK" ] || die "$junk promote-<n> names in a row are junk: look at what was published"
     done
-    [ "$found" != 0 ] || die "no real promotion found past $junk junk promote-<n> names: look at what was published"
+    echo "$junk" > work/previous/junk_above
+    if [ "$found" = 0 ]; then
+      rm -rf work/candidate
+      echo "no promotion yet ($junk junk promote-* names, every one checked)"
+      exit 0
+    fi
     cp work/candidate/promote.json work/previous/promote.json
     rm -rf work/candidate
     echo "$found" > work/previous/sequence
-    echo "$junk" > work/previous/junk_above
     echo "previous: promote-$found ($junk junk promote-* names above it) $(jq -c '{tag, expires_at, revoked}' work/previous/promote.json)"
     ;;
 

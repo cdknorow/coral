@@ -58,6 +58,7 @@ jobs:
           bash tests/release/download_section_test.sh   # the Download section of the notes (#5467); no network
           bash tests/release/test_release_upload_loop.sh # the upload step itself, with a stand-in gh and cosign, incl. the Dropbox tier with no MSI; no network
           bash tests/release/approve_release_test.sh    # the Approve release workflow's script (#5559); a stand-in gh, no network
+          bash tests/release/promote_previous_test.sh   # the Promote workflow's walk past junk promote-<n> (#143); a stand-in gh and cosign, no network
           bash tests/release/update_tap_test.sh         # the cask move (#5559); a local bare repository, no network
           bash tests/release/release_cadence_test.sh    # the cadence table (#5559); a stand-in gh, no network
           bash tests/release/release_notes_edits_test.sh   # lines removed from a published body on purpose; no network
