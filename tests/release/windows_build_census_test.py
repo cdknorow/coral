@@ -46,7 +46,28 @@ def go_builds(step):
     return out
 
 
-def check(wt, rel, resolve, commands, gui):
+OWNER_ONLY = r'icacls \$overlayDir /inheritance:r /grant:r "\*\$\(\[Security\.Principal\.WindowsIdentity\]::GetCurrent\(\)\.User\.Value\):\(OI\)\(CI\)F"'
+
+
+def overlay_errors(name, step, pattern=r'go build\s[^\n]*'):
+    """What every Windows build script or step must do about the strip-static overlay (#6208): a flag on each go build line, an owner-only folder given to the generator, a finally that deletes it."""
+    errs = []
+    lines = re.findall(pattern, step)
+    if not lines:
+        errs.append(f"{name}: the census sees no go build line")
+    for line in lines:
+        if not re.search(r"-overlay\s+\$overlay\b", line):
+            errs.append(f"{name} builds without the strip-static overlay: {line[:80]}")
+    if not re.search(OWNER_ONLY, step):
+        errs.append(f"{name}: the overlay folder is not made owner-only (icacls /inheritance:r with this user's SID, (OI)(CI)F)")
+    if "go run ./tools/strip-static -out $overlayDir" not in step:
+        errs.append(f"{name}: strip-static is not given the owner-only folder (-out $overlayDir)")
+    if not re.search(r"finally \{ go run \./tools/strip-static -clean \$overlay \}", step):
+        errs.append(f"{name}: the overlay folder is not deleted in a finally block (go run ./tools/strip-static -clean $overlay)")
+    return errs
+
+
+def check(wt, rel, resolve, commands, gui, local=None):
     errs = []
     want_tags = re.search(r"^build_tags=(\S+)", resolve, re.M)
     if not want_tags:
@@ -55,6 +76,13 @@ def check(wt, rel, resolve, commands, gui):
 
     wt_step = block(wt, "- name: Build the package", "windows-tests: Build the package")
     rel_step = block(rel, "- name: Build Windows binaries (amd64)", "release.yml: Build Windows binaries")
+
+    # The dashboard ships minified (#6208): every Windows build line reads the strip-static overlay, which lives in a folder only the build's user can touch, and the
+    # step deletes that folder by exact path even when a build fails. Before this the census accepted a build line with or without -overlay, so a build that lost it still passed.
+    for name, step in (("windows-tests", wt_step), ("release.yml", rel_step)):
+        errs += overlay_errors(name, step, r'go build\s[^\n]*"\./cmd/[^/"]+/?"')
+    if local is not None:  # tools/build_windows.ps1, the local and portable build a person makes themselves
+        errs += overlay_errors("tools/build_windows.ps1", local, r'(?m)^\s*go build\s[^\n]*')  # a line of code, not a comment that says "go build"
 
     m = re.search(r'\$buildTags = "([^"]*)"', wt_step)
     if not m or m.group(1) != want_tags:
@@ -138,7 +166,9 @@ def main():
 
     dry = (ROOT / ".github/workflows/windows-runner-dryrun.yml").read_text()
 
-    errs = check(wt, rel, resolve, commands, gui) + check_dryrun(dry)
+    local = (ROOT / "tools/build_windows.ps1").read_text()
+
+    errs = check(wt, rel, resolve, commands, gui, local) + check_dryrun(dry)
     for e in errs:
         print("FAIL:", e)
 
@@ -153,6 +183,12 @@ def main():
         ("release.yml drops the bundle check", lambda w, r, g: (w, r.replace("verify_standard_bundle.ps1", "x.ps1"), g)),
         ("release.yml builds the MSI as a 32-bit package", lambda w, r, g: (w, r.replace("-arch x64 ", ""), g)),
         ("windows-tests builds the MSI as a 32-bit package", lambda w, r, g: (w.replace("-arch x64 ", ""), r, g)),
+        ("windows-tests builds a program without the overlay", lambda w, r, g: (w.replace(" -overlay $overlay", "", 1), r, g)),
+        ("release.yml builds a program without the overlay", lambda w, r, g: (w, r.replace(" -overlay $overlay", "", 1), g)),
+        ("windows-tests keeps the overlay folder's inherited rights", lambda w, r, g: (w.replace("/inheritance:r", "/inheritance:e"), r, g)),
+        ("release.yml keeps the overlay folder's inherited rights", lambda w, r, g: (w, r.replace("/inheritance:r", "/inheritance:e"), g)),
+        ("windows-tests does not give strip-static its folder", lambda w, r, g: (w.replace("-out $overlayDir", ""), r, g)),
+        ("release.yml leaves the overlay folder behind", lambda w, r, g: (w, r.replace("-clean $overlay", "-check $overlay"), g)),
         ("windows-tests names no commands.txt", lambda w, r, g: (w.replace("commands.txt", "other.txt"), r, g)),
     ]
     for name, mut in mutations:
@@ -162,6 +198,20 @@ def main():
             print("FAIL: mutation changed nothing:", name)
             continue
         if not check(w, r, resolve, commands, g):
+            errs.append(f"the census did not notice: {name}")
+            print("FAIL: the census did not notice:", name)
+    local_mutations = [
+        ("build_windows.ps1 builds a program without the overlay", lambda s: s.replace(" -overlay $overlay", "", 1)),
+        ("build_windows.ps1 keeps the overlay folder's inherited rights", lambda s: s.replace("/inheritance:r", "/inheritance:e")),
+        ("build_windows.ps1 does not give strip-static its folder", lambda s: s.replace("-out $overlayDir", "")),
+        ("build_windows.ps1 leaves the overlay folder behind", lambda s: s.replace("-clean $overlay", "-check $overlay")),
+    ]
+    for name, mut in local_mutations:
+        m = mut(local)
+        if m == local:
+            errs.append(f"mutation {name!r} changed nothing: the census test is out of date with the script")
+            print("FAIL: mutation changed nothing:", name)
+        elif not check(wt, rel, resolve, commands, gui, m):
             errs.append(f"the census did not notice: {name}")
             print("FAIL: the census did not notice:", name)
     dry_mutations = [
@@ -182,7 +232,7 @@ def main():
     if errs:
         sys.exit(1)
     tags = re.search(r"^build_tags=(\S+)", resolve, re.M).group(1)
-    print(f"ok: windows-tests' package build and release.yml's Windows build agree ({len(gui)} GUI programs, {len(commands)} commands, tags {tags}); {len(mutations) + len(dry_mutations)} drifts detected")
+    print(f"ok: windows-tests' package build and release.yml's Windows build agree ({len(gui)} GUI programs, {len(commands)} commands, tags {tags}); {len(mutations) + len(local_mutations) + len(dry_mutations)} drifts detected")
 
 
 if __name__ == "__main__":
