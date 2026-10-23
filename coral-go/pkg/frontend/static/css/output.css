@@ -117,6 +117,7 @@ body.panel-dragging .preview-pane {
     padding: 0 8px;
     display: flex;
     align-items: center;
+    font-size: var(--fs-md); /* a button's own default is 13.33 px, which ignores the reader's font size: the Back label stayed small at 200% (#6267) */
 }
 
 .preview-dock-btn:hover { color: var(--text-primary); background: var(--bg-hover); }

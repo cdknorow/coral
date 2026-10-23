@@ -122,6 +122,14 @@ const SCALE = `(() => {
     }
     return out; })()`;
 
+// The text a scene shows with the size it is drawn at, in document order (so the 16 px list lines up with the 32 px list): what has its own words, minus icons and the terminal.
+const TEXT_SIZES = `(() => { const out = []; for (const e of document.body.querySelectorAll('*')) { if (!e.getClientRects().length || e.closest('svg, .xterm, .sr-only, [data-census-skip]')) continue; if (![...e.childNodes].some(n => n.nodeType === 3 && n.textContent.trim())) continue;
+    const cs = getComputedStyle(e); if (cs.visibility === 'hidden' || /material|icon/i.test(e.className + ' ' + cs.fontFamily)) continue;
+    out.push([e.tagName.toLowerCase() + (e.id ? '#' + e.id : '') + (typeof e.className === 'string' && e.className.trim() ? '.' + e.className.trim().split(/\\s+/)[0] : ''), parseFloat(cs.fontSize), (e.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 24)]); }
+    return out; })()`;
+// Reviewed exceptions for text that does not grow with the root font (a size under 1.5 times its 16 px size at 32 px; large text, 24 px and over, is not looked at: a heading's size may be capped by a clamp): [scene pattern, element pattern, why]. Empty: text is sized in rem, not px, and a button or input names its font-size.
+const ALLOW_FIXED = [];
+
 /** The scene at 200% text: root font 32 px, measured, put back. Skipped with PHONE_TARGETS_NO_SCALE. */
 let scaleShot = null;
 /** A suite may give a function that saves a screenshot of a scene with 200% findings: fn(name). Used when looking at a failure; the census itself needs none. */
@@ -130,10 +138,13 @@ async function scaleOf(ev, name) {
     if (process.env.PHONE_TARGETS_NO_SCALE) return null;
     const was = await ev(`document.documentElement.style.fontSize`);
     try {
+        const base = await ev(TEXT_SIZES);
         await ev(`document.documentElement.style.fontSize = '32px'; true`);
         await new Promise(r => setTimeout(r, 350)); // sleep-ok: the page reflows at the new size
         const r = await ev(SCALE);
-        if (scaleShot && (r.hscroll || r.offscreen.length || r.overlap.length || r.clipped.length)) await scaleShot(name).catch(() => {});
+        const big = await ev(TEXT_SIZES);
+        r.fixed = base.length === big.length ? base.map((b, i) => ({ b, g: big[i] })).filter(({ b, g }) => g[0] === b[0] && g[1] < b[1] * 1.5 && b[1] < 24 && !ALLOW_FIXED.some(([sn, el]) => new RegExp(sn).test(name) && new RegExp(el).test(`${b[0]} ${b[2]}`))).map(({ b, g }) => `${b[0]} "${b[2]}" ${b[1]}px stays ${g[1]}px`) : [];
+        if (scaleShot && (r.hscroll || r.offscreen.length || r.overlap.length || r.clipped.length || r.fixed.length)) await scaleShot(name).catch(() => {});
         return r;
     } finally { await ev(`document.documentElement.style.fontSize = ${JSON.stringify(was)}; true`).catch(() => {}); }
 }
@@ -179,6 +190,7 @@ function problems(results) {
                 for (const o of r.scale.offscreen) sf.push(`cut off by the screen's edge: ${o}`);
                 for (const o of r.scale.overlap) sf.push(`overlap: ${o}`);
                 for (const o of r.scale.clipped) sf.push(`clipped text: ${o}`);
+                for (const o of r.scale.fixed || []) sf.push(`text that did not grow: ${o}`);
                 for (const f of sf) if (!allowedScale(r.name, f)) out.push(`${r.name}: [200% text] ${f}`);
             }
             for (const u of r.unnamed || []) out.push(`${r.name}: ${u} has no accessible name`);
@@ -194,4 +206,4 @@ function required(results, names) {
     return names.filter(n => !have.has(n)).map(n => `${n}: the scene was never visited`);
 }
 
-module.exports = { useScaleShot, SCALE, MEASURE, ALLOW, ALLOW_DUPS, ALLOW_UNNAMED, ALLOW_CONTRAST, useThemeSetter, scene, tap, problems, required };
+module.exports = { useScaleShot, scaleOf, SCALE, MEASURE, ALLOW, ALLOW_DUPS, ALLOW_UNNAMED, ALLOW_CONTRAST, useThemeSetter, scene, tap, problems, required };
