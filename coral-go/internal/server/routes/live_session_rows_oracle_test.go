@@ -281,6 +281,7 @@ func (h *SessionsHandler) liveSessionRowsBefore4713(r *http.Request, trace *phas
 		gitState                                     map[string]*store.GitSnapshot
 		fileCounts                                   map[string]int
 		latestEvents                                 map[string][2]string
+		started                                      map[string]bool
 		stateEvents                                  map[string][]store.AgentEvent
 		tokenUsageMap                                map[string]*store.TokenUsage
 		latestTurnCtx                                map[string]int
@@ -294,6 +295,17 @@ func (h *SessionsHandler) liveSessionRowsBefore4713(r *http.Request, trace *phas
 		func() { gitState, _ = h.gs.GetLiveGitState(ctx, sessionAgents) },
 		func() { fileCounts, _ = h.ts.GetEditedFileCounts(ctx, sessionIDs) },
 		func() { latestEvents, _ = h.ts.GetLatestEventTypes(ctx, sessionIDs) },
+		func() {
+			started, _ = h.ts.SessionsWithAnyEvent(ctx, sessionIDs) // #6745: any event, or a finished scheduled run, ends "starting"
+			started = orEmpty(started)
+			if h.schedStore != nil {
+				if done, err := h.schedStore.SessionsOfFinishedRuns(ctx, sessionIDs); err == nil {
+					for id := range done {
+						started[id] = true
+					}
+				}
+			}
+		},
 		func() { stateEvents, _ = h.ts.GetSessionStateEvents(ctx, sessionIDs) },
 		func() { latestGoals, goalsErr = h.ts.GetLatestGoals(ctx, sessionIDs) },
 	}
@@ -489,7 +501,7 @@ func (h *SessionsHandler) liveSessionRowsBefore4713(r *http.Request, trace *phas
 			"needs_login":           state.NeedsLogin,
 			"awaiting_user":         state.AwaitingUser,
 			"not_started":           state.NotStarted,
-			"starting":              agentStarting(agent.AgentType, latestEv, sessionAgeSeconds(createdAtMap[sid]), liveSleeping[sid], liveArchived[sid]),
+			"starting":              agentStarting(agent.AgentType, startedEv(latestEv, started[sid]), sessionAgeSeconds(createdAtMap[sid]), liveSleeping[sid], liveArchived[sid]),
 			"created_at":            createdAtMap[sid], // new in #6058, here too: a fixed time
 			"done":                  state.Done,
 			"waiting_reason":        nilIf(!state.NeedsInput, state.WaitingReason),

@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 
 	at "github.com/subgentic/coral/internal/agenttypes"
 )
@@ -351,4 +352,25 @@ func (s *ScheduleStore) ListRunsWithWorktree(ctx context.Context) ([]ScheduledRu
 		`SELECT r.*, j.name AS job_name FROM scheduled_runs r LEFT JOIN scheduled_jobs j ON j.id = r.job_id
 		 WHERE r.worktree_path IS NOT NULL AND r.worktree_path != '' ORDER BY r.id DESC`)
 	return runs, err
+}
+
+// SessionsOfFinishedRuns is the sessions among sessionIDs that a scheduled run launched and that has finished: the agent is done, so it is not "starting" (#6745).
+func (s *ScheduleStore) SessionsOfFinishedRuns(ctx context.Context, sessionIDs []string) (map[string]bool, error) {
+	out := map[string]bool{}
+	if len(sessionIDs) == 0 {
+		return out, nil
+	}
+	ids, err := json.Marshal(sessionIDs)
+	if err != nil {
+		return nil, err
+	}
+	var rows []string
+	if err := s.db.SelectContext(ctx, &rows,
+		`SELECT s.value FROM json_each(?) s WHERE EXISTS (SELECT 1 FROM scheduled_runs r WHERE r.session_id = s.value AND r.status NOT IN ('pending', 'running'))`, string(ids)); err != nil {
+		return nil, err
+	}
+	for _, id := range rows {
+		out[id] = true
+	}
+	return out, nil
 }

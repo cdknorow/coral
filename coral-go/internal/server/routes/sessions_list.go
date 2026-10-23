@@ -282,6 +282,7 @@ type listData struct {
 	gitState                                     map[string]*store.GitSnapshot
 	fileCounts                                   map[string]int
 	latestEvents                                 map[string][2]string
+	started                                      map[string]bool // sessions whose CLI has reported any event, or whose scheduled run has finished: not "starting" (#6745)
 	stateEvents                                  map[string][]store.AgentEvent
 	tokenUsage                                   map[string]*store.TokenUsage
 	latestTurnCtx                                map[string]int
@@ -314,6 +315,17 @@ func (h *SessionsHandler) readListData(ctx context.Context, trace *phaseTrace, a
 		func() { d.gitState, _ = h.gs.GetLiveGitState(ctx, sessionAgents) },
 		func() { d.fileCounts, _ = h.ts.GetEditedFileCounts(ctx, sessionIDs) },
 		func() { d.latestEvents, _ = h.ts.GetLatestEventTypes(ctx, sessionIDs) },
+		func() {
+			d.started, _ = h.ts.SessionsWithAnyEvent(ctx, sessionIDs)
+			d.started = orEmpty(d.started)
+			if h.schedStore != nil {
+				if done, err := h.schedStore.SessionsOfFinishedRuns(ctx, sessionIDs); err == nil {
+					for id := range done {
+						d.started[id] = true
+					}
+				}
+			}
+		},
 		func() { d.stateEvents, _ = h.ts.GetSessionStateEvents(ctx, sessionIDs) },
 		func() { d.latestGoals, goalsErr = h.ts.GetLatestGoals(ctx, sessionIDs) },
 	}
@@ -347,6 +359,7 @@ func (h *SessionsHandler) readListData(ctx context.Context, trace *phaseTrace, a
 	d.gitState = orEmpty(d.gitState)
 	d.fileCounts = orEmpty(d.fileCounts)
 	d.latestEvents = orEmpty(d.latestEvents)
+	d.started = orEmpty(d.started)
 	d.stateEvents = orEmpty(d.stateEvents)
 	d.tokenUsage = orEmpty(d.tokenUsage)
 	d.latestTurnCtx = orEmpty(d.latestTurnCtx)
@@ -467,7 +480,7 @@ func (h *SessionsHandler) agentRow(trace *phaseTrace, agent AgentInfo, lv liveIn
 		"needs_login":           state.NeedsLogin,
 		"awaiting_user":         state.AwaitingUser,
 		"not_started":           state.NotStarted,
-		"starting":              agentStarting(agent.AgentType, latestEv, sessionAgeSeconds(lv.createdAt[sid]), lv.sleeping[sid], lv.archived[sid]),
+		"starting":              agentStarting(agent.AgentType, startedEv(latestEv, d.started[sid]), sessionAgeSeconds(lv.createdAt[sid]), lv.sleeping[sid], lv.archived[sid]),
 		"done":                  state.Done,
 		"waiting_reason":        nilIf(!state.NeedsInput, state.WaitingReason),
 		"waiting_summary":       waitingLineIf(state.NeedsInput, waitingSource(state.WaitingWants, state.WaitingSummary)),
@@ -969,4 +982,12 @@ func heldSinceField(name string) any {
 		return t.UTC().Format(time.RFC3339)
 	}
 	return nil
+}
+
+// startedEv is the latest event type, or a marker when the agent has started in a way the latest-event read does not show (any event of a left-out kind, a finished scheduled run), so agentStarting is false.
+func startedEv(latestEv string, started bool) string {
+	if latestEv == "" && started {
+		return "started"
+	}
+	return latestEv
 }
