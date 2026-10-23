@@ -5,7 +5,9 @@ name: cross-build
 # cgo (systray, the webview), so it builds on a macOS runner, arm64 natively and amd64 by clang.
 on:
   push:
-    branches: [main]
+    # ci/** too: the team lands through gate branches, never pull requests, so a build break that only a cross-build sees (a main package without main under no cgo, #6177)
+    # was red on main after it landed. A ci/ branch is built before it lands, as go-tests and gofmt are.
+    branches: [main, "ci/**"]
     paths:
       - "coral-go/**.go"
       - "coral-go/go.mod"
