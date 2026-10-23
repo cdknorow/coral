@@ -526,7 +526,7 @@ body.panel-dragging .xterm-container {
     transition: opacity 0.2s;
 }
 .terminal-statusbar.terminal-statusbar-focused .xterm-focus-hint {
-    opacity: 0.45;
+    opacity: 1; /* while the terminal has focus is when the way out of it is needed: it was dimmed to 0.45 (#6188) */
 }
 
 .selection-pause-badge {

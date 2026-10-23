@@ -112,7 +112,7 @@ const JOB_RUNS = { runs: [{ id: 44, status: 'completed', scheduled_at: '2026-10-
         const closedByBackdrop = await ev(`getComputedStyle(document.getElementById('wf-create-modal')).display === 'none'`);
         check('the dialog closes on its backdrop, not on a click inside it', stillOpen && closedByBackdrop, `${stillOpen}/${closedByBackdrop}`);
         await ev(`window.showWorkflowCreateModal(); true`);
-        await click('#wf-create-modal .modal-close[data-on-click="wf-modal-close"]');
+        await click('#wf-create-modal [data-on-click="wf-modal-close"].modal-close-btn');
         check('the dialog\'s close button closes it', await ev(`getComputedStyle(document.getElementById('wf-create-modal')).display === 'none'`));
 
         await clear();

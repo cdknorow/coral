@@ -41,11 +41,11 @@
 </div>
 
 <!-- Create/Edit Workflow Modal -->
-<div id="wf-create-modal" class="modal" style="display:none" data-on-click="wf-modal-backdrop">
+<div id="wf-create-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="wf-modal-title" style="display:none" data-on-click="wf-modal-backdrop">
     <div class="modal-content modal-content-extra-wide">
         <div class="modal-header">
             <h3 id="wf-modal-title">Create Workflow</h3>
-            <button class="modal-close" data-on-click="wf-modal-close" aria-label="Close">&times;</button>
+            <button class="modal-close-btn" data-on-click="wf-modal-close" aria-label="Close dialog"><span class="material-icons" aria-hidden="true">close</span></button>
         </div>
         <div class="modal-body wf-modal-body">
             <label class="wf-label" for="wf-input-name">Name <span class="wf-hint">(letters, numbers, hyphens, underscores)</span></label>
