@@ -323,7 +323,7 @@ function buildStatus({ personal, items, busy, error, truncated }) {
 /** Retry, after a failed load. */
 function buildRetry(items) {
     const retry = el('button', 'team-artifacts-action team-artifacts-retry', 'Retry');
-    retry.type = 'button'; retry.addEventListener('click', () => { afterRetry = true; load(items.length > 0); });
+    retry.type = 'button'; retry.addEventListener('click', () => { afterRetry = true; load(items.length > 0 && !!caches[source].askedMore, true); }); // what failed is asked again: a next page appends, a first page (a Refresh that kept its rows, #6509) replaces them
     return retry;
 }
 
@@ -567,6 +567,7 @@ async function load(append = false, keep = false) {
     const requestedSession = sessionID;
     if (!append) { if (!keep || !cache.loaded) { cache.items=[]; cache.hasMore=false; cache.truncated=false; cache.loaded=false; } cache.cursor=''; }
     const from = append ? cache.items.length : 0; // where this answer starts: the first page, or after what is shown
+    cache.askedMore = append; // for Retry: a failed next page is asked again as a next page, a failed first page as the first
     cache.busy=true; cache.error=''; render();
     try {
         const params = new URLSearchParams({limit:'100'});
