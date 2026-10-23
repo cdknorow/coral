@@ -59,6 +59,11 @@ const BASE = require('./test_base').BASE;
         await waitFor(`document.querySelectorAll('#team-agents-list .team-agent-row').length === 7`, 'Enter picks the highlighted template');
         assert.equal(await ev(`document.querySelector('#team-template-list [aria-selected=true]').dataset.name`), 'Dungeon Master', 'the chosen one is marked');
 
+        console.log('Clearing the search brings every template back');
+        await ev(`{ const s = document.getElementById('team-template-search'); s.value = 'zzzz'; s.dispatchEvent(new Event('input', { bubbles: true })); } true`);
+        assert.equal(await ev(`document.querySelectorAll('#team-template-list [role=option]').length`), 0, 'no match: no rows');
+        await ev(`{ const s = document.getElementById('team-template-search'); s.value = ''; s.dispatchEvent(new Event('input', { bubbles: true })); } true`);
+        assert.ok(await ev(`document.querySelectorAll('#team-template-list [role=option]').length`) >= 3 && await ev(`document.getElementById('team-template-none').hidden`), 'an empty search lists every template again, and the no-match line is gone (textOf("") is null: the filter threw)');
         console.log('The list scrolls after four rows');
         await ev(`{ const s = document.getElementById('team-template-search'); s.value = ''; s.dispatchEvent(new Event('input', { bubbles: true })); } true`);
         const list = await ev(`(() => { const l = document.getElementById('team-template-list'); return [l.clientHeight, l.scrollHeight, getComputedStyle(l).overflowY]; })()`);
