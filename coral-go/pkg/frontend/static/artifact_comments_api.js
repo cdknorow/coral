@@ -1,6 +1,6 @@
 /* The comments routes of an artifact (#5182), the only place the UI talks to /api/artifacts/{id}/comments, so the server's shape is read in one spot. Every call resolves the parsed answer or throws
  * an Error whose message is the server's reason (a 403 says why) and whose .status is the HTTP status (requestJson, api.js). `server` routes the call to a registered remote like the artifact itself. */
-import { serverUrl } from './server_base.js';
+import { serverUrl, isCloud } from './server_base.js';
 
 // One request: the parsed answer, or an Error with the server's reason ({"error": "..."}) or "HTTP <status>" and .status on it (the same as api.js requestJson once that lands).
 async function requestJson(method, url, body) {
@@ -37,7 +37,13 @@ const boardQuery = (board) => (board ? `&board=${encodeURIComponent(board)}` : '
 export async function listComments(hex, server, board) {
     const d = await requestJson('GET', `${base(hex, server)}?state=all${boardQuery(board)}`);
     const you = d.you || {};
-    return { comments: (d.comments || []).map(normalizeComment), locked: !!d.locked, canComment: !!you.can_comment, canLock: !!you.can_lock, reason: you.reason || '', limits: d.limits || {} };
+    const out = { comments: (d.comments || []).map(normalizeComment), locked: !!d.locked, canComment: !!you.can_comment, canLock: !!you.can_lock, reason: you.reason || '', limits: d.limits || {} };
+    // Through Coral Hub the comments can be read and not written: writing, replying, resolving and the lock are not routed from there (pkg/tunnel/routes.go). Offering the controls would end in a refused request, so the panel says where to write instead (#6245).
+    if (isCloud()) {
+        out.canComment = false; out.canLock = false; out.reason = 'Comments can be added on the computer itself.';
+        for (const c of out.comments) c.can = { reply: false, edit: false, delete: false, resolve: false };
+    }
+    return out;
 }
 
 /** Make a comment: a thread on an anchor ({quote, prefix, suffix, start_line, end_line} or {whole: true}), or a reply to parentId (a reply has no anchor). */

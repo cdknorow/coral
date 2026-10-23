@@ -1,6 +1,6 @@
 // Through Coral Hub an artifact's comments ask the computer that owns it (#6245). The artifact's bytes are read from the context server (the open agent's or team's computer); the Comments panel
 // used to read its routes from the hub itself (/api/artifacts/<id>/comments, a 404 there) unless the caller named the server. Real dashboard, the comments routes stood in for (helpers/comments_scale.js
-// STUB): the open agent lives on a registered computer "ws1", and the pane (no server named) and the viewer dialog (server named, and not named) must all list and post under /api/remote/ws1/.
+// STUB): the open agent lives on a registered computer "ws1", and the pane (no server named) and the viewer dialog (server named, and not named) must all list under /api/remote/ws1/. Writing is not routed through the hub (pkg/tunnel/routes.go), so no post is stubbed here: the hub's read-only list is hub_comments_read_only.test.js.
 const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
 const { STUB, HEX } = require('./helpers/comments_scale');
@@ -43,11 +43,6 @@ const FX = { filename: 'plan.md', content: CONTENT, size: CONTENT.length, mediaT
             check(`the viewer dialog (server ${named ? 'named' : 'not named'}) asks the artifact's own computer`, urls.every(u => u.includes('/api/remote/ws1/api/artifacts/' + HEX + '/comments')), JSON.stringify(urls));
         }
 
-        // 3. a post goes the same way
-        await ev(`(() => { const t = document.querySelector('.artifact-viewer .ac-toggle, #artifact-viewer .ac-toggle'); if (t) t.click(); return true; })()`);
-        await reset();
-        const posted = await ev(`(async () => { const { createComment } = await import(${S} + 'artifact_comments_api.js'); const { serverUrl } = await import(${S} + 'server_base.js'); await createComment(${JSON.stringify(HEX)}, 'ws1', { body: 'Hello', anchor: { whole: true } }); return window.__urls.filter(u => u.startsWith('POST')); })()`);
-        check('a comment posted for the remote artifact goes under /api/remote/ws1/', posted.length === 1 && posted[0].includes('/api/remote/ws1/api/artifacts/' + HEX + '/comments'), JSON.stringify(posted));
     } catch (e) { console.error(e && e.stack || e); results.push(false); } finally { try { await client.close(); } catch (_) {} }
     const failed = results.filter(r => !r).length;
     console.log(failed ? `${failed} FAILED` : `PASS hub artifact comments: ${results.length} checks`);
