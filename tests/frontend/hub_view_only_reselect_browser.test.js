@@ -31,11 +31,11 @@ const CLOUD_PRELOAD = `(() => {
     const { Fetch, Network } = client;
     const w = require('./helpers/wait').bind(ev);
     const row = (id, access_mode, local_mode) => ({ id, label: 'Box ' + id.toUpperCase(), online: true, access_mode, local_mode, last_seen: '2026-10-13T00:00:00Z' });
-    const box = () => ev(`(() => { const i = document.getElementById('command-input'); const c = document.getElementById('hub-readonly-chip'); return { disabled: i.disabled, placeholder: i.placeholder, chip: !!c && !c.hidden }; })()`);
+    const box = () => ev(`(() => { const i = document.getElementById('command-input'); const c = document.getElementById('hub-readonly-chip'); return { disabled: i.disabled, placeholder: i.placeholder, chip: !!c && c.textContent !== '' }; })()`);
     // selectLiveSession resolves when the draw is done; the access lookup (cached after the first) lands after it, so settle on the chip and the box before reading (the access lookup is a few microtasks after the draw; the quiet period outlasts it).
     const select = async (name, server) => {
         await ev(`(async () => { await window.selectLiveSession(${JSON.stringify(name)}, 'claude', ${JSON.stringify(name + '-id')}, ${JSON.stringify(server)}); return true; })()`);
-        await w.waitStable(`JSON.stringify((c => c ? [c.hidden, c.textContent] : null)(document.getElementById('hub-readonly-chip')))`, 'the access chip', 250);
+        await w.waitStable(`JSON.stringify((c => c ? [c.textContent] : null)(document.getElementById('hub-readonly-chip')))`, 'the access chip', 250);
         await w.waitStable(`document.getElementById('command-input').placeholder`, 'the placeholder', 250);
     };
 

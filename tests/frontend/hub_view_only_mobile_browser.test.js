@@ -33,7 +33,7 @@ const BASE = require('./test_base').BASE;
                 const input = document.getElementById('command-input');
                 const send = document.querySelector('#command-pane .mobile-send-btn');
                 const hint = document.querySelector('#terminal-statusbar .xterm-focus-hint');
-                return { shown: !chip.hidden && r.width > 0, inside: r.left >= h.left - 1 && r.right <= h.right + 1 && r.right <= innerWidth + 1,
+                return { shown: chip.textContent !== '' && r.width > 0, inside: r.left >= h.left - 1 && r.right <= h.right + 1 && r.right <= innerWidth + 1,
                     ellipsis: cs.textOverflow, title: chip.title, text: chip.textContent, tab: chip.tabIndex,
                     disabled: input.disabled, placeholder: input.placeholder,
                     sendOff: !!send && getComputedStyle(send).pointerEvents === 'none',
@@ -53,7 +53,7 @@ const BASE = require('./test_base').BASE;
 
             await ev(`window.__ha.setHubReadOnly(window.T.state.currentSession, null); true`);
             const back = await ev(`(() => { const input = document.getElementById('command-input'); const send = document.querySelector('#command-pane .mobile-send-btn');
-                return { chip: document.getElementById('hub-readonly-chip').hidden, disabled: input.disabled, placeholder: input.placeholder,
+                return { chip: document.getElementById('hub-readonly-chip').textContent === '', disabled: input.disabled, placeholder: input.placeholder,
                     send: !!send && getComputedStyle(send).pointerEvents !== 'none' }; })()`);
             assert.equal(back.chip, true, `${width}: chip gone`);
             assert.equal(back.disabled, false, `${width}: composer usable again`);
