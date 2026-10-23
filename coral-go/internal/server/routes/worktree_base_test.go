@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/gitutil"
 )
 
 func repoOn(t *testing.T, branch string, commit bool) (string, func(args ...string) string) {
@@ -241,4 +242,21 @@ func TestResurrectTeamOverANonEmptyLeftoverFolder(t *testing.T) {
 	assert.Contains(t, body, "left over from an earlier run and is not empty")
 	assert.NotContains(t, body, "\\n")
 	assert.FileExists(t, filepath.Join(wt, "stray.txt"), "nothing of the operator's is touched")
+}
+
+// #6701: a team whose board name git refuses in a branch name still gets its worktree: the folder keeps the name, the branch is a slug of it.
+func TestTeamWorktreeForABoardNameGitRefusesInABranch(t *testing.T) {
+	_, h, _, _ := setupSessionsTestServerWithConfig(t, config.Load(t.TempDir()))
+	repo, git := repoOn(t, "master", true)
+	for _, name := range []string{"my team", "wip~1", "what?"} {
+		wd, path, created, failure := h.createTeamWorktree(t.Context(), launchTeamRequest{BoardName: name, WorkingDir: repo, Worktree: true})
+		if failure != nil && strings.Contains(failure.Error(), "cannot name a worktree folder") {
+			continue // a name the folder check refuses first (#5305) is not this case
+		}
+		require.NoError(t, failure, "%q", name)
+		assert.Equal(t, filepath.Join(h.cfg.CoralDir(), "worktrees", name), wd)
+		assert.Equal(t, wd, path)
+		assert.True(t, created)
+		assert.Contains(t, git("branch", "--list", gitutil.TeamBranch(name)), "coral-team/", "%q", name)
+	}
 }
