@@ -23,13 +23,13 @@ const BASE = require('./test_base').BASE;
 
             // Windows exposes only pty; the backend-choice assertions apply where tmux is available.
             if (process.platform !== 'win32') {
-                console.log(`1. (${w}) Terminal: one line each, the whole explanation under Learn more`);
+                console.log(`1. (${w}) Terminal: one title each, the whole explanation under Learn more`);
                 await open('terminal');
                 await waitFor(`!document.getElementById('settings-terminal-backend').hidden && !document.getElementById('tb-choice').hidden`, 'the backend row', 10000);
-                const tb = await ev(`(() => { const vis = e => e.checkVisibility({ checkVisibilityCSS: true }); return [...document.querySelectorAll('#settings-terminal-backend .tb-opt')].map(l => ({ short: l.querySelector('.tb-short').textContent, shortLen: l.querySelector('.tb-short').textContent.length, fullShown: vis(l.querySelector('.tb-d')), learn: l.querySelector('.tb-learn').textContent, expanded: l.querySelector('.tb-learn').getAttribute('aria-expanded'), full: l.querySelector('.tb-d').textContent.length })); })()`);
+                const tb = await ev(`(() => { const vis = e => e.checkVisibility({ checkVisibilityCSS: true }); return [...document.querySelectorAll('#settings-terminal-backend .tb-opt')].map(l => ({ short: l.querySelector('.tb-t').textContent.trim(), shortLen: l.querySelector('.tb-t').textContent.trim().length, fullShown: vis(l.querySelector('.tb-d')), learn: l.querySelector('.tb-learn').textContent, expanded: l.querySelector('.tb-learn').getAttribute('aria-expanded'), full: l.querySelector('.tb-d').textContent.length })); })()`);
                 assert.equal(tb.length, 2);
                 for (const t of tb) { assert.ok(t.shortLen < 140 && !t.fullShown && t.learn === 'Learn more' && t.expanded === 'false' && t.full > 300, JSON.stringify(t)); }
-                assert.match(tb[0].short, /^Agents keep running when you quit Coral\.$/); assert.match(tb[1].short, /^Agents end when you quit Coral and wake next time\.$/);
+                assert.equal(tb[0].short, "tmux: agents keep running when you quit Coral, and can reach each other's terminals"); assert.equal(tb[1].short, 'pty: agents stop when you quit Coral and wake next time (default)'); // the title says it, no line repeats it (#6263)
                 assert.match(await ev(`document.getElementById('tb-d-tmux').textContent`), /any other program running as you, can find that socket/, 'the access warning moved into Learn more, whole');
                 const os = await ev(`[...document.querySelectorAll('#settings-terminal-backend .tb-opt .tb-d')].map(d => ({ os: (d.querySelector('.tb-d-os') || {}).textContent || '', shown: d.checkVisibility({ checkVisibilityCSS: true }) }))`);
                 assert.ok(os.length === 2 && os.every(o => !o.shown && o.os.length > 100), 'the operating system note ends each backend\'s Learn more, closed at first, said once (no third Learn more): ' + JSON.stringify(os));

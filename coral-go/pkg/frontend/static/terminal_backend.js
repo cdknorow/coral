@@ -16,6 +16,11 @@ import { browserSession } from './safe_storage.js';
 
 let _status = null; // GET /api/system/terminal-backend
 let _autoWakeShown = null; // the auto-wake values as the dialog opened (#3636)
+// The pty choice says its agents wake next time only while Wake agents after a restart is on (it follows the box as it is ticked).
+function syncPtyWakes() {
+    const w = $('tb-pty-wakes'), box = $('tb-autowake-on');
+    if (w && box) w.hidden = !box.checked;
+}
 
 const OS_NOTE = {
     mac: "macOS: with pty, other programs normally cannot reach Coral's terminals; with tmux they can, through the socket. Neither backend separates Coral from programs running with your full user rights; for that, run agents under a separate account.",
@@ -88,8 +93,11 @@ export async function loadTerminalBackendRow() {
         const on = String(st.auto_wake_after_restart ?? 'true') !== 'false';
         const cap = Number.parseInt(st.auto_wake_cap, 10);
         $('tb-autowake-on').checked = on;
+        syncPtyWakes();
         $('tb-autowake-cap').value = cap >= 1 && cap <= 50 ? cap : 8;
         _autoWakeShown = aw.hidden ? null : { on, cap: Number($('tb-autowake-cap').value) };
+        const box = $('tb-autowake-on');
+        if (!box._tbWakes) { box._tbWakes = true; box.addEventListener('change', syncPtyWakes); }
     }
     // Every Learn more in the row opens its text (also the auto-wake one, which a system with no choice shows without the backend options).
     // Each is named by what it explains (data-about), starting with its visible words, so the several in the row do not read as one button (#6152).

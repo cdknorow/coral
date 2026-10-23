@@ -86,7 +86,23 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
         await until(`document.getElementById('settings-terminal-backend')?.hidden === false`, 'the backend row');
         let r = await row();
         check('Settings shows the backend row: running tmux, tmux picked, both options', !r.hidden && r.now === 'Running now: tmux' && r.choice && !r.fixed && r.checked === 'tmux'
-            && r.texts[0] === 'tmux: agents keep running' && r.texts[1] === 'pty: agents stop when you quit Coral (default)', JSON.stringify(r));
+            && r.texts[0] === "tmux: agents keep running when you quit Coral, and can reach each other's terminals" && r.texts[1] === 'pty: agents stop when you quit Coral and wake next time (default)', JSON.stringify(r));
+        { // the pty title says its agents wake next time only while Wake agents after a restart is on (#6263); a pty Coral with the choice, where the wake box is shown
+            await ev(`window.__tbFake = { status: () => ({ saved: 'pty', running: 'pty', next: 'pty', forced: false, choice: true, restart_required: false, can_restart: false, running_agents: 0, leftover_tmux_agents: 0 }) };
+                import((window.__coralStatic || '/static/') + 'terminal_backend.js').then(m => m.loadTerminalBackendRow()).then(() => true)`);
+            await until(`document.getElementById('settings-terminal-backend')?.hidden === false && !document.getElementById('tb-autowake').hidden`, 'the wake box');
+            const wakes = () => ev(`(() => { const words = n => n.nodeType === 3 ? n.nodeValue : (n.hidden ? '' : [...n.childNodes].map(words).join('')); return words(document.querySelectorAll('#settings-terminal-backend .tb-t')[1]).replace(/\\s+/g, ' ').trim(); })()`); // the words not under a hidden element (innerText is the whole text while the pane is not drawn)
+            const tick = on => ev(`(() => { const b = document.getElementById('tb-autowake-on'); b.checked = ${on}; b.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+            await tick(true);
+            check('with Wake agents after a restart on, the pty title says they wake next time', (await wakes()) === 'pty: agents stop when you quit Coral and wake next time (default)', await wakes());
+            await tick(false);
+            check('with it off, the pty title no longer says they wake', (await wakes()) === 'pty: agents stop when you quit Coral (default)', await wakes());
+            await tick(true);
+            // back to the tmux install the checks below run on
+            await ev(`window.__tbFake = { status: () => ({ saved: 'tmux', running: 'tmux', next: 'tmux', forced: false, choice: true, restart_required: false, can_restart: false, running_agents: 0, leftover_tmux_agents: 0 }) };
+                import((window.__coralStatic || '/static/') + 'terminal_backend.js').then(m => m.loadTerminalBackendRow()).then(() => true)`);
+            await until(`document.getElementById('tb-now').textContent === 'Running now: tmux'`, 'the tmux row again');
+        }
         check("the pty text has Security's crash wording", /puts them to sleep first when it stops cleanly, and marks them asleep at the next start after a crash/.test(r.ptyText), r.ptyText);
         check('nothing pending to start with', r.pending === '', r.pending);
         await pick('pty');

@@ -4079,7 +4079,6 @@ button.terminal-gone-header { margin: 0 4px 0 0; font-size: 0.6875rem; line-heig
 .tb-opt > span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .tb-t { font-weight: 600; font-size: var(--fs-md); color: var(--text-primary); }
 .tb-default { font-weight: 400; color: var(--text-muted); }
-.tb-short { font-size: var(--fs-base); color: var(--text-secondary); line-height: 1.45; }
 .tb-learn { align-self: flex-start; background: none; border: 0; padding: 2px 0; color: var(--link-text, var(--accent)); font: inherit; font-size: var(--fs-base); cursor: pointer; text-decoration: underline; }
 .tb-d[hidden] { display: none; }
 .tb-d { font-size: var(--fs-base); color: var(--text-secondary); line-height: 1.45; }
