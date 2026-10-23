@@ -62,7 +62,7 @@ func installedNothingAndLeftNoCoral(res apply.Result) bool {
 	case apply.ResultBusy:
 		return res.FailedStage != apply.BusyApply // another apply is replacing the install right now: starting Coral in it would be the one wrong restart
 	}
-	return res.Result == apply.ResultFailed && res.FailedStage == "updates_folder"
+	return res.Result == apply.ResultFailed && (res.FailedStage == "updates_folder" || res.FailedStage == "apply_lock")
 }
 
 // dataDirForRestart is where the marker is: the data folder the updater would use.

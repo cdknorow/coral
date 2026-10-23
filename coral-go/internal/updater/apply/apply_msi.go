@@ -165,8 +165,12 @@ func RunMSI(ctx context.Context, mc MSIConfig) Result {
 		return res
 	}
 	release, err := stage.TakeLock(dir, stage.ApplyLockFile, now)
-	if err != nil {
-		res.Result, res.FailedStage = ResultBusy, BusyApply // another apply is replacing the install: nothing may start Coral under it
+	if errors.Is(err, stage.ErrBusy) {
+		res.Result, res.FailedStage = ResultBusy, BusyApply // another apply (or a lock that cannot be shown stale) holds it: nothing may start Coral under it
+		return res
+	}
+	if err != nil { // the lock could not be made at all (permissions, a full disk): nobody is applying, the server has quit, so Coral is started again
+		res.Result, res.FailedStage = ResultFailed, "apply_lock"
 		return res
 	}
 	defer release()
