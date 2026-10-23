@@ -200,7 +200,7 @@ try {
         @{ name = 'update';      plan = @{};                           result = 'relaunched';  version = $N1 },
         @{ name = 'tampered';    plan = @{ tamper = $true };           result = 'failed';      version = $N  },
         @{ name = 'stale-click'; plan = @{ stale_click = $true };      result = 'refused';     version = $N  },
-        @{ name = 'unhealthy';   plan = @{ unhealthy = $true };        result = 'rolled_back'; version = $N  }
+        @{ name = 'unhealthy';   plan = @{ unhealthy = $true };        result = 'failed_rolled_back'; version = $N  }
     )
     foreach ($s in $scenarios) {
         New-Scenario $s.name $s.plan
