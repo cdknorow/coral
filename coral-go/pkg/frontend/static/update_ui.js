@@ -101,14 +101,20 @@ function renderReadyNotice() {
     const box = $('update-ready-notice');
     if (!box) return;
     const n = readyNotice(status);
-    if (!n) { box.hidden = true; return; }
-    if (!box.hidden && box.dataset.key === n.key) return; // already showing this one: not announced again
+    if (!n) { clearReady(box); return; }
+    if (box.querySelector('.update-ready-lead').textContent && box.dataset.key === n.key) return; // already showing this one: not announced again
     if (browserLocal.get(READY_SEEN_KEY) === n.key || document.hidden) return;
     browserLocal.set(READY_SEEN_KEY, n.key);
     box.dataset.key = n.key;
     box.querySelector('.update-ready-lead').textContent = n.lead;
     box.querySelector('.update-ready-rest').textContent = n.rest;
-    box.hidden = false;
+    box.querySelector('.update-ready-acts').hidden = false; // its buttons come with the words
+}
+/** The notice says nothing and takes no room: its status stays in the page, only its words go (and the buttons with them). */
+function clearReady(box) {
+    box.querySelector('.update-ready-lead').textContent = '';
+    box.querySelector('.update-ready-rest').textContent = '';
+    box.querySelector('.update-ready-acts').hidden = true;
 }
 
 function notify() { renderPill(); renderBanner(); renderReadyNotice(); }
@@ -153,7 +159,7 @@ export function startUpdateUi() {
     banner?.querySelector('.update-fail-again')?.addEventListener('click', tryAgain);
     const ready = $('update-ready-notice');
     // The notice goes away under the button that was pressed, so focus is handed to the control that stays (the top bar's update button) first: the confirmation then returns to it on close, and Later does not drop focus on the page (#6315).
-    const leaveNotice = () => { const pill = $('update-pill'); if (pill && !pill.hidden && pill.getClientRects().length) pill.focus(); ready.hidden = true; };
+    const leaveNotice = () => { const pill = $('update-pill'); if (pill && !pill.hidden && pill.getClientRects().length) pill.focus(); clearReady(ready); };
     ready?.querySelector('.update-ready-review')?.addEventListener('click', () => { leaveNotice(); openDialog(); });
     ready?.querySelector('.update-ready-later')?.addEventListener('click', leaveNotice);
     banner?.querySelector('.update-fail-close')?.addEventListener('click', () => { browserLocal.set(DISMISSED_KEY, banner.dataset.key || ''); banner.hidden = true; });

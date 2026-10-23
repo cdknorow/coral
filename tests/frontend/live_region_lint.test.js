@@ -22,7 +22,6 @@ const TEMPLATES = path.join(FRONTEND, 'templates');
 // Reviewed, still in the page (file:region id). All of them are offenders to fix: none is accepted as not needing its words read. (#6637 fixed the five the first version of this lint found.)
 const KNOWN = {
   // shown and filled, through a descendant or a wrapper (#6638)
-  'update_ui.js:update-ready-notice': 'renderReadyNotice un-hides the notice and writes its words into it in the same call',
   // shown with its words already in the template (#6638)
   'launch_dialog.js:launch-dir-note': 'the home-folder warning appears with its words already in it',
   'settings_dialog.js:settings-unsaved': '"Unsaved changes" appears with its words already in it',

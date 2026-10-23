@@ -55,7 +55,7 @@ const stagedFrom = (source, relaunch = {}) => { const st = staged('1.4.160', {},
         await settle(200);
     };
     const notice = () => ev(`(() => { const b = document.getElementById('update-ready-notice'); if (!b) return null; const r = b.getBoundingClientRect(); const bt = [...b.querySelectorAll('button')].map(x => { const q = x.getBoundingClientRect(); return { text: x.textContent.trim(), w: Math.round(q.width), h: Math.round(q.height) }; });
-        return { shown: !b.hidden && r.width > 0, text: b.textContent.replace(/\\s+/g, ' ').trim(), role: b.getAttribute('role'), buttons: bt, inside: r.left >= -1 && r.right <= innerWidth + 1, hscroll: document.documentElement.scrollWidth > innerWidth + 1 }; })()`);
+        return { shown: b.querySelector('.update-ready-lead').textContent !== '' && r.width > 0, text: b.textContent.replace(/\\s+/g, ' ').trim(), role: b.querySelector('[role=status]') && b.querySelector('[role=status]').getAttribute('role'), buttons: bt, inside: r.left >= -1 && r.right <= innerWidth + 1, hscroll: document.documentElement.scrollWidth > innerWidth + 1 }; })()`);
     const calls = () => ev(`window.__upd.calls.map(c => c.method + ' ' + c.url)`);
     const pillShown = () => ev(`(() => { const p = document.getElementById('update-pill'); return !!p && !p.hidden && p.getBoundingClientRect().width > 0; })()`);
 
