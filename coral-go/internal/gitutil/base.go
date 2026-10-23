@@ -3,6 +3,7 @@ package gitutil
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 )
 
@@ -15,6 +16,9 @@ var ErrNoCommits = errors.New("the repository has no commits yet: make a first c
 func ResolveBase(ctx context.Context, repoDir, requested string) (string, error) {
 	requested = strings.TrimSpace(requested)
 	if requested != "" && requested != "main" {
+		if ValidRef(requested) == nil && !refExists(ctx, repoDir, requested) { // a branch that is not there is said plainly, before git is asked to start from it
+			return "", branchMissing(ctx, repoDir, requested)
+		}
 		return requested, nil
 	}
 	if requested == "main" && refExists(ctx, repoDir, "main") {
@@ -33,4 +37,18 @@ func ResolveBase(ctx context.Context, repoDir, requested string) (string, error)
 func refExists(ctx context.Context, dir, name string) bool {
 	_, err := git(ctx, dir, "rev-parse", "--verify", "--quiet", name+"^{commit}")
 	return err == nil
+}
+
+// branchMissing is the plain answer for a base branch the repository does not have: it names the branches that exist.
+func branchMissing(ctx context.Context, repoDir, name string) error {
+	out, _ := git(ctx, repoDir, "for-each-ref", "--format=%(refname:short)", "--sort=refname", "refs/heads")
+	branches := strings.Fields(out)
+	if len(branches) == 0 {
+		return fmt.Errorf("the branch %q does not exist in this repository", name)
+	}
+	more := ""
+	if len(branches) > 20 {
+		branches, more = branches[:20], fmt.Sprintf(" and %d more", len(branches)-20)
+	}
+	return fmt.Errorf("the branch %q does not exist in this repository; the branches that do: %s%s", name, strings.Join(branches, ", "), more)
 }

@@ -183,3 +183,12 @@ func TestStopTeamKeepsABranchWithUnmergedCommits(t *testing.T) {
 	assert.NoDirExists(t, wt)
 	assert.Contains(t, git("branch", "--list", "coral-team/"+id), id, "the commits stay reachable")
 }
+
+// #6701: a base branch the repository does not have is a 400 that names the branches that exist.
+func TestTeamLaunchWithAMissingBaseBranchNamesTheBranches(t *testing.T) {
+	url, _ := teamServer(t)
+	repo, _ := repoOn(t, "master", true)
+	status, out := postTeam(t, url, map[string]any{"board_name": "nobranch", "working_dir": repo, "worktree": true, "base_branch": "release", "agent_type": "claude", "agents": []map[string]any{{"name": "A", "prompt": "x"}}})
+	assert.Equal(t, http.StatusBadRequest, status, "%v", out)
+	assert.Equal(t, `the branch "release" does not exist in this repository; the branches that do: master`, out["error"])
+}
