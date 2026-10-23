@@ -1,6 +1,7 @@
 package tunnel
 
 import (
+	"bytes"
 	"compress/gzip"
 	"context"
 	"errors"
@@ -256,6 +257,7 @@ func (l *LocalHandler) serveHTTP(ctx context.Context, s *Stream) {
 	stampUploader(req.Header, h, h.Method, dec)
 	stampLinks(req.Header, s, h.Method, dec)
 	redactRoute := l.redactFor(viewerTier(h))() && redactsRoute(h.Method, dec)
+	dropFields := dropsFor(h.Method, dec) && l.viewOnly(viewerTier(h))()
 	if redactRoute {
 		// A partial body could start inside a token: the whole reply is fetched and redacted.
 		req.Header.Del("Range")
@@ -324,6 +326,21 @@ func (l *LocalHandler) serveHTTP(ctx context.Context, s *Stream) {
 		hdr.Set(BodyLengthHeader, strconv.FormatInt(resp.ContentLength, 10))
 	}
 	rewriteLocation(hdr)
+	if dropFields && jsonReply(resp.Header) && bodyAllowed(s.Header.Method, resp.StatusCode) {
+		// A viewer who can only look gets no waiting_summary (viewdrop.go): the reply is read whole, the field is nulled, and what is sent on is the new body (its length is not the upstream's).
+		body, rerr := io.ReadAll(io.LimitReader(respBody, viewDropMax+1))
+		if rerr != nil || len(body) > viewDropMax {
+			s.Reject(CodeUpstream, "local response could not be prepared for this viewer", 0)
+			return
+		}
+		out, ok := stripViewDropped(body)
+		if !ok {
+			s.Reject(CodeUpstream, "local response could not be prepared for this viewer", 0)
+			return
+		}
+		respBody, decoded = bytes.NewReader(out), true
+		hdr.Del(BodyLengthHeader)
+	}
 	if redactRoute && textReply(resp.Header.Get("Content-Type")) && bodyAllowed(s.Header.Method, resp.StatusCode) {
 		// X-Coral-Content-Length stays the upstream length when it is known (#3568): it is
 		// advisory, read only by the hub to refuse an oversize artifact or panel with a clean 413
