@@ -14,7 +14,7 @@ const BASE = require('./test_base').BASE;
             const json = (b, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { 'Content-Type': 'application/json' } });
             if (url.endsWith('/api/cloud/status') && m === 'GET') { const r = await real(u, o); const st = await r.json(); Object.assign(st, { configured: true, state: 'connected', hub_url: 'https://hub.example', label: 'My Laptop', max_mode: 'interact', server_id: 'srv_demo', user_code: '', verification_url: '' }); st.owner_label_missing = window.__missing; if (window.__adopted) st.owner_adopted_at = window.__adopted; return json(st); }
             if (url.endsWith('/api/cloud/owner-label') && m === 'GET') { window.__gets++; return json(window.__cand); }
-            if (url.endsWith('/api/cloud/owner-label/arm') && m === 'POST') { window.__arms.push(o.body); if (window.__armSeveral) return json({ code: 'several_hub_users', error: 'More than one Coral Hub account tried this; check who has access, then try again' }, 409); return json({ ok: true, armed_until: new Date(Date.now() + window.__armSeconds * 1000).toISOString(), seconds: window.__armSeconds, hub: 'hub.example', candidate: window.__cand.candidate }); }
+            if (url.endsWith('/api/cloud/owner-label/arm') && m === 'POST') { window.__arms.push(o.body); if (window.__armSeveral) return json({ code: 'several_hub_users', error: 'More than one Coral Hub account tried this; check who has access, then try again', retry_after: 1500 }, 409); return json({ ok: true, armed_until: new Date(Date.now() + window.__armSeconds * 1000).toISOString(), seconds: window.__armSeconds, hub: 'hub.example', candidate: window.__cand.candidate }); }
             return real(u, o); }; return true; })()`);
     try {
         await Page.enable(); await Page.addScriptToEvaluateOnNewDocument({ source: PRELOAD });
@@ -77,7 +77,7 @@ const BASE = require('./test_base').BASE;
         await ev(`document.getElementById('settings-cloud-owner-record').click(); true`);
         await waitFor(`/More than one Coral Hub account/.test(document.getElementById('settings-cloud-owner-status').textContent)`, 'the several-accounts message', 6000);
         r = await row();
-        check('when more than one hub account was stamped as the owner it says so and the button is back', r.btn && !r.btnOff && /check who has access/.test(r.say), JSON.stringify(r));
+        check('when more than one hub account was stamped as the owner it says so and the button is back', r.btn && !r.btnOff && /check who has access, then try again after \d{1,2}:\d{2}/.test(r.say), JSON.stringify(r));
     } finally { await client.close(); }
     const failed = results.filter(x => !x).length;
     console.log(`hub_owner_label_row: ${results.length - failed}/${results.length} passed`);

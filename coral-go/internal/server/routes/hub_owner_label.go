@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strconv"
 	"sync"
 	"time"
 
@@ -180,6 +181,9 @@ func (h *CloudHandler) OwnerLabel(w http.ResponseWriter, r *http.Request) {
 	if missing {
 		user, at, several := ownerCandidate(now)
 		reply["candidate"], reply["several"] = user, several
+		if several {
+			reply["retry_after"] = int(ownerSeveralClearsIn(now)/time.Second) + 1
+		}
 		if user != "" {
 			reply["candidate_seen_at"] = at.UTC().Format(time.RFC3339)
 		}
@@ -217,7 +221,9 @@ func (h *CloudHandler) ArmOwnerLabel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, _, several := ownerCandidate(ownerNow()); several {
-		writeJSON(w, http.StatusConflict, map[string]string{"code": "several_hub_users", "error": textSeveralHubUsers})
+		wait := int(ownerSeveralClearsIn(ownerNow())/time.Second) + 1
+		w.Header().Set("Retry-After", strconv.Itoa(wait))
+		writeJSON(w, http.StatusConflict, map[string]any{"code": "several_hub_users", "error": textSeveralHubUsers, "retry_after": wait})
 		return
 	}
 	until, ok, retry := armOwnerAdoption(ownerNow())

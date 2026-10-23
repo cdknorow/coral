@@ -124,6 +124,14 @@ function safeHref(u) {
     } catch { return ''; }
 }
 
+// The refusal when more than one Coral Hub account was named as the owner in the last hour (#6186), with the time the computer will accept Confirm owner again (retry_after, in seconds).
+function severalAccountsText(retryAfter) {
+    const base = 'More than one Coral Hub account tried this; check who has access, then try again';
+    if (!Number.isFinite(retryAfter) || retryAfter <= 0) return base + '.';
+    const at = new Date(Date.now() + retryAfter * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    return `${base} after ${at}.`;
+}
+
 /** One connect panel: `root` holds the data-cloud parts; onState(st) follows every status. */
 class CloudPanel {
     constructor(root, onState) {
@@ -301,7 +309,7 @@ class CloudPanel {
                 const ago = Number.isFinite(seen) ? `, seen ${Math.max(0, Math.round((Date.now() - seen) / 60000))} min ago` : '';
                 cand.textContent = `The last owner Coral Hub showed was ${d.candidate}${host ? ` (${host})` : ''}${ago}. Confirm owner trusts the account that opens an owner-only page next.`;
                 cand.hidden = false;
-            } else if (d.several === true) { cand.textContent = 'More than one Coral Hub account tried this; check who has access, then try again.'; cand.hidden = false;
+            } else if (d.several === true) { cand.textContent = severalAccountsText(d.retry_after); cand.hidden = false;
             } else if (host) { cand.textContent = `Confirm owner trusts the account that opens an owner-only page next through ${host}.`; cand.hidden = false; }
         } catch { /* the row keeps its text */ }
     }
@@ -317,7 +325,7 @@ class CloudPanel {
             if (r.status === 429) return fail('Pressed a few times already. Try again later, or link this computer again.');
             if (r.status === 409) {
                 const body = await r.json().catch(() => null);
-                if (body && body.code === 'several_hub_users') return fail('More than one Coral Hub account tried this; check who has access, then try again.');
+                if (body && body.code === 'several_hub_users') return fail(severalAccountsText(body.retry_after));
             }
             if (!r.ok) return fail(r.status === 409 ? 'Coral Hub is not connected right now, or the owner is already recorded.' : 'Could not start. Link this computer again instead.');
             reply = await r.json();

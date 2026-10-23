@@ -8,6 +8,7 @@ import (
 	"crypto/subtle"
 	"log/slog"
 	"net/http"
+	"sort"
 	"sync"
 	"time"
 
@@ -215,6 +216,24 @@ func ownerCandidate(now time.Time) (user string, at time.Time, several bool) {
 	return user, at, false
 }
 
+// ownerSeveralClearsIn is how long until at most one account is left among the stamps of the last hour: the time until the second-newest stamp ages out of the window (a newer stamp from another account
+// before then puts it off again). 0 when there are not several now.
+func ownerSeveralClearsIn(now time.Time) time.Duration {
+	ownerStamps.Lock()
+	defer ownerStamps.Unlock()
+	var live []time.Time
+	for _, t := range ownerStamps.seen {
+		if now.Sub(t) < ownerStampWindow {
+			live = append(live, t)
+		}
+	}
+	if len(live) < 2 {
+		return 0
+	}
+	sort.Slice(live, func(i, j int) bool { return live[i].Before(live[j]) })
+	return live[len(live)-2].Add(ownerStampWindow).Sub(now)
+}
+
 // identifyOwner runs the stamp and owner checks. It never trusts a header unless the request really came through the connector: the stamp must
 // be the connector's own, the owner marker must be there once and be "owner", the hub user must have the stamp's form, and when the enrolment
 // recorded the owner's label the user must equal it. An unreadable record is no owner.
@@ -233,7 +252,7 @@ func identifyOwner(r *http.Request, ownerUser func(context.Context) (string, err
 	if id.pseudo == "" {
 		return id
 	}
-	noteOwnerStamp(id.pseudo, time.Now())
+	noteOwnerStamp(id.pseudo, ownerNow())
 	var label string
 	if ownerUser != nil {
 		l, err := ownerUser(r.Context())

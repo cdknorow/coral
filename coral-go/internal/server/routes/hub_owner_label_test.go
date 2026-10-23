@@ -324,6 +324,19 @@ func TestSeveralStampedHubUsersRefuseToArmAndToAdopt(t *testing.T) {
 	assert.Contains(t, rec.Body.String(), "several_hub_users")
 	assert.Contains(t, rec.Body.String(), "More than one Coral Hub account tried this; check who has access, then try again")
 	assert.Empty(t, e.store.adopted)
+	// #6186: it says when to try again: the stamps are at most an hour old, and it clears when the older of the two has aged out
+	var body struct {
+		RetryAfter int `json:"retry_after"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	assert.Equal(t, 3600+1, body.RetryAfter, "both stamps were made at this instant: one hour, rounded up")
+	assert.Equal(t, "3601", rec.Header().Get("Retry-After"))
+	e.now = e.now.Add(40 * time.Minute)
+	rec = e.arm()
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	assert.Equal(t, 20*60+1, body.RetryAfter, "forty minutes later: twenty minutes are left")
+	e.now = e.now.Add(21 * time.Minute)
+	assert.Equal(t, http.StatusOK, e.arm().Code, "once the older stamp has aged out only one account is left, and Confirm owner works")
 
 	// armed with one account stamped, a second account stamped afterwards: the request that would adopt is refused and the label stays empty
 	e2 := newOwnerLabelEnv(t)
