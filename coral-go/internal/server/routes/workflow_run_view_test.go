@@ -187,3 +187,36 @@ func TestOnlyAFailedRunHasAFailureAndOnlyAFinishedRunADuration(t *testing.T) {
 		assert.Contains(t, r, k)
 	}
 }
+
+// Security's #6530 finding: the reason is redacted as a whole before the last line is taken and before it is cut. A token that straddles the 200-character cut, and a private key whose lines
+// would each look harmless alone, must not leave any of themselves in the reason.
+func TestTheReasonIsRedactedBeforeItIsSplitOrCut(t *testing.T) {
+	rig := newRunViewRig(t)
+	token := "ghp_" + strings.Repeat("a1B2c3D4e5", 4)
+	show := func(tail string) string {
+		id := rig.run("failed", []map[string]any{{"index": 0, "name": "step", "status": "failed", "error_tail": tail}}, "", "", nil)
+		reason, _ := rig.listed(id)["failure_reason"].(string)
+		return reason
+	}
+	// the token starts a few characters before the cut: cut first, its first characters would be shown
+	for _, pad := range []int{180, 190, 195, 198, 199, 200} {
+		reason := show("error: " + strings.Repeat("x", pad) + " " + token + " rejected")
+		assert.NotContains(t, reason, token[:8], "pad %d: no start of the token", pad)
+		assert.NotContains(t, reason, "a1B2c3D4", "pad %d", pad)
+	}
+	// a key: its body lines are not shown alone, whichever of them is the last line the tail ends on
+	key := "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEAqz0Zm9vYmFyYmF6cXV4MTIzNDU2Nzg5MGFiY2RlZg\nQWxwaGFCZXRhR2FtbWFEZWx0YUVwc2lsb25aZXRhRXRhVGhldGE0NTY3ODk\n-----END RSA PRIVATE KEY-----"
+	for _, tail := range []string{"fatal: bad key\n" + key, key, "fatal: bad key\n" + key + "\nexit status 1"} {
+		reason := show(tail)
+		assert.NotContains(t, reason, "MIIEowIBAAKCAQEA", tail)
+		assert.NotContains(t, reason, "QWxwaGFCZXRh", tail)
+		assert.NotContains(t, reason, "Zm9vYmFy", tail)
+	}
+	// the same for the run's error message and an output tail
+	id := rig.run("failed", nil, "", "", ptrString("went wrong: "+strings.Repeat("y", 195)+" "+token))
+	assert.NotContains(t, rig.listed(id)["failure_reason"], token[:8])
+	// an ordinary line is still the reason
+	assert.Equal(t, "exit status 1", show("building\nexit status 1\n"))
+}
+
+func ptrString(s string) *string { return &s }

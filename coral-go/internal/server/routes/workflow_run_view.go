@@ -83,26 +83,34 @@ func failureOf(run *store.WorkflowRun) (*store.FailedStep, string) {
 			n = i + 1
 		}
 		step = &store.FailedStep{Number: n, Name: runOneLine(r.Name, 80)}
-		reason = lastLine(r.ErrorTail)
+		reason = reasonOf(r.ErrorTail, true)
 		if reason == "" {
-			reason = lastLine(r.OutputTail)
+			reason = reasonOf(r.OutputTail, true)
 		}
 		if reason == "" {
-			reason = runOneLine(r.Note, maxFailureReason)
+			reason = reasonOf(r.Note, false)
 		}
 		break
 	}
 	if reason == "" && run.ErrorMsg != nil {
-		reason = runOneLine(*run.ErrorMsg, maxFailureReason)
-	}
-	if reason != "" {
-		red, ok := redactComment(reason) // a failed command may have printed a secret: redacted before it is shown, and not shown when that cannot be checked
-		if !ok {
-			return step, ""
-		}
-		reason = runOneLine(red, maxFailureReason)
+		reason = reasonOf(*run.ErrorMsg, false)
 	}
 	return step, reason
+}
+
+// reasonOf is the one line a tail of text comes to: the WHOLE text is cleaned and redacted first (a failed command may have printed a secret, and a secret is found by what is around it: a
+// private key by its header and footer, a token by its whole length), then its last line with anything on it is taken, then that is cut. Cut or split first and a token's start, or a line
+// from inside a key, would be shown alone (Security's #6530 finding). Empty when the text cannot be checked for secrets.
+// A tail of output is reduced to its last line; a sentence (the step's note, the run's error message) is kept whole, as one line.
+func reasonOf(text string, lastLineOnly bool) string {
+	red, ok := redactComment(clitext.Clean(text))
+	if !ok {
+		return ""
+	}
+	if lastLineOnly {
+		return lastLine(red)
+	}
+	return runOneLine(red, maxFailureReason)
 }
 
 // lastLine is the last line of text that has anything on it, as one clean line.
