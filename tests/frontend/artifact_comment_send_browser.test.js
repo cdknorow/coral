@@ -60,7 +60,7 @@ const MD = ['# Migration plan', '', '## Steps', '', '1. Add the new columns behi
     const sendBtn = id => `document.querySelector('.ac-card[data-id="${id}"] .ac-ask-open')`;
     const block = () => ev(`(() => { const b = document.querySelector('.ac-ask'); if (!b) return null;
         return { title: b.querySelector('.ac-ask-title').textContent, agents: [...b.querySelectorAll('.ac-ask-agent')].map(li => ({ role: li.querySelector('input').value, text: li.textContent.replace(/\\s+/g, ' ').trim(), disabled: li.querySelector('input').disabled, checked: li.querySelector('input').checked, state: li.dataset.state || '' })),
-            go: (b.querySelector('.ac-ask-go') || {}).textContent || '', goDisabled: !!b.querySelector('.ac-ask-go') && b.querySelector('.ac-ask-go').disabled, close: (b.querySelector('.ac-cancel') || {}).textContent, error: b.querySelector('.ac-error').hidden ? '' : b.querySelector('.ac-error').textContent,
+            note: b.querySelector('.ac-ask-note').textContent, go: (b.querySelector('.ac-ask-go') || {}).textContent || '', goDisabled: !!b.querySelector('.ac-ask-go') && b.querySelector('.ac-ask-go').disabled, close: (b.querySelector('.ac-cancel') || {}).textContent, error: b.querySelector('.ac-error').hidden ? '' : b.querySelector('.ac-error').textContent,
             fits: b.getBoundingClientRect().right <= innerWidth + 1 && document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1 }; })()`);
     try {
         await Page.enable(); await Page.addScriptToEvaluateOnNewDocument({ source: PRELOAD });
@@ -81,7 +81,7 @@ const MD = ['# Migration plan', '', '## Steps', '', '1. Add the new columns behi
             await waitFor(`document.querySelectorAll('.ac-ask .ac-ask-agent').length >= 3`, 'the agents', 8000);
             await sleep(200); // sleep-ok: focus moves to the first agent after the list is drawn
             let b = await block();
-            check(`${tag}: it names the board and lists its agents (a terminal is not one), asleep and not running shown and not pickable`, /ask-team/.test(b.title) && b.agents.map(a => a.role).join() === 'QA Engineer,Backend Dev,UI Dev,Docs Writer'
+            check(`${tag}: it names the board and lists its agents (a terminal is not one), asleep and not running shown and not pickable`, /ask-team/.test(b.title) && b.note === 'Each agent you pick gets this comment as a message. They answer in this thread.' && b.agents.map(a => a.role).join() === 'QA Engineer,Backend Dev,UI Dev,Docs Writer'
                 && b.agents.find(a => a.role === 'UI Dev').disabled && /Asleep: wake it first/.test(b.agents.find(a => a.role === 'UI Dev').text) && b.agents.find(a => a.role === 'Docs Writer').disabled && /Not running/.test(b.agents.find(a => a.role === 'Docs Writer').text)
                 && !b.agents[0].disabled && !b.agents[1].disabled, JSON.stringify(b));
             check(`${tag}: nothing picked: the button is off; focus is on the first agent that can be picked`, b.goDisabled && b.go === 'Send to agent' && (await ev(`document.activeElement && document.activeElement.value`)) === 'QA Engineer', JSON.stringify([b.go, b.goDisabled]));
@@ -97,6 +97,8 @@ const MD = ['# Migration plan', '', '## Steps', '', '1. Add the new columns behi
             check(`${tag}: one request with exactly the roles picked, for that comment`, posted.length === 1 && posted[0].id === 1 && posted[0].agents.join() === 'QA Engineer,Backend Dev', JSON.stringify(posted));
             check(`${tag}: the answer is said per agent: Asked, Already asked; the boxes are off and the button is Close`, /Asked/.test(b.agents[0].text) && b.agents[0].state === 'sent' && b.agents[1].state === 'already_asked' && /Already asked/.test(b.agents[1].text) && b.agents.every(a => a.disabled) && b.close === 'Close' && b.go === '', JSON.stringify(b.agents));
             check(`${tag}: it fits`, b.fits);
+            const off = await ev(`[...document.querySelectorAll('.ac-ask-agent')].filter(li => li.querySelector('.ac-ask-state')).map(li => { const n = li.querySelector('.ac-ask-name').getBoundingClientRect(), s = li.querySelector('.ac-ask-state').getBoundingClientRect(); return Math.abs((n.top + n.bottom) / 2 - (s.top + s.bottom) / 2); })`);
+            check(`${tag}: each status sits on its agent's name line (within 2 px)`, off.length >= 4 && off.every(d => d <= 2), JSON.stringify(off));
             await shot(`send-${tag}-answered`);
             await ev(`document.querySelector('.ac-ask .ac-cancel').click(); true`);
             check(`${tag}: Close puts focus back on Send to agent`, (await ev(`document.activeElement === ${sendBtn(1)}`)));

@@ -46,7 +46,7 @@ export function buildSendBlock(x) {
     const title = el('p', 'ac-ask-title', `Send this comment to agents on ${x.board}`); title.id = `ac-ask-title-${x.id}`;
     box.setAttribute('aria-labelledby', title.id);
     box.append(title);
-    box.append(el('p', 'ac-ask-note', 'Coral posts one message to each agent you pick, from you, with this comment quoted as text from someone else. Agents answer in this thread only.'));
+    box.append(el('p', 'ac-ask-note', 'Each agent you pick gets this comment as a message. They answer in this thread.'));
     if (x.agents === null) { box.append(el('p', 'ac-ask-note', 'Looking for the agents on this board…')); }
     else if (x.agents === 'error') { box.append(el('p', 'ac-error', 'The agents of this board could not be read.')); }
     else if (!x.agents.length) { box.append(el('p', 'ac-ask-note', 'No agent on this board can be asked.')); }
