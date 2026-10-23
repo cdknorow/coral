@@ -105,11 +105,5 @@ GET /api/token-usage/summary redact
 GET /api/token-usage/timeseries redact
 GET /api/views redact
 GET /api/views/{id} redact
-GET /api/workflows redact
-GET /api/workflows/by-name/{name} redact
-GET /api/workflows/runs/recent redact
-GET /api/workflows/runs/{id} redact
-GET /api/workflows/{id} redact
-GET /api/workflows/{id}/runs redact
 GET /ws/coral redact
 GET /ws/terminal/{name} redact

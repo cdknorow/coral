@@ -109,10 +109,14 @@ func TestHubSweepNoHomeInAnyViewRoute(t *testing.T) {
 	_, err = store.NewWorkflowStore(r.db).CreateWorkflowRun(ctx, wf.ID, "manual", nil)
 	require.NoError(t, err)
 
-	// The step's command and args through the hub: the home shown as "~", the rest as written.
-	wfHub := call(h, "GET", "/api/workflows/by-name/"+name, "", map[string]string{tunnel.ViaHeader: cloud.ViaSecret()})
-	require.Equal(t, 200, wfHub.Code, wfHub.Body.String())
-	require.Contains(t, wfHub.Body.String(), "cd "+strings.Trim(jsonString(tildePath("work", "proj")), `"`)+" \u0026\u0026 make test")
+	// A workflow, its step commands and its runs are not for a view-only viewer (the operator, 2026-10-23): every workflow read needs Interact, so at View the hub gets the refusal and
+	// nothing of the workflow, its command or the home folder it names (it was a View route, with the home shown as "~", until then).
+	for _, p := range []string{"/api/workflows", "/api/workflows/by-name/" + name, "/api/workflows/" + strconv.FormatInt(wf.ID, 10), "/api/workflows/" + strconv.FormatInt(wf.ID, 10) + "/runs", "/api/workflows/runs/recent", "/api/workflows/runs/1"} {
+		wfHub := call(h, "GET", p, "", map[string]string{tunnel.ViaHeader: cloud.ViaSecret()})
+		require.Equal(t, 403, wfHub.Code, "%s: %s", p, wfHub.Body.String())
+		require.Contains(t, wfHub.Body.String(), "not available through the Coral Hub in this access mode", p)
+		require.NotContains(t, wfHub.Body.String(), "make test", p)
+	}
 
 	// #3561 (e): a missing task's (or board's) cost is a 404, not a 500.
 	require.Equal(t, 404, call(h, "GET", "/api/board/team/tasks/999999/cost", "", nil).Code)

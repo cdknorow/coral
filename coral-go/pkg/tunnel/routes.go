@@ -207,8 +207,6 @@ var routeTable = cat(
 		"/api/tags", "/api/folder-tags", "/api/folder-tags/{name}", "/api/pinned-folders",
 		// The Operator's saved messages (#4510): his own bookmarks, snippets redacted when saved.
 		"/api/scheduled/jobs", "/api/scheduled/jobs/{id}", "/api/scheduled/jobs/{id}/runs", "/api/scheduled/runs/recent",
-		"/api/workflows", "/api/workflows/runs/recent", "/api/workflows/by-name/{name}", "/api/workflows/{id}",
-		"/api/workflows/{id}/runs", "/api/workflows/runs/{id}",
 		"/api/themes", "/api/themes/variables", "/api/themes/{name}",
 		"/api/templates/agents", "/api/templates/agents/{category}", "/api/templates/agents/{category}/{name}",
 		"/api/templates/commands", "/api/templates/commands/{category}", "/api/templates/commands/{category}/{name}",
@@ -257,6 +255,12 @@ var routeTable = cat(
 	owner(OwnerUpdate, rules(http.MethodGet, TierView, UpdateStatusPath)),
 
 	// ── interact: typing into running agents, and changing running work ──
+	// Workflows are not for a view-only Hub viewer (the operator, 2026-10-23 16:20Z): their definitions are commands that run later and a run's detail carries command output, so reading them
+	// needs Interact like starting one (Launch) or stopping one. A viewer at View sees no workflow at all: not the list, not a run, not its failure reason.
+	rules(http.MethodGet, TierInteract,
+		"/api/workflows", "/api/workflows/runs/recent", "/api/workflows/by-name/{name}", "/api/workflows/{id}",
+		"/api/workflows/{id}/runs", "/api/workflows/runs/{id}",
+	),
 	rules(http.MethodPost, TierInteract,
 		// A panel interaction and a request to the agent put user text in front of an agent, like send.
 		"/api/agent/ui/{uiid}/events",
