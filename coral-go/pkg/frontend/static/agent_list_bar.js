@@ -61,7 +61,8 @@ function announceCount() {
     const f = getListFilters();
     const n = sessions.length;
     const noun = `agent${n === 1 ? '' : 's'}`;
-    const text = (f.state || f.board || f.machine || getAgentFilter()) ? `Showing ${matched} of ${n} ${noun}` : `Showing all ${n} ${noun}`;
+    const narrowed = !!(f.state || f.board || f.machine || getAgentFilter());
+    const text = narrowed ? `Showing ${matched} of ${n} ${noun}` : n === 1 ? 'Showing 1 agent' : `Showing all ${n} ${noun}`; // (not "all 1 agent")
     for (const el of inListHeaders('[data-agent-list-live]')) {
         el.textContent = ''; // a same sentence again (a filter on, off and on) is still heard: the region changes
         setTimeout(() => { el.textContent = text; }, 50);
