@@ -3101,6 +3101,15 @@ button.subscriber-history-link {
 .mb-more, .mb-more-menu { display: contents; }
 .mb-action-btn.mb-more-btn { display: none; }
 
+/* Wide screen (#6279): Delete, the one destructive button, is a popover under More; Select, Export and Pause stay inline. Sidebar open or phone: the whole group is in the menu, below and in mobile.css. */
+@media (min-width: 768px) {
+    body:not([data-dock-open="1"]) .mb-has-board .mb-more { display: inline-flex; align-items: center; gap: 4px; position: relative; }
+    body:not([data-dock-open="1"]) .mb-has-board .mb-more-btn { display: inline-flex; order: 9; }
+    body:not([data-dock-open="1"]) .mb-has-board #mb-delete-btn { display: none; }
+    body:not([data-dock-open="1"]) .mb-has-board .mb-more.open #mb-delete-btn { display: flex; position: absolute; top: 100%; right: 0; margin-top: 6px; padding: 8px 16px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-lg); z-index: 1000; }
+    body:not([data-dock-open="1"]) .mb-has-board .mb-more.open #mb-delete-btn:hover { background: var(--bg-hover); }
+}
+
 /* With the right sidebar open on a board (#4539) the board is narrower and the toolbar uses the same More menu a phone does (#4538, mobile.css): Select, Export, Pause
    and Delete in a menu, the Subscribers list being in the sidebar. The rules repeat the phone's, behind the sidebar being open (body[data-dock-open], sidebar.js). */
 @media (min-width: 768px) {

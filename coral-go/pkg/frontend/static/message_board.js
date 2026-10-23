@@ -992,7 +992,8 @@ export { loadBoardProjects };
 // screen their group is laid out inline and the More button is hidden, mobile.css). Arrow keys, Home and End move between its
 // items, Escape closes it with focus back on More; choosing an item, a click outside or leaving the board closes it.
 function moreItems() {
-    return [...document.querySelectorAll('#mb-more-menu .mb-action-btn')].filter(b => b.getClientRects().length && !b.disabled);
+    const wide = getComputedStyle(document.getElementById('mb-more-menu')).display === 'contents'; // More opens Delete alone (#6279)
+    return [...document.querySelectorAll(wide ? '#mb-delete-btn' : '#mb-more-menu .mb-action-btn')].filter(b => b.getClientRects().length && !b.disabled);
 }
 function setMoreOpen(open, { focus = false } = {}) {
     const wrap = document.getElementById('mb-more');

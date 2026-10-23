@@ -39,20 +39,32 @@ const B = 'more-4538';
         let l = Page.loadEventFired(); await Page.navigate({ url: BASE + '/' }); await l; await coralReady();
         await ev(`fetch('/api/board/${B}/messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subscriber_id: 'qa', as: 'QA Engineer', content: 'hello from the toolbar test' }) }).then(r => r.status)`);
 
-        console.log('Desktop: unchanged (no More; Select, Export, Pause and Delete inline)');
+        console.log('Desktop: Select, Export and Pause inline; Delete alone behind More (#6279)');
         l = Page.loadEventFired(); await Page.navigate({ url: `${BASE}/board/${B}` }); await l; await coralReady();
         // A board opens with the right sidebar open when the window is wide enough, and then the toolbar uses More too (right_dock_browser checks that): the sidebar is closed for the inline toolbar (#4539).
         await waitFor(`document.body.hasAttribute('data-dock-open')`, 'the sidebar state');
         if (await ev(`document.body.dataset.dockOpen === '1'`)) await ev(`document.getElementById('panel-toggle-btn').click(); true`);
-        await waitFor(`document.body.dataset.dockOpen === '0' && document.getElementById('agentic-state').getBoundingClientRect().width < 1 && getComputedStyle(document.getElementById('mb-more-btn')).display === 'none'`, 'the sidebar closed and More gone');
-        await waitFor(shown('#mb-delete-btn'), 'the toolbar on a desktop');
-        const desk = await ev(`(() => { const ids = ['mb-select-btn', 'mb-export-btn', 'mb-pause-btn', 'mb-delete-btn'];
+        await waitFor(`document.body.dataset.dockOpen === '0' && document.getElementById('agentic-state').getBoundingClientRect().width < 1 `, 'the sidebar closed');
+        await waitFor(shown('#mb-pause-btn'), 'the toolbar on a desktop');
+        const desk = await ev(`(() => { const ids = ['mb-select-btn', 'mb-export-btn', 'mb-pause-btn'];
             const r = ids.map(id => document.getElementById(id).getBoundingClientRect());
             return { more: getComputedStyle(document.getElementById('mb-more-btn')).display, shown: r.every(x => x.width > 0), oneRow: r.every(x => Math.abs(x.top - r[0].top) < 2),
-                group: getComputedStyle(document.getElementById('mb-more-menu')).display }; })()`);
-        assert.equal(desk.more, 'none', 'no More button on a desktop');
-        assert.ok(desk.shown && desk.oneRow, 'the four buttons inline in one row');
+                delHidden: document.getElementById('mb-delete-btn').getBoundingClientRect().width === 0, group: getComputedStyle(document.getElementById('mb-more-menu')).display }; })()`);
+        assert.match(desk.more, /flex/, 'More on a desktop: ' + JSON.stringify(desk));
+        assert.ok(desk.shown && desk.oneRow, 'Select, Export and Pause inline in one row');
+        assert.ok(desk.delHidden, 'Delete is not inline: the destructive button sits behind More');
         assert.equal(desk.group, 'contents', 'their group adds no box');
+        await ev(`document.getElementById('mb-more-btn').click(); true`);
+        await waitFor(shown('#mb-delete-btn'), 'Delete in the More popover');
+        await ev(`document.getElementById('mb-more-btn').focus(); true`);
+        await key('Escape', 'Escape', 27);
+        await waitFor(`document.getElementById('mb-delete-btn').getBoundingClientRect().width === 0`, 'Escape closes the popover');
+        // from the keyboard: Enter on More puts focus on Delete, the one item
+        await ev(`document.getElementById('mb-more-btn').focus(); true`);
+        await key('Enter', 'Enter', 13, '\r');
+        await waitFor(`document.activeElement && document.activeElement.id === 'mb-delete-btn'`, 'focus on Delete');
+        await key('Escape', 'Escape', 27);
+        await waitFor(`document.activeElement && document.activeElement.id === 'mb-more-btn'`, 'focus back on More');
 
         for (const font of ['', '200%']) {
             const name = `phone 390${font ? ', 200% text' : ''}`;

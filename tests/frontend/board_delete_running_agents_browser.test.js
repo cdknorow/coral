@@ -19,7 +19,7 @@ const BASE = require('./test_base').BASE;
         l = Page.loadEventFired(); await Page.navigate({ url: `${BASE}/board/${B}` }); await l;
         await install();
         await ev(`window.__coralReady.then(() => true)`);
-        await waitFor(`!!document.getElementById('mb-delete-btn') && document.getElementById('mb-delete-btn').getBoundingClientRect().width > 0`, 'the board and its Delete button', 15000);
+        await waitFor(`!!document.getElementById('mb-delete-btn') && document.getElementById('mb-more-btn').getBoundingClientRect().width > 0`, 'the board and its More menu (Delete sits behind it on a wide screen, #6279)', 15000);
         await waitFor(`(window.T.state.liveSessions || []).some(s => s.name === 'bd-agent')`, 'the running agent in the list', 15000);
         await ev(`window.__confirm = null; window.__deletes = []; window.__server409 = false;
             window.showConfirmModal = (title, msg, cb) => { window.__confirm = { title, msg, cb }; };
@@ -54,7 +54,7 @@ const BASE = require('./test_base').BASE;
 
         console.log('3. Nothing runs: the delete goes through');
         await ev(`document.querySelectorAll('.toast').forEach(t => t.remove()); window.__server409 = false; window.__confirm.cb(); true`);
-        await waitFor(`!document.getElementById('mb-delete-btn') || document.getElementById('mb-delete-btn').getBoundingClientRect().width === 0`, 'the page leaving the deleted board', 10000);
+        await waitFor(`!document.getElementById('messageboard-view').classList.contains('mb-has-board')`, 'the page leaving the deleted board', 10000);
         assert.equal(await boardListed(), false, 'the board is gone');
         console.log('   ✓');
     } finally { await removeBoards(ev, [B]); await client.close(); }

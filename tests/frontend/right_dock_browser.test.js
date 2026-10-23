@@ -194,9 +194,9 @@ const BASE = require('./test_base').BASE;
         await shot('dock-board-more');
         await ev(`document.getElementById('mb-more-btn').click(); true`);
         await toggle(); // close the sidebar
-        await waitFor(`document.body.dataset.dockOpen === '0' && getComputedStyle(document.getElementById('mb-more-btn')).display === 'none'`, 'More gone with the sidebar closed', 4000);
+        await waitFor(`document.body.dataset.dockOpen === '0' && getComputedStyle(document.getElementById('mb-select-btn')).display !== 'none' && getComputedStyle(document.getElementById('mb-more-menu')).display === 'contents'`, 'the buttons inline with the sidebar closed', 4000);
         b = await bar();
-        assert.deepEqual({ more: b.more, select: b.select, del: b.del }, { more: false, select: true, del: true }, 'closed sidebar: the buttons inline: ' + JSON.stringify(b));
+        assert.deepEqual({ more: b.more, select: b.select, del: b.del }, { more: true, select: true, del: false }, 'closed sidebar: Select, Export and Pause inline, Delete behind More (#6279): ' + JSON.stringify(b));
 
         console.log('11b. The tab strip is keyboard-operable: Left and Right move the focus, Home and End go to the ends');
         await Emulation.setDeviceMetricsOverride({ width: 1400, height: 800, deviceScaleFactor: 1, mobile: false });
