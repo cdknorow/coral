@@ -215,7 +215,7 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
         const notes = await ev(`${U}.then(u => {
             const read = (url, label) => {
                 u.showAlertNotification('t', 'm', 'info', { url, label });
-                const o = document.querySelector('.alert-notification-overlay:last-of-type');
+                const o = [...document.querySelectorAll('.alert-notification-overlay')].pop(); // the newest by class: :last-of-type is last among the page's divs, and the screen-reader regions (#6226) are divs too
                 const host = o.querySelector('.alert-notification-host');
                 const a = o.querySelector('a.alert-notification-link');
                 const r = { host: host ? host.textContent : null, link: !!a,
