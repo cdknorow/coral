@@ -742,8 +742,14 @@ func (s *JobScheduler) prepareRunWorktree(ctx, watchCtx context.Context, runID i
 	// The base branch the job names, else the repository's current branch: a job stored with the old default "main" runs in a repository on master too (#6701).
 	var err error
 	errMsg := ""
+	errCode := "worktree_failed" // the fixed word a row and the Runs table show (#6701)
 	if wt.baseBranch, err = gitutil.ResolveBase(watchCtx, rc.repoPath, wt.baseBranch); err != nil {
-		errMsg = fmt.Sprintf("git worktree add failed: %v", err)
+		var missing *gitutil.BranchMissingError
+		if errors.As(err, &missing) {
+			errMsg, errCode = missing.Error(), "base_branch_missing" // one plain sentence, no git text
+		} else {
+			errMsg = fmt.Sprintf("git worktree add failed: %v", err)
+		}
 	} else if err = gitutil.ValidRef(wt.baseBranch); err != nil {
 		errMsg = fmt.Sprintf("base_branch refused: %v", err)
 	} else if err = runGitCmd(watchCtx, rc.repoPath, "worktree", "add", "-b", wt.runBranch, "--", wt.worktreeDir, wt.baseBranch); err != nil {
@@ -755,6 +761,7 @@ func (s *JobScheduler) prepareRunWorktree(ctx, watchCtx context.Context, runID i
 		s.store.UpdateScheduledRun(ctx, runID, map[string]interface{}{
 			"status":      "failed",
 			"error_msg":   errMsg,
+			"error_code":  errCode,
 			"finished_at": now,
 		})
 		return wt, false

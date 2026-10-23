@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -17,6 +20,7 @@ import (
 	"github.com/subgentic/coral/internal/board/boardtest"
 	"github.com/subgentic/coral/internal/config"
 	"github.com/subgentic/coral/internal/store/storetest"
+	"github.com/subgentic/coral/pkg/tunnel"
 )
 
 // #3601 (weak site W24): a base_branch that git would read as an option ('-' first) or that
@@ -113,4 +117,64 @@ func TestWorkflowUpdateRefusesAnOptionAsBaseBranch(t *testing.T) {
 	assert.Contains(t, body["error"], "base_branch")
 	_, got := sendJSON(t, http.MethodGet, srv.URL+"/api/workflows/"+id, nil)
 	assert.Equal(t, "main", got["base_branch"], "the stored value is unchanged")
+}
+
+// #6701: a job saved with a base branch its repository does not have is a 400 under the field (not a failed first run), with the branches to pick from; none named is the repository's current branch.
+func TestScheduledJobBaseBranchIsCheckedWhenSaved(t *testing.T) {
+	srv, _ := scheduleTestServer(t)
+	repo, _ := repoOn(t, "master", true)
+	job := map[string]any{"name": "nightly", "cron_expr": "0 9 * * 1-5", "repo_path": repo, "prompt": "do it", "base_branch": "release", "create_worktree": true}
+	code, body := sendJSON(t, http.MethodPost, srv.URL+"/api/scheduled/jobs", job)
+	assert.Equal(t, http.StatusBadRequest, code)
+	assert.Equal(t, "base_branch_missing", body["code"])
+	assert.Equal(t, "base_branch", body["field"])
+	assert.NotEmpty(t, body["branches"])
+	assert.Contains(t, body["error"], "The base branch release does not exist in ")
+
+	delete(job, "base_branch")
+	code, body = sendJSON(t, http.MethodPost, srv.URL+"/api/scheduled/jobs", job)
+	require.Equal(t, http.StatusOK, code, body)
+	assert.Empty(t, body["base_branch"], "nothing named: the repository's own branch, found when it runs")
+	id := strconv.FormatInt(int64(body["id"].(float64)), 10)
+
+	code, body = sendJSON(t, http.MethodPut, srv.URL+"/api/scheduled/jobs/"+id, map[string]any{"base_branch": "release"})
+	assert.Equal(t, http.StatusBadRequest, code)
+	assert.Equal(t, "base_branch_missing", body["code"])
+}
+
+// The folder's current branch comes with is-git, "" before a first commit.
+func TestIsGitAnswersTheCurrentBranch(t *testing.T) {
+	e := newBoundsEnv(t)
+	r := chi.NewRouter()
+	r.Get("/api/filesystem/is-git", (&SystemHandler{}).IsGitDir)
+	srv := httptest.NewServer(r)
+	t.Cleanup(srv.Close)
+	get := func(dir string) map[string]any {
+		req, _ := http.NewRequest("GET", srv.URL+"/api/filesystem/is-git?path="+url.QueryEscape(dir), nil)
+		req.Header.Set(tunnel.ViaHeader, "1") // the strict bounds: the folder is under the home
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		var out map[string]any
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&out))
+		return out
+	}
+	mk := func(name string, commit bool) string {
+		dir := filepath.Join(e.home, "projects", name)
+		require.NoError(t, os.MkdirAll(dir, 0o755))
+		for _, args := range [][]string{{"init", "-q", "-b", "trunk"}} {
+			out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).CombinedOutput()
+			require.NoError(t, err, string(out))
+		}
+		if commit {
+			out, err := exec.Command("git", "-C", dir, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "x").CombinedOutput()
+			require.NoError(t, err, string(out))
+		}
+		return dir
+	}
+	assert.Equal(t, map[string]any{"is_git": true, "branch": "trunk"}, get(mk("committed", true)))
+	assert.Equal(t, map[string]any{"is_git": true, "branch": ""}, get(mk("empty", false)))
+	plain := filepath.Join(e.home, "projects", "plain")
+	require.NoError(t, os.MkdirAll(plain, 0o755))
+	assert.Equal(t, map[string]any{"is_git": false}, get(plain))
 }
