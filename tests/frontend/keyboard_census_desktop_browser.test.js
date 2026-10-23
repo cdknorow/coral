@@ -6,6 +6,7 @@ const { connect } = require('./agent_view_harness');
 const { launchStandIn } = require('./helpers/stand_in_agent');
 const { guardSettings } = require('./helpers/settings_guard');
 const { tap: tapSel, required, openBoardComposer, BOARD_COMPOSER_UP, showUpdateReady, UPDATE_NOTICE_UP, UPDATE_DIALOG_UP } = require('./helpers/phone_targets');
+const { requiredScenes } = require('./helpers/census_required'); // the scenes the suite must visit: one file each, so commits that add scenes do not conflict
 const { STUB, HEX } = require('./helpers/comments_scale');
 const kb = require('./helpers/keyboard_census');
 const { DATA_WORLD, httpJson, UPDATE_STAGED, CLOUD_LINKED } = require('./helpers/census_world');
@@ -190,7 +191,7 @@ const BUBBLES = [{ type: 'user', content: 'Is the build green?', key: 'c1', time
         await dlg('dialog: confirmation', { opener: '#saved-btn', open: () => ev(`import(${S} + 'confirm_dialog.js').then(m => m.showConfirmModal('Delete the example?', 'This cannot be undone.', () => {})).then(() => true)`) });
         await dlg('dialog: mobile link', { opener: '#saved-btn', open: () => ev(`window._showMobileConnectModal(); true`) });
     } finally { await httpJson('DELETE', `/api/board/${TEAM}`).catch(() => {}); if (standIn) await standIn.stop().catch(() => {}); await guard.restore().catch(() => {}); await client.close(); }
-    const bad = results.filter(r => r.error).map(r => `${r.name}: the scene did not open (${r.error})`).concat(found, required(results, ['board: more actions menu', 'board: tasks', 'board: tasks, filters open', 'board: a task opened', 'agents list: display options open', 'agent view: asleep', 'launch: team', 'launch: team, no template matches', 'launch: team, members', 'launch: team, start', 'artifact viewer: send to agent', 'settings: agents, adding a custom model', 'analytics, with data', 'launch: new agent, step 2', 'side panel: board composer', 'update: ready notice', 'settings: network, linked to Coral Hub', 'settings: updates', 'home (agent list)', 'agent chat and composer', 'composer: model menu', 'terminal view', 'history list', 'history chat', 'board: a team board', 'workflows list', 'workflow run detail', 'job edit', 'settings: general', 'settings: security', 'launch: new agent', 'create task', 'artifact viewer', 'artifact viewer: comments', 'dialog: launch', 'dialog: settings', 'dialog: create task', 'dialog: job edit', 'dialog: workflow edit', 'chat bubbles', 'toasts']));
+    const bad = results.filter(r => r.error).map(r => `${r.name}: the scene did not open (${r.error})`).concat(found, required(results, requiredScenes('keyboard')));
     if (process.env.KEYBOARD_REPORT) { require('node:fs').writeFileSync(process.env.KEYBOARD_REPORT, results.map(r => `${r.name}: ${r.error || r.stops + ' stops'}${process.env.KEYBOARD_PATHS ? '\n    ' + r.path : ''}`).join('\n') + '\n--\n' + bad.join('\n') + '\n'); process.exit(0); }
     assert.deepEqual(bad, [], 'keyboard-only problems on a desktop:\n  ' + bad.join('\n  '));
     console.log(`PASS ${results.length} scenes: Tab reaches every control and shows where it is`);

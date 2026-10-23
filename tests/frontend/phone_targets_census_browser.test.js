@@ -7,6 +7,7 @@ const { launchStandIn } = require('./helpers/stand_in_agent');
 const { guardSettings } = require('./helpers/settings_guard');
 const { STUB, HEX } = require('./helpers/comments_scale');
 const { scene, tap: tapSel, problems, required, useScaleShot, openBoardComposer, BOARD_COMPOSER_UP, showUpdateReady, UPDATE_NOTICE_UP, UPDATE_DIALOG_UP } = require('./helpers/phone_targets');
+const { requiredScenes } = require('./helpers/census_required'); // the scenes the suite must visit: one file each, so commits that add scenes do not conflict
 const BASE = require('./test_base').BASE;
 const TEAM = 'census-' + Date.now().toString(36);
 const S = `(window.__coralStatic || '/static/')`;
@@ -179,7 +180,7 @@ const { DATA_WORLD, httpJson, UPDATE_STAGED, CLOUD_LINKED } = require('./helpers
         await sc('settings menu', async () => { await tap('[aria-controls="top-bar-settings-menu"]'); }, { min: 6, expect: `getComputedStyle(document.getElementById('top-bar-settings-menu')).display !== 'none'` });
         await ev(`document.body.click(); true`);
     } finally { await httpJson('DELETE', `/api/board/${TEAM}`).catch(() => {}); if (standIn) await standIn.stop().catch(() => {}); await guard.restore().catch(() => {}); await client.close(); }
-    const bad = problems(results).concat(required(results, ['board: more actions menu', 'board: tasks', 'board: tasks, filters open', 'board: a task opened', 'board: subscribers sheet', 'agents list: display options open', 'agent view: asleep', 'artifact: send to agent', 'settings: agents, adding a custom model', 'analytics, with data', 'launch: team, no template matches', 'launch: team, members', 'launch: team, start', 'launch: new agent, step 2', 'side panel: board composer', 'update: ready notice', 'settings: network, linked to Coral Hub', 'update: confirmation', 'settings: updates', 'chat bubbles', 'toasts', 'home (agent list)', 'agent chat and composer', 'composer: model menu', 'chat: find bar', 'terminal view', 'side panel: files', 'side panel: browse', 'side panel: artifacts', 'side panel: customize tabs', 'artifact, full screen', 'artifact: comments sheet', 'team settings: workflow', 'history list', 'history chat', 'history chat: notes', 'history chat: commits', 'board: a team board', 'workflows list', 'workflow detail', 'workflow edit', 'workflow run detail', 'jobs list', 'job detail', 'job edit', 'docs', 'settings: general', 'settings: agents', 'settings: terminal', 'settings: notifications', 'settings: files', 'settings: cleanup', 'settings: network', 'settings: security', 'launch: chooser', 'launch: new agent', 'launch: team', 'create task', 'settings menu']));
+    const bad = problems(results).concat(required(results, requiredScenes('phone')));
     if (process.env.PHONE_TARGETS_REPORT) { require('node:fs').writeFileSync(process.env.PHONE_TARGETS_REPORT, results.map(r => `${r.name}: ${r.error || r.n + ' controls, ' + r.small.length + ' small'}`).join('\n') + '\n--\n' + bad.join('\n') + '\n'); process.exit(0); }
     assert.deepEqual(bad, [], 'controls under 44 px on a phone:\n  ' + bad.join('\n  '));
     console.log(`PASS ${results.length} scenes: every control is at least 44 x 44 px`);

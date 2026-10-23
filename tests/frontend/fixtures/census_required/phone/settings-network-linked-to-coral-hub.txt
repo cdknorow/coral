@@ -1,0 +1,1 @@
+settings: network, linked to Coral Hub

@@ -7,6 +7,7 @@ const { connect } = require('./agent_view_harness');
 const { launchStandIn } = require('./helpers/stand_in_agent');
 const { guardSettings } = require('./helpers/settings_guard');
 const { scene, tap: tapSel, problems, required, useScaleShot, openBoardComposer, BOARD_COMPOSER_UP, showUpdateReady, UPDATE_NOTICE_UP, UPDATE_DIALOG_UP } = require('./helpers/phone_targets');
+const { requiredScenes } = require('./helpers/census_required'); // the scenes the suite must visit: one file each, so commits that add scenes do not conflict
 const { INBOX_WORLD } = require('./helpers/inbox_world');
 const { DATA_WORLD, httpJson, UPDATE_STAGED, CLOUD_LINKED } = require('./helpers/census_world');
 const BASE = require('./test_base').BASE;
@@ -138,7 +139,7 @@ const BUBBLES = [{ type: 'user', content: 'Is the build green?', key: 'c1', time
         await sc('settings menu', async () => { await tap('[aria-controls="top-bar-settings-menu"]'); }, { min: 3, expect: `getComputedStyle(document.getElementById('top-bar-settings-menu')).display !== 'none'` });
         await ev(`document.body.click(); true`);
     } finally { await httpJson('DELETE', `/api/board/${TEAM}`).catch(() => {}); if (standIn) await standIn.stop().catch(() => {}); await guard.restore().catch(() => {}); await client.close(); }
-    const bad = problems(results).concat(required(results, ['board: more actions menu', 'board: tasks', 'board: tasks, filters open', 'board: a task opened', 'agents list: display options open', 'agent view: asleep', 'launch: team', 'launch: team, no template matches', 'launch: team, members', 'launch: team, start', 'settings: agents, adding a custom model', 'analytics, with data', 'launch: new agent, step 2', 'side panel: board composer', 'update: ready notice', 'settings: network, linked to Coral Hub', 'update: confirmation', 'settings: updates', 'home (agent list)', 'agent chat and composer', 'composer: model menu', 'terminal view', 'history list', 'history chat', 'board: a team board', 'workflows list', 'workflow run detail', 'job edit', 'settings: general', 'settings: security', 'launch: new agent', 'create task', 'chat bubbles', 'toasts']));
+    const bad = problems(results).concat(required(results, requiredScenes('contrast')));
     if (process.env.PHONE_TARGETS_REPORT) { require('node:fs').writeFileSync(process.env.PHONE_TARGETS_REPORT, results.map(r => `${r.name}: ${r.error || r.contrastChecked + ' looked at'}`).join('\n') + '\n--\n' + bad.join('\n') + '\n'); process.exit(0); }
     assert.deepEqual(bad, [], 'text or icons under their WCAG AA contrast on a desktop:\n  ' + bad.join('\n  '));
     console.log(`PASS ${results.length} scenes: every visible text and icon meets AA in both themes`);
