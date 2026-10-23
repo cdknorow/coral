@@ -128,7 +128,7 @@ func collectStatus(getenv func(string) string, dataDir string, now time.Time) st
 	}
 	if s := st.Stage; s != nil {
 		if s.Staged != "" {
-			out.Staged = &statusStage{Version: ver(s.Staged), StagedAt: timeText(s.StagedAt)}
+			out.Staged = &statusStage{Version: ver(s.Staged), StagedAt: timeText(s.StagedAt), Source: verify.Repo} // staged means it passed verification: the source is the pinned repository
 		}
 		if until := timeText(s.NextAttempt); until != "" {
 			t, _ := time.Parse(time.RFC3339, until)

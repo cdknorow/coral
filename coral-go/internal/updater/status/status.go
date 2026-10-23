@@ -31,6 +31,8 @@ type Accepted struct {
 type Stage struct {
 	Version  string `json:"version"`
 	StagedAt string `json:"staged_at,omitempty"`
+	// Source is the repository the staged release came from: verify.Repo, the pinned one, set by coral-update only for a release that passed verification (#6290). Never a string from a manifest or a release page.
+	Source string `json:"source,omitempty"`
 }
 
 // Fail is the last refusal.
