@@ -4689,3 +4689,8 @@ dialog.reminder-dialog::backdrop { background: rgba(var(--black-rgb), 0.5); }
     .team-agent-summary-actions > button { min-width: var(--control-touch-height, 44px); min-height: var(--control-touch-height, 44px); display: inline-flex; align-items: center; justify-content: center; }
     .team-agent-role-name { min-height: var(--control-touch-height, 44px); }
 }
+.team-default-mark { color: var(--text-secondary); font-size: .6875rem; font-weight: 400; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0 4px; white-space: nowrap; }
+.team-agent-summary-actions .team-agent-reorder-btn { opacity: 1; color: var(--text-secondary); width: 32px; height: 32px; justify-content: center; border: 1px solid var(--border); border-radius: var(--radius-sm); flex: none; }
+.team-agent-summary-actions .team-agent-reorder-btn:hover:not(:disabled) { color: var(--text-primary); background: var(--bg-tertiary); }
+.team-agent-summary-actions .team-agent-reorder-btn:disabled { opacity: .45; }
+@media (pointer: coarse), (max-width: 767px) { .team-agent-summary-actions .team-agent-reorder-btn { width: var(--control-touch-height, 44px); height: var(--control-touch-height, 44px); } }
