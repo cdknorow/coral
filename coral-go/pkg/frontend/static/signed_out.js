@@ -46,6 +46,8 @@ async function retrySignIn({ quiet = false } = {}) {
     } finally { _checking = false; }
 }
 
+export function recheckSignedOut() { return retrySignIn({ quiet: true }); }
+
 function show() {
     if (_dialog) return;
     const dlg = el('dialog', { id: 'signed-out-panel', class: 'signed-out-panel', 'aria-labelledby': 'signed-out-title', 'aria-describedby': 'signed-out-text' },
