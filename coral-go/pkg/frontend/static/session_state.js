@@ -47,6 +47,11 @@ export function commandPlaceholder(identity, agentType) {
     return `Message ${identity}, or paste an image`;
 }
 
+/** The box's words while a new agent's CLI is not up yet (#6382): it says so, and that a message typed now is held for it. */
+export function startingPlaceholder(identity) {
+    return window.innerWidth <= 767 ? `Starting ${identity}\u2026` : `Starting ${identity}\u2026 you can type now, it is sent when ready`;
+}
+
 /** Shared identity resolver used by row label, avatar, header, terminal label and placeholder. */
 export function resolveSessionIdentity(s) {
     if (!s) return 'Agent';

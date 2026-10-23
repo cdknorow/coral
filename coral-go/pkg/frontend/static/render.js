@@ -55,7 +55,7 @@ export { hideConfirmModal, showConfirmModal } from './confirm_dialog.js';
 export { applySessionSummaryPref, isSessionSummaryShown, toggleArchivedSection } from './session_rows.js';
 export { moveGroupDown, moveGroupUp, moveSessionDown, moveSessionUp } from './list_order.js';
 export { setBoardAccentColor } from './board_accents.js';
-export { buildSessionTooltip, commandPlaceholder, deriveSessionState, resolveSessionIdentity, sessionStateInfo, terminalDotClass, applyTerminalDot } from './session_state.js';
+export { buildSessionTooltip, commandPlaceholder, startingPlaceholder, deriveSessionState, resolveSessionIdentity, sessionStateInfo, terminalDotClass, applyTerminalDot } from './session_state.js';
 export { getActiveBoardChat, hideBoardChatTab, showBoardChatTab } from './board_chat.js';
 
 /* ── Helpers ────────────────────────────────────────────────────────── */

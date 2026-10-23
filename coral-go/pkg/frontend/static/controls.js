@@ -22,6 +22,7 @@ import { loadModals } from './lazy_panels.js';
 import { responseErrorText, responseError } from './server_status.js';
 import { reportSendError, showComposerError, clearComposerError, awaitSocketAccept, nextInputId, refuseSocketSends } from './terminal_gone.js';
 import { pollEvery } from './overload.js';
+import { syncSendStarting } from './agent_starting.js';
 import { MODES, modeFromFooterText, pressesFor } from './mode_cycle.js';
 
 // Lazy imports to avoid circular dependency (xterm_renderer imports controls)
@@ -442,6 +443,7 @@ export function renderQuickActions() {
         </div>
     `;
     if (chipBar) toolbar.prepend(chipBar);
+    syncSendStarting(); // the new Send button has its own words: a starting agent's say why a message waits (#6382)
 }
 
 // Map tmux key names to raw terminal sequences for WebSocket input

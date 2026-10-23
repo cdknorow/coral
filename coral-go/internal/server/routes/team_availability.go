@@ -126,7 +126,7 @@ func (h *SessionsHandler) teamAvailabilityUncached(w http.ResponseWriter, r *htt
 		agents = append(agents, h.liveAgentStatus(ctx, snap, name, s, sub, subscribed, includeActivity))
 	}
 	for _, sub := range snap.subs {
-		if !seen[sub.SubscriberID] {
+		if !seen[sub.SubscriberID] && !board.IsOperatorName(sub.SubscriberID) { // the person is not an agent: no card, no offline count, no reminder (#6382)
 			agents = append(agents, h.offlineSubscriberStatus(snap, name, sub))
 		}
 	}

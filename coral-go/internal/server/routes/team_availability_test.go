@@ -385,3 +385,35 @@ func TestTeamAvailabilityAwaitingReviewNeedsATaskUnderReview(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "awaiting-review", state(), "its task is under review")
 }
+
+// The person is not a team member to be reminded (#6382, first-run report #6370 item 6): a team's Operator subscription shows no card, no "Offline" count and no Remind button;
+// the agents beside it are listed as before.
+func TestTeamAvailabilityDoesNotListTheOperator(t *testing.T) {
+	_, h, terminal, ss := setupSessionsTestServer(t)
+	ctx := context.Background()
+	team := "operator-team"
+	sid := uuid.NewString()
+	require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: sid, AgentName: "Worker", AgentType: "claude", BoardName: &team, WorkingDir: "/tmp"}))
+	terminal.addSession("claude-"+sid, "/tmp")
+	_, err := h.bs.Subscribe(ctx, team, "Worker", "Developer", "claude-"+sid, nil, "all")
+	require.NoError(t, err)
+	_, err = h.bs.Subscribe(ctx, team, board.OperatorName, "Operator", "", nil, "all")
+	require.NoError(t, err)
+
+	router := chi.NewRouter()
+	router.Get("/api/teams/detail/{name}/availability", h.TeamAvailability)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest("GET", "/api/teams/detail/operator-team/availability", nil))
+	require.Equal(t, 200, w.Code)
+	var result struct {
+		Agents  []availableAgent `json:"agents"`
+		Summary map[string]int   `json:"summary"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
+	var names []string
+	for _, a := range result.Agents {
+		names = append(names, a.Name)
+	}
+	require.Equal(t, []string{"Worker"}, names)
+	require.Zero(t, result.Summary["offline"])
+}

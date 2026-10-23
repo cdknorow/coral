@@ -1,6 +1,7 @@
 import { historyLabel } from './history_label.js';
 import { showTerminalStatusbar } from './terminal_statusbar.js';
 import { setCommandPlaceholder } from './composer_placeholder.js';
+import { agentIsStarting, syncSendStarting } from './agent_starting.js';
 import { updateModelChip } from './model_chip.js';
 import { importOnce } from './import_once.js';
 import { refreshAgentUI } from './agent_ui.js';
@@ -13,7 +14,7 @@ import { HISTORY_PAGE, setHistoryWindow } from './history_pages.js';
 import { normServer, serverForSession, serverFetch, sessionServer, agentPath, identityKey, keyLabel, isCloud } from './server_base.js';
 import { updateHeaderContext } from './header_context.js';
 import { stopCaptureRefresh, startCaptureRefresh } from './capture.js';
-import { updateSessionStatus, updateSessionSummary, updateSessionBranch, updateSessionFolder, updateWaitingIndicator, updateTokenUsage, updateHistoryTokenUsage, renderHistoryChat, showBoardChatTab, hideBoardChatTab, resolveSessionIdentity, commandPlaceholder, applyTerminalDot } from './render.js';
+import { updateSessionStatus, updateSessionSummary, updateSessionBranch, updateSessionFolder, updateWaitingIndicator, updateTokenUsage, updateHistoryTokenUsage, renderHistoryChat, showBoardChatTab, hideBoardChatTab, resolveSessionIdentity, commandPlaceholder, startingPlaceholder, applyTerminalDot } from './render.js';
 import { renderQuickActions, updateSidebarActive, renderAttachments } from './controls.js';
 import { loadSessionNotes, switchHistoryTab } from './notes.js';
 import { loadSessionTags } from './tags.js';
@@ -148,7 +149,7 @@ function _drawAgentHeader(name, agentType, sessionId, srv, agentData, displayNam
     // Update command input placeholder with session target
     const cmdInput = document.getElementById("command-input");
     if (cmdInput) {
-        setCommandPlaceholder(cmdInput, commandPlaceholder(identity, agentType)); // view only and asleep keep their words (#5856)
+        const starting = agentIsStarting(agentData); setCommandPlaceholder(cmdInput, starting ? startingPlaceholder(identity) : commandPlaceholder(identity, agentType)); syncSendStarting(starting); // view only and asleep keep their words (#5856)
     }
     // Keep the sleeping placeholder over the awake one just set.
     if (state.currentSession.sleeping && !isPopout()) applySleepingView(true);

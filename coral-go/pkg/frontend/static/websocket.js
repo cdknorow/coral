@@ -1,12 +1,13 @@
 /* WebSocket connection for real-time coral updates */
 
 import { setCommandPlaceholder } from './composer_placeholder.js';
+import { agentIsStarting, syncSendStarting } from './agent_starting.js';
 import { updateModelChip } from './model_chip.js';
 import { importOnce } from './import_once.js';
 import { state } from './state.js';
 import { signInUrl } from './cloud.js';
 import { feedRetryDelay, isStalenessDrift, DRIFT_RENDER_MAX_AGE_MS } from './feed_pacing.js';
-import { scheduleLiveSessionsRender, updateSessionStatus, updateSessionSummary, updateSessionBranch, updateSessionFolder, updateWaitingIndicator, resolveSessionIdentity, commandPlaceholder, applyTerminalDot } from './render.js';
+import { scheduleLiveSessionsRender, updateSessionStatus, updateSessionSummary, updateSessionBranch, updateSessionFolder, updateWaitingIndicator, resolveSessionIdentity, commandPlaceholder, startingPlaceholder, applyTerminalDot } from './render.js';
 import { renderLiveJobs } from './live_jobs.js';
 import { updateChangedFileCount } from './changed_files.js';
 import { showNotificationToast, showWorkflowNotification, showAlertNotification, escapeHtml, dbg } from './utils.js';
@@ -337,8 +338,8 @@ function _syncViewedSession(data) {
             updateHeaderContext(s);
             const cmdInput = document.getElementById("command-input");
             if (cmdInput) {
-                const ph = commandPlaceholder(headerName, s.agent_type);
-                setCommandPlaceholder(cmdInput, ph); // view only and asleep keep their words (#5856)
+                const starting = agentIsStarting(s), ph = starting ? startingPlaceholder(headerName) : commandPlaceholder(headerName, s.agent_type);
+                setCommandPlaceholder(cmdInput, ph); syncSendStarting(starting); // view only and asleep keep their words (#5856)
             }
             updateSessionStatus(s.status);
             updateSessionSummary(s.summary);
