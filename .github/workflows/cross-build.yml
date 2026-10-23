@@ -36,10 +36,10 @@ jobs:
       matrix:
         target: [linux/amd64, linux/arm64, windows/amd64]
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: coral-go/go.mod
           cache: false
@@ -50,7 +50,7 @@ jobs:
           echo "gomodcache=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
       # Restored on every run; saved only by a push to main (below), so a branch or pull request
       # never writes the cache main reads. The key changes with go.mod (the Go version) and go.sum.
-      - uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         id: gocache
         with:
           path: |
@@ -65,7 +65,7 @@ jobs:
           CGO_ENABLED: "0"
         run: GOOS="${TARGET%/*}" GOARCH="${TARGET#*/}" go build -o /dev/null ./...
       - if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.gocache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ${{ steps.gopaths.outputs.gocache }}
@@ -79,10 +79,10 @@ jobs:
       matrix:
         arch: [arm64, amd64]
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: coral-go/go.mod
           cache: false
@@ -93,7 +93,7 @@ jobs:
           echo "gomodcache=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
       # Restored on every run; saved only by a push to main (below), so a branch or pull request
       # never writes the cache main reads. The key changes with go.mod (the Go version) and go.sum.
-      - uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         id: gocache
         with:
           path: |
@@ -108,7 +108,7 @@ jobs:
           CGO_ENABLED: "1"
         run: GOOS=darwin GOARCH="$ARCH" go build -o /dev/null ./...
       - if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.gocache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ${{ steps.gopaths.outputs.gocache }}
@@ -125,10 +125,10 @@ jobs:
       matrix:
         runner: [macos-14, macos-15-intel]
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: coral-go/go.mod
           cache: false

@@ -39,7 +39,7 @@ jobs:
       contents: read
       actions: read   # the release run's artifacts are checked, not downloaded from the release (#4936)
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Install cosign
@@ -76,7 +76,7 @@ jobs:
     permissions:
       contents: write   # gh release edit: the pre-release flag, the Latest mark and the body line, nothing else
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Approve or revoke the release
@@ -118,7 +118,7 @@ jobs:
       contents: read
       actions: read
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Install cosign

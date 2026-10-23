@@ -100,10 +100,10 @@ jobs:
     if: contains(needs.plan.outputs.platforms, ' linux ')
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.26.10"
           cache-dependency-path: coral-go/go.sum
@@ -138,10 +138,10 @@ jobs:
     if: contains(needs.plan.outputs.platforms, ' windows ')
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.26.10"
           cache-dependency-path: coral-go/go.sum
@@ -225,17 +225,17 @@ jobs:
     env:
       OPENSSL_TARGET: darwin64-arm64-cc
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.26.10"
           cache-dependency-path: coral-go/go.sum
       # The OpenSSL build is cached by version, source checksum, Configure target and runner image
       # (#4126 item 4; the Intel build took 316 s, p90 490 s). Only main writes the cache, so a branch,
       # pull request or dispatch from another ref can restore main's build but never write one.
-      - uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         id: openssl
         with:
           path: ${{ runner.temp }}/openssl-${{ env.OPENSSL_VERSION }}-arm64
@@ -255,7 +255,7 @@ jobs:
           make -j"$(sysctl -n hw.ncpu)" build_sw
           make install_sw
       - if: github.ref == 'refs/heads/main' && steps.openssl.outputs.cache-hit != 'true'
-        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/openssl-${{ env.OPENSSL_VERSION }}-arm64
           key: ${{ steps.openssl.outputs.cache-primary-key }}
@@ -287,17 +287,17 @@ jobs:
     env:
       OPENSSL_TARGET: darwin64-x86_64-cc
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.26.10"
           cache-dependency-path: coral-go/go.sum
       # The OpenSSL build is cached by version, source checksum, Configure target and runner image
       # (#4126 item 4; the Intel build took 316 s, p90 490 s). Only main writes the cache, so a branch,
       # pull request or dispatch from another ref can restore main's build but never write one.
-      - uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         id: openssl
         with:
           path: ${{ runner.temp }}/openssl-${{ env.OPENSSL_VERSION }}-amd64
@@ -317,7 +317,7 @@ jobs:
           make -j"$(sysctl -n hw.ncpu)" build_sw
           make install_sw
       - if: github.ref == 'refs/heads/main' && steps.openssl.outputs.cache-hit != 'true'
-        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/openssl-${{ env.OPENSSL_VERSION }}-amd64
           key: ${{ steps.openssl.outputs.cache-primary-key }}
@@ -348,17 +348,17 @@ jobs:
     env:
       OPENSSL_TARGET: darwin64-arm64-cc
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.26.10"
           cache-dependency-path: coral-go/go.sum
       # The OpenSSL build is cached by version, source checksum, Configure target and runner image
       # (#4126 item 4; the Intel build took 316 s, p90 490 s). Only main writes the cache, so a branch,
       # pull request or dispatch from another ref can restore main's build but never write one.
-      - uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         id: openssl
         with:
           path: ${{ runner.temp }}/openssl-${{ env.OPENSSL_VERSION }}-arm64
@@ -378,7 +378,7 @@ jobs:
           make -j"$(sysctl -n hw.ncpu)" build_sw
           make install_sw
       - if: github.ref == 'refs/heads/main' && steps.openssl.outputs.cache-hit != 'true'
-        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/openssl-${{ env.OPENSSL_VERSION }}-arm64
           key: ${{ steps.openssl.outputs.cache-primary-key }}
