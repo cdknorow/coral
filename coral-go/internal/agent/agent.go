@@ -4,6 +4,7 @@ package agent
 import (
 	"fmt"
 	"github.com/subgentic/coral/internal/logsafe"
+	"github.com/subgentic/coral/internal/secrets"
 	"github.com/subgentic/coral/pkg/redact"
 	"log/slog"
 	"os"
@@ -131,7 +132,7 @@ func redactedCut(text string, n int) string {
 	if len(text) > redactBound {
 		text = strings.ToValidUTF8(text[:redactBound], "")
 	}
-	out, err := redact.Rules.Text([]byte(text))
+	out, err := secrets.Redactor().Text([]byte(text))
 	if err != nil {
 		return ""
 	}
