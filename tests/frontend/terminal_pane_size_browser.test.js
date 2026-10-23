@@ -174,7 +174,7 @@ async function select(tab, a) {
     const tabs = [];
     try {
         for (const display of ['Pane A', 'Pane B']) {
-            const r = await httpJson('POST', '/api/sessions/launch', { working_dir: '/tmp', agent_type: 'terminal', display_name: display });
+            const r = await httpJson('POST', '/api/sessions/launch', { working_dir: require('node:os').tmpdir(), agent_type: 'terminal', display_name: display });
             assert.equal(r.status, 200, `launch ${display}: ${JSON.stringify(r.data)}`);
             launched.push({ name: r.data.session_name, sid: r.data.session_id });
         }

@@ -96,7 +96,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
         check('the team list loads', teams.status === 200, `status ${teams.status}`);
 
         // A terminal: launch it, see it in the agent list, stream it over the WebSocket, kill it.
-        const launch = await api('POST', '/api/sessions/launch', { working_dir: '/tmp', agent_type: 'terminal', display_name: 'Strict QA' });
+        const launch = await api('POST', '/api/sessions/launch', { working_dir: require('node:os').tmpdir(), agent_type: 'terminal', display_name: 'Strict QA' });
         sid = launch.data && launch.data.session_id;
         name = launch.data && (launch.data.session_name || launch.data.name);
         check('a terminal launches', launch.status === 200 && !!sid, JSON.stringify(launch.data).slice(0, 160));
