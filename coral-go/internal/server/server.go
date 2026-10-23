@@ -451,7 +451,7 @@ func (s *Server) RestoreSleepingBoards() {
 		return
 	}
 	for _, b := range boards {
-		s.boardHandler.SetPaused(b, true)
+		s.boardHandler.PauseForSleep(b) // auto-wake lifts it when it wakes the board's agents; a person's saved Pause stays (#286)
 	}
 	log.Printf("Restored pause state for %d sleeping board(s)", len(boards))
 }
