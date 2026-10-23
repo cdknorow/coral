@@ -56,6 +56,7 @@ type claudeTurnCache struct {
 	version string         // the newest line's "version": the running Claude Code's own (#3573)
 	model   string         // the newest assistant entry's model (#4065)
 	effort  string         // the newest assistant entry's effort: the thinking level that turn ran at (#4969)
+	turnAt  time.Time      // when that assistant entry was written (#6225)
 	apiErr  ClaudeAPIError // the latest message, when it is an API error (#3830)
 }
 

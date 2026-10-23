@@ -575,6 +575,13 @@ CREATE TABLE IF NOT EXISTS history_exclusions (
  PRIMARY KEY (source_type, source_file)
 );
 
+-- When a live session's model or thinking level was last set by Coral and the CLI took it: confirmed from its own entry, or put on its command line at a wake (#6225). A turn the transcript
+-- recorded before that is older than the setting.
+CREATE TABLE IF NOT EXISTS live_session_settings (
+ session_id TEXT PRIMARY KEY,
+ set_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS store_meta (
 	key   TEXT PRIMARY KEY,
 	value TEXT NOT NULL
