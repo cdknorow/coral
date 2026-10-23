@@ -1,5 +1,6 @@
 /* WebSocket connection for real-time coral updates */
 
+import { syncSigninLine } from './signin_line.js';
 import { setCommandPlaceholder } from './composer_placeholder.js';
 import { agentIsStarting, syncSendStarting } from './agent_starting.js';
 import { updateModelChip } from './model_chip.js';
@@ -252,6 +253,7 @@ function _publishSessions(data) {
         data.sessions = data.sessions.map(s => mergeSession(prevMap[_feedKey(s)], s));
     }
     state.liveSessions = data.sessions;
+    syncSigninLine(); // the sign-in line is about Claude agents: it follows the list (#6407)
     updateInboxTab(); // the waiting number follows the list (#4718)
     syncUnreachableBanner(); // the selected agent's server went away or came back (#3151)
     syncAutoAcceptHeader(); // the selected agent's AUTO chip follows the feed (#3182)

@@ -2411,6 +2411,13 @@ button.subscriber-history-link {
     font-weight: 600;
 }
 
+/* New Agent's persona controls (#6407): Save Persona is the one button; Export and Import are a disclosure away, and the form's own Agent Type select is hidden once the radio group names the agent. */
+.persona-files { flex-basis: 100%; }
+.persona-files > summary { cursor: pointer; width: fit-content; padding: 4px 0; font-size: var(--fs-sm); color: var(--text-secondary); }
+.persona-files-row { display: flex; gap: 8px; flex-wrap: wrap; padding: 4px 0; }
+.agent-persona-actions .persona-files-row .btn:first-child { color: var(--text-muted); } /* the first-child accent is Save Persona's alone */
+#launch-agent-acf.has-agent-pick .acf-top-row > label:has(> .acf-agent-type) { display: none; }
+
 .agent-persona-actions .btn {
     width: auto;
     justify-content: center;

@@ -9,7 +9,7 @@ const BUDGET = { chooser: 17, agent: 12, more: 40 }; // the phone's select shows
 
 (async () => {
     const { client, Page, Emulation, ev, waitFor, PRELOAD, install } = await connect();
-    const words = () => ev(`(() => { let n = 0; const shown = e => { for (let p = e; p; p = p.parentElement) { const s = getComputedStyle(p); if (s.display === 'none' || s.visibility === 'hidden' || p.hidden) return false; } return true; };
+    const words = () => ev(`(() => { let n = 0; const shown = e => { for (let p = e; p; p = p.parentElement) { const s = getComputedStyle(p); if (s.display === 'none' || s.visibility === 'hidden' || p.hidden || (p.parentElement && p.parentElement.matches('details:not([open])') && p.tagName !== 'SUMMARY')) return false; } return true; };
         const w = document.createTreeWalker(document.getElementById('launch-modal'), NodeFilter.SHOW_TEXT);
         for (let t = w.nextNode(); t; t = w.nextNode()) { const e = t.parentElement; if (!e || e.closest('script, style, .material-icons, select, option') || !shown(e)) continue; n += t.nodeValue.trim().split(/\\s+/).filter(Boolean).length; }
         return n; })()`);

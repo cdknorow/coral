@@ -47,6 +47,12 @@ export function askSigninSoon() {
     refresh();
 }
 
+/** Whether this computer has a Claude agent in the list: the line is about Claude's background work, so a home with no Claude agent (a Codex-only first run) has nothing waiting on it (#6407). */
+const hasLocalClaude = () => (state.liveSessions || []).some(isLocalClaude);
+
+/** Puts the line right for the agents the page has now (the list changed); the last status answer is kept. */
+export function syncSigninLine() { applySigninStatus(_known === undefined ? undefined : { claude_signed_in: _known }); }
+
 /** Shows the line for a status with claude_signed_in === false, hides it otherwise (absent is "not known": nothing to say). */
 export function applySigninStatus(data) {
     _known = data && typeof data.claude_signed_in === 'boolean' ? data.claude_signed_in : undefined;
@@ -55,7 +61,7 @@ export function applySigninStatus(data) {
     if (!line) return;
     const off = !!data && data.claude_signed_in === false;
     if (data && data.claude_signed_in === true) browserLocal.remove(DISMISS_KEY); // signed in: a later sign-out says so again
-    line.hidden = !off || dismissed();
+    line.hidden = !off || dismissed() || !hasLocalClaude();
     if (line.hidden) { // a tap's hint does not stay open for the next time
         const hint = document.getElementById('signin-line-hint'), btn = document.getElementById('signin-line-btn');
         if (hint) hint.hidden = true;

@@ -1,7 +1,7 @@
 // The one calm line while Claude is not signed in (#5478, for #5469): when GET /api/system/status carries claude_signed_in false, the dashboard shows "Claude is not signed in:
 // background jobs are waiting" in the status area, with "Sign in with claude in a terminal." on hover (title) and on tap (the button opens it); it is a line, not an alert or a toast,
 // it goes by itself when the field turns true (the page asks again every minute), and it is not there while the field is absent. Both themes (contrast), and a phone.
-// The status answer is the real server's with the field added by the page's fetch (set by window.__signed). Run against an isolated dev server.
+// The status answer is the real server's with the field added by the page's fetch (set by window.__signed), and a Claude agent is added to the live list by it too (the line is only there while a Claude agent of this computer is, #6407). Run against an isolated dev server.
 const { connect } = require('./agent_view_harness');
 const { setTheme, installAudit, auditRegion } = require('./helpers/contrast');
 
@@ -11,6 +11,11 @@ const PRELOAD = `(() => {
     window.fetch = async function (u, o) {
         const resp = await R.apply(this, arguments);
         let p = ''; try { p = new URL(String(u && u.url || u), location.origin).pathname; } catch { /* not a URL */ }
+        if (p === '/api/sessions/live' && resp.ok && window.__claudeAgent !== false) { // the line is about Claude's background work, so it needs a Claude agent of this computer in the list (#6407)
+            const raw = await resp.clone().json(), row = { session_id: 'sl-claude-id', name: 'sl-claude', display_name: 'sl-claude', agent_type: 'claude', server: 'local', working_directory: '/tmp', status: 'idle' };
+            const body = Array.isArray(raw) ? raw.concat([row]) : Object.assign({}, raw, { sessions: (raw.sessions || []).concat([row]) });
+            return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
+        }
         if (p !== '/api/system/status' || !resp.ok) return resp;
         const data = await resp.clone().json();
         if (window.__signed !== 'absent') data.claude_signed_in = window.__signed;

@@ -28,6 +28,7 @@
  *   - static assets, service worker, artifact previews of hub files
  */
 
+import { syncSigninLine } from './signin_line.js';
 import { historyFetch, historyServer } from './history_source.js';
 import { state, loadSessionDrafts } from './state.js';
 import { renderLiveSessions, renderHistorySessions } from './render.js';
@@ -140,6 +141,7 @@ async function _loadLiveSessions(onFailure) {
         state.serversKnown = true;
         updateServersTabVisibility();
         state.liveSessions = sessions;
+        syncSigninLine(); // the sign-in line is about Claude agents: it follows the list (#6407)
         updateInboxTab(); // the waiting number follows the list (#4718)
         // Drafts of sessions that have ended (and were left a day) go (#3681), at most hourly.
         const kept = ageOutStored({ liveIds: new Set(sessions.map(s => s && s.session_id).filter(Boolean)) });

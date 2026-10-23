@@ -122,8 +122,13 @@
                 </label>
                         <div class="import-export-row agent-persona-actions">
                             <button class="btn btn-small btn-subtle" id="agent-save-persona-btn" data-on-click="m-save-current-persona" title="Save as reusable persona">Save Persona</button>
-                            <button class="btn btn-small btn-subtle" data-on-click="m-export-personas" title="Export saved personas">Export</button>
-                            <button class="btn btn-small btn-subtle" data-on-click="m-import-personas" title="Import personas from file">Import</button>
+                            <details class="persona-files">
+                                <summary>Export or import</summary>
+                                <div class="persona-files-row">
+                                    <button class="btn btn-small btn-subtle" data-on-click="m-export-personas" title="Export saved personas">Export</button>
+                                    <button class="btn btn-small btn-subtle" data-on-click="m-import-personas" title="Import personas from file">Import</button>
+                                </div>
+                            </details>
                         </div>
                         </section>
                         <div id="launch-agent-acf" class="sd-acf"></div>

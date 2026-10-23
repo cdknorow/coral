@@ -23,6 +23,7 @@ export async function buildAgentPick({ group, form, server, implicitDefault }) {
     if (!group || !select) return;
     const token = (group._pickToken = (group._pickToken || 0) + 1);
     group.hidden = true;
+    form.classList.remove('has-agent-pick');
     group.querySelectorAll('.launch-agent-opt').forEach(e => e.remove()); // the "Agent:" label stays
     const found = await Promise.all(TYPES.map(([t]) => Promise.race([probe(server, t), new Promise(r => setTimeout(() => r(null), PROBE_MS))])));
     if (group._pickToken !== token || !group.isConnected) return; // another New Agent opened meanwhile
@@ -49,4 +50,5 @@ export async function buildAgentPick({ group, form, server, implicitDefault }) {
     }
     sync();
     group.hidden = false;
+    form.classList.add('has-agent-pick'); // the group is the one place that names the agent: the form's own select stays (hidden by css) and follows it (#6407)
 }
