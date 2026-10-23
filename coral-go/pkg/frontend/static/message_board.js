@@ -23,6 +23,7 @@ import { attachDialogFocus } from './dialog_focus.js';
 import { mountBoardSearch, highlightBoard, setBoardMembers, resetBoardSearch } from './board_search.js';
 import { PAGE_SIZE, fetchAllBoardMessages, fetchAllHistory, fetchAllLiveChat, fetchMessages, fetchProjects, fetchSubscribers, mergeMessages } from './board_fetch.js';
 import { navigateToAgentSession } from './board_agent_links.js';
+import { initGrowingTextarea } from './growing_textarea.js';
 export { fetchAllBoardMessages, fetchAllHistory, fetchAllLiveChat } from './board_fetch.js';
 import { connectBoard, isSelectMode, isSelected, resetSelection, toggleMessageSelect, doExportBoard, hideExportBoardModal, selectAllMessages, selectNoneMessages, exportSelectedAsMarkdown, cancelSelectMode } from './board_export.js';
 export { showExportBoardModal, doExportBoard, toggleSelectMode, toggleMessageSelect, selectAllMessages, selectNoneMessages, cancelSelectMode, exportSelectedAsMarkdown } from './board_export.js';
@@ -119,6 +120,8 @@ export function selectBoardProject(project, messageId = null) {
     const badge = document.getElementById('messageboard-project-badge');
     badge.textContent = keyLabel(project);
     badge.style.display = '';
+    document.querySelector('#messageboard-view .mb-view-header')?.classList.add('mb-has-board');
+    initGrowingTextarea(document.getElementById('mb-post-input'));
     // A board opened before its label is known (a /board/<id> page, a board with no agents)
     // asks for it; the header follows when it, or any list, brings it (#3536).
     if (!hasBoardLabel(project)) {
@@ -171,6 +174,7 @@ export function showMessageBoardProjects() {
     document.getElementById('mb-delete-btn').style.display = 'none';
     document.getElementById('mb-select-btn').style.display = 'none';
     document.getElementById('messageboard-project-badge').style.display = 'none';
+    document.querySelector('#messageboard-view .mb-view-header')?.classList.remove('mb-has-board');
 
     loadBoardProjectList();
     loadBoardProjects();
@@ -964,7 +968,7 @@ function updateSleepUI() {
     const sendBtn = document.querySelector('#mb-board .btn-primary');
     if (input) {
         input.disabled = isSleeping;
-        input.placeholder = isSleeping ? 'Team is sleeping...' : 'Post a message as Operator...';
+        input.placeholder = isSleeping ? 'Team is sleeping...' : 'Message the team...';
     }
     if (sendBtn) {
         sendBtn.disabled = isSleeping;

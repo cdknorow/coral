@@ -3082,6 +3082,10 @@ button.subscriber-history-link {
 /* Message board — header actions */
 
 .mb-view-header h2 { font-size: var(--type-page-size); }
+/* With a board open its own name is the heading and "Message Board" is the quiet label above it (#6279); the class is set by message_board.js. */
+.mb-view-header.mb-has-board .mb-view-header-left { flex-direction: column; align-items: flex-start; gap: 0; min-width: 0; }
+.mb-view-header.mb-has-board #messageboard-title { font-size: 0.75rem; font-weight: 500; color: var(--text-muted); }
+.mb-view-header.mb-has-board #messageboard-project-badge { order: 2; font-size: var(--type-page-size); font-weight: 600; color: var(--text-primary); background: none; padding: 0; border-radius: 0; text-transform: none; letter-spacing: 0; overflow-wrap: anywhere; }
 
 .mb-header-actions {
     display: flex;
@@ -3464,31 +3468,55 @@ button.subscriber-history-link {
 .mb-new-pill-btn:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; }
 @media (pointer: coarse) { .mb-new-pill-btn { min-height: 44px; padding: 10px 18px; } }
 
+/* The board's message box is the chat's card (#6279, as #6239 did for the side panel): one rounded box that grows with its text, a round Send inside it, the accent on the card while the text has focus. */
 .mb-post-form {
     border-top: 1px solid var(--border);
     padding: 12px 12px 16px;
+}
+
+.mb-post-card {
     display: flex;
     gap: 8px;
     align-items: flex-end;
+    box-sizing: border-box;
+    padding: 6px 6px 6px 16px;
+    border: 1px solid var(--control-border);
+    border-radius: 22px;
+    background: var(--bg-secondary);
 }
+.mb-post-card:focus-within { border-color: var(--accent); }
 
 .mb-post-input {
     flex: 1;
-    padding: 10px 14px;
-    border: 1px solid var(--control-border);
-    border-radius: var(--radius-lg);
-    background: var(--bg-secondary);
+    min-width: 0;
+    padding: 8px 0;
+    border: 0;
+    outline: 0;
+    background: transparent;
     color: var(--text-primary);
-    font-size: 0.875rem;
-    resize: vertical;
+    font-size: 0.9375rem;
+    resize: none;
     font-family: inherit;
     line-height: 1.5;
-    min-height: 44px;
+    max-height: 40vh;
 }
 
 .mb-post-send-btn {
-    height: 44px;
-    padding: 0 20px;
+    flex: none;
+    width: 36px;
+    min-width: 36px;
+    height: 36px;
+    padding: 0;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+@media (pointer: coarse), (max-width: 767px) {
+    .mb-post-card { padding: 3px 3px 3px 16px; align-items: center; }
+    .mb-post-input { min-height: var(--control-touch-height, 44px); box-sizing: border-box; padding: 10px 0; }
+    .mb-post-send-btn { width: var(--control-touch-height, 44px); min-width: var(--control-touch-height, 44px); height: var(--control-touch-height, 44px); }
 }
 
 .mb-subscribers-panel {

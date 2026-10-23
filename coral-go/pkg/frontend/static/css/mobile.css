@@ -1169,18 +1169,6 @@
         font-size: 0.8125rem !important;
     }
 
-    /* Message board: compact post form */
-    .mb-post-input {
-        font-size: 0.875rem;
-        padding: 8px 10px;
-    }
-
-    .mb-post-send-btn {
-        height: 38px;
-        padding: 0 14px;
-        font-size: 0.8125rem;
-    }
-
     /* History tabs: smaller on small phones */
     .history-tab-btn {
         font-size: 0.6875rem;
