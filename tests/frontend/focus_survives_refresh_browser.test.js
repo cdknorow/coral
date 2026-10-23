@@ -31,14 +31,14 @@ const BASE = require('./test_base').BASE;
         // Something about the header changes (it is the selected team), so the button's own markup changes and its node is replaced.
         const after = await ev(`(() => {
             window.__state.selectedTeam = null; window.__state.liveSessions = window.__sess; window.__render.renderLiveSessions(window.__sess); // the page's own refresh may have replaced the list since the last step
-            const b = document.querySelector('.team-open-btn'); b.focus();
+            const b = document.querySelector('.board-card-header[data-on-click="team-name-open"]'); b.focus();
             window.__state.selectedTeam = 'alpha'; window.__render.renderLiveSessions(window.__sess);
             const a = document.activeElement;
-            const first = { replaced: b !== document.querySelector('.team-open-btn'), connected: b.isConnected, onBtn: !!a && a.classList.contains('team-open-btn') && a.dataset.board === 'alpha', tag: a && a.tagName };
+            const first = { replaced: b !== document.querySelector('.board-card-header[data-on-click="team-name-open"]'), connected: b.isConnected, onBtn: !!a && a.classList.contains('board-card-header') && a.dataset.board === 'alpha', tag: a && a.tagName };
             // A second redraw with the agent list itself changing (a new agent in the team) keeps it too.
             window.__sess = window.__sess.concat([{ session_id: 'fs-2', name: 'fs-2', agent_type: 'claude', board_project: 'alpha', display_name: 'Second', working_directory: '/tmp/alpha' }]);
             window.__render.renderLiveSessions(window.__sess);
-            return { first, second: !!document.activeElement && document.activeElement.classList.contains('team-open-btn') }; })()`);
+            return { first, second: !!document.activeElement && document.activeElement.classList.contains('board-card-header') }; })()`);
         assert.ok(after.first.replaced, `the redraw replaced the button's node (the case under test): ${JSON.stringify(after)}`);
         assert.ok(after.first.onBtn, `focus is on the team button after the redraw: ${JSON.stringify(after)}`);
         assert.ok(after.second, 'focus is on the team button after the team gained an agent');
@@ -143,8 +143,8 @@ const BASE = require('./test_base').BASE;
         let opened = false;
         for (let attempt = 0; attempt < 5 && !opened; attempt++) {
             const ready = await ev(`(() => { const st = window.__state; st.selectedTeam = null; st.liveSessions = window.__sess; window.__render.renderLiveSessions(window.__sess);
-                document.querySelector('.team-open-btn').focus(); st.selectedTeam = 'alpha'; window.__render.renderLiveSessions(window.__sess); st.selectedTeam = null; window.__render.renderLiveSessions(window.__sess);
-                return !!document.activeElement && document.activeElement.classList.contains('team-open-btn'); })()`);
+                document.querySelector('.board-card-header[data-on-click="team-name-open"]').focus(); st.selectedTeam = 'alpha'; window.__render.renderLiveSessions(window.__sess); st.selectedTeam = null; window.__render.renderLiveSessions(window.__sess);
+                return !!document.activeElement && document.activeElement.classList.contains('board-card-header'); })()`);
             assert.ok(ready, 'focus is still on the team button after the redraws');
             // The key goes to whatever has focus: a keyDown with the character, as a native button activates on it.
             await Input.dispatchKeyEvent({ type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13, text: '\r' });

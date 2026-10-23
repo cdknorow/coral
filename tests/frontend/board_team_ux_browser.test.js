@@ -165,13 +165,12 @@ const { removeBoards } = require('./helpers/board_cleanup');
         })()`);
 
         console.log('#3 The team view is reachable by keyboard');
-        const btn = await ev(`(() => { const b = document.querySelector('.team-open-btn'); if (!b) return null; b.focus(); const cs = getComputedStyle(b);
-            return { display: cs.display, width: b.offsetWidth, focused: document.activeElement === b, label: b.getAttribute('aria-label') }; })()`);
-        assert.ok(btn, 'the team header has an Open team view button');
-        assert.notEqual(btn.display, 'none', 'shown without hovering');
-        assert.ok(btn.width > 0, 'it takes space');
-        assert.ok(btn.focused, 'it takes keyboard focus');
-        assert.equal(btn.label, 'Open team view for alpha');
+        // #6328: the team row itself is the button (role, tabindex, a name): there is no separate (i) button
+        const btn = await ev(`(() => { const b = document.querySelector('.board-card-header[data-on-click="team-name-open"]'); if (!b) return null; b.focus(); return { role: b.getAttribute('role'), tab: b.tabIndex, focused: document.activeElement === b, label: b.getAttribute('aria-label'), info: !!document.querySelector('.team-open-btn') }; })()`);
+        assert.ok(btn, 'the team row is there');
+        assert.equal(btn.info, false, 'no (i) button on the team row');
+        assert.ok(btn.role === 'button' && btn.tab === 0 && btn.focused, 'the row takes keyboard focus as a button');
+        assert.equal(btn.label, 'Open team alpha');
         // Re-focus the button (re-queried) right before Enter: in a shuffled run a background sidebar
         // render can replace the node and move focus between the read above and the key press, so the
         // Enter would land on nothing. Entering the team view is async (enterTeamContext lazy-renders it),
@@ -181,15 +180,18 @@ const { removeBoards } = require('./helpers/board_cleanup');
         const inTeam = `window.__state.selectedTeam === 'alpha' && !document.getElementById('team-center-view').hidden`;
         let entered = false;
         for (let tries = 0; tries < 4 && !entered; tries++) {
-            await ev(`document.querySelector('.team-open-btn')?.focus(); true`);
+            await ev(`document.querySelector('.board-card-header[data-on-click="team-name-open"]')?.focus(); true`);
             await key('Enter', 'Enter', 13);
             entered = await waitFor(inTeam, 'the team view after Enter', { timeout: 4000, soft: true });
         }
-        assert.ok(entered, 'the team view opens from the keyboard (Enter on the focused Open team view button), in up to four tries');
+        assert.ok(entered, 'the team view opens from the keyboard (Enter on the focused team row), in up to four tries');
+        await ev(`window.__render.renderLiveSessions([{ session_id: 'alpha-1', name: 'alpha-1', agent_type: 'claude', board_project: 'alpha', display_name: 'Alpha agent', working_directory: '/tmp/alpha' }]); true`); // this page's list is drawn from an array, not state.liveSessions, so it does not follow the selection by itself
+        await waitFor(`document.querySelector('.board-card-header[data-on-click="team-name-open"]')?.getAttribute('aria-current') === 'true'`, 'the open team marked on its row (aria-current, and the name in the accent colour, #6328)');
+        assert.ok(await ev(`document.querySelector('.board-card-header[data-on-click="team-name-open"]').classList.contains('team-selected')`), 'the open team row carries team-selected');
         const kebab = await ev(`(() => { const k = document.querySelector('.session-group-header .group-kebab-btn'); k.focus(); return { focused: document.activeElement === k }; })()`);
         assert.ok(kebab.focused, 'the group kebab takes focus');
         await waitFor(`getComputedStyle(document.querySelector('.session-group-header .group-kebab-btn')).opacity === '1'`, 'the focused kebab to be visible', { diag: `getComputedStyle(document.querySelector('.session-group-header .group-kebab-btn')).opacity` });
-        console.log('   ✓ button shown and focusable, Enter opens the team view; kebab visible on focus');
+        console.log('   ✓ the team row is a focusable button, Enter opens the team view; kebab visible on focus');
 
         console.log('#5 Entering the team view opens the group chat at the newest message');
         const atBottom = `(() => { const m = document.getElementById('board-panel-msgs'); return !!m && m.scrollHeight > m.clientHeight + 50 && m.scrollHeight - m.scrollTop - m.clientHeight < 24 && m.textContent.includes('second line'); })()`;
@@ -233,7 +235,7 @@ const { removeBoards } = require('./helpers/board_cleanup');
         await ev(`(async () => {
             window.__state.currentSession = { type: 'live', name: 'alpha-1', session_id: 'alpha-1', agent_type: 'claude', board_project: 'alpha' };
             window.__render.showBoardChatTab('alpha'); window.switchAgenticTab('board', 'top'); return true; })()`);
-        await ev(`document.querySelector('.team-open-btn').click(); true`);
+        await ev(`document.querySelector('.board-card-header[data-on-click="team-name-open"]').click(); true`);
         await waitFor(`window.__state.selectedTeam === 'alpha' && !document.getElementById('team-center-view').hidden`, 'the team view');
         await ev(`window.switchAgenticTab('tasks', 'top'); true`);
         await ev(`document.querySelector('.team-center-close').click(); true`);

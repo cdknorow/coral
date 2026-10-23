@@ -401,7 +401,6 @@ registerActions({
     'team-add-terminal': menu(el => { const b = textOf(el.dataset.board); if (b) W('launchTerminalToBoard')(b, dirOf(el) || ''); }),
     'team-accent': (el, event) => { event.stopPropagation(); const b = textOf(el.dataset.board); if (b) window.setBoardAccentColor(b); window.closeSidebarKebabs(); },
     'team-health': (el, event) => { event.stopPropagation(); const b = textOf(el.dataset.board); if (b) window.showTeamHealthSettings(b); },
-    'team-enter': (el, event) => { event.stopPropagation(); const b = textOf(el.dataset.board); if (b) window.enterTeamContext(b); },
     'group-move': menu(el => { const g = textOf(el.dataset.group); if (g && UPDOWN[el.dataset.dir]) W(el.dataset.dir === 'up' ? 'moveGroupUp' : 'moveGroupDown')(g); }),
     'group-kill': menu(el => { const g = textOf(el.dataset.group); if (g) W('killGroup')(g); }),
     'group-collapse': el => { const g = textOf(el.dataset.group); if (g) window.toggleGroupCollapse(g); },

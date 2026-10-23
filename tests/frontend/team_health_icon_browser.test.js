@@ -22,7 +22,7 @@ const { setTheme } = require('./helpers/contrast');
     const render = (on, board) => ev(`import(${MOD} + 'render.js').then(async r => { const { state } = await import(${MOD} + 'state.js');
         state.liveSessions = ${JSON.stringify(rows(on, board))}; r.flushLiveSessionsRender(); r.renderLiveSessions(state.liveSessions); return true; })`);
     const icon = () => ev(`(() => { const b = document.querySelector('.team-health-btn'); if (!b) return null; const r = b.getBoundingClientRect(), cs = getComputedStyle(b);
-        const open = document.querySelector('.team-open-btn').getBoundingClientRect();
+        const open = document.querySelector('.board-card-header .group-kebab').getBoundingClientRect();
         return { label: b.getAttribute('aria-label'), title: b.getAttribute('title'), on: b.classList.contains('is-on'), w: Math.round(r.width), h: Math.round(r.height), color: cs.color, opacity: cs.opacity,
             beside: Math.abs(r.top - open.top) < 6 && r.right <= open.left + 1, board: b.dataset.board, bg: cs.backgroundColor, shadow: cs.boxShadow, border: cs.borderTopWidth, stroke: getComputedStyle(b.querySelector('svg')).strokeWidth }; })()`);
     // The icon's contrast against what is behind it (the panel; the button has no fill of its own), 3:1 for a graphic (WCAG 1.4.11).

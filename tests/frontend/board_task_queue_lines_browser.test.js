@@ -111,7 +111,7 @@ const BASE = require('./test_base').BASE;
         await ev(`(async () => {
             const render = await import(${S}+'render.js');
             render.renderLiveSessions([{ session_id: 'beta-1', name: 'beta-1', agent_type: 'claude', board_project: 'beta', display_name: 'Beta agent', working_directory: '/tmp/beta' }]);
-            document.querySelector('.team-open-btn').click();
+            document.querySelector('.board-card-header[data-on-click="team-name-open"]').click();
             return true;
         })()`);
         await waitFor(`!!document.querySelector('#board-panel-msgs .mb-queue-run')`, 'the team chat with collapsed task-queue rows');

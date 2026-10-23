@@ -2516,18 +2516,14 @@ button.team-artifact-name { cursor: pointer; }
 /* Team settings as a sidebar panel rather than a full-pane workspace */
 #agentic-panel-team-settings > .team-settings-workspace { overflow: auto; padding: 14px; }
 
-/* The open-team button sits beside the group kebab (same look as the folder copy button).
-   It is the way into a team's views, so it is always shown (muted) and reachable by keyboard,
-   not revealed on hover; it turns accent while that team is selected. */
-.team-open-btn { display: inline-flex; align-items: center; }
-.team-open-btn.is-selected { color: var(--accent); }
+/* The open team is the one whose row is in the accent colour (#6328): the row itself opens the team view (click, Enter), the chevron expands it; the (i) button that did the same is gone. */
+.board-card-header.team-selected .group-name-text { color: var(--accent); }
 /* The team's health check (#4962): shown only while the check is on (#5119; off has no icon), in the accent colour, so it is there at a glance without a ring or a fill (the tooltip and the name say on). */
 .team-health-btn { display: inline-flex; align-items: center; justify-content: center; border-radius: var(--radius-md); }
 /* On is the accent icon and nothing around it (#5119: the pill and its ring from #4962 round 2 were louder than the context and Waiting badges on every team header): a heavier stroke and the accent colour tell it from the plain muted outline of off, and the name and tooltip say on or off. */
 .team-health-btn.is-on { color: var(--accent); }
 .team-health-btn.is-on svg { stroke-width: 2.2; }
 .team-health-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; color: var(--text-primary); }
-.team-open-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; color: var(--text-primary); }
 .team-artifacts-help .material-icons { font-size: 1.125rem; }
 
 /* A custom view written by an automated caller waits for the user's click (custom_views.js). */

@@ -44,7 +44,7 @@ const SLOW = { offline: false, latency: 900, downloadThroughput: 200 * 1024, upl
         console.log('3. a load that fails leaves nothing stuck, and a slow retry shows busy again');
         await ev(`import(${S} + 'lazy_panels.js').then(m => { m.loadTeamContext.module = null; return true; })`);
         await Network.emulateNetworkConditions({ offline: true, latency: 0, downloadThroughput: 0, uploadThroughput: 0 });
-        await ev(`(() => { const b = document.createElement('button'); b.id = 'lb-team'; b.dataset.onClick = 'team-enter'; b.dataset.board = 'lb-board'; b.textContent = 'team'; document.body.appendChild(b); b.click(); return true; })()`);
+        await ev(`(() => { const b = document.createElement('button'); b.id = 'lb-team'; b.dataset.onClick = 'team-name-open'; b.dataset.board = 'lb-board'; b.textContent = 'team'; document.body.appendChild(b); b.click(); return true; })()`);
         await settle(600);
         check(`offline: the load fails at once, so nothing was ever shown and nothing is stuck (${await ev(`document.getElementById('lb-team').getAttribute('aria-busy')`)})`, (await ev(`document.getElementById('lb-team').getAttribute('aria-busy')`)) === null && (await ev(`!document.getElementById('lb-team').classList.contains('lazy-loading')`)));
         await Network.emulateNetworkConditions(SLOW); await Network.setCacheDisabled({ cacheDisabled: true });

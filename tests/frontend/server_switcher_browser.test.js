@@ -135,7 +135,7 @@ const SETTINGS_PRELOAD = `(() => {
         assert.equal(pre.m3.title, 'Old Laptop: Unreachable', 'its state is in the tooltip'); assert.equal(pre.m3.sr, '(server, unreachable)', 'and for screen readers');
         assert.equal(pre.dots, 0, 'no status dot or chip on a row');
         // Team view from a prefixed row opens that server's team.
-        await ev(`[...document.querySelectorAll('#live-sessions-list li')].find(l => l.querySelector('.row-server-prefix') && l.textContent.includes('team-m2')).querySelector('.team-open-btn').click(); true`);
+        await ev(`(() => { const l = [...document.querySelectorAll('#live-sessions-list li')].find(l => l.querySelector('.row-server-prefix') && l.textContent.includes('team-m2')); (l.matches('[data-on-click="team-name-open"]') ? l : l.querySelector('[data-on-click="team-name-open"]')).click(); return true; })()`);
         await waitFor(`T.state.selectedTeam === '@m2/team-m2'`, 'team view of @m2/team-m2', 3000, `T.state.selectedTeam`);
         await ev(`window.exitTeamContext({ goBack: false, force: true }); true`);
         console.log('   ✓ ungrouped: "workstation-team-m2", server in italics first, offline dimmed with tooltip + sr text, no dots; team view opens @m2/team-m2');
@@ -303,13 +303,12 @@ const SETTINGS_PRELOAD = `(() => {
             const before = h().getAttribute('aria-expanded'); press('Enter'); const after = h().getAttribute('aria-expanded'); press(' '); const back = h().getAttribute('aria-expanded');
             return { before, after, back }; })()`);
         assert.deepEqual(kb, { before: 'true', after: 'false', back: 'true' }, 'Enter collapses a focused folder header and Space expands it');
-        // #3507 v4: the team row's right-hand button shows what it does (the team view): an info icon.
-        const tb = await ev(`(() => { const b = document.querySelector('#live-sessions-list .team-open-btn'); const svg = b.querySelector('svg');
-            return { title: b.title, aria: b.getAttribute('aria-label'), info: !!svg.querySelector('circle[r="9"]') && svg.querySelectorAll('circle').length === 1 }; })()`);
-        assert.equal(tb.info, true, 'an info icon, not a second people icon');
-        assert.equal(tb.title, 'Team view: members, availability and knowledge'); assert.match(tb.aria, /^Open team view for team-m/);
+        // #6328: a team row has no (i) button of its own: the row is the button that opens the team view.
+        const tb = await ev(`(() => { const h = document.querySelector('#live-sessions-list [data-on-click="team-name-open"]'); return { aria: h && h.getAttribute('aria-label'), role: h && h.getAttribute('role'), info: !!document.querySelector('#live-sessions-list .team-open-btn') }; })()`);
+        assert.equal(tb.info, false, 'no info icon on a team row');
+        assert.equal(tb.role, 'button'); assert.match(tb.aria, /^Open team team-m/);
         await ev(`localStorage.setItem('coral-group-by-server', 'false'); localStorage.removeItem('coral-board-colors'); true`);
-        console.log('   ✓ no chevrons; team, folder and workflow headers are buttons with aria-expanded (Enter/Space); the team button has an info icon');
+        console.log('   ✓ no chevrons; team, folder and workflow headers are buttons with aria-expanded (Enter/Space); a team row has no info icon');
         console.log('   ✓ variant A hierarchy (700/600/600/500, server brightest, agents muted), neutral teams, the picked color kept, unknown not dimmed, folder icons named and aligned');
 
         console.log('7. Top tabs in the operator\'s order (#3507): Agents, Servers, then the local tabs, Docs last');

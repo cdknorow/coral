@@ -87,11 +87,11 @@ const { removeBoards } = require('./helpers/board_cleanup');
         // Team view stays the team's chat; the panel stays shut
         await load('dark');
         assert.equal(await scene(), 2);
-        await waitFor(`!!document.querySelector(${JSON.stringify(HEADER + ' .team-open-btn')})`, 'the team card', 6000);
-        await tap(HEADER + ' .team-open-btn');
+        await waitFor(`!!document.querySelector(${JSON.stringify(HEADER + ' .group-name-text')})`, 'the team card', 6000);
+        await tap(HEADER + ' .group-name-text');
         const view = await ev(`(() => { const a = document.getElementById('agentic-state'); return { open: a.classList.contains('mobile-panel-overlay'), chat: !!document.getElementById('team-center-view') && !document.getElementById('team-center-view').hidden }; })()`);
-        assert.deepEqual(view, { open: false, chat: true }, 'Open team view shows the team chat with the side panel shut');
-        console.log('   ✓ Open team view still shows the chat, panel shut');
+        assert.deepEqual(view, { open: false, chat: true }, 'Opening the team (its row) shows the team chat with the side panel shut');
+        console.log('   ✓ opening the team still shows the chat, panel shut');
         console.log('team_settings_phone: ok');
         await removeBoards(ev, [TEAM]); await client.close(); process.exit(0);
     } catch (e) {
