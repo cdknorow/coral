@@ -90,11 +90,22 @@ type fakeMSI struct {
 	onMsiexec  func() // runs as msiexec does (a test ends the apply's context here)
 	// registeredAfterInstall, when set, is what Windows reports as registered after the update's install (another product).
 	registeredAfterInstall string
+	// movedTo, when set, is the folder the update's install puts the product in (an x86 install moved to Program Files by an x64 package, #321);
+	// the rollback's install puts the previous version back in the folder it was in. unsupportedIn answers Unsupported per folder.
+	movedTo, origin string
+	unsupportedIn   map[string]string
+	// startedIn and checkedIn are the folders Start and Healthy were given.
+	startedIn, checkedIn []string
 }
 
-func (f *fakeMSI) rec(s string)              { f.calls = append(f.calls, s) }
-func (f *fakeMSI) Install() (string, error)  { return f.install, nil }
-func (f *fakeMSI) Unsupported(string) string { return f.unsupport }
+func (f *fakeMSI) rec(s string)             { f.calls = append(f.calls, s) }
+func (f *fakeMSI) Install() (string, error) { return f.install, nil }
+func (f *fakeMSI) Unsupported(dir string) string {
+	if why, ok := f.unsupportedIn[dir]; ok {
+		return why
+	}
+	return f.unsupport
+}
 func (f *fakeMSI) WaitCoralGone(context.Context, string) bool {
 	f.rec("wait")
 	return f.coralGone
@@ -156,11 +167,17 @@ func (f *fakeMSI) Msiexec(ctx context.Context, args ...string) (int, error) {
 		case "/i":
 			if f.product != "" && len(f.msiArgs) == 1 {
 				f.registered, f.regVersion = f.product, "1.4.130"
+				if f.movedTo != "" {
+					f.origin, f.install = f.install, f.movedTo
+				}
 				if f.registeredAfterInstall != "" {
 					f.registered = f.registeredAfterInstall
 				}
 			} else {
 				f.registered, f.regVersion = oldProduct, "1.4.125"
+				if f.origin != "" {
+					f.install = f.origin
+				}
 			}
 		case "/x":
 			f.registered, f.regVersion = "", ""
@@ -168,8 +185,9 @@ func (f *fakeMSI) Msiexec(ctx context.Context, args ...string) (int, error) {
 	}
 	return code, nil
 }
-func (f *fakeMSI) Start(context.Context, string) error {
+func (f *fakeMSI) Start(_ context.Context, dir string) error {
 	f.rec("start")
+	f.startedIn = append(f.startedIn, dir)
 	if len(f.startErr) > 0 {
 		e := f.startErr[0]
 		f.startErr = f.startErr[1:]
@@ -177,8 +195,9 @@ func (f *fakeMSI) Start(context.Context, string) error {
 	}
 	return nil
 }
-func (f *fakeMSI) Healthy(context.Context, string) error {
+func (f *fakeMSI) Healthy(_ context.Context, dir string) error {
 	f.rec("healthy")
+	f.checkedIn = append(f.checkedIn, dir)
 	if len(f.healthErr) > 0 {
 		e := f.healthErr[0]
 		f.healthErr = f.healthErr[1:]
