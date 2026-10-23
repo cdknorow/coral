@@ -159,7 +159,7 @@ func recordFrom(out status.Out, st relaunchState, now time.Time) UpdaterRecord {
 	}
 	if s := out.Staged; s != nil && updateVersionRe.MatchString(s.Version) {
 		rec.State = updStaged
-		rec.Staged = &StagedUpdate{Version: s.Version, StagedAt: parseTime(s.StagedAt), Verified: true}
+		rec.Staged = &StagedUpdate{Version: s.Version, StagedAt: parseTime(s.StagedAt), Verified: true, Source: s.Source}
 		rec.Latest = s.Version
 	}
 	if a := out.LastApply; a != nil {

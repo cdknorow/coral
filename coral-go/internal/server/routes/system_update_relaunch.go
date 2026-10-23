@@ -94,6 +94,7 @@ var relaunchNeedsLocalApproval = runtime.GOOS == "windows"
 
 var (
 	updateVersionRe = regexp.MustCompile(`^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,4}$`)
+	sourceRe        = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9._-]{1,100}$`)
 	hubByRe         = regexp.MustCompile(`^(local|hub:hub-user-[0-9a-f]{8})$`)
 )
 
@@ -102,6 +103,8 @@ type StagedUpdate struct {
 	Version  string
 	StagedAt time.Time
 	Verified bool
+	// Source is the pinned repository the update came from, as the updater reported it after verification; sent only in the shape owner/name (sourceRe).
+	Source string
 }
 
 // UpdateTrust is what the staged version was verified against, for display.
@@ -531,7 +534,11 @@ func (h *UpdateRelaunchHandler) statusJSON(id callerIdentity, v relaunchView, ke
 			if days < 0 {
 				days = 0
 			}
-			out["staged"] = map[string]any{"version": v.version, "staged_at": rec.Staged.StagedAt.UTC().Format(time.RFC3339), "days_ready": days, "verified": rec.Staged.Verified}
+			staged := map[string]any{"version": v.version, "staged_at": rec.Staged.StagedAt.UTC().Format(time.RFC3339), "days_ready": days, "verified": rec.Staged.Verified}
+			if rec.Staged.Verified && sourceRe.MatchString(rec.Staged.Source) {
+				staged["source"] = rec.Staged.Source // text for the dialog; the page builds any link from its own constant
+			}
+			out["staged"] = staged
 		} else {
 			state = updFailed
 		}

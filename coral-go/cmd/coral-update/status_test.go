@@ -111,7 +111,7 @@ func TestStatusSaysWhatTheUpdaterKnows(t *testing.T) {
 	assert.Equal(t, "present", m["run_record"])
 	assert.Equal(t, map[string]any{"version": "1.4.129", "sequence": float64(7)}, m["accepted"])
 	assert.EqualValues(t, 2, m["revoked"])
-	assert.Equal(t, map[string]any{"version": "1.4.131", "staged_at": "2026-10-20T10:00:00Z"}, m["staged"])
+	assert.Equal(t, map[string]any{"version": "1.4.131", "staged_at": "2026-10-20T10:00:00Z", "source": verify.Repo}, m["staged"], "the source is the pinned repository (#6290), never a string the release carried")
 	assert.Equal(t, "2026-10-20T11:00:00Z", m["last_check"])
 	assert.Equal(t, map[string]any{"version": "1.4.131", "stage": "sums_signature", "at": "2026-10-20T11:00:00Z"}, m["last_failure"], "the JSON has the stage word, not the stored text")
 	assert.Equal(t, map[string]any{"version": "1.4.132", "until": future, "waiting": true, "attempts": float64(2), "kind": "network"}, m["backoff"])

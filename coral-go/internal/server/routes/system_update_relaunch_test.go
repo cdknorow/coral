@@ -584,3 +584,26 @@ func TestALocalCallerCannotUseTheHubsRelaunchRoute(t *testing.T) {
 	assert.Equal(t, "owner_only", out["code"])
 	assert.Empty(t, e.up.applies)
 }
+
+// #6290: the dialog says where the update comes from. The status carries the updater's source for a verified staged update, only in the shape owner/name, as text; anything else
+// (a URL, a path, a line break, an unverified update) is left out.
+func TestTheStagedUpdatesSourceIsSentOnlyWhenVerifiedAndOnlyAsOwnerSlashName(t *testing.T) {
+	for source, want := range map[string]bool{
+		"subgentic/coral": true, "": false,
+		"https://evil.example/x": false, "../../etc/passwd": false, "a/b\nc": false, "owner": false, "a/b/c": false, "subgentic/coral <b>": false,
+	} {
+		e := newRelaunchEnv(t)
+		e.up.rec.Staged.Source = source
+		_, st := e.status(nil)
+		staged := st["staged"].(map[string]any)
+		if want {
+			assert.Equal(t, source, staged["source"], source)
+		} else {
+			assert.NotContains(t, staged, "source", source)
+		}
+	}
+	e := newRelaunchEnv(t)
+	e.up.rec.Staged.Source, e.up.rec.Staged.Verified = "subgentic/coral", false
+	_, st := e.status(nil)
+	assert.NotContains(t, st["staged"].(map[string]any), "source", "an update that is not verified names no source")
+}
