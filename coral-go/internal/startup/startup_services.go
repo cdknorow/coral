@@ -160,6 +160,7 @@ func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Conf
 	// Job scheduler
 	scheduler := background.NewJobScheduler(schedStore, 30*time.Second)
 	launcher := background.NewAgentLauncher(agentRT, sessStore, cfg.Port)
+	launcher.SetServer(cfg.AgentHost(), cfg.CoralDir()) // the agents it starts dial this server and use this data folder (#6767)
 	scheduler.SetLaunchFn(launcher.BuildSchedulerLaunchFn(schedStore))
 	scheduler.SetSessionStore(sessStore)
 	scheduler.SetRuntime(agentRT)

@@ -28,7 +28,16 @@ type AgentLauncher struct {
 	runtime AgentRuntime
 	sessDB  *store.SessionStore
 	logger  *slog.Logger
-	port    int // retained for constructor compatibility
+	port    int
+	// host and coralDir say which Coral launched the agent: they go to its environment (CORAL_URL, CORAL_PORT, CORAL_DIR) so its hooks and coral-board reach THIS server, not whatever owns
+	// :8420 (#6767: a scheduled agent's events went to the default port, so a server on any other port stored none).
+	host     string
+	coralDir string
+}
+
+// SetServer tells the launcher the host agents dial and the data folder of this Coral (the startup passes cfg.AgentHost() and cfg.CoralDir()).
+func (l *AgentLauncher) SetServer(host, coralDir string) {
+	l.host, l.coralDir = host, coralDir
 }
 
 // NewAgentLauncher creates a new AgentLauncher.
@@ -117,6 +126,10 @@ func (l *AgentLauncher) LaunchAgent(ctx context.Context, workingDir, agentType, 
 		}
 		launchCmd, err = ag.LaunchCommand(agent.LaunchParams{
 			SessionID:       sessionID,
+			SessionName:     sessionName, // CORAL_SESSION_NAME: the agent's hooks and coral-board name their session by it
+			CoralHost:       l.host,
+			CoralPort:       l.port,
+			CoralDir:        l.coralDir,
 			ProtocolPath:    protocolPath,
 			ResumeSessionID: resumeSessionID,
 			Flags:           flags,
