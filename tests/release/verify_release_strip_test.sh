@@ -17,8 +17,17 @@ SCRIPT="$script"
 . "$T/helper.sh"
 unstripped "$T/stripped" && { echo "FAIL: a stripped binary was refused" >&2; exit 1; }
 unstripped "$T/mutant" || { echo "FAIL: a binary holding the source comment was accepted" >&2; exit 1; }
-# the marker file is read, so an empty one cannot make every binary pass silently
+# the marker file is read, and a missing or empty one stops the script (exit 2) instead of passing every binary
 [ -n "$STRIP_MARKER" ] || { echo "FAIL: marker not read" >&2; exit 1; }
+mkdir -p "$T/fake/tools" "$T/fake/tests/release"
+sed -n '/^STRIP_MARKER=/,/^}/p' "$script" > "$T/fake/tools/guard.sh"
+for state in missing empty; do
+  rm -f "$T/fake/tests/release/strip_marker.txt"
+  [ "$state" = empty ] && : > "$T/fake/tests/release/strip_marker.txt"
+  set +e; out="$(bash "$T/fake/tools/guard.sh" 2>&1)"; rc=$?; set -e
+  [ "$rc" = 2 ] || { echo "FAIL: a $state strip_marker.txt gave exit $rc, want 2" >&2; exit 1; }
+  case "$out" in *"missing or empty"*) ;; *) echo "FAIL: a $state marker file stopped without saying why: $out" >&2; exit 1 ;; esac
+done
 n="$(grep -c 'unstripped ' "$script")"
 [ "$n" -ge 2 ] || { echo "FAIL: unstripped is called from $n sites, want check_programs and the DMG" >&2; exit 1; }
 echo "PASS verify_release_strip: the marker check refuses a mutant and is wired into the program and DMG checks"
