@@ -11,6 +11,7 @@ import { updateSettingList, upsertByName, parseList } from './settings_lists.js'
 import { _passesFilters } from './list_filter_match.js';
 import { killCount } from './agent_actions.js';
 import { showPromptModal } from './prompt_modals.js';
+import { worktreeConfirmWords, worktreeAnswerWords } from './worktree_words.js';
 
 // The agents a folder or workflow group shows, and only those (#3053): team
 // members are listed (and killed) under their team, archived agents in the
@@ -52,6 +53,12 @@ export async function killGroup(groupName) {
     );
 }
 
+/** Kill Team's confirmation says what happens to the team's worktree, when it has one (an agent of the team is on a worktree). */
+function _teamWorktreeSentence(sessions) {
+    const wt = sessions.find(s => s.git_state && s.git_state.is_worktree);
+    return wt ? `${worktreeConfirmWords(wt.branch)} ` : '';
+}
+
 export async function killBoard(boardName) {
     const boardSessions = state.liveSessions.filter(s => inTeam(s, boardName));
     if (!boardSessions.length) return;
@@ -62,19 +69,24 @@ export async function killBoard(boardName) {
 
     showConfirmModal(
         "Kill Team",
-        `Kill ${killCount(boardSessions.length).agents} on board "${keyLabel(boardName)}"? This will terminate ${boardSessions.length === 1 ? 'it' : 'them'}. ${killCount(boardSessions.length).note}`,
+        `Kill ${killCount(boardSessions.length).agents} on board "${keyLabel(boardName)}"? This will terminate ${boardSessions.length === 1 ? 'it' : 'them'}. ${_teamWorktreeSentence(boardSessions)}${killCount(boardSessions.length).note}`,
         async () => {
+            let worktree = null; // the stop's answer about the team's worktree: the kill that ends it carries it
             for (const s of boardSessions) {
                 try {
-                    await serverFetch(sessionServer(s), `/api/sessions/live/${encodeURIComponent(s.name)}/kill`, {
+                    const r = await serverFetch(sessionServer(s), `/api/sessions/live/${encodeURIComponent(s.name)}/kill`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ agent_type: s.agent_type, session_id: s.session_id }),
                     });
+                    const answer = await r.json().catch(() => null);
+                    if (answer && answer.worktree && answer.worktree.state && answer.worktree.state !== 'none') worktree = answer.worktree;
                 } catch (e) {
                     console.error(`Failed to kill ${s.name}:`, e);
                 }
             }
+            const said = worktreeAnswerWords(worktree);
+            if (said) showToast(said.text, said.error); // an error is an alert; the rest a status
             const killedIds = new Set(boardSessions.map(s => s.session_id));
             state.liveSessions = state.liveSessions.filter(s => !killedIds.has(s.session_id));
             redrawLiveList();
