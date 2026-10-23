@@ -26,7 +26,7 @@ on:
         default: "30"
         type: string
       revoke:
-        description: "Versions to revoke with this promotion (comma separated, at most 20)"
+        description: "Versions to revoke with this promotion (comma separated, at most 20). A revocation cannot be undone on a Coral that has seen it: a mistaken revoke is fixed by promoting a new version"
         required: false
         default: ""
         type: string

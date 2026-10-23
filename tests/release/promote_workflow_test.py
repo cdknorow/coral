@@ -108,6 +108,9 @@ class Workflow(unittest.TestCase):
         self.assertIn("--certificate-github-workflow-trigger workflow_dispatch", WF)
         self.assertNotIn("--certificate-identity-regexp", WF)
 
+    def test_the_revoke_input_says_a_revocation_cannot_be_undone(self):
+        self.assertIn("A revocation cannot be undone on a Coral that has seen it: a mistaken revoke is fixed by promoting a new version", WF)
+
     def test_both_jobs_have_a_timeout(self):
         for job in ("validate", "promote"):
             self.assertRegex(job_block(job), r"(?m)^    timeout-minutes: 15\b", job)
