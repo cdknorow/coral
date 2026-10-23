@@ -51,6 +51,7 @@ concurrency:
 # its shard fails when the count of matching tests changes, so a rename can't drop it.
 jobs:
   go:
+    if: false # trial branch: only the cdp job below runs
     name: go test (windows-latest, ${{ matrix.shard }})
     runs-on: windows-latest
     timeout-minutes: 45
@@ -179,6 +180,7 @@ jobs:
   # agent is launched through ConPTY and stopped, nothing is left running. The MSI is not built here (WiX takes minutes): it is checked on the tag.
   # Keep the build lines in step with release.yml's "Build Windows binaries".
   package:
+    if: false # trial branch: only the cdp job below runs
     name: package and smoke (windows-latest, the built exes)
     runs-on: windows-latest
     timeout-minutes: 40
@@ -310,6 +312,7 @@ jobs:
   # The dashboard's node tests (npm run test:cloud), on Windows as cloud-tests.yml runs them on Linux: path, line-ending and
   # child-process differences (#94) were invisible to CI. Nothing is cached; install scripts never run.
   frontend:
+    if: false # trial branch: only the cdp job below runs
     name: test:cloud (windows-latest)
     runs-on: windows-latest
     timeout-minutes: 20
@@ -353,7 +356,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        part: [1, 2, 3]
+        part: [1]
     defaults:
       run:
         shell: bash
@@ -401,7 +404,7 @@ jobs:
           CORAL_TELEMETRY_DISABLED: "1"
         run: |
           set -o pipefail
-          node run_cdp_suites.mjs --timeout 180 --keep --fail-on-leak --part "${{ matrix.part }}/3" --results-out "$RUNNER_TEMP/results.json" 2>&1 | tee "$RUNNER_TEMP/run.log"
+          node run_cdp_suites.mjs --only terminal_switch_phone_browser --stress --runs 20 --shards 1 --retries 0 --timeout 180 --keep --results-out "$RUNNER_TEMP/results.json" 2>&1 | tee "$RUNNER_TEMP/run.log"
       - name: upload the logs (failure only)
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
