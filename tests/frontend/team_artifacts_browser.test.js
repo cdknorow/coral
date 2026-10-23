@@ -303,6 +303,8 @@ const SHOTS = process.env.CORAL_SCREENSHOT_DIR;
         })()`;
         for (const width of [900, 680, 520, 420, 350, 320, 260]) {
             await ev(`document.getElementById('agentic-state').style.width='${width}px'`); await settle();
+            // the panel moves to its width: measure once two reads agree and it is there (a read at 666 px made "wide" three columns, #6751's review)
+            for (let i = 0, last = -1; i < 40; i++) { const now = await ev(`Math.round(document.getElementById('agentic-state').getBoundingClientRect().width)`); if (now === last && Math.abs(now - width) <= 2) break; last = now; await settle(); }
             const l = await ev(LAYOUT);
             assert.equal(l.rows, 4, `${width}px: all rows rendered`);
             assert.equal(l.overflow, 0, `${width}px: no horizontal scroll (overflow ${l.overflow}px)`);
