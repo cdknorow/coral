@@ -23,7 +23,7 @@ const { connect } = require('./agent_view_harness');
             if (label) a = label.getBoundingClientRect(); else { const t = [...dt.childNodes].find(n => n.nodeType === 3 && n.textContent.trim()) || dt.querySelector('span'); /* the Agent tools folder row (shown when the folder is not a place only an administrator can write, as a dev build's is) labels itself with a span */ const rg = document.createRange(); rg.selectNodeContents(t); a = rg.getBoundingClientRect(); } // a row whose title is bare text in the dt
             const b = info.getBoundingClientRect();
             const tog = row.querySelector(':scope > dd > .check-hit input, :scope > .net-group-head > .check-hit input, :scope > .net-group-head > .settings-hub-mode-toggle input'), tb = tog && tog.getBoundingClientRect();
-            out.push({ label: dt.textContent.replace(/info/, '').trim().slice(0, 30), off: tb ? Math.round(Math.abs((tb.top + tb.bottom) / 2 - (b.top + b.bottom) / 2) * 10) / 10 : null, info: [Math.round(b.width), Math.round(b.height)], level: b.top < a.bottom && b.bottom > a.top, right: b.left >= a.right - 2, row: Math.round(row.getBoundingClientRect().height), dt: Math.round(dt.getBoundingClientRect().width), dd: row.querySelector('dd, :scope > .net-body') ? Math.round(row.querySelector('dd, :scope > .net-body').getBoundingClientRect().width) : 0, cols: getComputedStyle(row).gridTemplateColumns });
+            out.push({ label: dt.textContent.replace(/info/, '').trim().slice(0, 30), off: tb ? Math.round(Math.abs((tb.top + tb.bottom) / 2 - (b.top + b.bottom) / 2) * 10) / 10 : null, tlevel: tb ? (tb.top < a.bottom && tb.bottom > a.top) : null, info: [Math.round(b.width), Math.round(b.height)], level: b.top < a.bottom && b.bottom > a.top, right: b.left >= a.right - 2, row: Math.round(row.getBoundingClientRect().height), dt: Math.round(dt.getBoundingClientRect().width), dd: row.querySelector('dd, :scope > .net-body') ? Math.round(row.querySelector('dd, :scope > .net-body').getBoundingClientRect().width) : 0, cols: getComputedStyle(row).gridTemplateColumns });
         } return out; })()`);
         let seen = 0, general = 0, toggles = 0;
         for (const g of groups) {
@@ -33,8 +33,8 @@ const { connect } = require('./agent_view_harness');
             const rs = await rows();
             for (const r of rs) {
                 assert.ok(r.level && r.right, `${g}: the (i) is beside its label "${r.label}", not under it: ${JSON.stringify(r)}`);
-                if (r.off !== null) { toggles++; assert.ok(r.off <= 2, `${g}: the toggle is level with the (i) beside "${r.label}" (centres ${r.off} px apart; it sat about 19 px above, #5109): ${JSON.stringify(r)}`); }
-                assert.ok(r.info[0] >= 44 && r.info[1] >= 44, `${g}: the (i) beside "${r.label}" is a 44 px target: ${JSON.stringify(r)}`);
+                if (r.off !== null) { toggles++; assert.ok(r.tlevel, `${g}: the toggle is on the line of its label, beside the (i) "${r.label}" (#5109; the (i) is 24 px on the label's first line since #6750): ${JSON.stringify(r)}`); }
+                assert.ok(r.info[0] <= 24 && r.info[1] <= 24, `${g}: the (i) beside "${r.label}" is the 24 px circle (its 44 px target is the ::after, #6750): ${JSON.stringify(r)}`);
             }
             seen += rs.length;
             if (g === groups[0]) general = (await ev(`[...document.querySelectorAll('#settings-modal .settings-pane:not([hidden]) .settings-row')].filter(r => r.getClientRects().length).reduce((a, r) => a + r.getBoundingClientRect().height, 0)`));

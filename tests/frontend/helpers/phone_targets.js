@@ -22,6 +22,7 @@ const MEASURE = `(() => {
         if (e.tagName === 'INPUT' && /checkbox|radio/.test(e.type)) { const l = e.closest('label') || (e.labels && e.labels[0]); if (l) { const lb = l.getBoundingClientRect(); if (lb.width * lb.height > b.width * b.height) { b = lb; via = ' (label)'; } } }
         const inline = e.tagName === 'A' && !!e.closest('p, li, td, .markdown, .message-text, .chat-bubble, .settings-hint, .settings-info-text, .cs-note');
         if (inline) continue;
+        { const ps = getComputedStyle(e, '::after'); if (ps.content !== 'none' && ps.position === 'absolute' && parseFloat(ps.width) >= 43.5 && parseFloat(ps.height) >= 43.5) continue; } // an invisible ::after of 44 px or more is the touch target (the (i) buttons, #6750)
         if (b.width < 43.5 || b.height < 43.5) small.push({ d: e.tagName.toLowerCase() + (e.id ? '#' + e.id : '') + (typeof e.className === 'string' && e.className.trim() ? '.' + e.className.trim().split(/\\s+/)[0] : ''), t: (e.getAttribute('aria-label') || e.title || e.textContent || e.value || '').toString().trim().replace(/\\s+/g, ' ').slice(0, 30), w: Math.round(b.width), h: Math.round(b.height), via });
     }
     return { n, small, dups: [...groups.values()].filter(g => g.count > 1), unnamed }; })()`;

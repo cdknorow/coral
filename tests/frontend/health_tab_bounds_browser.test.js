@@ -50,7 +50,7 @@ const TEAM = 'health-bounds-team';
 
             // 2. Touch targets: the check rows' labels, the number and text inputs and the select.
             const small = await ev(`(() => [...document.querySelectorAll('#team-settings-health .health-rule-head, #team-settings-health input[type=number], #team-settings-health input[type=text], #team-settings-health select, #team-settings-health button')]
-                .filter(e => e.getBoundingClientRect().width > 0).filter(e => e.getBoundingClientRect().height < 43.5)
+                .filter(e => e.getBoundingClientRect().width > 0).filter(e => { const ps = getComputedStyle(e, '::after'); return !(ps.content !== 'none' && ps.position === 'absolute' && parseFloat(ps.width) >= 43.5 && parseFloat(ps.height) >= 43.5); }) /* the (i) is 24 px with a 44 px ::after target (#6750) */.filter(e => e.getBoundingClientRect().height < 43.5)
                 .map(e => (e.name || e.className.toString() || e.tagName).slice(0, 36) + ' ' + Math.round(e.getBoundingClientRect().height)))()`);
             assert.deepEqual(small, [], `every row and input is at least 44 px tall at ${name}`);
 

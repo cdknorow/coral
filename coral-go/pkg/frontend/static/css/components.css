@@ -4401,8 +4401,12 @@ a.ibx-open, a.ibx-open:visited { color: var(--link-text); }
 .settings-row > .net-group-head { flex-wrap: nowrap; }
 .settings-row > .net-group-head .net-group-title { min-width: 0; }
 @media (max-width: 767px), (pointer: coarse) and (max-height: 500px) and (max-width: 950px) { #net-group-hub { order: -1; } }
-.settings-info-btn { display: inline-flex; align-items: center; justify-content: center; width: 1.5rem; height: 1.5rem; padding: 0; flex: none; border: 1px solid var(--control-border); border-radius: 50%; background: none; color: var(--text-secondary); cursor: pointer; }
+.settings-info-btn { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 1.5rem; height: 1.5rem; padding: 0; flex: none; border: 1px solid var(--control-border); border-radius: 50%; background: none; color: var(--text-secondary); cursor: pointer; }
 .settings-info-btn .material-icons { font-size: 1rem; }
+/* On its label's first line, not centred on the whole row: the circle's centre is the first line's centre (a label of two lines keeps it beside the first). */
+.settings-info-btn { align-self: flex-start; margin-top: calc((1lh - 1.5rem) / 2); }
+/* The touch target: on a phone or a touch screen the circle stays 1.5rem and an invisible 44 px square around it takes the tap (#6750: the visible circle was 44 px and sat below its label). */
+@media (max-width: 767px), (pointer: coarse) { .settings-info-btn::after { content: ''; position: absolute; left: 50%; top: 50%; width: var(--control-touch-height, 44px); height: var(--control-touch-height, 44px); transform: translate(-50%, -50%); } }
 .settings-info-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
 .settings-info-btn[aria-expanded="true"] { background: var(--accent-dim); border-color: var(--accent-dim); color: var(--text-on-accent); }
 .settings-info-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -4512,7 +4516,7 @@ a.ibx-open, a.ibx-open:visited { color: var(--link-text); }
     .settings-nav .settings-group-pick { display: block; }
     .settings-group-pick select { width: 100%; min-height: 44px; }
     .settings-panes { padding: .8rem 1rem 1.2rem; }
-    .settings-info-btn { width: 44px; height: 44px; border-radius: 50%; } /* a circle at every size (#6042); the 44 px is the target */
+    /* the (i) stays a 1.5rem circle at every size (#6042, #6750); its 44 px touch target is the invisible ::after below */
     .settings-row > dt > label { flex: 1 1 0; min-width: 0; } /* the label wraps so its (i) button stays beside it, not on a row of its own (#5057) */
     .settings-modal-body select, .settings-modal-body input[type="text"], .settings-modal-body input[type="number"], .settings-modal-body input[type="password"], .settings-modal-body .btn { min-height: 44px; }
 }
