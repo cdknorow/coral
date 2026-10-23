@@ -4666,3 +4666,14 @@ body:has(#launch-modal[style*="flex"] :is(#launch-tmux-slot, #team-tmux-slot)[da
 
 /* An agent whose hook programs are gone (#6089): a quiet chip on its row, the fix in its tooltip. */
 .hooks-missing-chip { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: var(--radius-lg); font-size: var(--fs-xs, 0.6875rem); line-height: 16px; color: var(--text-primary); background: color-mix(in srgb, var(--warning) 22%, var(--bg-secondary)); border: 1px solid color-mix(in srgb, var(--warning) 55%, var(--border)); white-space: nowrap; }
+
+/* The agent choice in New Agent's first step (#6199): the label, then a radio group of chips under the folder; 44 px on a phone. */
+.launch-agent-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px 0 4px; }
+.launch-agent-pick-label { width: 100%; font-size: var(--fs-md); color: var(--text-secondary); }
+.launch-agent-opt { display: inline-flex !important; flex-direction: row !important; align-items: center; gap: 6px; margin: 0; padding: 6px 12px; min-height: var(--control-compact-height, 32px); border: 1px solid var(--control-border, var(--border)); border-radius: var(--radius-md); background: var(--bg-tertiary); color: var(--text-primary); cursor: pointer; font-size: var(--fs-md); width: auto; }
+.launch-agent-opt:has(input:checked) { border-color: var(--accent); background: var(--bg-hover); }
+.launch-agent-opt:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+.launch-agent-opt input { margin: 0; width: auto; flex: 0 0 auto; }
+#launch-agent-pick .launch-agent-opt { color: var(--text-primary); } /* the dialog's labels are the secondary colour: 4.4:1 on this chip in the light theme */
+#launch-agent-pick .launch-agent-missing { color: var(--text-secondary); font-size: var(--fs-sm); }
+@media (pointer: coarse), (max-width: 767px) { .launch-agent-opt { min-height: var(--control-touch-height, 44px); } }

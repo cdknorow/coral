@@ -41,6 +41,8 @@ function _selectLaunchType(type) {
             adopt: { advanced: 'launch-advanced-extra' },
             value: { agentType: _settingsFor(_effectiveServer(launch.server)).default_agent_type || 'claude' },
         });
+        // The agent is chosen in this step, not only under More options (#6199): a radio group that follows the form's own select, the installed agents first.
+        importOnce('./launch_agent_pick.js').then(m => m.buildAgentPick({ group: document.getElementById('launch-agent-pick'), form: document.getElementById('launch-agent-acf'), server: _effectiveServer(launch.server), implicitDefault: !_settingsFor(_effectiveServer(launch.server)).default_agent_type })).catch(() => {});
         _wireDirNote(); _syncDirNote(); _syncLaunchBlock();
         _checkTmuxHere(); // tmux missing: said once, Launch off (#6046)
         document.getElementById('launch-dir')?.focus(); // the one thing most launches need: the folder
