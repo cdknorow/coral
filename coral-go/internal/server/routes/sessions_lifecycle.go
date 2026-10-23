@@ -171,7 +171,7 @@ func (h *SessionsHandler) Kill(w http.ResponseWriter, r *http.Request) {
 		// Check if any remaining sessions use this worktree
 		remaining, _ := h.ss.CountSessionsWithWorktree(bgCtx, worktreePathForCleanup)
 		if remaining == 0 {
-			resp["worktree"] = h.removeOwnedWorktree(bgCtx, "kill", worktreeRepoForCleanup, worktreePathForCleanup, "")
+			resp["worktree"] = h.removeOwnedWorktree(bgCtx, "kill", worktreeRepoForCleanup, worktreePathForCleanup, h.teamBranchOf(worktreePathForCleanup))
 		}
 	}
 	writeJSON(w, http.StatusOK, resp)
@@ -1259,6 +1259,15 @@ func (h *SessionsHandler) KillTeam(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// teamBranchOf is the branch a team's worktree is on when path is one Coral made for a team (a folder directly in its worktrees folder), else "": the single kill of the last agent in
+// it takes the branch with the worktree when nothing is on it, as a team stop does (QA's #6722).
+func (h *SessionsHandler) teamBranchOf(path string) string {
+	if filepath.Clean(filepath.Dir(path)) != filepath.Join(h.cfg.CoralDir(), "worktrees") {
+		return ""
+	}
+	return gitutil.TeamBranch(filepath.Base(path))
 }
 
 // removeOwnedWorktree takes a stopped agent's or team's worktree away when nothing in it is unsaved and answers what happened ({state, path, branch, reason}): the worktree and its work are never deleted

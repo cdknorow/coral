@@ -146,6 +146,11 @@ func AddTeamWorktree(ctx context.Context, repoDir, path, branch, base string) (b
 	return branchCreated, nil
 }
 
+// IsRegisteredWorktree reports whether path is one of the repository's worktrees.
+func IsRegisteredWorktree(ctx context.Context, repoDir, path string) bool {
+	return registered(ctx, repoDir, path)
+}
+
 // registered reports whether path is one of the repository's worktrees.
 func registered(ctx context.Context, repoDir, path string) bool {
 	out, err := git(ctx, repoDir, "worktree", "list", "--porcelain")

@@ -221,6 +221,7 @@ b GET /api/workflows/runs/{runID}
 b GET /api/workflows/runs/{runID}/steps/{stepIndex}/files/*
 b GET /api/workflows/{workflowID}
 b GET /api/workflows/{workflowID}/runs
+b GET /api/worktrees
 c GET /ws/coral
 b GET /ws/terminal/{name}
 b HEAD /api/remote/{server}/*
@@ -387,6 +388,7 @@ b POST /api/workflows
 b POST /api/workflows/by-name/{name}/trigger
 b POST /api/workflows/runs/{runID}/kill
 b POST /api/workflows/{workflowID}/trigger
+b POST /api/worktrees/remove
 a PUT /api/agent/ui/{id}
 b PUT /api/artifacts/{id}/comments/lock
 b PUT /api/artifacts/{id}/keep

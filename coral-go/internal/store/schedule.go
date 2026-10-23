@@ -343,3 +343,12 @@ func (s *ScheduleStore) ListOneshotRuns(ctx context.Context, limit int, status *
 	err := s.db.SelectContext(ctx, &runs, query, args...)
 	return runs, err
 }
+
+// ListRunsWithWorktree returns the runs that recorded a worktree folder, newest first, with their job's name (the worktrees list, #6736). Whether the folder is still there is the caller's to check.
+func (s *ScheduleStore) ListRunsWithWorktree(ctx context.Context) ([]ScheduledRun, error) {
+	var runs []ScheduledRun
+	err := s.db.SelectContext(ctx, &runs,
+		`SELECT r.*, j.name AS job_name FROM scheduled_runs r LEFT JOIN scheduled_jobs j ON j.id = r.job_id
+		 WHERE r.worktree_path IS NOT NULL AND r.worktree_path != '' ORDER BY r.id DESC`)
+	return runs, err
+}

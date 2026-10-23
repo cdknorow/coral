@@ -110,6 +110,9 @@ func teamServerH(t *testing.T) (url string, cfg *config.Config, h *SessionsHandl
 	r.Post("/api/sessions/launch-team", h.LaunchTeam)
 	r.Post("/api/sessions/live/team/{boardName}/kill", h.KillTeam)
 	r.Post("/api/teams/detail/{name}/resurrect", h.ResurrectTeam)
+	wh := NewWorktreesHandler(h.db, cfg)
+	r.Get("/api/worktrees", wh.List)
+	r.Post("/api/worktrees/remove", wh.Remove)
 	srv := httptest.NewServer(r)
 	t.Cleanup(srv.Close)
 	return srv.URL, cfg, h

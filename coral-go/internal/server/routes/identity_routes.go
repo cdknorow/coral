@@ -41,6 +41,8 @@ var operatorOnlyRoutes = map[string]string{
 	// #3665: resuming agents on the current hook set stops and restarts them.
 	"GET /api/system/hooks-status":                      "see which agents run an older hook set",
 	"POST /api/sessions/live/{sessionID}/refresh-hooks": "resume an agent on the current hook set",
+	"GET /api/worktrees":                                "list the worktrees Coral kept",
+	"POST /api/worktrees/remove":                        "remove a kept worktree",
 	"POST /api/workflows":                               "create a workflow",
 	"PUT /api/workflows/{workflowID}":                   "change a workflow",
 	"DELETE /api/workflows/{workflowID}":                "delete a workflow",
