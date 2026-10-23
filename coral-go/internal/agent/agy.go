@@ -154,11 +154,7 @@ func parseAgyTranscriptSession(convID, fpath string, mtime float64) (*IndexedSes
 		if content, _ := entry["content"].(string); content != "" {
 			fts.Add(content)
 			if summary == "" {
-				text := content
-				if len(text) > 200 {
-					text = text[:200]
-				}
-				summary = text
+				summary = redactedCut(content, 200)
 			}
 		}
 		if toolCalls, ok := entry["tool_calls"].([]any); ok {
@@ -189,6 +185,7 @@ func parseAgyTranscriptSession(convID, fpath string, mtime float64) (*IndexedSes
 		LastTimestamp:  lastTS,
 		MessageCount:   msgCount,
 		DisplaySummary: summary,
+		IndexVersion:   HistoryIndexVersion,
 		FTSBody:        buildFTSBody(summary, &fts),
 	}, nil
 }
@@ -234,10 +231,7 @@ func parseGeminiSession(fpath string, mtime float64) (*IndexedSession, error) {
 			if summary == "" && role == "model" {
 				if p, ok := parts[0].(map[string]any); ok {
 					if text, _ := p["text"].(string); text != "" {
-						if len(text) > 200 {
-							text = text[:200]
-						}
-						summary = text
+						summary = redactedCut(text, 200)
 					}
 				}
 			}
@@ -253,6 +247,7 @@ func parseGeminiSession(fpath string, mtime float64) (*IndexedSession, error) {
 		LastTimestamp:  lastTS,
 		MessageCount:   len(messages),
 		DisplaySummary: summary,
+		IndexVersion:   HistoryIndexVersion,
 		FTSBody:        buildFTSBody(summary, &fts),
 	}, nil
 }

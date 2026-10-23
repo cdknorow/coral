@@ -61,12 +61,7 @@ type claudeCursor struct {
 
 // cursorSummary is the first 200 bytes of a message, as a COPY: text[:200] would keep the whole message alive (a substring shares its
 // parent's memory), unseen by weight(), for as long as the cursor lives; with a cursor for every live agent that is the message, once per agent.
-func cursorSummary(text string) string {
-	if len(text) > 200 {
-		text = text[:200]
-	}
-	return strings.Clone(text)
-}
+func cursorSummary(text string) string { return redactedCut(text, 200) }
 
 // weight is the memory the cursor holds, for the bytes bound: the search text, its summary and tail, and a share for the rest.
 func (c *claudeCursor) weight() int { return c.fts.b.Cap() + len(c.summary) + cap(c.tail) + 512 }
@@ -133,6 +128,7 @@ func (h *claudeHistory) session(fpath string, info os.FileInfo, mtime float64, i
 		FileMtime:      mtime,
 		MessageCount:   cur.msgCount,
 		DisplaySummary: cur.summary,
+		IndexVersion:   HistoryIndexVersion,
 		FTSBody:        body,
 		FTSUnchanged:   unchanged,
 	}

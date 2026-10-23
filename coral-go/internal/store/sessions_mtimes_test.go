@@ -85,7 +85,7 @@ func TestHistoryMtimesRechecksLegacyCodexOnceAndRemembersExclusions(t *testing.T
 	legacy, err := s.GetIndexedMtimes(ctx)
 	require.NoError(t, err)
 	require.Equal(t, float64(42), legacy[normal.SourceFile])
-	known, err := s.GetHistoryMtimes(ctx)
+	known, err := s.GetHistoryMtimes(ctx, 1)
 	require.NoError(t, err)
 	assert.NotContains(t, known, normal.SourceFile, "an old unchanged Codex row is checked once")
 	normal.IndexVersion = 1
@@ -93,12 +93,12 @@ func TestHistoryMtimesRechecksLegacyCodexOnceAndRemembersExclusions(t *testing.T
 	require.NoError(t, s.RemoveExcludedSessionSource(ctx, "codex", "/history/guardian.jsonl", 43, 1))
 	// New store wrapper models a restart without keeping any in-memory sweep state.
 	s = NewSessionStore(db)
-	known, err = s.GetHistoryMtimes(ctx)
+	known, err = s.GetHistoryMtimes(ctx, 1)
 	require.NoError(t, err)
 	assert.Equal(t, map[string]float64{normal.SourceFile: 42, "/history/guardian.jsonl": 43}, known)
 	_, err = db.ExecContext(ctx, `DELETE FROM session_fts WHERE session_id = 'parent'`)
 	require.NoError(t, err)
-	known, err = s.GetHistoryMtimes(ctx)
+	known, err = s.GetHistoryMtimes(ctx, 1)
 	require.NoError(t, err)
 	assert.NotContains(t, known, normal.SourceFile, "missing FTS still backfills")
 	// A changed rollout that becomes ordinary clears the exclusion cache.
@@ -107,7 +107,7 @@ func TestHistoryMtimesRechecksLegacyCodexOnceAndRemembersExclusions(t *testing.T
 	normal.FileMtime = 44
 	require.NoError(t, s.UpsertSessionIndex(ctx, normal))
 	require.NoError(t, s.UpsertFTS(ctx, normal.SessionID, "now ordinary"))
-	known, err = s.GetHistoryMtimes(ctx)
+	known, err = s.GetHistoryMtimes(ctx, 1)
 	require.NoError(t, err)
 	assert.Equal(t, float64(44), known[normal.SourceFile])
 	var exclusions int
@@ -130,11 +130,35 @@ func TestPruneHistoryExclusionsForgetsOnlyFilesKnownToBeGone(t *testing.T) {
 	var left []string
 	require.NoError(t, db.SelectContext(ctx, &left, `SELECT source_file FROM history_exclusions ORDER BY source_file`))
 	assert.Equal(t, []string{"/h/kept.jsonl", "/h/unreadable.jsonl"}, left)
-	known, err := s.GetHistoryMtimes(ctx)
+	known, err := s.GetHistoryMtimes(ctx, 1)
 	require.NoError(t, err)
 	assert.Contains(t, known, "/h/kept.jsonl", "a kept exclusion still keeps the file out of the next pass")
 	assert.NotContains(t, known, "/h/gone-1.jsonl")
 	n, err = s.PruneHistoryExclusions(ctx, exists)
 	require.NoError(t, err)
 	assert.Zero(t, n, "nothing left to prune")
+}
+
+// A row written by an older parser, of any source, is read once more (so a changed summary reaches sessions never written to again); a row stamped with the current version is skipped on an unchanged file.
+func TestHistoryMtimesRereadsRowsOfAnOlderParserOfEverySource(t *testing.T) {
+	db := openTestDB(t)
+	s := NewSessionStore(db)
+	ctx := context.Background()
+	const current = 2
+	srcs := []string{"claude", "codex", "agy", "gemini", "pi"}
+	for i, src := range srcs {
+		for _, idx := range []*SessionIndex{
+			{SessionID: src + "-old", SourceType: src, SourceFile: "/h/" + src + "-old.jsonl", FileMtime: float64(10 + i), IndexVersion: current - 1, MessageCount: 2},
+			{SessionID: src + "-new", SourceType: src, SourceFile: "/h/" + src + "-new.jsonl", FileMtime: float64(20 + i), IndexVersion: current, MessageCount: 2},
+		} {
+			require.NoError(t, s.UpsertSessionIndex(ctx, idx))
+			require.NoError(t, s.UpsertFTS(ctx, idx.SessionID, "text"))
+		}
+	}
+	known, err := s.GetHistoryMtimes(ctx, current)
+	require.NoError(t, err)
+	for _, src := range srcs {
+		assert.NotContains(t, known, "/h/"+src+"-old.jsonl", "%s: a row of an older parser is read again", src)
+		assert.Contains(t, known, "/h/"+src+"-new.jsonl", "%s: a row of the current parser is skipped while its file is unchanged", src)
+	}
 }

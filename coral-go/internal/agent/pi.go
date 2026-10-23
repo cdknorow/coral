@@ -107,10 +107,7 @@ func parsePiSession(fpath string, mtime float64) (*IndexedSession, error) {
 			fts.Add(content)
 			if summary == "" {
 				if role, _ := entry["role"].(string); role == "user" && content != "" {
-					if len(content) > 200 {
-						content = content[:200]
-					}
-					summary = content
+					summary = redactedCut(content, 200)
 				}
 			}
 		}
@@ -130,6 +127,7 @@ func parsePiSession(fpath string, mtime float64) (*IndexedSession, error) {
 		LastTimestamp:  lastTS,
 		MessageCount:   msgCount,
 		DisplaySummary: summary,
+		IndexVersion:   HistoryIndexVersion,
 		FTSBody:        buildFTSBody(summary, &fts),
 	}, nil
 }

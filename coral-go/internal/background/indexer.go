@@ -122,7 +122,7 @@ func (idx *SessionIndexer) RunOnce(ctx context.Context) error {
 	idx.runMu.Lock()
 	defer idx.runMu.Unlock()
 	started := time.Now()
-	knownMtimes, err := idx.store.GetHistoryMtimes(ctx)
+	knownMtimes, err := idx.store.GetHistoryMtimes(ctx, agent.HistoryIndexVersion)
 	if err != nil {
 		return err
 	}
