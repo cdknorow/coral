@@ -844,6 +844,9 @@ export function connectTerminalWs(name, agentType, sessionId, server) {
             // Nothing to do: every server answers input that carries an id (#3276).
         } else if (data.type === "terminal_input_ack") {
             document.dispatchEvent(new CustomEvent('coral:terminal-input-ack', { detail: { sessionId, id: data.id } }));
+        } else if (data.type === "terminal_input_held") {
+            // The agent waits on a box that asks the person (#6610): the message is held on the server and typed once none is left; its ack or refusal comes later, by this id.
+            document.dispatchEvent(new CustomEvent('coral:terminal-input-held', { detail: { sessionId, id: data.id, note: data.note } }));
         } else if (data.type === "terminal_gone") {
             // Input for this agent found no terminal (#3218): the dashboard says so, as for a 409.
             // The id, when there is one, names the refused input (#3276).

@@ -198,6 +198,18 @@ export function refuseSocketSends(sessionId, id) {
     }
 }
 
+// A message held behind the agent's question (#6610): the server types it once no box is left, and answers by this id then. It waits as long as the server holds it (30 minutes), not the usual seconds.
+const HELD_ACK_TIMEOUT_MS = 31 * 60 * 1000;
+document.addEventListener('coral:terminal-input-held', e => {
+    const { sessionId, id, note } = e.detail || {};
+    for (const p of [..._socketSends]) {
+        if ((sessionId && p.sid !== sessionId) || !p.ids.has(id)) continue;
+        clearTimeout(p.timer);
+        p.timer = setTimeout(() => { if (_settle(p, false)) showComposerError(NO_ANSWER_TEXT); }, HELD_ACK_TIMEOUT_MS);
+    }
+    if (note) showToast(note);
+});
+
 // The server delivered frame `id`.
 document.addEventListener('coral:terminal-input-ack', e => {
     const { sessionId, id } = e.detail || {};

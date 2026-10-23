@@ -57,7 +57,11 @@ func (h *SessionsHandler) Send(w http.ResponseWriter, r *http.Request) {
 		if held := h.sendAutomatedHTTP(w, r, name, body.AgentType, body.SessionID, body.Command, "/send", send); held {
 			return
 		}
-	} else if err := h.deliverHumanSend(r.Context(), name, body.AgentType, body.SessionID, body.Command); err != nil {
+	} else if held, err := h.deliverPersonSend(r.Context(), name, body.AgentType, body.SessionID, body.Command, nil); held {
+		// The agent waits on a box that asks the person (#6610): the message is held and typed once none is left. Said plainly, so it is not sent again.
+		writeJSON(w, http.StatusAccepted, map[string]any{"ok": true, "held": true, "command": body.Command, "note": heldNote})
+		return
+	} else if err != nil {
 		// A person's message is submitted, or refused or reported as not submitted: never "sent" for text left
 		// in the agent's input box (#4587).
 		if status, out, ok := humanSendError(err); ok {

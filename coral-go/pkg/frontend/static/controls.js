@@ -185,7 +185,14 @@ export async function sendCommand({ nudge = false } = {}) {
                 return;
             }
             const result = await resp.json();
-            if (result.error) {
+            if (result.held) {
+                // The agent waits on a question for the person (#6610): the server holds the message and types it once none is left. It shows in the chat then; no "Sent" now.
+                removePendingMessage(sentSessionId, sentAt);
+                clearAttachments(targetSession);
+                const heldKey = sessionKey(targetSession);
+                if (heldKey) saveSessionDraft(heldKey, "");
+                showToast(result.note || "Held until the agent's question is answered.");
+            } else if (result.error) {
                 notSent();
                 showComposerError(result.error);
                 console.error("Send error:", result.error);

@@ -49,6 +49,8 @@ type SessionsHandler struct {
 	boardStatus *replyCache
 	// sendGate lets a person's messages through to each agent one at a time (#4587, human_send.go).
 	sendGate humanSendGate
+	// holds are the person's chat messages held while their agent waits on a box (#6610, human_send_hold.go).
+	holds personHolds
 	// modelSwitches tracks the live model and thinking-level switches in progress (#4969, model_switch.go).
 	modelSwitches modelSwitchTracker
 	// inOldTmux reports an agent session still running in Coral's private tmux server, for a
