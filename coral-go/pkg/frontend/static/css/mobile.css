@@ -1420,7 +1420,7 @@
 /* The terminal view's controls are 44 px on a phone-width window whatever the pointer says (#6689): touch.css and the composer's rules gave 44 px only to a coarse pointer, so a phone-width window with a mouse (or a phone browser
    that does not report a coarse pointer) had the header's Fit width, Open Agent Tab and side-panel buttons at 22 to 30 px and the composer's Add image and Send at 32 and 36 px. */
 @media (max-width: 767px) {
-    .terminal-header-actions .terminal-header-btn, .terminal-header-actions .terminal-header-btn.terminal-fit-width-btn, #terminal-open-window-link, #popout-panel-toggle-btn { min-width: var(--control-touch-height, 44px); min-height: var(--control-touch-height, 44px); justify-content: center; }
+    .live-view-toggle-btn, .terminal-header-actions .terminal-header-btn, .terminal-header-actions .terminal-header-btn.terminal-fit-width-btn, #terminal-open-window-link, #popout-panel-toggle-btn { min-width: var(--control-touch-height, 44px); min-height: var(--control-touch-height, 44px); justify-content: center; }
     .attach-image-btn { width: var(--control-touch-height, 44px); height: var(--control-touch-height, 44px); right: 2px; top: 0; }
     .command-editor:has(> .attach-image-btn) textarea { padding-right: 50px !important; }
     .mobile-send-btn { width: var(--control-touch-height, 44px); height: var(--control-touch-height, 44px); min-width: var(--control-touch-height, 44px); }

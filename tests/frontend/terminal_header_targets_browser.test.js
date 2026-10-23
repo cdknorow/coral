@@ -20,7 +20,7 @@ const BASE = require('./test_base').BASE;
             await ev(`window.__m.add('th-a', 'A', 4, { sleeping: false }); true`); await select('th-a');
             await ev(`window.setLiveViewMode('terminal'); true`);
             await waitFor(`window.__vis('#terminal-statusbar')`, 'the terminal view', 8000);
-            const SEL = ['#terminal-fit-width-btn', '#terminal-open-window-link', '#popout-panel-toggle-btn', '.attach-image-btn', '.mobile-send-btn:not(.mobile-send-team-btn)', '.mobile-send-team-btn'];
+            const SEL = ['#terminal-fit-width-btn', '#terminal-open-window-link', '#popout-panel-toggle-btn', '#live-view-btn-chat', '#live-view-btn-terminal', '.attach-image-btn', '.mobile-send-btn:not(.mobile-send-team-btn)', '.mobile-send-team-btn'];
             // Fit width shows when the pane is wider than the window: it is made to show, and measured in the same turn (the page hides it again when it measures the pane)
             const boxes = await ev(`(() => { const f = document.getElementById('terminal-fit-width-btn'); if (f) f.hidden = false; return ${JSON.stringify(SEL)}.map(s => { const e = document.querySelector(s); if (!e || !e.checkVisibility()) return { s, missing: true }; const b = e.getBoundingClientRect(); return { s, w: Math.round(b.width), h: Math.round(b.height), l: Math.round(b.left), t: Math.round(b.top), r: Math.round(b.right), b: Math.round(b.bottom) }; }); })()`);
             const missing = boxes.filter(x => x.missing).map(x => x.s);
