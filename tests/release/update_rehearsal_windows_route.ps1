@@ -128,7 +128,7 @@ function New-Scenario([string]$name, [hashtable]$plan, [string]$from = $installD
     $out = & (Join-Path $installDir 'coral.exe') open --print --url $base --home $data 2>&1 | Out-String
     if ($out -notmatch '(http\S*login_token=\S+)') { Fail "$name`: no sign-in link" }
     $link = $Matches[1]
-    $null = Invoke-WebRequest -Uri $link -SessionVariable sv -MaximumRedirection 0 -SkipHttpErrorCheck -UseBasicParsing
+    $null = Invoke-WebRequest -Uri $link -SessionVariable sv -SkipHttpErrorCheck -UseBasicParsing # the redirect after the one use of the link lands on the dashboard, with the cookie set
     $script:session = $sv
 }
 function Click([hashtable]$extraHeaders = @{}, [string]$body = '', $websession = $script:session) {
@@ -181,7 +181,7 @@ try {
     & (Join-Path $portable 'coral-update.exe') check
     $out = & (Join-Path $portable 'coral.exe') open --print --url $base --home $data 2>&1 | Out-String
     if ($out -notmatch '(http\S*login_token=\S+)') { Fail 'no sign-in link for the copy' }
-    $null = Invoke-WebRequest -Uri $Matches[1] -SessionVariable sv2 -MaximumRedirection 0 -SkipHttpErrorCheck -UseBasicParsing
+    $null = Invoke-WebRequest -Uri $Matches[1] -SessionVariable sv2 -SkipHttpErrorCheck -UseBasicParsing # the redirect after the one use of the link lands on the dashboard, with the cookie set
     $r = Click -websession $sv2
     if ($r.StatusCode -ne 409 -or $r.Content -notmatch 'install_not_supported') { Fail "a copy that is no registered install: expected 409 install_not_supported, got $($r.StatusCode) $($r.Content)" }
     if (-not (Wait-Health 10)) { Fail 'the refusal stopped the server' }
