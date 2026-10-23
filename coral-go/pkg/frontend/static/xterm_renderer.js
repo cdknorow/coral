@@ -1005,8 +1005,11 @@ export function terminalScreenText() {
     const lines = [];
     for (let y = buf.viewportY; y < buf.viewportY + terminal.rows; y++) {
         const line = buf.getLine(y);
-        lines.push(line ? line.translateToString(true).trimEnd() : '');
+        const text = line ? line.translateToString(false) : ''; // untrimmed: a space at the wrap belongs to the line
+        // a row the terminal wrapped at its width continues the row above: one line again, joined without trimming the break away
+        if (line && line.isWrapped && lines.length) lines[lines.length - 1] += text; else lines.push(text);
     }
+    for (let i = 0; i < lines.length; i++) lines[i] = lines[i].trimEnd();
     while (lines.length && !lines[lines.length - 1]) lines.pop();
     return lines.join('\n');
 }
