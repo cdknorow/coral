@@ -16,6 +16,9 @@
 #   3 wrong       a package whose programs say another version than the release: refused after the unpack, the install byte for byte as it was
 #   4 unhealthy   N+1 passes every check and does not stay up: rolled back, N is back at the install path and answers /api/health again
 #   5 crash       the apply dies right after the swap: the next apply leaves a consistent install (N or N+1, never half) and a server starts from it
+#   6 ask         the same swap, started the way a person starts it (#6297): the real server of N with a stand-in coral-update beside it (status passes through to the real one, apply
+#                 runs the rehearsal program), a staged update, and the server's relaunch control. Not the person (an API key, an agent's token, no credential) is refused and nothing
+#                 starts; the person (a request signed with the data folder's command-line token) starts it; the server ends, N+1 answers /api/health, the board message is kept
 #
 # Output: one table; exit status 0 only when no item FAILs. Processes are stopped by pid this script recorded or found under its own install folders; the
 # work folder is removed by its own path (--keep leaves it). Linux only; needs go, curl, python3, tar. Nothing is sent anywhere.
@@ -82,6 +85,7 @@ pack() { tar czf "$2" -C "$1" .; } # as build-linux.sh makes its tarball
   mkdir -p "$work/pkg/nunh" && cp "$work/pkg/n1"/* "$work/pkg/nunh"/ &&
   CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=$N1" -o "$work/pkg/nunh/coral" ./internal/updater/testrig/cmd/unhealthy-coral &&
   CGO_ENABLED=0 go build -o "$work/bin/rehearsal-update" ./internal/updater/testrig/cmd/rehearsal-update &&
+  CGO_ENABLED=0 go build -o "$work/bin/person-call" ./internal/updater/testrig/cmd/person-call &&
   pack "$work/pkg/n" "$work/pkg/n.tar.gz" && pack "$work/pkg/n1" "$work/pkg/n1.tar.gz" && pack "$work/pkg/nbad" "$work/pkg/nbad.tar.gz" && pack "$work/pkg/nunh" "$work/pkg/nunh.tar.gz"
 } > "$work/build.log" 2>&1
 if [ $? -ne 0 ]; then echo "update_rehearsal: the build failed:" >&2; tail -20 "$work/build.log" >&2; exit 2; fi
@@ -223,6 +227,68 @@ if setup crash; then
     result "5 crash" FAIL "crashed step=[${cr:0:40}] install=[$iv] journal left=$journal server version=[$up]; rehearsal: $(tail -c 300 "$s/rehearsal.out" | tr '\n' ' ')"
   fi
 else result "5 crash" FAIL "the world of N did not come up"; fi
+sweep
+
+# ---- 6 ask -------------------------------------------------------------------------------------------------------------
+# The relaunch control of the real server (#6290, #6297). The stand-in coral-update is the only thing that is not the real program: "status" is the real coral-update's, "apply" is the rehearsal's
+# (the fake world's keys are made when it starts, so it stages again, --restage, and applies in one run), "check" says up to date. The person is person-call: a request signed with the data
+# folder's command-line token, the credential the server takes for a person besides the dashboard's cookie.
+if setup ask; then
+  pid0=$srv
+  # the update is staged by an earlier run of the rehearsal program, which then ends: what the server's status shows is the real updater's reading of that state
+  "${CENV[@]}" "$work/bin/rehearsal-update" --data-dir "$dd" --install "$inst" --parent "$srv" --installed "$N" --package "$work/pkg/n1.tar.gz" --version "$N1" --mode check > "$s/stage.out" 2> "$s/stage.err"
+  mv "$inst/coral-update" "$inst/coral-update.real"
+  cat > "$inst/coral-update" <<SHIM
+#!/bin/sh
+# the ask rehearsal's stand-in for coral-update (tests/release/update_rehearsal.sh): never released
+case "\$1" in
+  status) exec "$inst/coral-update.real" "\$@" ;;
+  check) echo '{"result":"up_to_date"}'; exit 0 ;;
+  apply) exec env -i PATH=/usr/bin:/bin:/usr/sbin:/sbin HOME="$hh" CORAL_DATA_DIR="$dd" CORAL_CLOUD_URL=off CORAL_TELEMETRY_DISABLED=1 CORAL_NO_DEMO_SEED=1 CORAL_URL="http://127.0.0.1:$PORT" "$work/bin/rehearsal-update" --data-dir "$dd" --install "$inst" --parent "$srv" --installed "$N" --package "$work/pkg/n1.tar.gz" --version "$N1" --mode both --restage ;;
+esac
+exit 2
+SHIM
+  chmod 755 "$inst/coral-update"
+  base="http://127.0.0.1:$PORT"
+  person() { "${CENV[@]}" "$work/bin/person-call" --data-dir "$dd" --url "$base" "$@"; } # PERSON args: --method M --path P [--body B]: prints "CODE body"
+  st=$(person --path /api/system/update | cut -d' ' -f2-)
+  staged=$(printf '%s' "$st" | jget staged.version); source_=$(printf '%s' "$st" | jget staged.source)
+  avail=$(printf '%s' "$st" | jget relaunch.available); hub_allowed=$(printf '%s' "$st" | jget relaunch.hub_allowed)
+  tok=$(printf '%s' "$st" | jget relaunch.ack); reason=$(printf '%s' "$st" | jget relaunch.reason)
+  ok=1; why=""
+  [ "$staged" = "$N1" ] || { ok=0; why="$why staged=[$staged] reason=[$reason];"; }
+  [ "$source_" = "subgentic/coral" ] || { ok=0; why="$why source=[$source_];"; }
+  [ "$avail" = True ] || [ "$avail" = true ] || { ok=0; why="$why available=[$avail];"; }
+  [ -n "$tok" ] || { ok=0; why="$why no ack;"; }
+  [ "$hub_allowed" = False ] || [ "$hub_allowed" = false ] || { ok=0; why="$why hub_allowed=[$hub_allowed] (the Hub switch is off by default);"; }
+  body="{\"ack\":\"$tok\"}"
+  # not a person: an API key (the key is not a person's yes), an agent's session token, no credential at all, the Hub's own route used by the person
+  c_key=$(curl -s -m 10 -o /dev/null -w '%{http_code}' -X POST -H "X-API-Key: $KEY" -H 'Content-Type: application/json' -d "$body" "$base/api/system/update/relaunch-local")
+  c_agent=$(curl -s -m 10 -o /dev/null -w '%{http_code}' -X POST -H "X-Coral-Session-Token: not-a-token" -H 'Content-Type: application/json' -d "$body" "$base/api/system/update/relaunch-local")
+  c_none=$(curl -s -m 10 -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -d "$body" "$base/api/system/update/relaunch-local")
+  c_hub=$(person --method POST --path /api/system/update/relaunch --body "$body" | cut -d' ' -f1)
+  [ "$c_key" = 403 ] || { ok=0; why="$why API key got $c_key;"; }
+  case "$c_agent" in 401|403) ;; *) ok=0; why="$why agent token got $c_agent;" ;; esac
+  case "$c_none" in 401|403) ;; *) ok=0; why="$why no credential got $c_none;" ;; esac
+  case "$c_hub" in 403|404) ;; *) ok=0; why="$why the Hub's route for the person got $c_hub;" ;; esac
+  sleep 2
+  v=$(health_version); alive=no; kill -0 "$pid0" 2>/dev/null && alive=yes
+  started=$(ls "$dd/updates" 2>/dev/null | grep -c 'ready\|apply-journal')
+  [ "$v" = "$N" ] && [ "$alive" = yes ] || { ok=0; why="$why after the refusals health=[$v] server alive=$alive;"; }
+  [ "$started" = 0 ] || { ok=0; why="$why an apply started without a person;"; }
+  # the person
+  pr=$(person --method POST --path /api/system/update/relaunch-local --body "$body"); pcode=${pr%% *}
+  [ "$pcode" = 202 ] || { ok=0; why="$why the person got [$pr];"; }
+  if waitfor_version "$N1" 90; then v=$N1; else v=$(health_version); fi
+  alive=no; kill -0 "$pid0" 2>/dev/null && alive=yes
+  iv=$(installed_version); nsrv=$(count_servers); mb=$(message_back)
+  [ "$v" = "$N1" ] && [ "$alive" = no ] && [ "$iv" = "$N1" ] && [ "$nsrv" = 1 ] && [ "$mb" -ge 1 ] || { ok=0; why="$why after the yes health=[$v] old alive=$alive install=[$iv] servers=$nsrv message back=$mb;"; }
+  if [ "$ok" = 1 ]; then
+    result "6 ask" PASS "staged $N1 (source subgentic/coral, Hub switch off); an API key, an agent token, no credential and the Hub's route got 403/401/401/403 and started nothing; the person's signed request got 202 and the server of $N was replaced by $N1 (board message kept, one server)"
+  else
+    result "6 ask" FAIL "$why status: $(printf '%s' "$st" | cut -c1-300); stage: $(tail -c 200 "$s/stage.out" | tr '\n' ' ') $(tail -c 200 "$s/stage.err" | tr '\n' ' ')"
+  fi
+else result "6 ask" FAIL "the world of N did not come up"; fi
 sweep
 
 # ---- the table ---------------------------------------------------------------------------------------------------------

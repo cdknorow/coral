@@ -4,6 +4,7 @@ package routes
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -207,11 +208,11 @@ func TestTheFullRelaunchPathRunsOverTheFixtureWithEveryCheckOfARelease(t *testin
 	e.h.Updater = &fixtureUpdater{}
 	e.h.CanRestart = func() bool { return true }
 
-	// no stamp, no relaunch: a local caller sees the status and no token, and cannot relaunch
+	// no stamp, no Hub relaunch: a local caller sees the status with a token of its own (bound to "local", #5280 step 3), and that token is no good on the Hub's route
 	code, st := e.status(nil)
 	assert.Equal(t, 200, code)
-	assert.NotContains(t, st["relaunch"], "ack")
-	code, _ = e.post(`{"ack":"x"}`, nil)
+	require.Contains(t, st["relaunch"], "ack")
+	code, _ = e.post(fmt.Sprintf(`{"ack":%q}`, st["relaunch"].(map[string]any)["ack"]), nil)
 	assert.NotEqual(t, 202, code)
 
 	// the owner gets a token bound to the staged version, and the relaunch is accepted

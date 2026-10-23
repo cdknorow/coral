@@ -48,6 +48,7 @@ func run() int {
 	mode := flag.String("mode", "both", "check or both")
 	waitFor := flag.Duration("wait", 2*time.Minute, "how long the apply waits for the server to end")
 	healthFor := flag.Duration("health-for", 30*time.Second, "how long the new install has to stay up")
+	restage := flag.Bool("restage", false, "forget what an earlier run of this program staged before staging again: the fake world's keys are made when the program starts, so what an earlier run staged cannot be verified by this one (the ask rehearsal stages in one run and applies in another)")
 	crash := flag.Bool("crash-after-swap", false, "the apply dies right after the swap (a panic here), and is then run again: the install must come out consistent")
 	flag.Parse()
 	if *dataDir == "" || *install == "" || *installed == "" || *pkg == "" || *version == "" {
@@ -81,6 +82,9 @@ func run() int {
 		}
 	}
 
+	if *restage {
+		_ = os.RemoveAll(filepath.Join(*dataDir, stage.UpdatesDir, stage.StagingDir)) // the staging folder of this rehearsal's own data folder; the state file keeps saying what was staged
+	}
 	cfg := stage.Config{DataDir: *dataDir, Installed: *installed, Pins: testrig.Pins(), Verifier: verify.Sigstore{Trust: signer.Trust()}, Asset: testrig.Asset}
 	gh.Config(&cfg)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
