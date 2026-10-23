@@ -36,6 +36,16 @@ const DIALOGS = {
 // that is not exported; the board export dialog needs a selected board with subscribers.
 const SKIPPED = { 'restart-modal': 'needs a live session; opened by an unexported function', 'mb-export-modal': 'needs a selected board with subscribers' };
 
+// The dialogs a person opens from a real control on a screen that needs no data, and how: `prep` gets the page to that screen, `steps` are the controls pressed in turn (the last one opens the dialog, and is the
+// one focus must come back to, or to the control that opened the menu it was in). Each runs again with a real mouse click on the real opener (#6188: the census's own opener cannot see a real opener losing focus).
+const REAL = {
+    'launch-modal': { prep: `window.switchNavTab('agents')`, steps: ['[data-on-click="launch-show"]'] },
+    'open-folder-modal': { prep: `window.switchNavTab('agents')`, steps: ['#welcome-open-folder'] },
+    'settings-modal': { prep: `window.switchNavTab('agents')`, steps: ['[aria-controls="top-bar-settings-menu"]', '[data-on-click="m-close-top-bar-settings-then-show-settings-modal"]'], returnsTo: 0 },
+    'wf-create-modal': { prep: `window.switchNavTab('workflows')`, steps: ['[data-on-click="wf-create"]'] },
+    'job-modal': { prep: `window.switchNavTab('jobs')`, steps: ['[data-subtab="scheduled"]', '[data-on-click="job-new"], [data-on-click="m-show-job-modal"], #scheduler-new-job-btn'] },
+};
+
 (async () => {
     const { client, Page, Emulation, ev, waitFor, PRELOAD, install } = await connect();
     const { Input } = client;
@@ -75,6 +85,34 @@ const SKIPPED = { 'restart-modal': 'needs a live session; opened by an unexporte
                 row[how] = closed ? (focused ? 'ok' : 'closed, focus lost to ' + await ev(`(document.activeElement && (document.activeElement.id || document.activeElement.tagName)) || 'none'`)) : 'STAYS OPEN';
             }
             rows.push(row);
+            const rl = REAL[name];
+            if (!rl) continue;
+            const rrow = { name: name + ' (real opener)' };
+            for (const how of ['button', 'escape']) {
+                await fresh();
+                try {
+                    await ev(`(async () => { await (${rl.prep}); return true; })()`);
+                    await new Promise(r => setTimeout(r, 600)); // sleep-ok: the screen the opener is on settles
+                    for (let i = 0; i < rl.steps.length; i++) {
+                        const sel = rl.steps[i];
+                        const at = await ev(`(() => { const e = [...document.querySelectorAll(${JSON.stringify(sel)})].find(e => e.getClientRects().length && !e.closest('[hidden]')); if (!e) return null; e.scrollIntoView({ block: 'center' }); document.querySelectorAll('[data-census-real]').forEach(x => x.removeAttribute('data-census-real')); e.setAttribute('data-census-real', ''); const b = e.getBoundingClientRect(); return [b.x + b.width / 2, b.y + b.height / 2]; })()`);
+                        if (!at) throw new Error('no visible ' + sel);
+                        await Input.dispatchMouseEvent({ type: 'mousePressed', x: at[0], y: at[1], button: 'left', clickCount: 1 }); await Input.dispatchMouseEvent({ type: 'mouseReleased', x: at[0], y: at[1], button: 'left', clickCount: 1 });
+                        if (i === (rl.returnsTo ?? rl.steps.length - 1) && rl.returnsTo !== undefined) await ev(`document.querySelector('[data-census-real]').setAttribute('data-census-return', ''); true`);
+                        await new Promise(r => setTimeout(r, 300)); // sleep-ok: a menu opens before its item is pressed
+                    }
+                    await waitFor(d.isOpen, `${name} opens from its real opener`, 8000);
+                } catch (e) { rrow[how] = 'cannot open: ' + String(e.message).slice(0, 80); continue; }
+                if (how === 'button') {
+                    const selector = await ev(`(() => { const b = ${CLOSER(d.root)}; if (!b) return ''; b.click(); return 'button'; })()`);
+                    if (!selector) { rrow[how] = 'no close control'; continue; }
+                } else await key('Escape', 'Escape', 27);
+                const closed = await waitFor(`!(${d.isOpen})`, `${name} closes`, 4000).then(() => true, () => false);
+                const target = rl.returnsTo !== undefined ? '[data-census-return]' : '[data-census-real]';
+                const focused = closed && await waitFor(`document.activeElement && document.activeElement.matches('${target}')`, `${name} focus`, 2000).then(() => true, () => false);
+                rrow[how] = closed ? (focused ? 'ok' : 'closed, focus lost to ' + await ev(`(document.activeElement && (document.activeElement.id || document.activeElement.tagName)) || 'none'`)) : 'STAYS OPEN';
+            }
+            rows.push(rrow);
         }
         if (process.env.CAPTURE_OUT) require('node:fs').writeFileSync(process.env.CAPTURE_OUT, rows.map(r => `${r.name.padEnd(24)} control=${String(r.control).padEnd(44)} button: ${r.button}; escape: ${r.escape}`).join('\n') + '\n');
         for (const r of rows) console.log(`${r.name.padEnd(24)} control=${String(r.control).padEnd(40)} button: ${r.button}; escape: ${r.escape}`);
