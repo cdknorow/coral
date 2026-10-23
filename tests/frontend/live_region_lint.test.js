@@ -17,7 +17,6 @@ const TEMPLATES = path.join(FRONTEND, 'templates');
 
 // Reviewed, still in the page (file:region id). Each is a polite region that starts hidden and is shown and filled in one turn: the first words after it appears are not read.
 const KNOWN = {
-  'settings_core.js:settings-debug-input-log-status': 'the debug input log status: text, then hidden = false',
   'team_dialogs.js:team-undo': 'the "Removed <agent>. Undo" line',
   'terminal_backend.js:tb-pending': 'the terminal backend note: text, then hidden = false',
 };

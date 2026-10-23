@@ -30,7 +30,7 @@ const BASE = require('./test_base').BASE;
       if(u.includes('/api/themes/'))return new Response(JSON.stringify({theme:{base:'dark',variables:{}}}));
       return new Response('{}');};
   })()`);
-  const view = () => ev(`(()=>{const b=document.getElementById('settings-debug-input-log'),n=document.getElementById('settings-debug-input-log-status'),d=document.getElementById('settings-debug-input-log-delete');return {checked:b.checked,disabled:b.disabled,noteHidden:n.hidden,note:n.textContent,deleteHidden:d.hidden};})()`);
+  const view = () => ev(`(()=>{const b=document.getElementById('settings-debug-input-log'),n=document.getElementById('settings-debug-input-log-status'),d=document.getElementById('settings-debug-input-log-delete');return {checked:b.checked,disabled:b.disabled,noteHidden:n.textContent==='',noteAttr:n.hasAttribute('hidden'),note:n.textContent,deleteHidden:d.hidden};})()`);
   try {
     await Page.enable(); await Page.navigate({ url: BASE }); await Page.loadEventFired();
 

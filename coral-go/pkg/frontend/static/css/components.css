@@ -2142,6 +2142,7 @@ button.subscriber-history-link {
     margin-top: 2px;
 }
 .settings-hint[data-state="restart-required"] { color: var(--warning); }
+#settings-debug-input-log-status:empty { margin: 0; padding: 0; height: 0; overflow: hidden; } /* in the page with nothing to say: no room, still a live region */
 /* A field that is off (the storage limits while they load, or when the load failed) reads as off, not as an empty box to fill in (#4469, UX). */
 #settings-modal input:disabled, #settings-modal select:disabled { opacity: .6; cursor: not-allowed; }
 .settings-hint[data-state="warn"], .settings-hint [data-state="warn"] { color: var(--warning); }

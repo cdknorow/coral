@@ -101,16 +101,13 @@ export function renderDebugInputLogStatus(status) {
         // sensitive text: say so.
         el.textContent = `On${via}: what Coral sends to agent terminals is written to ${file}, with the secrets Coral recognises removed and your own typing kept as its length only. It can still hold board messages and other text sent to agents, and secrets the redaction misses. Turn it off when you are done; it is deleted after 7 days without a write.`;
         el.dataset.state = 'on';
-        el.hidden = false;
     } else if (log.file_exists === true) {
         // Turning it off keeps the file, which may hold secrets: say so, and offer to delete it.
         el.textContent = `Off. ${file} is kept (its older copy was removed): it can hold text sent to agents, so delete it when you no longer need it. It is deleted after 7 days without a write.`;
         el.dataset.state = 'kept';
-        el.hidden = false;
     } else {
         el.textContent = '';
-        el.dataset.state = 'off';
-        el.hidden = true;
+        el.dataset.state = 'off'; // the status is always in the page: only its text changes, so a screen reader reads what is put into it
     }
     if (del) {
         del.hidden = !(log.enabled !== true && log.file_exists === true);
@@ -128,7 +125,7 @@ export async function deleteDebugInputLog() {
         if (state.privacyStatus) state.privacyStatus.debug_input_log = body.debug_input_log;
         renderDebugInputLogStatus({ debug_input_log: body.debug_input_log });
     } catch (error) {
-        if (el) { el.textContent = error.message; el.dataset.state = 'error'; el.hidden = false; }
+        if (el) { el.textContent = error.message; el.dataset.state = 'error'; }
     }
 }
 
