@@ -57,6 +57,8 @@ const { connect } = require('./agent_view_harness');
             ['a body that is not JSON', 'broken', '5'],
             ['a lost connection', 'network', '5'],
             ['an answer without a text', { status: 200, body: { active: true, interval_seconds: 30 } }, '5'],
+            ['active false with a stale text in the body', { status: 200, body: { active: false, message: 'stale', interval_seconds: 30 } }, '5'],
+            ['a 500 whose body looks like an active reminder', { status: 500, body: { active: true, message: 'not stored', interval_seconds: 30 } }, '5'],
         ]) {
             await ev(`window.__reminder = ${JSON.stringify(value)}; true`);
             await clickButton('Edit reminder');
