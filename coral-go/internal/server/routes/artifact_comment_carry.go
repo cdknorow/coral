@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 
 	"github.com/subgentic/coral/internal/store"
 )
@@ -20,6 +21,16 @@ import (
 // its own artifact id (a carried comment's id on the newer version's URL is a 404), so a reply and an open ask stay in the thread of the version they were made on.
 
 const carryMaxText = 4 << 20 // bytes of a version searched for carried quotes
+
+// The cost of one ?series=1 read is bounded (Security's #6459 finding: 50,000 carried comments over a 4 MiB version took 45 s): an anchor is looked for once however many comments share it,
+// and past carryMaxScans distinct anchors or carryMaxScanned bytes searched the rest are "unchecked" (left with their old version, not guessed).
+const (
+	carryMaxScans   = 2000
+	carryMaxScanned = 64 << 20
+)
+
+// carryScans counts the searches of a version's text for a carried anchor (a test pins that the count is bounded and memoised).
+var carryScans atomic.Int64
 
 const (
 	carryFound     = "found"
@@ -90,6 +101,12 @@ func (h *SessionsHandler) carriedComments(r *http.Request, id string, n int, mem
 		text, checked = string(b), true
 	}
 	var out []carriedComment
+	type found struct {
+		state  string
+		anchor *commentAnchor
+	}
+	memo := map[commentAnchor]found{} // one search per distinct anchor
+	scans, scanned := 0, 0
 	for _, m := range members {
 		if m.N >= n || m.Digest == id || !artifactReadable(r, h.cfg.CoralDir(), m.Digest) { // per digest, as every artifact read
 			continue
@@ -117,11 +134,29 @@ func (h *SessionsHandler) carriedComments(r *http.Request, id string, n int, mem
 					c.state = carryGone
 					break
 				}
-				st, s, e := reanchor(text, *a)
-				c.state = st
-				if st == carryFound {
-					na := *a
-					na.StartLine, na.EndLine = s, e
+				key := *a
+				key.StartLine, key.EndLine = 0, 0 // where it was is not what is looked for
+				f, seen := memo[key]
+				if !seen {
+					if scans >= carryMaxScans || scanned+len(text) > carryMaxScanned {
+						f = found{state: carryUnchecked}
+					} else {
+						scans++
+						scanned += len(text)
+						carryScans.Add(1)
+						st, s, e := reanchor(text, *a)
+						f = found{state: st}
+						if st == carryFound {
+							na := *a
+							na.StartLine, na.EndLine = s, e
+							f.anchor = &na
+						}
+					}
+					memo[key] = f
+				}
+				c.state = f.state
+				if f.anchor != nil {
+					na := *f.anchor
 					c.anchor = &na
 				}
 			}

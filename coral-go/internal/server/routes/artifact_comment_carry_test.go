@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"os"
@@ -10,6 +11,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/subgentic/coral/internal/store"
 )
 
 // #6357 stage 4 (#6459): comments across versions. A comment belongs to its version; reading a later version lists it with where its text stands there.
@@ -205,4 +208,87 @@ func TestAVersionTooLargeToSearchLeavesTheCommentUncheckedNotMoved(t *testing.T)
 	require.Len(t, c, 1)
 	assert.Equal(t, "unchecked", c[0]["carried"])
 	assert.Nil(t, c[0]["carried_anchor"])
+}
+
+// Security's #6459 finding: the cost of one ?series=1 read is bounded. An anchor is searched once however many comments share it, and past 2,000 distinct anchors or 64 MiB searched the rest
+// are unchecked.
+func (rig *cmtRig) manyVersions(n int, current string) []string {
+	rig.t.Helper()
+	require.NoError(rig.t, os.WriteFile(filepath.Join(rig.h.artifactDir(), cmtPic2), []byte(current), 0o644))
+	var rows []seriesVersionRow
+	var digests []string
+	for i := 0; i < n; i++ {
+		d := fmt.Sprintf("%064x", 0xabc000+i)
+		digests = append(digests, d)
+		rows = append(rows, seriesVersionRow{Digest: d, N: i + 1, Session: "a1"})
+		stampTestRecord(rig.t, rig.h.cfg.CoralDir(), "a1", d, seriesStamp{ID: carrySeries, Version: i + 1})
+	}
+	rows = append(rows, seriesVersionRow{Digest: cmtPic2, N: n + 1, Session: "a1"})
+	stampTestRecord(rig.t, rig.h.cfg.CoralDir(), "a1", cmtPic2, seriesStamp{ID: carrySeries, Version: n + 1})
+	require.NoError(rig.t, writeSeriesIndex(rig.h.cfg.CoralDir(), seriesIndex{ID: carrySeries, Board: "team-a", Versions: rows}))
+	return digests
+}
+
+func (rig *cmtRig) addCarried(digest, quote string) {
+	_, err := rig.ss.CreateArtifactComment(context.Background(), store.ArtifactComment{ArtifactID: digest, Board: "team-a", AnchorJSON: `{"quote":"` + quote + `","prefix":"p","suffix":"s"}`,
+		Body: "c " + quote, AuthorIssuer: "local", AuthorSubject: "install-owner-id", AuthorKind: "owner"})
+	require.NoError(rig.t, err)
+}
+
+func TestManyCommentsOnOneAnchorAreSearchedOnce(t *testing.T) {
+	rig := newCmtRig(t)
+	ds := rig.manyVersions(5, "alpha beta shared quote gamma\n")
+	for _, d := range ds {
+		for i := 0; i < 400; i++ {
+			rig.addCarried(d, "shared quote")
+		}
+	}
+	before := carryScans.Load()
+	c := rig.carriedOn()
+	assert.Len(t, c, 2000, "every comment is listed")
+	assert.Equal(t, int64(1), carryScans.Load()-before, "one search for 2,000 comments that share an anchor")
+	for _, x := range c {
+		assert.Equal(t, "found", x["carried"])
+	}
+}
+
+func TestPastTheScanBudgetTheRestAreUncheckedNotGuessed(t *testing.T) {
+	rig := newCmtRig(t)
+	ds := rig.manyVersions(5, strings.Repeat("filler text. ", 10)+"q0 q1 q2\n")
+	for _, d := range ds {
+		for i := 0; i < 500; i++ {
+			rig.addCarried(d, fmt.Sprintf("distinct-%d-%s", i, d[len(d)-3:]))
+		}
+	}
+	before := carryScans.Load()
+	c := rig.carriedOn()
+	assert.Len(t, c, 2500)
+	assert.Equal(t, int64(carryMaxScans), carryScans.Load()-before, "at most 2,000 distinct anchors are searched")
+	unchecked := 0
+	for _, x := range c {
+		if x["carried"] == "unchecked" {
+			unchecked++
+			assert.Nil(t, x["carried_anchor"], "never pinned")
+		}
+	}
+	assert.Equal(t, 500, unchecked, "the rest are left with their old version")
+}
+
+func TestPastTheByteBudgetTheRestAreUnchecked(t *testing.T) {
+	rig := newCmtRig(t)
+	ds := rig.manyVersions(1, strings.Repeat("x", carryMaxText-10))
+	for i := 0; i < 100; i++ {
+		rig.addCarried(ds[0], fmt.Sprintf("needle-%d", i))
+	}
+	before := carryScans.Load()
+	c := rig.carriedOn()
+	require.Len(t, c, 100)
+	assert.Equal(t, int64(carryMaxScanned/(carryMaxText-10)), carryScans.Load()-before, "64 MiB of searching over a 4 MiB version is 16 searches")
+	unchecked := 0
+	for _, x := range c {
+		if x["carried"] == "unchecked" {
+			unchecked++
+		}
+	}
+	assert.Equal(t, 100-16, unchecked)
 }
