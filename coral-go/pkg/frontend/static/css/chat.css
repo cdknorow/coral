@@ -164,7 +164,7 @@
     right: 8px;
     background: var(--bg-hover);
     border: 1px solid var(--control-border);
-    color: var(--text-secondary);
+    color: var(--text-primary); /* --text-secondary was 4.4:1 on the hover fill in the light theme (#6288) */
     padding: 2px 8px;
     border-radius: var(--radius-sm);
     font-size: 0.6875rem;

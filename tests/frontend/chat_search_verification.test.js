@@ -85,10 +85,10 @@ const { searchChats } = await import('../../coral-go/pkg/frontend/static/chat_se
     globalThis.fetch = async (url) => {
         if (url.includes('q=first')) {
             await firstPromise;
-            return { ok: true, json: async () => ({ status: 'partial', results: [{ session_id: 'sid-slow', hits: [] }] }) };
+            return { ok: true, json: async () => ({ status: 'partial', results: [{ session_id: 'sid-slow', source_type: 'src-slow', hits: [] }] }) };
         }
         if (url.includes('q=second')) {
-            return { ok: true, json: async () => ({ status: 'partial', results: [{ session_id: 'sid-fast', hits: [] }] }) };
+            return { ok: true, json: async () => ({ status: 'partial', results: [{ session_id: 'sid-fast', source_type: 'src-fast', hits: [] }] }) };
         }
         return { ok: false, status: 500 };
     };
@@ -99,13 +99,13 @@ const { searchChats } = await import('../../coral-go/pkg/frontend/static/chat_se
     await p2;
     const afterFast = container.children.filter(c => c.className === 'chat-search-result');
     assert.equal(afterFast.length, 1);
-    assert.ok(afterFast[0].innerHTML.includes('sid-fast'), 'Second (fast) response is displayed');
+    assert.ok(afterFast[0].innerHTML.includes('src-fast'), 'Second (fast) response is displayed'); // the header names the chat by its title ("Chat" when it is not in the loaded list), never its id (#6288): the source tells the two answers apart
 
     resolveFirst();
     await p1;
 
     const afterLate = container.children.filter(c => c.className === 'chat-search-result');
     assert.equal(afterLate.length, 1);
-    assert.ok(afterLate[0].innerHTML.includes('sid-fast'), 'Late first response was dropped by the generation check');
+    assert.ok(afterLate[0].innerHTML.includes('src-fast'), 'Late first response was dropped by the generation check');
     console.log('chat_search_verification: generation check drops stale late responses — ok');
 }

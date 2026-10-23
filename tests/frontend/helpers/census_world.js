@@ -25,6 +25,8 @@ const DATA_WORLD = `(() => {
             if (path === '/api/scheduled/jobs/5') return json(${JSON.stringify(JOB)});
             if (/^\\/api\\/scheduled\\/jobs\\/5\\/runs/.test(path)) return json({ runs: [] });
             if (path === '/api/sessions/history') return json({ sessions: [{ session_id: 'census-chat', summary_title: 'Release notes chat', source_type: 'claude' }, { session_id: 'census-chat-2', summary_title: 'Build fix chat', source_type: 'claude' }, { session_id: 'census-chat-3', summary_title: 'Planning chat', source_type: 'codex' }], total: 3, page: 1, page_size: 50 });
+            if (path === '/api/sessions/history/search' && /[?&]q=zzz/.test(u)) return json({ status: 'complete', results: [] });
+            if (path === '/api/sessions/history/search') return json({ status: 'complete', results: [{ session_id: 'census-chat', type: 'agent', hits: [{ role: 'user', excerpt: 'Please check the release notes', locator: { session_id: 'census-chat', message_index: 0 } }, { role: 'assistant', excerpt: 'The release notes are ready', locator: { session_id: 'census-chat', message_index: 1 } }] }, { session_id: 'census-chat-2', type: 'agent', hits: [{ role: 'user', excerpt: 'Fix the build before the release', locator: { session_id: 'census-chat-2', message_index: 0 } }] }] });
             if (path === '/api/sessions/history/census-chat') return json({ agent_type: 'claude', messages: [{ type: 'user', content: 'hello' }, { type: 'assistant', text: 'Hi there.' }], total: 2, start: 0 });
             if (path === '/api/sessions/history/census-chat/notes') return json({ notes_md: 'A note' });
             if (path === '/api/sessions/history/census-chat/git') return json({ commits: [] });

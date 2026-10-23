@@ -121,7 +121,7 @@
                             <!-- FTS mode (shown only when search box has text) -->
                             <div class="hf-row" id="hf-fts-mode-row" style="display:none">
                                 <label class="hf-label">Match</label>
-                                <div class="hf-toggle-group">
+                                <div class="hf-toggle-group" role="group" aria-label="Match words">
                                     <button class="hf-toggle" data-mode="phrase">Phrase</button>
                                     <button class="hf-toggle" data-mode="and">All words</button>
                                     <button class="hf-toggle active" data-mode="or">Any word</button>
@@ -141,8 +141,8 @@
                             <!-- Source multi-select -->
                             <div class="hf-row">
                                 <label class="hf-label">Source</label>
-                                <div class="hf-toggle-group">
-                                    <button class="hf-toggle active" data-source="all">All</button>
+                                <div class="hf-toggle-group" role="group" aria-label="Chat source">
+                                    <button class="hf-toggle active" data-source="all">Any</button>
                                     <button class="hf-toggle" data-source="claude">Claude</button>
                                     <button class="hf-toggle" data-source="agy">Antigravity</button>
                                 </div>
@@ -152,13 +152,13 @@
                             <div class="hf-row">
                                 <label class="hf-label">Tags</label>
                                 <div class="hf-tag-filter" id="hf-tag-pills"></div>
-                                <select id="hf-tag-add" class="hf-tag-add-select">
+                                <select id="hf-tag-add" class="hf-tag-add-select" aria-label="Add a tag filter">
                                     <option value="">+ tag</option>
                                 </select>
                             </div>
                             <div class="hf-row" id="hf-tag-logic-row" style="display:none">
                                 <label class="hf-label">Tag logic</label>
-                                <div class="hf-toggle-group">
+                                <div class="hf-toggle-group" role="group" aria-label="Tag logic">
                                     <button class="hf-toggle active" data-logic="AND">AND</button>
                                     <button class="hf-toggle" data-logic="OR">OR</button>
                                 </div>
@@ -166,21 +166,21 @@
 
                             <!-- Date range -->
                             <div class="hf-row">
-                                <label class="hf-label">From</label>
+                                <label class="hf-label" for="hf-date-from">From</label>
                                 <input type="date" id="hf-date-from" class="hf-date">
                             </div>
                             <div class="hf-row">
-                                <label class="hf-label">To</label>
+                                <label class="hf-label" for="hf-date-to">To</label>
                                 <input type="date" id="hf-date-to" class="hf-date">
                             </div>
 
                             <!-- Duration range (in minutes for usability) -->
                             <div class="hf-row">
                                 <label class="hf-label">Duration</label>
-                                <input type="number" id="hf-dur-min" class="hf-dur-input"
+                                <input type="number" id="hf-dur-min" class="hf-dur-input" aria-label="Shortest chat, in minutes"
                                        placeholder="min" min="0" step="1">
                                 <span class="hf-dur-sep">&ndash;</span>
-                                <input type="number" id="hf-dur-max" class="hf-dur-input"
+                                <input type="number" id="hf-dur-max" class="hf-dur-input" aria-label="Longest chat, in minutes"
                                        placeholder="max" min="0" step="1">
                                 <span class="hf-dur-unit">min</span>
                             </div>
@@ -188,7 +188,8 @@
                             <button class="btn btn-small hf-clear-btn">Clear filters</button>
                         </div>
                     </div>
-                    <div id="chat-search-results" class="chat-search-results" hidden aria-live="polite"></div>
+                    <div id="chat-search-status" class="sr-only" role="status"></div>
+                    <div id="chat-search-results" class="chat-search-results" hidden></div>
                     <ul id="history-sessions-list" class="session-list">
                         <li class="empty-state">Loading...</li>
                     </ul>
