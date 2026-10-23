@@ -52,8 +52,8 @@
 }
 
 .sched-preset.active {
-    background: var(--accent);
-    border-color: var(--accent);
+    background: var(--accent-dim); /* white on --accent is 2.5:1 in the dark theme (#6171) */
+    border-color: var(--accent-dim);
     color: var(--text-on-accent);
 }
 

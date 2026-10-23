@@ -179,7 +179,7 @@ export async function doExportBoard() {
         showToast(`Exported ${entries.length} messages as ${format}`);
     } catch (e) {
         console.error('Export failed:', e);
-        actions.innerHTML = `<span style="color:var(--error)">Export failed: ${escapeHtml(e.message)}</span>
+        actions.innerHTML = `<span style="color:var(--error-text)">Export failed: ${escapeHtml(e.message)}</span>
             <button class="btn" data-on-click="mb-export-close">Close</button>`;
     }
 }

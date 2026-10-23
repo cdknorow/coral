@@ -118,7 +118,7 @@
 
 .wf-badge-enabled {
     background: rgba(var(--fx-green-deep-rgb), 0.15);
-    color: var(--success);
+    color: var(--success-text); /* green as text on its own tint (#6171) */
 }
 
 .wf-badge-disabled {
@@ -461,7 +461,7 @@
 
 .wf-run-step-status.completed { background: rgba(var(--fx-green-deep-rgb), 0.15); color: var(--success); }
 .wf-run-step-status.running { background: rgba(var(--accent-rgb), 0.15); color: var(--accent); }
-.wf-run-step-status.failed { background: rgba(var(--fx-red-rgb), 0.15); color: var(--error); }
+.wf-run-step-status.failed { background: rgba(var(--fx-red-rgb), 0.15); color: var(--error-text); }
 .wf-run-step-status.killed { background: rgba(var(--fx-amber-rgb), 0.15); color: var(--warning); }
 .wf-run-step-status.skipped { background: rgba(var(--fx-slate-rgb), 0.15); color: var(--text-secondary); }
 .wf-run-step-status.pending { background: rgba(var(--fx-slate-rgb), 0.1); color: var(--text-secondary); }
@@ -584,7 +584,7 @@
 
 .wf-exit-err {
     background: rgba(var(--fx-red-rgb), 0.12);
-    color: var(--error);
+    color: var(--error-text);
 }
 
 /* ── Step file list ───────────────────────────────────────── */
@@ -752,6 +752,6 @@
 
 .wf-status-badge.completed { background: rgba(var(--fx-green-deep-rgb), 0.15); color: var(--success); }
 .wf-status-badge.running { background: rgba(var(--accent-rgb), 0.15); color: var(--accent); }
-.wf-status-badge.failed { background: rgba(var(--fx-red-rgb), 0.15); color: var(--error); }
+.wf-status-badge.failed { background: rgba(var(--fx-red-rgb), 0.15); color: var(--error-text); }
 .wf-status-badge.killed { background: rgba(var(--fx-amber-rgb), 0.15); color: var(--warning); }
 .wf-status-badge.pending { background: rgba(var(--fx-slate-rgb), 0.15); color: var(--text-secondary); }

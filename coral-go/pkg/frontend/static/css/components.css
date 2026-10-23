@@ -1164,7 +1164,7 @@ button.subscriber-history-link {
 
 .toast.error {
     border-color: var(--error);
-    color: var(--error);
+    color: var(--error-text); /* red as text on the toast's panel: 4.5:1 (#6171) */
 }
 
 .toast {
@@ -1196,7 +1196,7 @@ button.subscriber-history-link {
 
 .toast-action {
     background: transparent;
-    color: var(--accent);
+    color: var(--link-text); /* the accent is 4.1:1 on the toast's panel in the light theme (#6171) */
     border: 1px solid var(--accent-dim);
     padding: 3px 10px;
 }
@@ -1210,7 +1210,7 @@ button.subscriber-history-link {
     line-height: 1;
 }
 
-@media (max-width: 767px), (pointer: coarse) { .toast-close { min-width: var(--control-touch-height, 44px); min-height: var(--control-touch-height, 44px); } } /* Dismiss is a 44 px target on touch (#6116) */
+@media (max-width: 767px), (pointer: coarse) { .toast-action { min-height: var(--control-touch-height, 44px); } .toast-close { min-width: var(--control-touch-height, 44px); min-height: var(--control-touch-height, 44px); } } /* Dismiss is a 44 px target on touch (#6116) */
 
 .toast-action:hover,
 .toast-close:hover {

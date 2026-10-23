@@ -737,7 +737,7 @@
 1	workflows.js	runsHtml
 1	workflows.js	s.exit_code
 1	workflows.js	signInFailure
-1	workflows.js	signInFailure ? `<span class="wf-run-error" style="color:var(--error)"><span class="material-icons" aria-hidde
+1	workflows.js	signInFailure ? `<span class="wf-run-error" style="color:var(--error-text)"><span class="material-icons" aria-
 1	workflows.js	statusIcon
 1	workflows.js	stepCount
 2	workflows.js	stepsHtml

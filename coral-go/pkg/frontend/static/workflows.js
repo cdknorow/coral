@@ -305,7 +305,7 @@ function renderWorkflowDetail(wf, runs) {
                 <button class="btn btn-sm" data-on-click="wf-edit-agent" data-workflow-id="${Number(wf.id)}">
                     <span class="material-icons" style="font-size:0.875rem" aria-hidden="true">smart_toy</span> Edit with Agent
                 </button>
-                <button class="btn btn-sm" style="color:var(--error)" data-on-click="wf-delete" data-workflow-id="${Number(wf.id)}" data-name="${escAttr(wf.name)}">Delete</button>
+                <button class="btn btn-sm" style="color:var(--error-text)" data-on-click="wf-delete" data-workflow-id="${Number(wf.id)}" data-name="${escAttr(wf.name)}">Delete</button>
             </div>
         </div>
         <div class="wf-detail-meta">
@@ -479,7 +479,7 @@ function renderRunDetail(run) {
     }).join('');
 
     const killBtn = isActive
-        ? `<button class="btn btn-sm" style="color:var(--error)" data-on-click="wf-kill-run" data-run-id="${Number(run.id)}">
+        ? `<button class="btn btn-sm" style="color:var(--error-text)" data-on-click="wf-kill-run" data-run-id="${Number(run.id)}">
             <span class="material-icons" style="font-size:0.875rem" aria-hidden="true">stop</span> Kill
           </button>`
         : '';
@@ -501,7 +501,7 @@ function renderRunDetail(run) {
             ${run.started_at ? `<span><span class="material-icons" aria-hidden="true">schedule</span> ${formatTime(run.started_at)}</span>` : ''}
             ${durationHtml}
             ${run.finished_at ? `<span><span class="material-icons" aria-hidden="true">check_circle</span> ${formatTime(run.finished_at)}</span>` : ''}
-            ${signInFailure ? `<span class="wf-run-error" style="color:var(--error)"><span class="material-icons" aria-hidden="true">error</span> ${signInFailure}</span>` : run.error_msg ? `<span class="wf-run-error" style="color:var(--error)"><span class="material-icons" aria-hidden="true">error</span> ${esc(run.error_msg)}${errorExcerpt ? `<span class="wf-run-error-excerpt">: ${esc(errorExcerpt)}</span>` : ''}</span>` : ''}
+            ${signInFailure ? `<span class="wf-run-error" style="color:var(--error-text)"><span class="material-icons" aria-hidden="true">error</span> ${signInFailure}</span>` : run.error_msg ? `<span class="wf-run-error" style="color:var(--error-text)"><span class="material-icons" aria-hidden="true">error</span> ${esc(run.error_msg)}${errorExcerpt ? `<span class="wf-run-error-excerpt">: ${esc(errorExcerpt)}</span>` : ''}</span>` : ''}
         </div>
         ${progressBarHtml}
         <div class="wf-run-steps wf-timeline">${stepsHtml}</div>

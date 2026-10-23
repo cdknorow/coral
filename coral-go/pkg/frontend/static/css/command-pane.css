@@ -496,7 +496,7 @@ body.popout-mode.popout-terminal-blocked .attach-image-btn { pointer-events: non
     border: 1px solid rgba(var(--error-rgb), 0.5);
     border-radius: var(--radius-lg);
     background: rgba(var(--error-rgb), 0.1);
-    color: var(--error);
+    color: var(--error-text); /* red as text on its own tint: 4.5:1 (#6171) */
     font-size: 0.8125rem;
     line-height: 1.35;
 }

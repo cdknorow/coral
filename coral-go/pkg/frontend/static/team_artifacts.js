@@ -758,7 +758,7 @@ function renderDistillProgress(panel, job) {
 }
 
 function renderDistillFailed(panel, boardName, job) {
-    panel.innerHTML = `<div class="knowledge-empty" style="color:var(--error)" role="alert">
+    panel.innerHTML = `<div class="knowledge-empty" style="color:var(--error-text)" role="alert">
         Distillation failed: ${escapeHtml((job && job.error) || 'Unknown error')}
         <div><button class="btn btn-sm" style="margin-top:12px" data-on-click="knowledge-distill" data-board="${escapeAttr(boardName)}">Retry</button></div>
     </div>`;
@@ -947,7 +947,7 @@ export async function distillKnowledgeInTab(boardName) {
         await startDistill(boardName);
     } catch (err) {
         const p = document.getElementById('team-knowledge-view');
-        if (p && boardName === currentTeam()) p.innerHTML = `<div class="knowledge-empty" style="color:var(--error)">${escapeHtml(err.message)}</div>`;
+        if (p && boardName === currentTeam()) p.innerHTML = `<div class="knowledge-empty" style="color:var(--error-text)">${escapeHtml(err.message)}</div>`;
     }
 }
 

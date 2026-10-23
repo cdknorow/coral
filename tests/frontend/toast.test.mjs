@@ -20,7 +20,7 @@ const clear = () => toasts().forEach(t => t.remove());
     assert.ok(!t.classList.contains('error'));
     const close = t.querySelector('button.toast-close');
     assert.ok(close, 'every toast can be dismissed');
-    assert.strictEqual(close.getAttribute('aria-label'), 'Dismiss');
+    assert.strictEqual(close.getAttribute('aria-label'), 'Dismiss: Sent: hello', 'named by its toast, so stacked toasts are different buttons (#6171)');
     close.click();
     assert.strictEqual(toasts().length, 0, 'close removes it');
 }

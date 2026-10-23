@@ -53,7 +53,10 @@ export function showToast(message, isError = false, duration = 4000, opts = {}) 
     const close = document.createElement("button");
     close.type = "button";
     close.className = "toast-close";
-    close.setAttribute("aria-label", "Dismiss");
+    // named by its toast, so two toasts on screen are two buttons to a screen reader (#6152); the toast's own words, cut at a word
+    const words = text.replace(/\s+/g, " ").trim();
+    const cut = words.lastIndexOf(" ", 40);
+    close.setAttribute("aria-label", words.length > 40 ? `Dismiss: ${words.slice(0, cut > 20 ? cut : 40)}…` : `Dismiss: ${words}`);
     close.textContent = "×";
     close.addEventListener("click", dismiss);
     toast.appendChild(close);
