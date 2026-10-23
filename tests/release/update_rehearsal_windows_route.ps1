@@ -94,7 +94,7 @@ function Read-Result([string]$name) {
 }
 function Keep-Logs([string]$name) {
     if (-not $LogDir) { return }
-    foreach ($p in @('tray.log', 'updates\*.log')) {
+    foreach ($p in @('tray.log', 'server-child.log', 'updates\*.log')) {
         Get-ChildItem -Path (Join-Path $data $p) -ErrorAction SilentlyContinue | ForEach-Object { Copy-Item -LiteralPath $_.FullName (Join-Path $LogDir "$name-$($_.Name)") -Force }
     }
 }
@@ -108,7 +108,13 @@ function New-Scenario([string]$name, [hashtable]$plan, [string]$from = $installD
     Write-Plan $plan
     & (Join-Path $installDir 'coral-update.exe') serve $installDir
     if ($LASTEXITCODE -ne 0) { Fail "$name`: the server was not started" }
-    if (-not (Wait-Health)) { Keep-Logs $name; Fail "$name`: the server did not come up" }
+    if (-not (Wait-Health)) {
+        Keep-Logs $name
+        $sl = Join-Path $data 'server-child.log'
+        if (Test-Path -LiteralPath $sl) { Get-Content -LiteralPath $sl -Tail 30 | ForEach-Object { Write-Host "server: $_" } } else { Write-Host 'server: no server-child.log' }
+        Get-Process | Where-Object { $_.Path -like "$installDir*" } | ForEach-Object { Write-Host "running: $($_.Name)" }
+        Fail "$name`: the server did not come up"
+    }
     & (Join-Path $installDir 'coral-update.exe') check
     $r = Read-Result "$name-check"
     if (-not $r -or $r.result -ne 'staged') { Fail "$name`: the rig's release was not staged ($($r | ConvertTo-Json -Compress))" }
