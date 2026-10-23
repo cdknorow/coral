@@ -41,6 +41,7 @@ mkdir -p "$BUILD_DIR"
 cd "$GO_DIR"
 
 OVERLAY="$(go run ./tools/strip-static)" # the dashboard ships minified (#6208): a fresh owner-only folder; only the go build commands below read it
+[ -n "$OVERLAY" ] || { echo "strip-static printed no overlay path" >&2; exit 1; }
 trap 'go run ./tools/strip-static -clean "$OVERLAY"' EXIT
 
 for cmd in coral launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-session-start coral-hook-task-sync coral-update; do

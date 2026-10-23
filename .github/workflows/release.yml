@@ -54,6 +54,7 @@ jobs:
           bash tests/release/resolve_release_test.sh
           bash tests/release/install_cli_tools_test.sh
           bash tests/release/require_cosign_test.sh
+          bash tests/release/verify_release_strip_test.sh
           bash tests/release/release_homes_test.sh
           bash tests/release/download_section_test.sh   # the Download section of the notes (#5467); no network
           bash tests/release/test_release_upload_loop.sh # the upload step itself, with a stand-in gh and cosign, incl. the Dropbox tier with no MSI; no network
@@ -119,6 +120,7 @@ jobs:
         run: |
           LDFLAGS="-s -w -X github.com/subgentic/coral/internal/config.PostHogKey=${POSTHOG_PROJECT_KEY} -X github.com/subgentic/coral/internal/config.Version=${VERSION}"
           OVERLAY="$(go run ./tools/strip-static)" # the dashboard ships minified (#6208): a fresh owner-only folder; only this step's go build commands read it
+          [ -n "$OVERLAY" ] || { echo "strip-static printed no overlay path" >&2; exit 1; }
           trap 'go run ./tools/strip-static -clean "$OVERLAY"' EXIT
           mkdir -p ../dist/linux
           for cmd in $COMMANDS; do
@@ -214,8 +216,12 @@ jobs:
           BUILD_TAGS: ${{ needs.resolve.outputs.build_tags }}
           COMMANDS: ${{ needs.resolve.outputs.commands }}
         run: |
-          $overlay = (go run ./tools/strip-static) # the dashboard ships minified (#6208): a fresh owner-only folder; only the go build commands below read it
-          if ($LASTEXITCODE -ne 0) { throw "strip-static failed" }
+          $overlayDir = Join-Path ([IO.Path]::GetTempPath()) ("coral-static-" + [guid]::NewGuid().ToString("N")) # owner-only on Windows too: only the build's user may read or write it
+          New-Item -ItemType Directory -Path $overlayDir | Out-Null
+          icacls $overlayDir /inheritance:r /grant:r "*$([Security.Principal.WindowsIdentity]::GetCurrent().User.Value):(OI)(CI)F" | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "icacls failed on the overlay folder" }
+          $overlay = (go run ./tools/strip-static -out $overlayDir)
+          if ($LASTEXITCODE -ne 0 -or -not $overlay) { throw "strip-static failed" }
           try {
           $env:GOOS = "windows"
           $env:GOARCH = "amd64"
@@ -445,6 +451,7 @@ jobs:
           set -euo pipefail
           LDFLAGS="-s -w -X github.com/subgentic/coral/internal/config.PostHogKey=${POSTHOG_PROJECT_KEY} -X github.com/subgentic/coral/internal/config.Version=${VERSION}"
           OVERLAY="$(go run ./tools/strip-static)" # the dashboard ships minified (#6208): a fresh owner-only folder; only this step's go build commands read it
+          [ -n "$OVERLAY" ] || { echo "strip-static printed no overlay path" >&2; exit 1; }
           trap 'go run ./tools/strip-static -clean "$OVERLAY"' EXIT
           mkdir -p ../dist/macos-arm64
           for cmd in $COMMANDS; do
@@ -510,6 +517,7 @@ jobs:
           set -euo pipefail
           LDFLAGS="-s -w -X github.com/subgentic/coral/internal/config.PostHogKey=${POSTHOG_PROJECT_KEY} -X github.com/subgentic/coral/internal/config.Version=${VERSION}"
           OVERLAY="$(go run ./tools/strip-static)" # the dashboard ships minified (#6208): a fresh owner-only folder; only this step's go build commands read it
+          [ -n "$OVERLAY" ] || { echo "strip-static printed no overlay path" >&2; exit 1; }
           trap 'go run ./tools/strip-static -clean "$OVERLAY"' EXIT
           mkdir -p ../dist/macos-amd64
           for cmd in $COMMANDS; do

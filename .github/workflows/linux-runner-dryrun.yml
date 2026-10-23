@@ -56,6 +56,7 @@ jobs:
           LDFLAGS="-s -w -X github.com/subgentic/coral/internal/config.Version=0.0.0-dryrun"
           mkdir -p ../dist/linux
           OVERLAY="$(go run ./tools/strip-static)" # the dashboard ships minified (#6208): a fresh owner-only folder; only this step's go build commands read it
+          [ -n "$OVERLAY" ] || { echo "strip-static printed no overlay path" >&2; exit 1; }
           trap 'go run ./tools/strip-static -clean "$OVERLAY"' EXIT
           # The shipped programs: tests/release/commands.txt, as release.yml (#3855).
           for cmd in $(grep -vE '^[[:space:]]*(#|$)' ../tests/release/commands.txt); do

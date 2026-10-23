@@ -404,6 +404,11 @@ tag_commit() {
   gh api "repos/$REPO/commits/$TAG" --jq .sha 2>/dev/null | grep -E '^[0-9a-f]{40}$' || true
 }
 TAG_COMMIT="$(tag_commit)"
+# The dashboard ships minified (#6208): a coral binary holding the marker (a comment line of a static source file) was built without the strip-static overlay.
+STRIP_MARKER="$(head -n1 "$(dirname "$0")/../tests/release/strip_marker.txt" 2>/dev/null)"
+unstripped() { # file -> 0 when the binary carries the source comment
+  [ -n "$STRIP_MARKER" ] && grep -aFq -- "$STRIP_MARKER" "$1"
+}
 check_programs() { # subject folder ext want-target
   local subject="$1" dir="$2" ext="$3" wtgt="$4" n=0 bad="" c f info v t tg trim rev mod verdict
   for c in $commands; do
@@ -418,6 +423,7 @@ check_programs() { # subject folder ext want-target
     if [ -z "$TAG_COMMIT" ]; then bad="$bad $c(the tag's commit could not be read from $REPO)"
     elif ! verdict="$(bi_verdict "$want_ver" "$TAG_COMMIT" "$v" "$trim" "$rev" "$mod" "$tg")"; then bad="$bad $c(${verdict#fail|})"; fi
     if [ "$t" != "$want_tags" ]; then bad="$bad $c(tags '${t:-none}')"; fi
+    if [ "$c" = coral ] && unstripped "$f"; then bad="$bad $c(carries the dashboard's source comments: built without the strip-static overlay)"; fi
     if [ -n "$wtgt" ] && [ -n "$tg" ] && [ "$tg" != "$wtgt" ]; then bad="$bad $c(target $tg)"; fi
   done
   [ -z "$bad" ] && pass build "$subject" "$n programs: version $want_ver, tags $want_tags${wtgt:+, $wtgt}" || fail build "$subject" "$bad"
@@ -496,7 +502,9 @@ fi
 if [ -n "${DMGBIN:-}" ]; then
   # the app's programs: the commands the DMG carries (the others ship as the CLI links), by name
   c="$DMGBIN/coral"; info="$(buildinfo "$c")"; v="${info%%|*}"; t="${info#*|}"; t="${t%%|*}"
-  [ "$t" = "$want_tags" ] && [ "${v:-$want_ver}" = "$want_ver" ] && pass build "DMG coral" "version ${v:-$want_ver}, tags $t" || fail build "DMG coral" "version '$v', tags '$t' (want $want_ver, $want_tags)"
+  if unstripped "$c"; then fail build "DMG coral" "carries the dashboard's source comments: built without the strip-static overlay"; else
+    [ "$t" = "$want_tags" ] && [ "${v:-$want_ver}" = "$want_ver" ] && pass build "DMG coral" "version ${v:-$want_ver}, tags $t" || fail build "DMG coral" "version '$v', tags '$t' (want $want_ver, $want_tags)"
+  fi
 fi
 
 # ---- summary ----
