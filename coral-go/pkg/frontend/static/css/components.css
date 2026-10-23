@@ -4502,6 +4502,8 @@ a.ibx-open, a.ibx-open:visited { color: var(--link-text); }
 #launch-modal .modal-content,
 .team-availability-dialog#team-working-mode-dialog { height: auto; max-height: 90dvh; }
 .modal-content:has(.settings-shell) { min-height: min(30rem, 90dvh); }
+#launch-modal .modal-content:not(.sd-modal-content) { min-height: 0; } /* the chooser and the terminal form hold the hidden New Agent step's .settings-shell, which gave them the tabbed dialogs' 30rem floor: half the chooser was empty (#6316) */
+#launch-agent-more .settings-pane-title { display: none; } /* the section's name is on the tab (or the phone's select) beside it: said twice (#6316); the pane keeps its name from it */
 .sd-modal-content .team-agents-scroll { max-height: none; overflow: visible; padding-right: 0; } /* the pane scrolls, not a list inside it (a phone showed two scroll areas) */
 
 .modal-header .sd-sub { margin: .15rem 0 0; color: var(--text-secondary); font-size: .8125rem; font-weight: 400; }
