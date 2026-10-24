@@ -123,8 +123,8 @@ func (e *ConcurrencyLimitError) Error() string {
 type JobScheduler struct {
 	store          *store.ScheduleStore
 	sessionStore   *store.SessionStore
-	lastEventType  func(ctx context.Context, sessionID string) string // the type of the agent's last event (stop, tool_use...), "" for none; nil: not known (#6898)
-	hasEvents      func(ctx context.Context, sessionID string) bool   // whether the agent's CLI reported anything (its hook events); nil: a run is never judged by it (#6842)
+	lastEventType  func(ctx context.Context, sessionID string) (last string, stopFailed bool) // the type of the agent's last event (stop, tool_use...), "" for none, and whether a stop was a failed turn (an API error); nil: not known (#6898)
+	hasEvents      func(ctx context.Context, sessionID string) bool                           // whether the agent's CLI reported anything (its hook events); nil: a run is never judged by it (#6842)
 	runtime        AgentRuntime
 	maxConcurrent  int
 	interval       time.Duration
@@ -295,7 +295,7 @@ func (s *JobScheduler) reapStaleRuns(ctx context.Context) {
 			// "agent_done" only when its last event shows it finished: it may have crashed while Coral was down, and the run history must not claim a success it never saw.
 			reason := "agent_done"
 			if s.lastEventType != nil {
-				if last := s.lastEventType(ctx, *run.SessionID); last != "stop" && last != "session_end" {
+				if last, stopFailed := s.lastEventType(ctx, *run.SessionID); (last != "stop" && last != "session_end") || stopFailed { // a stop that is a failed turn (StopFailure: an API error) is not a finish
 					reason = "ended_while_coral_was_down"
 				}
 			}
@@ -840,9 +840,9 @@ func (s *JobScheduler) SetEventCheck(fn func(ctx context.Context, sessionID stri
 	s.hasEvents = fn
 }
 
-// SetLastEventType tells the scheduler how to read the type of an agent's last stored event (the startup passes the task store's read): a run whose agent ended while Coral was down is recorded finished only
-// when that event shows the agent ended its work (stop, session_end).
-func (s *JobScheduler) SetLastEventType(fn func(ctx context.Context, sessionID string) string) {
+// SetLastEventType tells the scheduler how to read the type of an agent's last stored event and whether it was a failed stop (the startup passes the task store's reads): a run whose agent ended while Coral was down
+// is recorded finished only when that event shows the agent ended its work (a stop that did not fail, session_end).
+func (s *JobScheduler) SetLastEventType(fn func(ctx context.Context, sessionID string) (last string, stopFailed bool)) {
 	s.lastEventType = fn
 }
 
