@@ -2,6 +2,7 @@ package background
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -163,4 +164,24 @@ func assertNotNudged(t *testing.T, rb *store.RemoteBoardStore, rt *mockRuntime) 
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
 	assert.Empty(t, rt.sent)
+}
+
+// #7170 (Security's LOW on #7109): the connection is made to the IP the dial-time check returned, not to the name the subscription holds. The remote is registered under a name that does not resolve
+// (rebind.invalid); the check returns the loopback, and one poll reaches the server. Dialling the name instead would fail to resolve.
+func TestRemoteBoardPollerDialsTheValidatedIPNotTheName(t *testing.T) {
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		_, _ = w.Write([]byte(`{"unread":0}`))
+	}))
+	defer srv.Close()
+	_, port, err := net.SplitHostPort(strings.TrimPrefix(srv.URL, "http://"))
+	require.NoError(t, err)
+	p, _, _ := remotePollerFor(t, "http://rebind.invalid:"+port)
+	p.validateURL = func(string) (string, error) { return "203.0.113.1", nil }
+	var asked []string
+	p.validateAddr = func(addr string) (string, error) { asked = append(asked, addr); return "127.0.0.1", nil }
+	require.NoError(t, p.RunOnce(context.Background()))
+	assert.EqualValues(t, 1, hits.Load(), "the poll reached the server through the validated IP")
+	assert.Equal(t, []string{"rebind.invalid:" + port}, asked, "the check was asked about the name being dialled")
 }
