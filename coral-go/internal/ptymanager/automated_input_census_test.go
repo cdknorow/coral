@@ -56,7 +56,7 @@ type sender struct {
 var allowedSenders = map[string]sender{
 	// The gate's send functions: they run only when nothing waits on the user.
 	"internal/background/agent_exited.go\tdeliverAutomatedIfWanted\tSendInput":               {guardGate, "gate", ""},
-	"internal/server/routes/agent_exited.go\tdeliverAutomated\tSendInput":                    {guardGate, "gate", ""},
+	"internal/server/routes/agent_exited.go\tdeliverAutomatedWhile\tSendInput":               {guardGate, "gate", ""},
 	"internal/server/routes/agent_ui_request.go\tSessionsHandler.agentUIRequest\tSendPrompt": {guardGate, "gate (its send closure)", ""},
 	"internal/ptymanager/automated_input_deliver.go\tinputGate.holdEnter\tSendEnter":         {guardGate, "gate (a withheld Enter, sent once the prompt is gone)", ""},
 	// AgentLauncher.SendPrompt, which goes through the gate itself.
