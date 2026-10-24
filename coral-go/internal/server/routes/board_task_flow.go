@@ -170,14 +170,11 @@ func (h *BoardHandler) afterTaskCompleted(project, subscriberID string, complete
 
 		// Check if the agent has more pending tasks. Unassigned pool tasks nudge
 		// workers, but not the orchestrator; explicitly assigned tasks still do.
-		nextTask := h.bs.NextPendingTaskForSubscriber(ctx, project, subscriberID)
-		sub, _ := h.bs.GetProjectSubscription(ctx, project, subscriberID)
-		if nextTask != nil && (taskAssignedToSubscriber(nextTask, subscriberID) || !isOrchestratorSubscriber(sub, subscriberID)) {
-			auditMsg := fmt.Sprintf("@%s You have tasks available — run 'coral-board task claim' to start",
-				subscriberID)
-			h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", auditMsg, nil)
-			h.sendTaskNudge(ctx, project, subscriberID, taskNudge)
+		freed := subscriberID
+		if completedTask.AssignedTo != nil && *completedTask.AssignedTo != "" {
+			freed = *completedTask.AssignedTo
 		}
+		h.nudgeNextTask(ctx, project, freed)
 	})
 }
 

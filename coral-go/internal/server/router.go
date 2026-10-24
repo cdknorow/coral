@@ -679,6 +679,7 @@ func (s *Server) registerBoard(r *chi.Mux, h *routeHandlers) {
 	})
 	boardHandler.SetAutoAttacher(routes.NewAutoAttacher(s.cfg.CoralDir(), routes.AutoAttachEnabled(sessStore), routes.SessionDirs(sessStore)))
 	s.goBackground(boardHandler.RecoverTaskNotifications)
+	s.goBackground(boardHandler.RunWaitTimeouts)
 	s.goBackground(func(ctx context.Context) {
 		if err := boardHandler.RestoreSubscriberReminders(ctx); err != nil {
 			log.Printf("restore subscriber reminders: %v", err)

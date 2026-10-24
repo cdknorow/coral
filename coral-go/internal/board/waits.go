@@ -67,11 +67,38 @@ func (s *Store) ensureWaitsSchema(ctx context.Context) error {
 				CHECK (status IN ('active', 'resolved', 'cancelled', 'expired')),
 			created_at     TEXT NOT NULL,
 			resolved_at    TEXT,
-			expires_at     TEXT NOT NULL
+			expires_at     TEXT NOT NULL,
+			timeout_notified_at TEXT
 		);
 		CREATE INDEX IF NOT EXISTS idx_board_waits_active ON board_waits(project, status);
 		CREATE INDEX IF NOT EXISTS idx_board_waits_subscriber ON board_waits(project, subscriber_id, status);
 	`)
+	if err != nil {
+		return err
+	}
+	// Existing expired rows predate timeout notices; do not replay historical waits.
+	tx, err := s.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	_, err = tx.ExecContext(ctx, "ALTER TABLE board_waits ADD COLUMN timeout_notified_at TEXT")
+	if err == nil {
+		_, err = tx.ExecContext(ctx, "UPDATE board_waits SET timeout_notified_at=? WHERE status='expired'", nowUTC())
+	} else if strings.Contains(err.Error(), "duplicate column") {
+		err = nil
+	}
+	if err != nil {
+		return err
+	}
+	err = tx.Commit()
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `
+ CREATE INDEX IF NOT EXISTS idx_board_waits_expiry ON board_waits(expires_at) WHERE status='active';
+ CREATE INDEX IF NOT EXISTS idx_board_waits_timeout_pending ON board_waits(id) WHERE status='expired' AND timeout_notified_at IS NULL;
+ `)
 	return err
 }
 
@@ -108,6 +135,8 @@ var ErrTooManyWaits = fmt.Errorf("a subscriber can have at most %d active waits 
 
 // RegisterWait creates or replaces an active registered wait for a subscriber on a project.
 func (s *Store) RegisterWait(ctx context.Context, project, subscriberID, sessionName, waitType, targetID, reason string, timeout time.Duration) (*RegisteredWait, error) {
+	s.waitDispatchMu.Lock()
+	defer s.waitDispatchMu.Unlock()
 	if project == "" || subscriberID == "" {
 		return nil, fmt.Errorf("project and subscriber_id required")
 	}
@@ -129,7 +158,7 @@ func (s *Store) RegisterWait(ctx context.Context, project, subscriberID, session
 
 	// Cancel any existing active wait for this subscriber on this project
 	_, err = tx.ExecContext(ctx,
-		"UPDATE board_waits SET status = 'cancelled', resolved_at = ? WHERE project = ? AND subscriber_id = ? AND status = 'active'",
+		"UPDATE board_waits SET status = 'cancelled', resolved_at = ? WHERE project = ? AND subscriber_id = ? AND (status = 'active' OR (status = 'expired' AND timeout_notified_at IS NULL))",
 		nowStr, project, subscriberID)
 	if err != nil {
 		return nil, fmt.Errorf("cancel prior wait: %w", err)
@@ -187,7 +216,7 @@ func (s *Store) GetActiveWait(ctx context.Context, project, subscriberID string)
 	if t, parseErr := time.Parse(time.RFC3339, wait.ExpiresAt); parseErr == nil && time.Now().UTC().After(t) {
 		nowStr := nowUTC()
 		_, _ = s.db.ExecContext(ctx,
-			"UPDATE board_waits SET status = 'expired', resolved_at = ? WHERE id = ?",
+			"UPDATE board_waits SET status = 'expired', resolved_at = ? WHERE id = ? AND status = 'active'",
 			nowStr, wait.ID)
 		s.waitChanges.signal()
 		return nil, nil
@@ -209,7 +238,7 @@ func (s *Store) ListActiveWaits(ctx context.Context, project string) ([]Register
 	for _, w := range waits {
 		if t, parseErr := time.Parse(time.RFC3339, w.ExpiresAt); parseErr == nil && now.After(t) {
 			_, _ = s.db.ExecContext(ctx,
-				"UPDATE board_waits SET status = 'expired', resolved_at = ? WHERE id = ?",
+				"UPDATE board_waits SET status = 'expired', resolved_at = ? WHERE id = ? AND status = 'active'",
 				now.Format(time.RFC3339), w.ID)
 			s.waitChanges.signal()
 			continue
@@ -221,9 +250,11 @@ func (s *Store) ListActiveWaits(ctx context.Context, project string) ([]Register
 
 // CancelActiveWait cancels any active wait for a subscriber on a project.
 func (s *Store) CancelActiveWait(ctx context.Context, project, subscriberID string) error {
+	s.waitDispatchMu.Lock()
+	defer s.waitDispatchMu.Unlock()
 	nowStr := nowUTC()
 	_, err := s.db.ExecContext(ctx,
-		"UPDATE board_waits SET status = 'cancelled', resolved_at = ? WHERE project = ? AND subscriber_id = ? AND status = 'active'",
+		"UPDATE board_waits SET status = 'cancelled', resolved_at = ? WHERE project = ? AND subscriber_id = ? AND (status = 'active' OR (status = 'expired' AND timeout_notified_at IS NULL))",
 		nowStr, project, subscriberID)
 	if err == nil {
 		s.waitChanges.signal()
@@ -308,16 +339,8 @@ func (s *Store) ResolveMatchingMessageWaits(ctx context.Context, project, sender
 			matches = true
 		}
 
-		if matches {
-			_, updateErr := s.db.ExecContext(ctx,
-				"UPDATE board_waits SET status = 'resolved', resolved_at = ? WHERE id = ?",
-				nowStr, w.ID)
-			if updateErr == nil {
-				w.Status = "resolved"
-				resAt := nowStr
-				w.ResolvedAt = &resAt
-				matched = append(matched, w)
-			}
+		if matches && s.resolveWait(ctx, &w, nowStr) {
+			matched = append(matched, w)
 		}
 	}
 	if len(matched) > 0 {
@@ -344,16 +367,8 @@ func (s *Store) ResolveMatchingTaskWaits(ctx context.Context, project string, ta
 		if target == "" || target == "*" || target == taskIDStr {
 			matches = true
 		}
-		if matches {
-			_, updateErr := s.db.ExecContext(ctx,
-				"UPDATE board_waits SET status = 'resolved', resolved_at = ? WHERE id = ?",
-				nowStr, w.ID)
-			if updateErr == nil {
-				w.Status = "resolved"
-				resAt := nowStr
-				w.ResolvedAt = &resAt
-				matched = append(matched, w)
-			}
+		if matches && s.resolveWait(ctx, &w, nowStr) {
+			matched = append(matched, w)
 		}
 	}
 	if len(matched) > 0 {
@@ -382,16 +397,8 @@ func (s *Store) ResolveMatchingCommitWaits(ctx context.Context, project, commitH
 		} else if cleanHash != "" && (strings.HasPrefix(cleanHash, target) || strings.HasPrefix(target, cleanHash)) {
 			matches = true
 		}
-		if matches {
-			_, updateErr := s.db.ExecContext(ctx,
-				"UPDATE board_waits SET status = 'resolved', resolved_at = ? WHERE id = ?",
-				nowStr, w.ID)
-			if updateErr == nil {
-				w.Status = "resolved"
-				resAt := nowStr
-				w.ResolvedAt = &resAt
-				matched = append(matched, w)
-			}
+		if matches && s.resolveWait(ctx, &w, nowStr) {
+			matched = append(matched, w)
 		}
 	}
 	if len(matched) > 0 {
@@ -400,9 +407,14 @@ func (s *Store) ResolveMatchingCommitWaits(ctx context.Context, project, commitH
 	return matched, nil
 }
 
-// resolveWait marks w resolved at now; false when the update failed (w is left as it was).
+// resolveWait atomically wins an active wait; a concurrent expiry, cancel or
+// resolution must not be overwritten or produce a second terminal wake.
 func (s *Store) resolveWait(ctx context.Context, w *RegisteredWait, now string) bool {
-	if _, err := s.db.ExecContext(ctx, "UPDATE board_waits SET status = 'resolved', resolved_at = ? WHERE id = ?", now, w.ID); err != nil {
+	result, err := s.db.ExecContext(ctx, "UPDATE board_waits SET status = 'resolved', resolved_at = ? WHERE id = ? AND status = 'active'", now, w.ID)
+	if err != nil {
+		return false
+	}
+	if n, err := result.RowsAffected(); err != nil || n != 1 {
 		return false
 	}
 	w.Status = "resolved"

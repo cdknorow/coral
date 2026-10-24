@@ -356,3 +356,24 @@ func (h *BoardHandler) RemindTask(w http.ResponseWriter, r *http.Request) {
 	}()
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "active": true, "interval_seconds": body.IntervalSeconds, "assignee": *task.AssignedTo})
 }
+
+// nudgeNextTask sends directly: Task Queue audit posts intentionally do not
+// count as unread and cannot wake the worker through the generic notifier.
+func (h *BoardHandler) nudgeNextTask(ctx context.Context, project, subscriberID string) {
+	if busy, err := h.bs.HasActiveTaskForAssignee(ctx, project, subscriberID, 0); err != nil || busy {
+		return
+	}
+	next := h.bs.NextPendingTaskForSubscriber(ctx, project, subscriberID)
+	sub, err := h.bs.GetProjectSubscription(ctx, project, subscriberID)
+	if err != nil || next == nil || (!taskAssignedToSubscriber(next, subscriberID) && isOrchestratorSubscriber(sub, subscriberID)) {
+		return
+	}
+	h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", fmt.Sprintf("@%s You have tasks available — run 'coral-board task claim' to start", subscriberID), nil)
+	text := taskNudge
+	if taskAssignedToSubscriber(next, subscriberID) {
+		text = taskClaimNudge(next.ID)
+	}
+	if err := h.sendTaskNudge(ctx, project, subscriberID, text); err != nil {
+		slog.Warn("next task nudge failed", "project", project, "subscriber", subscriberID, "task_id", next.ID, "error", err)
+	}
+}

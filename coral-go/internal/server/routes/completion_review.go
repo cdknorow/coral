@@ -93,6 +93,7 @@ func (h *BoardHandler) SubmitCompletionReview(w http.ResponseWriter, r *http.Req
 	}
 	if next := h.bs.NextPendingTaskForSubscriber(ctx, project, author); next != nil {
 		h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", h.buildAssignmentNotification(ctx, project, next, author, false), nil)
+		h.nudgeNextTask(ctx, project, author)
 	}
 	if h.notifyFn != nil {
 		h.notifyFn(project)
@@ -242,6 +243,7 @@ func (h *BoardHandler) reviewVerdict(w http.ResponseWriter, r *http.Request, app
 	// The reviewer's slot is free: their next task.
 	if next := h.bs.NextPendingTaskForSubscriber(ctx, project, body.SubscriberID); next != nil {
 		h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", h.buildAssignmentNotification(ctx, project, next, body.SubscriberID, false), nil)
+		h.nudgeNextTask(ctx, project, body.SubscriberID)
 	}
 	if h.notifyFn != nil {
 		h.notifyFn(project)
