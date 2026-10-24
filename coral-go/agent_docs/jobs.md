@@ -48,8 +48,7 @@ Queues a new agent task. Returns immediately — all work (worktree creation, ag
 | `flags` | string | `""` | Extra CLI flags passed to the agent. |
 | `display_name` | string | `null` | Label shown in the UI. Defaults to `Task #<run_id>`. |
 | ~~`webhook_url`~~ | | | Not supported: Coral doesn't send webhooks, and a request with one is refused with 400. |
-| `auto_accept` | bool | `false` | Auto-respond to permission prompts (also adds the agent's permission flag: `--permission-mode auto` for Claude, `--full-auto` for Codex, `--dangerously-skip-permissions` for Antigravity; a permission flag in `flags` is kept as it is). |
-| `max_auto_accepts` | int | `10` | Safety limit — auto-accept disables after this many acceptances. |
+| `auto_accept` | bool | `false` | Adds the agent's permission flag so the run does not stop at permission prompts: `--permission-mode auto` for Claude, `--full-auto` for Codex, `--dangerously-skip-permissions` for Antigravity; a permission flag in `flags` is kept as it is. |
 
 ### Example
 
@@ -61,8 +60,7 @@ curl -H "Authorization: Bearer $(coral api-key)" -X POST http://localhost:8420/a
     "prompt": "Add input validation to the signup form",
     "repo_path": "/home/user/myproject",
     "display_name": "Signup validation",
-    "auto_accept": true,
-    "max_auto_accepts": 20
+    "auto_accept": true
   }'
 ```
 
@@ -232,17 +230,10 @@ Set `create_worktree: false` to run the agent directly in `repo_path` — useful
 
 ## Auto-accept
 
-When `auto_accept: true`, two mechanisms handle permission prompts:
-
-1. **The agent's permission flag** is added to its CLI flags, which skips most prompts at the agent level: `--permission-mode auto` for Claude (Auto mode, with Claude's safety checks), `--full-auto` for Codex, `--dangerously-skip-permissions` for Antigravity. A permission flag you pass in `flags` (a mode, or a bypass) is kept and nothing is added.
-2. **Notification-based fallback** — if the agent fires a `notification` event (indicating a prompt the flag didn't cover), Coral sends `y` + Enter to the tmux session after a 0.5s delay.
-
-### Safety limit
-
-The `max_auto_accepts` parameter (default: `10`) caps how many times the fallback mechanism fires. Once the limit is reached, auto-accept is permanently disabled for that run and a warning is logged. This prevents runaway acceptance if something goes wrong.
+When `auto_accept: true`, the agent's permission flag is added to its CLI flags, which skips most prompts at the agent level: `--permission-mode auto` for Claude (Auto mode, with Claude's safety checks), `--full-auto` for Codex, `--dangerously-skip-permissions` for Antigravity. A permission flag you pass in `flags` (a mode, or a bypass) is kept and nothing is added. Coral does not answer prompts itself and has no count of acceptances: the flag is the whole mechanism.
 
 !!! warning
-    Auto-accept is inherently risky. The agent may accept destructive operations. Use `max_auto_accepts` to bound exposure, and prefer reviewing agent output in the dashboard for sensitive tasks.
+    Auto-accept is inherently risky. The agent may accept destructive operations. Prefer reviewing agent output in the dashboard for sensitive tasks.
 
 ---
 

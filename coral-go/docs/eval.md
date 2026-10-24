@@ -28,7 +28,7 @@ RUN=$(curl -fsS -X POST "$CORAL_URL/api/tasks/run" \
     '{repo_path: $repo, base_branch: $commit, agent_type: "codex",
       display_name: $name, prompt: $prompt, create_worktree: true,
       cleanup_worktree: false, max_duration_s: 3600, auto_accept: true,
-      max_auto_accepts: 20, flags: "--model gpt-5.6-codex"}')")
+      flags: "--model gpt-5.6-codex"}')")
 
 RUN_ID=$(jq -r '.run_id' <<<"$RUN")
 echo "run_id=$RUN_ID"

@@ -46,13 +46,6 @@ func newExitEnv(t *testing.T, sid string) *exitEnv {
 	require.NoError(t, err)
 	e.runID, err = e.ss.CreateScheduledRun(ctx, job.ID, time.Now().UTC().Format(store.ISOFormat), "pending")
 	require.NoError(t, err)
-	t.Cleanup(func() { // the auto-accept maps are global: leave nothing of this session behind
-		autoAcceptMu.Lock()
-		delete(AutoAcceptSessions, sid)
-		delete(AutoAcceptCounts, sid)
-		delete(AutoAcceptLimits, sid)
-		autoAcceptMu.Unlock()
-	})
 	return e
 }
 
@@ -82,62 +75,29 @@ func (e *exitEnv) tagged(t *testing.T) []string {
 	return names
 }
 
-func autoAccepted(sid string) (registered bool, limit int, counted bool) {
-	autoAcceptMu.Lock()
-	defer autoAcceptMu.Unlock()
-	_, registered = AutoAcceptSessions[sid]
-	limit = AutoAcceptLimits[sid]
-	_, counted = AutoAcceptCounts[sid]
-	return
-}
-
-func TestRunFinishesTagsAndUnregistersAutoAccept(t *testing.T) {
+func TestRunFinishesAndTagsItsSession(t *testing.T) {
 	e := newExitEnv(t, "exit-done")
-	autoAcceptMu.Lock()
-	AutoAcceptCounts[e.sid] = 2 // counted during the run
-	autoAcceptMu.Unlock()
 	e.launch(t, func(context.Context) error { return nil })
-	e.s.launchAndWatch(e.runID, store.ScheduledJob{AgentType: "claude"}, runConfig{autoAccept: true, maxAutoAccepts: 7, tag: "scheduled"})
+	e.s.launchAndWatch(e.runID, store.ScheduledJob{AgentType: "claude"}, runConfig{tag: "scheduled"})
 	r := e.run(t)
 	assert.Equal(t, "completed", r.Status)
 	require.NotNil(t, r.ExitReason)
 	assert.Equal(t, "agent_done", *r.ExitReason)
 	assert.NotNil(t, r.FinishedAt)
 	assert.Equal(t, []string{"scheduled"}, e.tagged(t), "the session is tagged")
-	registered, limit, counted := autoAccepted(e.sid)
-	assert.False(t, registered, "auto-accept unregistered at the end")
-	assert.Zero(t, limit, "its limit too")
-	assert.False(t, counted, "and its count")
 	assert.Empty(t, e.rt.kills(), "a finished run kills nothing")
-}
-
-func TestAfterLaunchRegistersAutoAcceptOnceTheRunHasASession(t *testing.T) {
-	e := newExitEnv(t, "exit-during")
-	e.s.afterLaunch(context.Background(), e.runID, store.ScheduledJob{AgentType: "claude"}, runConfig{autoAccept: true, maxAutoAccepts: 7})
-	registered, _, _ := autoAccepted(e.sid)
-	assert.False(t, registered, "no session recorded yet: nothing registered")
-	require.NoError(t, e.ss.UpdateScheduledRun(context.Background(), e.runID, map[string]interface{}{"session_id": e.sid}))
-	e.s.afterLaunch(context.Background(), e.runID, store.ScheduledJob{AgentType: "claude"}, runConfig{autoAccept: true, maxAutoAccepts: 7})
-	registered, limit, _ := autoAccepted(e.sid)
-	assert.True(t, registered)
-	assert.Equal(t, 7, limit)
-	autoAcceptMu.Lock()
-	assert.Equal(t, "claude-"+e.sid, AutoAcceptSessions[e.sid])
-	autoAcceptMu.Unlock()
 }
 
 func TestRunWithAFailedLaunchIsFailedKilledAndNotTagged(t *testing.T) {
 	e := newExitEnv(t, "exit-failed")
 	e.launch(t, func(context.Context) error { return errors.New("the CLI would not start") })
-	e.s.launchAndWatch(e.runID, store.ScheduledJob{AgentType: "codex"}, runConfig{autoAccept: true, maxAutoAccepts: 3, tag: "task"})
+	e.s.launchAndWatch(e.runID, store.ScheduledJob{AgentType: "codex"}, runConfig{tag: "task"})
 	r := e.run(t)
 	assert.Equal(t, "failed", r.Status)
 	require.NotNil(t, r.ExitReason)
 	assert.Equal(t, "the CLI would not start", *r.ExitReason)
 	assert.Equal(t, []string{"codex-" + e.sid}, e.rt.kills(), "its session is killed")
 	assert.Empty(t, e.tagged(t), "a failed launch is not tagged")
-	registered, _, _ := autoAccepted(e.sid)
-	assert.False(t, registered)
 }
 
 func TestRunThatTimesOutIsKilled(t *testing.T) {
