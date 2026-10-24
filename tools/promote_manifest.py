@@ -81,7 +81,7 @@ def build(env, now=None):
     now = int(time.time() if now is None else now)
     version, revoked = parse_tag_and_revoked(env)
     days = parse_lifetime(env.get("PROMOTE_LIFETIME_DAYS", ""))
-    repo =env.get("GITHUB_REPOSITORY", "")
+    repo = env.get("GITHUB_REPOSITORY", "")
     if repo != REPO:
         raise InputError("this workflow runs in %r, not in the pinned repository" % repo[:80])
     prerelease = env.get("PROMOTE_PRERELEASE", "")
