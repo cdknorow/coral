@@ -177,10 +177,10 @@ func TestLiveFeedThroughTheConnectorDropsWaitingSummaryForAViewer(t *testing.T) 
 	assert.NotContains(t, first("launch"), "rm -rf", "the computer's mode lowered to View caps the viewer")
 }
 
-// #7116: the boards' goal counts are nulled for a viewer who can only look, wherever the feed or the projects list carries them; a route that is not one of those (the goals' own list) is not touched here.
+// #7116: the boards' goal counts are nulled for a viewer who can only look, wherever the feed or the projects list carries them; the goals' own list (a goals array) keeps its goals.
 func TestGoalsSummaryIsNulledForAViewOnlyViewer(t *testing.T) {
 	assert.True(t, dropsFor(http.MethodGet, "/api/board/projects"), "the projects list carries each board's brief")
-	assert.False(t, dropsFor(http.MethodGet, "/api/board/team/goals"), "the goals' own list is its own route, redacted like task text")
+	assert.True(t, dropsFor(http.MethodGet, "/api/board/team/goals"), "the goals' own list drops the blocked goal's fields (#7087), and only those: its goals array stays (below)")
 
 	for name, in := range map[string]string{
 		"the projects list": `[{"project":"team","goals_brief":{"open":2,"seq":9},"subscriber_count":3}]`,
@@ -208,4 +208,103 @@ func TestGoalsSummaryIsNulledForAViewOnlyViewer(t *testing.T) {
 	out, ok := stripViewDropped([]byte(`[{"project":"team","subscriber_count":3}]`))
 	require.True(t, ok)
 	assert.JSONEq(t, `[{"project":"team","subscriber_count":3}]`, string(out))
+}
+
+// #7116 (coral-hub's condition for pinning 167): on a View viewer's /ws/coral stream the goals brief and its totals are null in the first coral_update AND in every coral_diff that carries them, an Interact
+// viewer reads the numbers in both, and the tier is read for every frame (a viewer lowered mid-stream stops getting them at the next frame).
+const (
+	goalsUpdateFrame = `{"type":"coral_update","sessions":[],"goals_brief":{"team-a":{"open":2,"seq":14}},"goals_open":2,"goals_seq":14}`
+	goalsDiffFrame   = `{"type":"coral_diff","goals_brief":{"team-a":{"open":1,"seq":15},"team-b":{"open":3,"seq":4}},"goals_open":4,"goals_seq":15}`
+)
+
+func TestGoalsBriefIsNullInEveryFeedFrameForAViewViewer(t *testing.T) {
+	view := true
+	dst := &wsRecorder{}
+	w := newWSRedact(context.Background(), dst, secrets.Redactor(), func() bool { return false }, false)
+	w.viewOnly = func() bool { return view }
+	nulled := func(data string) {
+		t.Helper()
+		var m map[string]any
+		require.NoError(t, json.Unmarshal([]byte(data), &m), data)
+		for _, k := range []string{"goals_brief", "goals_open", "goals_seq"} {
+			v, present := m[k]
+			assert.True(t, present, k+" is nulled, not removed: "+data)
+			assert.Nil(t, v, k+": "+data)
+		}
+		assert.NotContains(t, data, `"open"`)
+		assert.NotContains(t, data, `"seq"`)
+	}
+
+	require.NoError(t, w.write(websocket.MessageText, []byte(goalsUpdateFrame)))
+	require.NoError(t, w.write(websocket.MessageText, []byte(goalsDiffFrame)))
+	require.NoError(t, w.write(websocket.MessageText, []byte(goalsDiffFrame)))
+	f := dst.got()
+	require.Len(t, f, 3)
+	for _, fr := range f {
+		nulled(fr.data)
+	}
+	assert.Contains(t, f[0].data, `"type":"coral_update"`)
+	assert.Contains(t, f[1].data, `"type":"coral_diff"`)
+
+	view = false // an Interact viewer reads the numbers, in the update and in the diff
+	require.NoError(t, w.write(websocket.MessageText, []byte(goalsUpdateFrame)))
+	require.NoError(t, w.write(websocket.MessageText, []byte(goalsDiffFrame)))
+	f = dst.got()
+	require.Len(t, f, 5)
+	assert.JSONEq(t, goalsUpdateFrame, f[3].data)
+	assert.JSONEq(t, goalsDiffFrame, f[4].data)
+
+	view = true // lowered mid-stream: the very next diff is nulled again
+	require.NoError(t, w.write(websocket.MessageText, []byte(goalsDiffFrame)))
+	f = dst.got()
+	require.Len(t, f, 6)
+	nulled(f[5].data)
+}
+
+// The whole path through the connector: the local feed sends an update and then a diff; a View viewer's socket gets both with the brief nulled, an Interact viewer's with the numbers.
+func TestGoalsBriefThroughTheConnectorIsNullForAViewerInUpdateAndDiff(t *testing.T) {
+	local := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer c.CloseNow()
+		_ = c.Write(r.Context(), websocket.MessageText, []byte(goalsUpdateFrame))
+		_ = c.Write(r.Context(), websocket.MessageText, []byte(goalsDiffFrame))
+		c.Read(r.Context())
+	})
+	hub := newHub(t, fastCfg())
+	sess, _ := connect(t, hub, local, func(l *LocalHandler) {
+		l.MaxMode = func() Mode { return TierLaunch }
+		l.AllowPath = nil
+		l.AllowRequest = AllowRequest(func() Mode { return TierLaunch })
+		l.RedactTokens = func() bool { return false }
+	})
+	frames := func(tier string) []string {
+		t.Helper()
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+		c, err := sess.DialWS(WithHubTier(WithHubUser(ctx, "hub-user-1234abcd"), tier), "/ws/coral", "", nil)
+		require.NoError(t, err)
+		defer c.CloseNow()
+		var out []string
+		for i := 0; i < 2; i++ {
+			_, data, err := c.Read(ctx)
+			require.NoError(t, err)
+			out = append(out, string(data))
+		}
+		return out
+	}
+	for _, fr := range frames("view") {
+		var m map[string]any
+		require.NoError(t, json.Unmarshal([]byte(fr), &m), fr)
+		for _, k := range []string{"goals_brief", "goals_open", "goals_seq"} {
+			v, present := m[k]
+			assert.True(t, present, k+": "+fr)
+			assert.Nil(t, v, k+" is null for a View viewer: "+fr)
+		}
+	}
+	got := frames("interact")
+	assert.JSONEq(t, goalsUpdateFrame, got[0])
+	assert.JSONEq(t, goalsDiffFrame, got[1])
 }
