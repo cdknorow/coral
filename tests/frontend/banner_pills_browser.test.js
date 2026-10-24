@@ -85,6 +85,8 @@ const STUB = `(() => {
             const tag = phone ? 'phone' : 'desktop';
             await Emulation.setDeviceMetricsOverride(phone ? { width: 390, height: 844, deviceScaleFactor: 1, mobile: true } : { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false });
             await setup();
+            // a phone's Keys strip opens by itself for a question (#6802) and moves the view by design; this suite is about the pills moving nothing, so the strip and its chip are out of the page here (agent_keys_browser covers them)
+            if (phone) await ev(`(() => { const st = document.createElement('style'); st.textContent = '.keys-chip, .agent-key-strip { display: none !important; }'; document.head.appendChild(st); return true; })()`);
             await ev(`window.__cls = 0; window.__shifts = []; window.__flips.length = 0; true`);
             const g0 = await geometry();
             assert.ok(g0.header && g0.capture, `${tag}: the agent view is on screen: ` + JSON.stringify(g0));
