@@ -84,6 +84,7 @@ func gitPollInterval(ctx context.Context, ss *store.SessionStore, defaultSeconds
 type eventReader interface {
 	GetLatestEventTypes(ctx context.Context, sessionIDs []string) (map[string][2]string, error)
 	LatestStopFailure(ctx context.Context, sessionID string) (text string, ok bool, err error)
+	SessionsWithAnyEvent(ctx context.Context, sessionIDs []string) (map[string]bool, error)
 }
 
 // lastEventOfRun is the type of the agent's last event and whether that event is a stop that was a failed turn. A run is recorded finished only on a stop that did not fail, so a read that fails is reported as a
@@ -94,6 +95,14 @@ func lastEventOfRun(ctx context.Context, r eventReader, sessionID string) (strin
 		return "", true
 	}
 	typ := last[sessionID][0]
+	if typ == "" {
+		// GetLatestEventTypes skips status, goal and confidence events: a session whose only events are those did start. "" with no failure is only for a session with no event at all; any event, or a read that fails, is
+		// "status" (not a finish, not never-started) (#6978, QA).
+		if any, err := r.SessionsWithAnyEvent(ctx, []string{sessionID}); err != nil || any[sessionID] {
+			return "status", false
+		}
+		return "", false
+	}
 	if typ != "stop" {
 		return typ, false
 	}
