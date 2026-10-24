@@ -91,10 +91,7 @@ func (h *BoardHandler) SubmitCompletionReview(w http.ResponseWriter, r *http.Req
 		h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", fmt.Sprintf("@%s [Task #%d in review] %s submitted %q (candidate: %s; %s). Complete it with 'coral-board task complete %d', or delegate it: coral-board task review %d --to \"Security Reviewer,QA Engineer\"",
 			orch, id, author, task.Title, candidate, body.Reason, id, id), nil)
 	}
-	if next := h.bs.NextPendingTaskForSubscriber(ctx, project, author); next != nil {
-		h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", h.buildAssignmentNotification(ctx, project, next, author, false), nil)
-		h.nudgeNextTask(ctx, project, author)
-	}
+	h.nudgeNextTask(ctx, project, author)
 	if h.notifyFn != nil {
 		h.notifyFn(project)
 	}
@@ -241,10 +238,7 @@ func (h *BoardHandler) reviewVerdict(w http.ResponseWriter, r *http.Request, app
 		h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", fmt.Sprintf("[Task #%d approved by %s] waiting for the other reviewers%s", task.ID, body.SubscriberID, note), nil)
 	}
 	// The reviewer's slot is free: their next task.
-	if next := h.bs.NextPendingTaskForSubscriber(ctx, project, body.SubscriberID); next != nil {
-		h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", h.buildAssignmentNotification(ctx, project, next, body.SubscriberID, false), nil)
-		h.nudgeNextTask(ctx, project, body.SubscriberID)
-	}
+	h.nudgeNextTask(ctx, project, body.SubscriberID)
 	if h.notifyFn != nil {
 		h.notifyFn(project)
 	}

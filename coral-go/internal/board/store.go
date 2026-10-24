@@ -36,9 +36,10 @@ type Store struct {
 	mentionIndexAnswers     atomic.Int64 // queries the mention index answered (tests check it is used)
 	mentionIndexedTo        atomic.Int64 // the mention index's watermark, -1 until read (see mention_index.go)
 	waitChanges             waitSignal
-	waitDispatchMu          sync.Mutex // serialize timeout delivery with cancellation/replacement
-	waitTimeoutCursor       int64      // under waitDispatchMu: failed old targets cannot starve later waits
-	stmts                   *hotStmts  // the hot fixed queries, prepared (#4463); nil: unprepared
+	waitDispatchMu          sync.Mutex     // protects timeout claims/cursor and short wait mutations
+	waitTimeoutClaims       map[int64]bool // under waitDispatchMu: claimed until callback/receipt completes
+	waitTimeoutCursor       int64          // under waitDispatchMu: failed old targets cannot starve later waits
+	stmts                   *hotStmts      // the hot fixed queries, prepared (#4463); nil: unprepared
 }
 
 func isInMemoryPath(dbPath string) bool {

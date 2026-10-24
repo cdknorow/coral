@@ -252,10 +252,12 @@ func (s *Store) ListActiveWaits(ctx context.Context, project string) ([]Register
 func (s *Store) CancelActiveWait(ctx context.Context, project, subscriberID string) error {
 	s.waitDispatchMu.Lock()
 	defer s.waitDispatchMu.Unlock()
+	// The latest expired wait can already have an acceptance receipt while its
+	// notice is still held at a prompt. Cancel that too, retaining older history.
 	nowStr := nowUTC()
 	_, err := s.db.ExecContext(ctx,
-		"UPDATE board_waits SET status = 'cancelled', resolved_at = ? WHERE project = ? AND subscriber_id = ? AND (status = 'active' OR (status = 'expired' AND timeout_notified_at IS NULL))",
-		nowStr, project, subscriberID)
+		"UPDATE board_waits SET status = 'cancelled', resolved_at = ? WHERE project = ? AND subscriber_id = ? AND (status = 'active' OR (status = 'expired' AND (timeout_notified_at IS NULL OR id=(SELECT MAX(id) FROM board_waits WHERE project=? AND subscriber_id=?))))",
+		nowStr, project, subscriberID, project, subscriberID)
 	if err == nil {
 		s.waitChanges.signal()
 	}

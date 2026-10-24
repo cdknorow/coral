@@ -133,24 +133,34 @@ func (h *BoardHandler) noticeTarget(ctx context.Context, project, sessionName st
 // (ptymanager.DeliverAutomated holds it until the prompt is gone). key groups
 // sends that supersede each other ("" for the text itself).
 func deliverAutomated(ctx context.Context, term ptymanager.SessionTerminal, name, agentType, sessionID, key, text, what string) error {
-	if automatedInputBlocked(ctx, term, name, agentType, sessionID, what) {
-		return errAgentExited
+	return deliverAutomatedWhile(ctx, term, name, agentType, sessionID, key, text, what, nil)
+}
+
+func deliverAutomatedWhile(ctx context.Context, term ptymanager.SessionTerminal, name, agentType, sessionID, key, text, what string, wanted func(context.Context) error) error {
+	check := func(ctx context.Context) error {
+		if wanted != nil {
+			if err := wanted(ctx); err != nil {
+				return err
+			}
+		}
+		if automatedInputBlocked(ctx, term, name, agentType, sessionID, what) {
+			return errAgentExited
+		}
+		return nil
+	}
+	if err := check(ctx); err != nil {
+		return err
 	}
 	_, err := ptymanager.DeliverAutomated(ctx, ptymanager.AutomatedInput{
 		Term: term, Name: name, AgentType: agentType, SessionID: sessionID,
 		Key: key, Text: text, What: what,
 		// As a bracketed paste where the agent takes one: a menu ignores it (#3457).
 		Paste: true,
-		Ready: func(ctx context.Context) error {
-			if automatedInputBlocked(ctx, term, name, agentType, sessionID, what) {
-				return errAgentExited
-			}
-			return nil
-		},
+		Ready: check,
 		Send: func(ctx context.Context) error {
 			// Re-checked at send time too: a held send may be typed much later.
-			if automatedInputBlocked(ctx, term, name, agentType, sessionID, what) {
-				return errAgentExited
+			if err := check(ctx); err != nil {
+				return err
 			}
 			return term.SendInput(ctx, terminalinput.Coral, name, text, agentType, sessionID) // Coral's own text
 		},

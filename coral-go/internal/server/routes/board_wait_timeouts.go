@@ -2,11 +2,13 @@ package routes
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
 
 	"github.com/subgentic/coral/internal/board"
+	"github.com/subgentic/coral/internal/ptymanager"
 )
 
 // RunWaitTimeouts belongs to the server's cancellable background lifecycle.
@@ -50,7 +52,27 @@ func (h *BoardHandler) dispatchWaitTimeouts(ctx context.Context) {
 			return err
 		}
 		text := fmt.Sprintf("[Wait timed out] Registered wait #%d on '%s' for %s expired. Review your task and choose the next step.", w.ID, w.Project, w.TargetLabel())
-		return deliverAutomated(passCtx, h.terminal, w.SessionName, agentType, sessionID, fmt.Sprintf("board-wait-timeout:%d", w.ID), board.OneLine(text), "board wait timeout")
+		err = deliverAutomatedWhile(passCtx, h.terminal, w.SessionName, agentType, sessionID, fmt.Sprintf("board-wait-timeout:%d", w.ID), board.OneLine(text), "board wait timeout", func(ctx context.Context) error {
+			current, err := h.bs.WaitTimeoutCurrent(ctx, w.ID)
+			if err != nil {
+				return err
+			}
+			if !current {
+				return ptymanager.ErrNotWanted
+			}
+			sub, err := h.bs.GetProjectSubscription(ctx, w.Project, w.SubscriberID)
+			if err != nil {
+				return err
+			}
+			if sub == nil || sub.SessionName != w.SessionName || (h.isArchivedSession != nil && h.isArchivedSession(ctx, w.SessionName)) {
+				return ptymanager.ErrNotWanted
+			}
+			return nil
+		})
+		if errors.Is(err, ptymanager.ErrNotWanted) {
+			return nil
+		}
+		return err
 	})
 	if err != nil && ctx.Err() == nil {
 		slog.Warn("dispatch board wait timeouts", "error", err)

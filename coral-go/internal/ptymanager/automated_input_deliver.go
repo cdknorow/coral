@@ -423,6 +423,13 @@ func (g *inputGate) holdEnter(in AutomatedInput, kind string) {
 	enter := AutomatedInput{Term: in.Term, Name: in.Name, AgentType: in.AgentType, SessionID: in.SessionID,
 		Key: in.Key + "#enter", Text: "[Enter] " + in.Text, What: in.What + " (its Enter)",
 		Send: func(ctx context.Context) error {
+			// Its text may already be in the box, but the original notice can
+			// have been cancelled while this Enter was held.
+			if in.Ready != nil {
+				if err := in.Ready(ctx); err != nil {
+					return err
+				}
+			}
 			es, ok := in.Term.(EnterSender)
 			if !ok {
 				return errors.New("this terminal can't press Enter on its own")

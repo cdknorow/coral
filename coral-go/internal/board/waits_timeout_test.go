@@ -162,3 +162,34 @@ func TestWaitTimeoutFailedBatchDoesNotStarveLaterWait(t *testing.T) {
 	require.Error(t, s.DispatchExpiredWaitNotices(ctx, deliver), "the next pass wraps and retries the earlier failures")
 	require.Equal(t, 1, delivered)
 }
+
+// A batch is claimed before delivery. Cancelling/replacing its second row while
+// the first callback is in flight must invalidate that unsent row without waiting.
+func TestWaitTimeoutClaimedBatchRechecksCancellation(t *testing.T) {
+	for _, action := range []string{"cancel", "replace"} {
+		t.Run(action, func(t *testing.T) {
+			ctx := context.Background()
+			s, err := NewStoreWithKey(filepath.Join(t.TempDir(), "board.db"), "")
+			require.NoError(t, err)
+			defer s.Close()
+			first, err := s.RegisterWait(ctx, "team", "First", "first", "message", "Lead", "", time.Nanosecond)
+			require.NoError(t, err)
+			second, err := s.RegisterWait(ctx, "team", "Second", "second", "message", "Lead", "", time.Nanosecond)
+			require.NoError(t, err)
+			var delivered []int64
+			require.NoError(t, s.DispatchExpiredWaitNotices(ctx, func(w RegisteredWait) error {
+				delivered = append(delivered, w.ID)
+				require.Equal(t, first.ID, w.ID)
+				if action == "cancel" {
+					return s.CancelActiveWait(ctx, "team", "Second")
+				}
+				_, err := s.RegisterWait(ctx, "team", "Second", "second", "task", "77", "", time.Hour)
+				return err
+			}))
+			require.Equal(t, []int64{first.ID}, delivered)
+			current, err := s.WaitTimeoutCurrent(ctx, second.ID)
+			require.NoError(t, err)
+			require.False(t, current)
+		})
+	}
+}

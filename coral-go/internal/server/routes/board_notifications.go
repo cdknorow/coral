@@ -368,7 +368,11 @@ func (h *BoardHandler) nudgeNextTask(ctx context.Context, project, subscriberID 
 	if err != nil || next == nil || (!taskAssignedToSubscriber(next, subscriberID) && isOrchestratorSubscriber(sub, subscriberID)) {
 		return
 	}
-	h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", fmt.Sprintf("@%s You have tasks available — run 'coral-board task claim' to start", subscriberID), nil)
+	audit := fmt.Sprintf("@%s You have tasks available — run 'coral-board task claim' to start", subscriberID)
+	if taskAssignedToSubscriber(next, subscriberID) {
+		audit = h.buildAssignmentNotification(ctx, project, next, subscriberID, false)
+	}
+	h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", audit, nil)
 	text := taskNudge
 	if taskAssignedToSubscriber(next, subscriberID) {
 		text = taskClaimNudge(next.ID)
