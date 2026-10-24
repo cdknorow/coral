@@ -460,16 +460,17 @@ export function renderQuickActions() {
 
 // Map tmux key names to raw terminal sequences for WebSocket input
 
+/** Sends the keys; resolves to whether they were sent (false when blocked or refused: sleeping, a Hub block, a pop-out, a refusal, no connection). */
 export async function sendRawKeys(keys, { silent = false } = {}) {
     if (!state.currentSession || state.currentSession.type !== "live") {
         showToast("No live session selected", true);
-        return;
+        return false;
     }
-    if (sleepingBlocked(silent)) return;
-    if (await hubBlocked(state.currentSession, { silent })) return;
+    if (sleepingBlocked(silent)) return false;
+    if (await hubBlocked(state.currentSession, { silent })) return false;
     if (popoutTerminalBlocked()) {
         if (!silent) showToast("Agent is not ready to receive input", true);
-        return;
+        return false;
     }
     claimOwnership();
 
@@ -480,7 +481,7 @@ export async function sendRawKeys(keys, { silent = false } = {}) {
         const seq = keys.map(rawKeySeq).join("");
         if (xterm.sendTerminalInputWs(seq)) {
             if (!silent) showToast(`Sent: ${keys.join(" + ")}`);
-            return;
+            return true;
         }
     }
 
@@ -494,18 +495,21 @@ export async function sendRawKeys(keys, { silent = false } = {}) {
         if (!resp.ok) {
             const { text, code } = await responseError(resp, currentServer(), `The keys were not sent (HTTP ${resp.status}).`);
             reportSendError(state.currentSession, text, code);
-            return;
+            return false;
         }
         const result = await resp.json();
         if (result.error) {
             showComposerError(result.error);
+            return false;
         } else {
             clearComposerError();
             if (!silent) showToast(`Sent: ${keys.join(" + ")}`);
+            return true;
         }
     } catch (e) {
         showComposerError("The keys were not sent. Check the connection and try again.");
         console.error("sendRawKeys exception:", e);
+        return false;
     }
 }
 

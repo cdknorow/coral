@@ -74,7 +74,7 @@ function paintStop(want) {
     if (want) btn.setAttribute('data-on-click', 'cmd-stop'); else btn.setAttribute('data-on-click', 'cmd-send'); // literal names: the action census reads them
     setAttr(btn, 'aria-label', want ? 'Stop the agent' : 'Send');
     if (!want) { btn.removeAttribute('aria-disabled'); stopHeldUntil = 0; }
-    else say('Stop is shown');
+    else if (document.activeElement === $('command-input')) say('Stop is shown'); // said to a person typing in the composer, not on every turn the agent takes (the button's name carries it otherwise)
 }
 
 function inputState() {
@@ -120,7 +120,11 @@ registerActions({
         clearTimeout(stopTimer);
         stopTimer = setTimeout(() => { if (stopShown) btn.removeAttribute('aria-disabled'); stopHeldUntil = 0; }, STOP_AGAIN_MS); // timeout-ok: the second press is allowed again if nothing changed
         say('Stopping the agent');
-        await sendRawKeys(['Escape'], { silent: true });
+        const sent = await sendRawKeys(['Escape'], { silent: true });
+        if (sent === false) { // blocked (asleep, a Hub block, a pop-out) or refused: say so, and let the person press again at once
+            say('Stop was not sent: the agent is not taking input');
+            stopHeldUntil = 0; clearTimeout(stopTimer); btn.removeAttribute('aria-disabled');
+        }
     },
 });
 

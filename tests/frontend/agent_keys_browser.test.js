@@ -12,7 +12,7 @@ const BASE = require('./test_base').BASE;
 
 const KEYS = [['Esc', 'Escape', 'Escape'], ['←', 'Left', 'Left arrow'], ['↑', 'Up', 'Up arrow'], ['↓', 'Down', 'Down arrow'], ['→', 'Right', 'Right arrow'], ['Enter', 'Enter', 'Enter'], ['Ctrl-C', 'C-c', 'Ctrl-C, interrupt']];
 const STUB = `(() => { const real = window.fetch; window.__keys = [];
-    window.fetch = (u, o = {}) => { if (/\\/api\\/sessions\\/live\\/[^/]+\\/keys$/.test(String(u)) && (o.method || 'GET').toUpperCase() === 'POST') { window.__keys.push(JSON.parse(o.body).keys); return Promise.resolve(new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'content-type': 'application/json' } })); } return real(u, o); };
+    window.fetch = (u, o = {}) => { if (/\\/api\\/sessions\\/live\\/[^/]+\\/keys$/.test(String(u)) && (o.method || 'GET').toUpperCase() === 'POST') { window.__keys.push(JSON.parse(o.body).keys); if (window.__keysFail) return Promise.resolve(new Response(JSON.stringify({ error: 'The agent is not taking input' }), { status: 409, headers: { 'content-type': 'application/json' } })); return Promise.resolve(new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'content-type': 'application/json' } })); } return real(u, o); };
     return true; })()`;
 
 (async () => {
@@ -48,19 +48,23 @@ const STUB = `(() => { const real = window.fetch; window.__keys = [];
 
             // Stop: Send turned red while the agent works and the box is empty
             assert.equal(await ev(`document.getElementById('mobile-send-btn').getAttribute('aria-label')`), 'Send', at + 'an idle agent: Send');
+            await ev(`document.activeElement && document.activeElement.blur(); true`);
             await row({ working: true }); await sleep(200); // sleep-ok: the layout, the status frame or the 3 s Stop hold settles; there is no completion event
+            assert.equal(await ev(`document.getElementById('mobile-send-btn').getAttribute('aria-label')`), 'Stop the agent', at + 'the swap happens whatever has focus');
+            assert.equal(await status(), '', at + 'but "Stop is shown" is said only when the person has focus in the composer (not on every turn the agent takes)');
+            await ev(`document.getElementById('command-input').focus(); true`);
             const st = await ev(`(() => { const b = document.getElementById('mobile-send-btn'), t = document.querySelector('.mobile-send-team-btn'), r = b.getBoundingClientRect(), tr = t.getBoundingClientRect(); return { stop: b.classList.contains('is-stop'), label: b.getAttribute('aria-label'), action: b.getAttribute('data-on-click'), w: Math.round(r.width), h: Math.round(r.height), gap: Math.round(r.left - tr.right), radius: parseFloat(getComputedStyle(b).borderTopLeftRadius), bg: getComputedStyle(b).backgroundColor }; })()`);
             assert.ok(st.stop && st.label === 'Stop the agent' && st.action === 'cmd-stop', at + 'a working agent and an empty box: Stop: ' + JSON.stringify(st));
             assert.ok(st.w >= 44 && st.h >= 44, at + 'Stop is a 44 px target');
             assert.ok(st.gap >= 8, at + `Stop is at least 8 px from the team button (${st.gap}px)`);
             assert.ok(st.radius < st.w / 2 - 4, at + `Stop is a rounded square, not the neighbour's circle (radius ${st.radius}px)`);
-            assert.equal(await status(), 'Stop is shown', at + 'the swap is said once in the status region');
             await shot(`agent-keys-stop-${w}`);
             // typing brings Send back, clearing brings Stop back
             await ev(`{ const i = document.getElementById('command-input'); i.value = 'next, please'; i.dispatchEvent(new Event('input', { bubbles: true })); } true`); await sleep(150); // sleep-ok: the layout, the status frame or the 3 s Stop hold settles; there is no completion event
             assert.equal(await ev(`document.getElementById('mobile-send-btn').getAttribute('aria-label')`), 'Send', at + 'a word in the box: Send');
             await ev(`{ const i = document.getElementById('command-input'); i.value = ''; i.dispatchEvent(new Event('input', { bubbles: true })); } true`); await sleep(150); // sleep-ok: the layout, the status frame or the 3 s Stop hold settles; there is no completion event
             assert.equal(await ev(`document.getElementById('mobile-send-btn').getAttribute('aria-label')`), 'Stop the agent', at + 'an empty box again: Stop');
+            assert.equal(await status(), 'Stop is shown', at + 'with focus in the composer the swap is said once in the status region');
             // one press sends Escape once; a second is ignored while it is aria-disabled
             await ev(`window.__keys.length = 0; const b = document.getElementById('mobile-send-btn'); b.click(); b.click(); true`); await sleep(400); // sleep-ok: the layout, the status frame or the 3 s Stop hold settles; there is no completion event
             assert.deepEqual(await ev(`window.__keys`), [['Escape']], at + 'Stop sends one Escape (the CLI\'s interrupt), never two');
@@ -68,6 +72,11 @@ const STUB = `(() => { const real = window.fetch; window.__keys = [];
             assert.equal(await status(), 'Stopping the agent');
             await sleep(3300); // sleep-ok: the 3 s hold
             assert.equal(await ev(`document.getElementById('mobile-send-btn').hasAttribute('aria-disabled')`), false, at + 'allowed again after 3 s');
+            // a Stop that cannot be sent says so, and is pressable again at once (not left on "Stopping the agent")
+            await ev(`window.__keysFail = true; document.getElementById('mobile-send-btn').click(); true`); await sleep(600); // sleep-ok: the refused answer comes back
+            assert.match(await status(), /^Stop was not sent/, at + 'a refused Stop is said in the status: ' + await status());
+            assert.equal(await ev(`document.getElementById('mobile-send-btn').hasAttribute('aria-disabled')`), false, at + 'and Stop is pressable again at once');
+            await ev(`window.__keysFail = false; true`);
             await row({ working: false }); await sleep(200); // sleep-ok: the layout, the status frame or the 3 s Stop hold settles; there is no completion event
             assert.equal(await ev(`document.getElementById('mobile-send-btn').getAttribute('aria-label')`), 'Send', at + 'the agent stopped: Send');
 
