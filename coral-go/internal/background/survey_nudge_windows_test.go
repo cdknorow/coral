@@ -151,6 +151,7 @@ func TestWindowsABoardNudgeBehindTheSurveyDismissesItWithOneZeroAndIsDelivered(t
 	got := string(b)
 	t.Logf("what the fake Claude received (after its marker): %q", strings.ReplaceAll(got, "\x1b", "<ESC>"))
 	require.True(t, strings.HasPrefix(got, "DISMISSED\n"), "the first key typed was one 0 (not a rating): %q", got)
+	require.Contains(t, got, "\x1b[200~"+surveyNudge+"\x1b[201~", "the nudge arrived as one bracketed paste: %q", got)
 	rest := strings.NewReplacer("\x1b[200~", "", "\x1b[201~", "").Replace(strings.TrimPrefix(got, "DISMISSED\n")) // the bracketed-paste markers hold a 0 of their own
 	require.Zero(t, strings.Count(rest, "0"), "no second 0 and no other digit key reached the agent: %q", got)
 	select {
@@ -173,6 +174,10 @@ func TestWindowsNothingIsTypedOverADraftBehindTheSurvey(t *testing.T) {
 	b, _ := os.ReadFile(out)
 	t.Logf("what the fake Claude received over a draft: %q", string(b))
 	require.Empty(t, string(b), "no 0 and no nudge is typed over a draft in the input box")
+	scr, serr := rt.AgentScreen(context.Background(), name, "claude", sid)
+	require.NoError(t, serr)
+	require.Contains(t, scr, "How is Claude doing this session?", "the survey is still up: the gate looked at it and left it, with the draft in the box")
+	require.Contains(t, scr, "half-typed note", "and the draft is untouched")
 	cancel()
 	<-done
 }
