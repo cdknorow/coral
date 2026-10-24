@@ -854,6 +854,60 @@ func (s *TaskStore) LatestStopFailure(ctx context.Context, sessionID string) (te
 	return d.Error, true, nil
 }
 
+// The states of a session's current turn, as RunTurn reads them from its stored events (#7090).
+const (
+	TurnNone    = ""        // no prompt of this session was submitted yet (or it was reset since): nothing to finish
+	TurnWorking = "working" // a prompt was submitted and its turn has not ended: a stop is awaited, or the agent went on after one
+	TurnDone    = "done"    // the turn ended normally (a stop that did not fail)
+	TurnFailed  = "failed"  // the turn ended in an error (StopFailure: a stop with detail failed)
+)
+
+// RunTurn is how the current turn of a session stands, and, once it has ended, the time of the stop that ended it.
+type RunTurn struct {
+	State string
+	At    string
+}
+
+// SessionTurn reads a session's stored events in order and says how its current turn stands: a prompt (prompt_submit) starts one, a stop after it ends it, and anything the agent does after that stop (a
+// tool call, a request, another prompt) puts it back to working; a session_reset starts over. A stop with no prompt before it (a startup, a reset, a stop of something else) ends nothing. Events are
+// kept to the newest few hundred per session: a turn whose prompt was pruned reads as none, never as ended. An unreadable store is an error, never a state.
+func (s *TaskStore) SessionTurn(ctx context.Context, sessionID string) (RunTurn, error) {
+	var rows []struct {
+		Type   string         `db:"event_type"`
+		Detail sql.NullString `db:"detail_json"`
+		At     string         `db:"created_at"`
+	}
+	if err := s.reader().SelectContext(ctx, &rows,
+		`SELECT event_type, detail_json, created_at FROM agent_events WHERE session_id = ? AND event_type IN ('prompt_submit', 'stop', 'session_reset', 'tool_use', 'permission_request') ORDER BY id`, sessionID); err != nil {
+		return RunTurn{}, err
+	}
+	turn := RunTurn{}
+	for _, e := range rows {
+		switch e.Type {
+		case "prompt_submit":
+			turn = RunTurn{State: TurnWorking}
+		case "session_reset":
+			turn = RunTurn{}
+		case "tool_use", "permission_request":
+			if turn.State != TurnNone {
+				turn = RunTurn{State: TurnWorking}
+			}
+		case "stop":
+			if turn.State == TurnNone {
+				continue
+			}
+			turn = RunTurn{State: TurnDone, At: e.At}
+			var d struct {
+				Failed bool `json:"failed"`
+			}
+			if e.Detail.Valid && json.Unmarshal([]byte(e.Detail.String), &d) == nil && d.Failed {
+				turn.State = TurnFailed
+			}
+		}
+	}
+	return turn, nil
+}
+
 // GetLatestGoals returns the latest goal summary per session.
 func (s *TaskStore) GetLatestGoals(ctx context.Context, sessionIDs []string) (map[string]string, error) {
 	if len(sessionIDs) == 0 {

@@ -198,6 +198,23 @@ func (s *ScheduleStore) UpdateScheduledRun(ctx context.Context, runID int64, fie
 	}, nil, false)
 }
 
+// FinishScheduledRunIfActive records a run's outcome only while it is still pending or running, and reports whether it did: the one claim every way a run can end (the agent's accepted turn end, its
+// deadline, a user's kill, the agent exiting) makes, so that exactly one of them settles it and none overwrites another's outcome (#7090). errorMsg is kept when not empty.
+func (s *ScheduleStore) FinishScheduledRunIfActive(ctx context.Context, runID int64, status, exitReason, errorMsg, finishedAt string) (bool, error) {
+	var msg any
+	if errorMsg != "" {
+		msg = errorMsg
+	}
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE scheduled_runs SET status = ?, exit_reason = ?, error_msg = COALESCE(?, error_msg), finished_at = ? WHERE id = ? AND status IN ('pending', 'running')`,
+		status, exitReason, msg, finishedAt, runID)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n == 1, err
+}
+
 // GetRunsForJob returns recent runs for a specific job.
 func (s *ScheduleStore) GetRunsForJob(ctx context.Context, jobID int64, limit int) ([]ScheduledRun, error) {
 	var runs []ScheduledRun
