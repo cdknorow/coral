@@ -16,11 +16,8 @@ import (
 
 // #4602: a client that asks for a large reply and never reads it does not hold the handler for ever: each write has a deadline.
 func TestWriteDeadlineFreesAHandlerWhoseClientNeverReads(t *testing.T) {
-	old := plainWriteTimeout
-	plainWriteTimeout = 300 * time.Millisecond
-	t.Cleanup(func() { plainWriteTimeout = old })
 	finished := make(chan error, 1)
-	srv := httptest.NewServer(WriteDeadline(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(WriteDeadlineAfter(300 * time.Millisecond)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		chunk := make([]byte, 1<<20)
 		for i := 0; i < 2048; i++ { // up to 2 GiB: more than any socket buffer holds
 			if _, err := w.Write(chunk); err != nil {
@@ -47,10 +44,7 @@ func TestWriteDeadlineFreesAHandlerWhoseClientNeverReads(t *testing.T) {
 // A client that reads, slowly but steadily, is not cut: the limit is per write, not for the whole reply. And a handler that is slow to
 // start is not cut either.
 func TestWriteDeadlineDoesNotCutAReaderOrASlowHandler(t *testing.T) {
-	old := plainWriteTimeout
-	plainWriteTimeout = 400 * time.Millisecond
-	t.Cleanup(func() { plainWriteTimeout = old })
-	srv := httptest.NewServer(WriteDeadline(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(WriteDeadlineAfter(400 * time.Millisecond)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(700 * time.Millisecond) // computing, longer than the deadline
 		for i := 0; i < 4; i++ {
 			fmt.Fprintf(w, "part %d\n", i)

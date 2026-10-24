@@ -29,10 +29,18 @@ type promptHints struct {
 	m     map[string]bool        // session_id -> a request to the user is open
 	slash map[string]time.Time   // session_id -> when a slash command was last typed into it by the Operator (#5488)
 	reads map[string]*promptRead // exact target (session_id, name, agent type) -> its latest read
+	ttl   time.Duration          // how long one read answers its polls; 0: defaultPromptReadTTL (tests set their own, #6991)
 }
 
-// promptReadTTL is how long one read of a session's prompt options answers its polls (a var for tests).
-var promptReadTTL = 2 * time.Second
+// defaultPromptReadTTL is how long one read of a session's prompt options answers its polls (promptHints.ttl replaces it in a test).
+const defaultPromptReadTTL = 2 * time.Second
+
+func (p *promptHints) readTTL() time.Duration {
+	if p.ttl > 0 {
+		return p.ttl
+	}
+	return defaultPromptReadTTL
+}
 
 // promptReadTimeout bounds a shared read. It runs on its own context, not the first poller's request: a
 // client that goes away mid-read must not leave the others an empty list for promptReadTTL (Security on
@@ -55,7 +63,7 @@ func promptReadKey(sessionID, name, agentType string) string {
 // fetch. One read at a time per target: a poll that comes while one is under way waits for it.
 func (p *promptHints) read(key string, now time.Time, fetch func() (promptScreen, bool)) (promptScreen, bool) {
 	p.mu.Lock()
-	if e, ok := p.reads[key]; ok && now.Sub(e.at) < promptReadTTL {
+	if e, ok := p.reads[key]; ok && now.Sub(e.at) < p.readTTL() {
 		p.mu.Unlock()
 		<-e.done
 		return e.screen, e.shown

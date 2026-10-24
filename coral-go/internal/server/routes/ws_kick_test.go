@@ -23,10 +23,9 @@ import (
 // A burst of kicks costs one shared build.
 func TestWSCoral_KickPushesStateChangesImmediately(t *testing.T) {
 	var builds atomic.Int64
-	wsLocalBuildHook = func() { builds.Add(1) }
-	t.Cleanup(func() { wsLocalBuildHook = nil })
 
 	server, handler := setupTestServer(t)
+	handler.wsBuildHook = func() { builds.Add(1) }
 	handler.cfg.WSPollInterval = 10 * time.Second
 	ctx := context.Background()
 	ss := store.NewSessionStore(handler.db)

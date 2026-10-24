@@ -7,7 +7,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -16,9 +15,6 @@ import (
 // #5251: a team of Codex agents launched with a raw --full-auto (or the bypass flag) keeps it through a team reset, as a menu restart does. Found with real Codex: the reset
 // relaunched the members with no permission flags at all.
 func TestTeamResetKeepsAMembersRawCodexPermissionFlag(t *testing.T) {
-	prev := afterTeamSlot
-	afterTeamSlot = func(_ time.Duration, f func()) { f() }
-	t.Cleanup(func() { afterTeamSlot = prev })
 	for i, tc := range []struct {
 		name  string
 		flags []string

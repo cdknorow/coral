@@ -328,11 +328,10 @@ func TestRestartOfALivePTYSessionWhoseOldTerminalCantBeEnded(t *testing.T) {
 // restartKillGrace and then force-killed. (The tester measured a restart of a real agy at 5.42 s on pty against 0.40 s on tmux; a resume,
 // with no live terminal to end, took 0.46 s.) The old terminal here is a real pty process that ignores SIGTERM.
 func TestRestartAndResumeOfAPTYAgentThatIgnoresSIGTERMAreNotHeldForFiveSeconds(t *testing.T) {
-	old := restartKillGrace
-	restartKillGrace = 300 * time.Millisecond
-	t.Cleanup(func() { restartKillGrace = old })
 	dataDir, db, ss, pty := livePTYFixture(t)
 	h := NewSessionsHandler(db, config.Load(dataDir), pty, ptymanager.NewPTYSessionTerminal(pty), nil)
+	grace := 300 * time.Millisecond
+	h.killGrace = &grace
 	r := ptyLifecycleRouter(h)
 	for _, route := range []string{"restart", "resume"} {
 		t.Run(route, func(t *testing.T) {
