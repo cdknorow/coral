@@ -385,16 +385,16 @@ registerActions({
 });
 
 // A table wider than its box scrolls sideways inside it (#4589); on a phone the clipped edge cut a column in half with nothing saying there was more (#6975). While more columns are to the right the box is
-// marked (data-more="right": the CSS fades the clipped edge) and a line above it says so in words; it goes when the table is scrolled to its end or fits. Kept in step as tables are drawn, scrolled and resized.
+// marked (data-more="right": the CSS fades the clipped edge) and one line for the page says so in words; it goes when the table is scrolled to its end or fits. Kept in step as tables are drawn, scrolled and resized.
 let _scrollCues = false;
 function _markScrollables() {
+    let any = false;
     for (const box of document.querySelectorAll('#cost-dashboard-view .cost-table-container')) {
         const more = box.scrollWidth > box.clientWidth + 1 && box.scrollLeft + box.clientWidth < box.scrollWidth - 1;
-        if (more) box.setAttribute('data-more', 'right'); else box.removeAttribute('data-more');
-        let hint = box.previousElementSibling && box.previousElementSibling.classList.contains('cost-scroll-hint') ? box.previousElementSibling : null;
-        if (!hint && box.scrollWidth > box.clientWidth + 1) { hint = document.createElement('p'); hint.className = 'cost-scroll-hint'; hint.textContent = 'More columns to the right: scroll the table sideways.'; box.before(hint); }
-        if (hint) hint.hidden = !more;
+        if (more) { box.setAttribute('data-more', 'right'); any = true; } else box.removeAttribute('data-more');
     }
+    const hint = document.getElementById('cost-scroll-hint'); // one line for the page (#6997), not one above every table; it goes when no table has more to the right
+    if (hint && hint.hidden === any) hint.hidden = !any;
 }
 function _watchScrollCues() {
     if (_scrollCues) return;
@@ -434,7 +434,7 @@ async function _refreshCallMetrics() {
         const rows = shownCallMetrics(data.rows || []);
         // Metrics past the raw-row cap are not stored (#5359): say so, so a gap after a burst is not read as quiet (#5368).
         const dropped = data.cap_dropped > 0 ? `<p class="cost-empty">${Number(data.cap_dropped)} calls were not recorded since Coral started: the call metrics table was full.</p>` : '';
-        if (!rows.length) { emptyState(el, 'No tool calls yet', 'cost-empty'); if (dropped) el.insertAdjacentHTML('beforeend', dropped); return; }
+        if (!rows.length) { emptyState(el, 'No tool calls in the last 24 hours yet. They appear once an agent has used a tool.', 'cost-empty'); if (dropped) el.insertAdjacentHTML('beforeend', dropped); return; }
         el.innerHTML = dropped + `<table class="cost-table"><thead><tr><th>Operation</th><th>Type</th><th>Agent</th><th>Team</th><th>Calls</th><th>Errors</th><th>Avg ms</th></tr></thead><tbody>${rows.map(r => `<tr><td>${escapeHtml(r.operation)}</td><td>${escapeHtml(r.call_type)}</td><td>${escapeHtml(r.agent_name || '—')}</td><td>${escapeHtml(r.board_name || '—')}</td><td>${r.calls}</td><td>${r.errors}</td><td>${Math.round(r.avg_duration_ms || 0)}</td></tr>`).join('')}</tbody></table>`;
     } catch { emptyState(el, 'Call metrics unavailable', 'cost-empty'); }
 }
@@ -956,7 +956,7 @@ function _renderTaskTable(tasks) {
     _costTaskCache = sorted;
 
     if (sorted.length === 0) {
-        emptyState(container, NO_DATA, 'cost-empty');
+        emptyState(container, 'No task costs in this range yet. They appear once an agent has worked on a board task.', 'cost-empty');
         return;
     }
 

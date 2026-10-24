@@ -59,7 +59,11 @@
         </div>
     </div>
 
-    <p class="cost-note" id="cost-note">Every figure is for the time range chosen above. Cache read is tokens read back from the provider's cache, billed at a lower rate; cache write is tokens stored in it. Burn rate is the total cost divided by the hours the range's data covers (at least one).</p>
+    <details class="disclosure cost-help" id="cost-help">
+        <summary>What these numbers mean</summary>
+        <p class="cost-note" id="cost-note">Every figure is for the time range chosen above. Cache read is tokens read back from the provider's cache, billed at a lower rate; cache write is tokens stored in it. Burn rate is the total cost divided by the hours the range's data covers (at least one).</p>
+    </details>
+    <p class="cost-scroll-hint" id="cost-scroll-hint" hidden>Some tables have more columns to the right: scroll them sideways.</p>
 
     <!-- Cumulative Spend Chart -->
     <div class="cost-section">
@@ -102,7 +106,7 @@
     </div>
     <div class="cost-section">
         <h3 class="cost-section-title">Tool &amp; API Calls</h3>
-        <div id="call-metrics-summary" class="cost-table-container"><div class="cost-empty">No tool calls yet</div></div>
+        <div id="call-metrics-summary" class="cost-table-container"><div class="cost-empty">No tool calls in the last 24 hours yet. They appear once an agent has used a tool.</div></div>
     </div>
 
     <!-- By Branch -->
@@ -125,7 +129,7 @@
     <div class="cost-section">
         <h3 class="cost-section-title">By Task</h3>
         <div id="cost-by-task" class="cost-table-container">
-            <div class="cost-empty">No data in this range yet. It appears once an agent has used tokens; try a longer range.</div>
+            <div class="cost-empty">No task costs in this range yet. They appear once an agent has worked on a board task.</div>
         </div>
     </div>
 

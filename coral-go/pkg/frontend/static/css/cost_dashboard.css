@@ -253,7 +253,9 @@
 }
 
 .cost-note { margin: 0 0 12px; font-size: var(--fs-md); line-height: 1.45; color: var(--text-secondary); max-width: 70ch; }
-.cost-scroll-hint { margin: 0 0 4px; font-size: var(--fs-sm); color: var(--text-secondary); }
+.cost-help { margin: 0 0 12px; }
+.cost-help .cost-note { margin: 8px 0 0; }
+.cost-scroll-hint { margin: 0 0 12px; font-size: var(--fs-sm); color: var(--text-secondary); }
 .cost-scroll-hint[hidden] { display: none; }
 /* A table wider than its box on a phone: while more columns are to the right, the clipped edge fades out, so a column is not cut off as if it ended there (#6975) */
 .cost-table-container[data-more="right"] { -webkit-mask-image: linear-gradient(to right, rgb(var(--black-rgb)) calc(100% - 32px), transparent); mask-image: linear-gradient(to right, rgb(var(--black-rgb)) calc(100% - 32px), transparent); }
