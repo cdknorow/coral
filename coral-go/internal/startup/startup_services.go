@@ -85,7 +85,7 @@ func safeGo(ctx context.Context, name string, fn func()) {
 	safego.Loop(ctx, name, fn)
 }
 
-func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Config, srv *server.Server, agentRT background.AgentRuntime) *background.WorkflowRunner {
+func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Config, srv *server.Server, agentRT background.AgentRuntime) (*background.WorkflowRunner, *background.JobScheduler) {
 	gitStore := store.NewGitStore(db)
 	taskStore := store.NewTaskStore(db)
 	sessStore := store.NewSessionStore(db)
@@ -307,7 +307,7 @@ func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Conf
 	scheduler.SetWorkflowRunner(wfRunner, wfStore)
 
 	log.Printf("Started 8 background services + workflow runner (git poller, indexer, scheduler, board notifier, remote board poller, batch summarizer, session reconciler, token poller)")
-	return wfRunner
+	return wfRunner, scheduler
 }
 
 // startCloudConnector wires the optional Cloud Hub connector. A bad --cloud-url is

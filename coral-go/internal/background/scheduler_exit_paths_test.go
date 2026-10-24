@@ -205,6 +205,56 @@ func TestRunWorktreeIsMadeThenRemoved(t *testing.T) {
 	assert.True(t, os.IsNotExist(err), "the worktree is removed afterwards: %v", err)
 }
 
+// A Coral shutdown mid-run leaves the run as it is for the next start to adopt: its agent is still working in the worktree, so the worktree is not removed, the run is not finished, and nothing is unregistered or
+// written (#6918, #6911 case A: before, the run's goroutine carried on as if the run had ended and removed a clean worktree under a live agent).
+func TestRunAtShutdownKeepsItsWorktreeAndStaysRunning(t *testing.T) {
+	e := newExitEnv(t, "exit-shutdown-worktree")
+	repo := exitGitRepo(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	e.s.parentCtx = ctx
+	e.launch(t, func(context.Context) error { cancel(); return ctx.Err() }) // the server stops while the agent works
+	e.s.launchAndWatch(e.runID, store.ScheduledJob{AgentType: "claude"}, runConfig{repoPath: repo, createWorktree: true, cleanupWorktree: true})
+	require.NotEmpty(t, e.dir, "the agent was launched in the run's worktree")
+	_, err := os.Stat(e.dir)
+	assert.NoError(t, err, "the worktree a live agent works in is not removed at shutdown")
+	r := e.run(t)
+	assert.Equal(t, "running", r.Status, "the run is left for the next start to settle or adopt")
+	assert.Nil(t, r.FinishedAt)
+	assert.Empty(t, e.rt.kills(), "its agent is not killed")
+}
+
+// The same on a one-shot (FireOneshot goes through the same goroutine) whose parent context is the scheduler's.
+func TestOneshotAtShutdownKeepsItsWorktree(t *testing.T) {
+	e := newExitEnv(t, "exit-shutdown-oneshot")
+	repo := exitGitRepo(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	e.s.parentCtx = ctx
+	e.launch(t, func(context.Context) error { cancel(); return nil }) // a launch that returns cleanly as the server stops
+	e.s.launchAndWatch(e.runID, store.ScheduledJob{AgentType: "claude"}, runConfig{repoPath: repo, createWorktree: true, cleanupWorktree: true, tag: "task"})
+	_, err := os.Stat(e.dir)
+	assert.NoError(t, err, "the worktree stays")
+	assert.Equal(t, "running", e.run(t).Status)
+}
+
+// waitWatchers with a bound: at shutdown the run goroutines are waited for, but a goroutine stuck for good does not hold the exit.
+func TestWaitWatchersForGivesUp(t *testing.T) {
+	s := NewJobScheduler(store.NewScheduleStore(setupTestDB(t)), time.Minute)
+	ctx, cancel := context.WithCancel(context.Background())
+	s.parentCtx = ctx
+	release := make(chan struct{})
+	s.watching.Add(1)
+	go func() { <-release; s.watching.Done() }()
+	begin := time.Now()
+	assert.True(t, s.WaitWatchers(5*time.Second), "not shutting down: nothing to wait for")
+	assert.Less(t, time.Since(begin), time.Second, "and it does not wait")
+	cancel()
+	start := time.Now()
+	assert.False(t, s.WaitWatchers(100*time.Millisecond), "a stuck goroutine is given up on")
+	assert.Less(t, time.Since(start), 2*time.Second)
+	close(release)
+	assert.True(t, s.WaitWatchers(2*time.Second), "all returned")
+}
+
 func TestRunWithAWorktreeThatCannotBeMadeFailsBeforeLaunching(t *testing.T) {
 	launched := false
 	e := newExitEnv(t, "exit-noworktree")
