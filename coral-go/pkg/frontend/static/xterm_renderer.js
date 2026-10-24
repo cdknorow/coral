@@ -335,6 +335,7 @@ export function updateTerminalTheme() {
 // and a generation counter to suppress stale onclose reconnects.
 let _connectedSessionId = null;
 let _connectedServer = 'local';
+let _connectedAgentType = ''; // the session's agent type (claude, codex, ...), for its image-paste key
 let _wsGeneration = 0;
 // Reconnect pacing (#3944): a dropped terminal socket retries with the live feed's backoff and jitter, so every open
 // terminal does not knock in the same second after a server restart, and a refused socket does not retry every 3 s
@@ -423,7 +424,72 @@ function _onPaste(e) {
     if (!terminal) return;
     e.preventDefault();
     e.stopImmediatePropagation();
-    pasteText(e.clipboardData ? e.clipboardData.getData('text/plain') : '');
+    const fromCtrlV = _ctrlVAt && Date.now() - _ctrlVAt < 1000;
+    _ctrlVAt = 0;
+    const text = e.clipboardData ? e.clipboardData.getData('text/plain') : '';
+    // Ctrl+V with an image and no text (#312): the key the agent reads as "paste the image from the clipboard", so taking
+    // Ctrl+V for text paste costs it nothing. Another agent gets nothing (an empty paste).
+    const imageKey = Object.hasOwn(IMAGE_PASTE_KEYS, _connectedAgentType) ? IMAGE_PASTE_KEYS[_connectedAgentType] : ''; // own keys only, not toString
+    if (fromCtrlV && !text && imageKey && clipboardHasImage(e.clipboardData)) {
+        terminal.input(imageKey, true);
+        return;
+    }
+    pasteText(text);
+}
+
+// The image-paste key of each agent's CLI on Windows, checked live (#312, QA): Claude Code takes Alt+V (ESC v), not Ctrl+V;
+// Codex takes ^V. Fixed keys, by the session's agent type; never anything from the clipboard.
+const IMAGE_PASTE_KEYS = { claude: '\x1bv', codex: '\x16' };
+
+function clipboardHasImage(data) {
+    if (!data || !data.items) return false;
+    for (const it of data.items) if (it.kind === 'file' && /^image\//.test(it.type)) return true;
+    return false;
+}
+
+// Windows' terminal keys (#312, as Windows Terminal has them): Ctrl+C copies a selection (and clears it), and is ^C with none;
+// Ctrl+V pastes through the same path as any paste (pasteText: cleaned, bracketed, the person's input gate). Elsewhere the
+// platform's own keys are unchanged (Cmd+C/V on a Mac; Ctrl+Shift+C/V and Shift+Insert keep working everywhere).
+const WINDOWS_TERMINAL_KEYS = /^Win/i.test((typeof navigator !== 'undefined' && (navigator.userAgentData?.platform || navigator.platform)) || '');
+let _ctrlVAt = 0; // when Ctrl+V was pressed: the paste event that follows came from it (not Shift+Insert or a menu)
+
+/** Copies text to the clipboard: the async clipboard where the page may use it, else a hidden text box and the copy command
+ *  (an http page on another computer has no async clipboard). */
+function copyText(text) {
+    const viaCommand = () => {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0';
+        const back = document.activeElement;
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); } catch { /* nothing more to try */ }
+        ta.remove();
+        if (back && back.focus) back.focus();
+    };
+    if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).catch(viaCommand);
+    else viaCommand();
+}
+
+/** Windows' Ctrl+C and Ctrl+V in the terminal (see WINDOWS_TERMINAL_KEYS). Returns false when the key is taken here. */
+function windowsTerminalKey(ev) {
+    if (!WINDOWS_TERMINAL_KEYS || !ev.ctrlKey || ev.shiftKey || ev.altKey || ev.metaKey) return true;
+    const k = String(ev.key || '').toLowerCase();
+    if (k === 'c' && terminal && terminal.hasSelection()) {
+        if (ev.type === 'keydown') {
+            ev.preventDefault();
+            copyText(terminal.getSelection());
+            terminal.clearSelection();
+        }
+        return false;
+    }
+    if (k === 'v') {
+        // Not prevented: the browser's own paste follows, on the terminal's text box, and _onPaste takes it.
+        if (ev.type === 'keydown') _ctrlVAt = Date.now();
+        return false;
+    }
+    return true;
 }
 
 // Paste text into the terminal, cleaned. Output can switch bracketed paste off (ESC[?2004l), and
@@ -713,6 +779,7 @@ export function createTerminal(containerEl) {
             }
             return false; // never sent to the agent
         }
+        if (!windowsTerminalKey(ev)) return false;
         if (ev.type === 'keydown' && ev.key === 'Escape' && ev.ctrlKey && ev.shiftKey) {
             terminal.blur();
             return false;
@@ -772,6 +839,7 @@ export function connectTerminalWs(name, agentType, sessionId, server) {
     const myGeneration = ++_wsGeneration;
     _connectedSessionId = sessionId;
     _connectedServer = srv;
+    _connectedAgentType = String(agentType || '').toLowerCase();
     _paneClosed = false;
     _pane = null;       // until this server reports the pane's size (terminal_size, #3422)
     _seq = 0;
