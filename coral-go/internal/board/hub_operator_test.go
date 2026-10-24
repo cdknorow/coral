@@ -2,6 +2,7 @@ package board
 
 import (
 	"context"
+	"encoding/json"
 	"path/filepath"
 	"testing"
 
@@ -125,4 +126,29 @@ func TestHubOperatorActionsTableGainsTheColumnOnUpgrade(t *testing.T) {
 		require.NoError(t, err)
 		raw2.Close()
 	}
+}
+
+// #7061: the cross-team switch log keeps the person's stable id beside the label; a change made here, and one made before the column existed, have none; the id is never in what a reader gets.
+func TestSwitchLogKeepsTheStableUserID(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	const uid = "hub-uid-0123456789abcdef0123456789abcdef"
+	c, _, err := s.SetSwitchByHub(ctx, "p", SwitchMessaging, true, "hub-user-1234abcd", uid, "POST", "/api/board/p/cross-team/enable")
+	require.NoError(t, err)
+	assert.Equal(t, uid, c.WhoID)
+	got, err := s.LastSwitchChanges(ctx, "p")
+	require.NoError(t, err)
+	assert.Equal(t, "hub-user-1234abcd", got[SwitchMessaging].Who)
+	assert.Equal(t, uid, got[SwitchMessaging].WhoID, "kept in the record")
+	raw, err := json.Marshal(got[SwitchMessaging])
+	require.NoError(t, err)
+	assert.NotContains(t, string(raw), uid, "never in an answer")
+	actions, err := s.RecentHubOperatorActions(ctx, 5)
+	require.NoError(t, err)
+	require.Len(t, actions, 1)
+	assert.Equal(t, uid, actions[0].HubUserID, "and in the Operator action, in the same transaction")
+
+	require.NoError(t, s.NoteSwitchChangeLocal(ctx, "p", SwitchFiles, false, true))
+	got, _ = s.LastSwitchChanges(ctx, "p")
+	assert.Empty(t, got[SwitchFiles].WhoID, "a change made here has none")
 }

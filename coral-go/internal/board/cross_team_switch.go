@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -37,6 +38,10 @@ func (s *Store) ensureSwitchLogSchema(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	// The person's stable Coral Hub id beside the label (#7061): '' for a change made on this computer, on a personal machine, and for every row made before this. Added to a table made before it existed.
+	if _, err := s.db.ExecContext(ctx, `ALTER TABLE cross_team_switch_log ADD COLUMN who_id TEXT NOT NULL DEFAULT ''`); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+		return err
+	}
 	_, err = s.db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_cross_team_switch_log ON cross_team_switch_log (project, key, id)`)
 	return err
 }
@@ -49,7 +54,9 @@ type SwitchChange struct {
 	New     bool   `json:"new"`
 	Via     string `json:"via"`
 	Who     string `json:"who"`
-	At      string `json:"at"`
+	// WhoID is the stable id of who changed it on a team's machine (#7061); kept in the record, never in an answer.
+	WhoID string `json:"-"`
+	At    string `json:"at"`
 }
 
 // SetSwitchByHub sets one switch of a board for Coral Hub's owner and records it, in ONE transaction with the Operator-actions row (hub user, method, path, board, status): when either
@@ -80,7 +87,7 @@ func (s *Store) SetSwitchByHub(ctx context.Context, project, key string, on bool
 		at, hubUser, hubUserID, method, path, project, 200); err != nil {
 		return c, false, err
 	}
-	c = SwitchChange{Project: project, Key: key, Old: old, New: on, Via: SwitchViaHub, Who: hubUser, At: at}
+	c = SwitchChange{Project: project, Key: key, Old: old, New: on, Via: SwitchViaHub, Who: hubUser, WhoID: hubUserID, At: at}
 	if err := insertSwitchLog(ctx, tx, c); err != nil {
 		return c, false, err
 	}
@@ -95,8 +102,8 @@ type switchExec interface {
 }
 
 func insertSwitchLog(ctx context.Context, x switchExec, c SwitchChange) error {
-	res, err := x.ExecContext(ctx, `INSERT INTO cross_team_switch_log (project, key, old, new, via, who, at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		c.Project, c.Key, fmt.Sprint(c.Old), fmt.Sprint(c.New), c.Via, c.Who, c.At)
+	res, err := x.ExecContext(ctx, `INSERT INTO cross_team_switch_log (project, key, old, new, via, who, who_id, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		c.Project, c.Key, fmt.Sprint(c.Old), fmt.Sprint(c.New), c.Via, c.Who, c.WhoID, c.At)
 	if err != nil {
 		return err
 	}
@@ -117,7 +124,7 @@ func (s *Store) NoteSwitchChangeLocal(ctx context.Context, project, key string, 
 // LastSwitchChanges is the newest recorded change of each switch of a board, by key (a switch never changed is absent).
 func (s *Store) LastSwitchChanges(ctx context.Context, project string) (map[string]SwitchChange, error) {
 	rows, err := s.reader().QueryContext(ctx,
-		`SELECT key, old, new, via, who, at FROM cross_team_switch_log WHERE project = ? AND id IN (SELECT MAX(id) FROM cross_team_switch_log WHERE project = ? GROUP BY key)`, project, project)
+		`SELECT key, old, new, via, who, who_id, at FROM cross_team_switch_log WHERE project = ? AND id IN (SELECT MAX(id) FROM cross_team_switch_log WHERE project = ? GROUP BY key)`, project, project)
 	if err != nil {
 		return nil, err
 	}
@@ -126,7 +133,7 @@ func (s *Store) LastSwitchChanges(ctx context.Context, project string) (map[stri
 	for rows.Next() {
 		var c SwitchChange
 		var o, n string
-		if err := rows.Scan(&c.Key, &o, &n, &c.Via, &c.Who, &c.At); err != nil {
+		if err := rows.Scan(&c.Key, &o, &n, &c.Via, &c.Who, &c.WhoID, &c.At); err != nil {
 			return nil, err
 		}
 		c.Old, c.New, c.Project = o == "true", n == "true", project
