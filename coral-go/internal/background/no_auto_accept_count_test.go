@@ -11,7 +11,10 @@ import (
 // Auto-accept is the agent's CLI permission flag, which has no count: nothing enforced a limit on acceptances, so no
 // field, map or document may offer one (#6917, #6916 point 4).
 func TestNoAutoAcceptLimitIsOfferedAnywhere(t *testing.T) {
-	gone := regexp.MustCompile(`\b(max_auto` + `_accepts|[mM]axAuto` + `Accepts|AutoAccept` + `(Limits|Counts|Sessions))\b`)
+	gone := regexp.MustCompile(`\b(AutoAccept` + `(Limits|Counts|Sessions))\b`) // the maps are gone everywhere
+	// The request field may be named only where it is refused and said so: the 400 for a caller who still sends it (#6937), its test and the doc row.
+	field := regexp.MustCompile(`\b(max_auto` + `_accepts|[mM]axAuto` + `Accepts)\b`)
+	refusal := map[string]bool{"internal/server/routes/tasks.go": true, "internal/server/routes/tasks_no_auto_accept_count_test.go": true, "agent_docs/jobs.md": true}
 	root := filepath.Join("..", "..")
 	self := "no_auto_accept_count_test.go"
 	walkErr := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
@@ -37,6 +40,9 @@ func TestNoAutoAcceptLimitIsOfferedAnywhere(t *testing.T) {
 			return err
 		}
 		if w := gone.Find(b); w != nil {
+			t.Errorf("%s still names %q", path, w)
+		}
+		if w := field.Find(b); w != nil && !refusal[filepath.ToSlash(path[len(root)+1:])] {
 			t.Errorf("%s still names %q", path, w)
 		}
 		return nil
