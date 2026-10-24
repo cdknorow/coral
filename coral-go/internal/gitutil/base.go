@@ -91,7 +91,14 @@ func branchText(s string) string {
 func branchMissing(ctx context.Context, repoDir, name string) error {
 	out, _ := git(ctx, repoDir, "for-each-ref", "--format=%(refname:short)", "--sort=refname", "refs/heads")
 	cur, _ := git(ctx, repoDir, "symbolic-ref", "--short", "-q", "HEAD")
-	all := strings.Fields(out)
+	var all []string
+	for _, b := range strings.Fields(out) {
+		// Coral's own branches (a team's coral-team/<board>, a job run's coral/job-run-<id>) are not bases to offer: kept worktrees would crowd the list (#6817, UI Accessibility's #6806).
+		if strings.HasPrefix(b, "coral-team/") || strings.HasPrefix(b, "coral/job-run-") {
+			continue
+		}
+		all = append(all, b)
+	}
 	e := &BranchMissingError{Branch: branchText(name), Dir: repoDir, Branches: []string{}, Default: branchText(cur)}
 	for i, b := range all {
 		if i == 20 {
