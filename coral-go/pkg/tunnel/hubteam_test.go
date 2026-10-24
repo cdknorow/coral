@@ -245,3 +245,40 @@ func TestSessionReadsTheOwnerKindFromTheHello(t *testing.T) {
 	assert.Equal(t, OwnerKindPersonal, personal.PeerOwnerKind())
 	assert.True(t, personal.HasPeerCapability(CapTeamOwner), "the capability is what this Coral can do, not what it is enrolled as")
 }
+
+// Security's LOW on #7061: stampTeam replaces whatever the request headers already hold under the three names (and the hub user), on an owner route with a complete stamp, and removes them on any other
+// route or an incomplete stamp: the forward allowlist already drops them, and this pins that the stamp does not depend on it.
+func TestStampTeamReplacesPreloadedHeaders(t *testing.T) {
+	preload := func() http.Header {
+		h := http.Header{}
+		h.Set(HubOrgHeader, "ffffffff-0000-4000-8000-000000000001")
+		h.Set(HubTeamRoleHeader, "owner")
+		h.Add(HubTeamRoleHeader, "admin")
+		h.Set(HubUserIDHeader, "hub-uid-ffffffffffffffffffffffffffffffff")
+		h.Set(HubUserHeader, "hub-user-ffffffff")
+		return h
+	}
+	full := Header{Kind: KindHTTP, HubUser: teamUser, HubOrg: teamOrg, HubTeamRole: "admin", HubUserID: teamUID}
+
+	out := preload()
+	stampTeam(out, full, http.MethodGet, "/api/artifacts")
+	assert.Equal(t, []string{teamOrg}, out.Values(HubOrgHeader))
+	assert.Equal(t, []string{"admin"}, out.Values(HubTeamRoleHeader), "the two preloaded roles are one, the stream's")
+	assert.Equal(t, []string{teamUID}, out.Values(HubUserIDHeader))
+	assert.Equal(t, []string{teamUser}, out.Values(HubUserHeader))
+
+	for name, tc := range map[string]struct {
+		h    Header
+		path string
+	}{
+		"another route":        {full, "/api/sessions/live"},
+		"no org on the stream": {Header{Kind: KindHTTP, HubUser: teamUser, HubTeamRole: "admin", HubUserID: teamUID}, "/api/artifacts"},
+		"no id on the stream":  {Header{Kind: KindHTTP, HubUser: teamUser, HubOrg: teamOrg, HubTeamRole: "admin"}, "/api/artifacts"},
+	} {
+		out := preload()
+		stampTeam(out, tc.h, http.MethodGet, tc.path)
+		for _, n := range []string{HubOrgHeader, HubTeamRoleHeader, HubUserIDHeader} {
+			assert.Empty(t, out.Values(n), name+": "+n)
+		}
+	}
+}
