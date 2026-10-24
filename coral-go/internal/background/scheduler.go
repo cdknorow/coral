@@ -23,17 +23,6 @@ import (
 	"github.com/subgentic/coral/internal/store"
 )
 
-// AutoAcceptSessions tracks sessions with auto_accept enabled.
-// Used by the events API to auto-send acceptance.
-var (
-	AutoAcceptSessions = make(map[string]string) // session_id -> tmux_session_name
-	AutoAcceptCounts   = make(map[string]int)    // session_id -> count
-	AutoAcceptLimits   = make(map[string]int)    // session_id -> max allowed
-	autoAcceptMu       sync.Mutex
-)
-
-const defaultMaxAutoAccepts = 10
-
 // parseTimestamp parses a timestamp string, trying store.ISOFormat (with microseconds) first,
 // then falling back to time.RFC3339 for backwards compatibility.
 func parseTimestamp(s string) (time.Time, error) {
@@ -584,8 +573,6 @@ type runConfig struct {
 	maxDurationS    int
 	cleanupWorktree bool
 	createWorktree  bool
-	autoAccept      bool
-	maxAutoAccepts  int
 	tag             string // "scheduled" or "task"
 }
 
@@ -618,11 +605,6 @@ func (s *JobScheduler) FireOneshot(ctx context.Context, config map[string]interf
 	}
 	createWT, _ := config["create_worktree"].(bool)
 	cleanupWT, _ := config["cleanup_worktree"].(bool)
-	autoAccept, _ := config["auto_accept"].(bool)
-	maxAutoAccepts := defaultMaxAutoAccepts
-	if v, ok := config["max_auto_accepts"].(float64); ok && v > 0 {
-		maxAutoAccepts = int(v)
-	}
 
 	// Build a synthetic ScheduledJob for the launch function
 	prompt, _ := config["prompt"].(string)
@@ -652,8 +634,6 @@ func (s *JobScheduler) FireOneshot(ctx context.Context, config map[string]interf
 		maxDurationS:    int(maxDur),
 		cleanupWorktree: cleanupWT,
 		createWorktree:  createWT,
-		autoAccept:      autoAccept,
-		maxAutoAccepts:  maxAutoAccepts,
 		tag:             "task",
 	}
 
@@ -689,15 +669,6 @@ func (s *JobScheduler) KillRun(ctx context.Context, runID int64) bool {
 		delete(s.running, runID)
 	}
 	s.runningMu.Unlock()
-
-	// Unregister auto-accept
-	if run.SessionID != nil {
-		autoAcceptMu.Lock()
-		delete(AutoAcceptSessions, *run.SessionID)
-		delete(AutoAcceptCounts, *run.SessionID)
-		delete(AutoAcceptLimits, *run.SessionID)
-		autoAcceptMu.Unlock()
-	}
 
 	return true
 }
@@ -818,9 +789,6 @@ func (s *JobScheduler) launchAndWatch(runID int64, job store.ScheduledJob, rc ru
 	// Cleanup worktree if configured
 	if rc.cleanupWorktree && wt.worktreeDir != "" {
 		s.cleanupWorktree(rc.repoPath, wt.worktreeDir, wt.runBranch, wt.baseBranch)
-	}
-	if rc.autoAccept {
-		s.unregisterAutoAccept(ctx, runID)
 	}
 }
 
@@ -988,8 +956,7 @@ func (s *JobScheduler) rollBackWorktreeAdd(repoPath, dir, branch string, runID i
 	runGitCmd(ctx, repoPath, "branch", "-D", "--", branch)
 }
 
-// afterLaunch tags the launched session (e.g. "scheduled" or "task") and registers it for auto-accept when the job
-// asks.
+// afterLaunch tags the launched session (e.g. "scheduled" or "task").
 func (s *JobScheduler) afterLaunch(ctx context.Context, runID int64, job store.ScheduledJob, rc runConfig) {
 	run, err := s.store.GetScheduledRun(ctx, runID)
 	if err != nil || run == nil || run.SessionID == nil {
@@ -997,12 +964,6 @@ func (s *JobScheduler) afterLaunch(ctx context.Context, runID int64, job store.S
 	}
 	if rc.tag != "" {
 		s.tagSession(ctx, *run.SessionID, rc.tag)
-	}
-	if rc.autoAccept {
-		autoAcceptMu.Lock()
-		AutoAcceptSessions[*run.SessionID] = job.AgentType + "-" + *run.SessionID
-		AutoAcceptLimits[*run.SessionID] = rc.maxAutoAccepts
-		autoAcceptMu.Unlock()
 	}
 }
 
@@ -1039,19 +1000,6 @@ func (s *JobScheduler) finishRun(ctx context.Context, runID int64, job store.Sch
 			"exit_reason": exitReason,
 		})
 	}
-}
-
-// unregisterAutoAccept removes the run's session (from its run record) from auto-accept.
-func (s *JobScheduler) unregisterAutoAccept(ctx context.Context, runID int64) {
-	run, err := s.store.GetScheduledRun(ctx, runID)
-	if err != nil || run == nil || run.SessionID == nil {
-		return
-	}
-	autoAcceptMu.Lock()
-	delete(AutoAcceptSessions, *run.SessionID)
-	delete(AutoAcceptCounts, *run.SessionID)
-	delete(AutoAcceptLimits, *run.SessionID)
-	autoAcceptMu.Unlock()
 }
 
 // tagSession ensures a tag exists and applies it to a session.

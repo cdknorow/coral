@@ -88,7 +88,6 @@ func (h *TasksHandler) SubmitTask(w http.ResponseWriter, r *http.Request) {
 		DisplayName     string `json:"display_name"`
 		WebhookURL      string `json:"webhook_url"`
 		AutoAccept      bool   `json:"auto_accept"`
-		MaxAutoAccepts  int    `json:"max_auto_accepts"`
 	}
 	if err := decodeJSON(r, &body); err != nil {
 		errBadRequest(w, "invalid JSON")
@@ -145,9 +144,6 @@ func (h *TasksHandler) SubmitTask(w http.ResponseWriter, r *http.Request) {
 	if body.MaxDurationS == 0 {
 		body.MaxDurationS = 3600
 	}
-	if body.MaxAutoAccepts == 0 {
-		body.MaxAutoAccepts = 10
-	}
 
 	// Auto-accept flag injection (agent-type-aware)
 	flags := taskRunFlags(body.AgentType, body.Flags, body.AutoAccept)
@@ -171,8 +167,6 @@ func (h *TasksHandler) SubmitTask(w http.ResponseWriter, r *http.Request) {
 		"max_duration_s":   float64(body.MaxDurationS),
 		"cleanup_worktree": cleanupWT,
 		"create_worktree":  createWT,
-		"auto_accept":      body.AutoAccept,
-		"max_auto_accepts": float64(body.MaxAutoAccepts),
 	}
 
 	if h.scheduler != nil {
