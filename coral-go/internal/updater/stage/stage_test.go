@@ -278,11 +278,20 @@ func TestNothingNewerOrNothingPromoted(t *testing.T) {
 	assert.Equal(t, ResultUpToDate, e.check().Result, "the installed one is newer")
 
 	e = newEnv(t, "1.4.125")
-	e.rel.status["promote.json"] = 404 // released, not promoted
+	e.rel.list = `[{"tag_name":"v1.4.130","draft":false,"prerelease":false,"assets":[{"name":"SHA256SUMS.txt"}]}]` // released, not promoted: no promotion release listed
 	res = e.check()
 	assert.Equal(t, ResultNotPromoted, res.Result)
 	assert.Empty(t, e.stagedVersions())
 	assert.Empty(t, res.NextAttempt, "not promoted yet is neutral: no back-off, nothing in the state")
+
+	// a promotion listed with its files whose manifest answers 404 is one the download host doesn't serve yet: a network failure that backs off, not "not promoted" (Security's #337)
+	e = newEnv(t, "1.4.125")
+	e.rel.status["promote.json"] = 404
+	res = e.check()
+	assert.Equal(t, ResultFailed, res.Result)
+	assert.Equal(t, "manifest", res.FailedStage)
+	assert.NotEmpty(t, res.NextAttempt)
+	assert.Empty(t, e.stagedVersions())
 
 	e = newEnv(t, "1.4.125")
 	e.rel.status["SHA256SUMS.txt.sigstore.json"] = 404

@@ -156,3 +156,29 @@ func TestARehearsalWithAHigherSequenceDoesNotHideTheRealPromotion(t *testing.T) 
 	assert.Equal(t, "1.4.131", res.Version)
 	// before the guard the rehearsal (sequence 9) was picked and then refused by the rules: the result was a refusal and nothing was staged
 }
+
+// A revocation published seconds ago can be listed before the download host serves its files. Its 404 stops the pass (the network back-off), so the older promotion it revokes is
+// not staged in the meantime; once its files are served, the revocation is the one taken (Security's #337).
+func TestANewerPromotionThatIsNotServedYetDoesNotLetAnOlderOneWin(t *testing.T) {
+	r := newRig(t)
+	r.publish(Spec{Version: "1.4.131", Sequence: 5})
+	r.publish(Spec{Version: "1.4.132", Sequence: 6})
+	r.publish(Spec{Version: "1.4.131", Sequence: 8, Revoked: []string{"1.4.132"}}) // the revocation of 1.4.132
+	newest := PromotionTag("v1.4.131", 8) + "/" + stage.ManifestFile
+	r.gh.Status[newest] = 404
+	res := r.check()
+	assert.Equal(t, stage.ResultFailed, res.Result, "%+v", res)
+	assert.Equal(t, "manifest", res.FailedStage, "a network failure, not a refusal")
+	assert.NotEmpty(t, res.NextAttempt, "backed off like any download that failed")
+	r.nothingStaged()
+	assert.Zero(t, r.gh.Hits[FakeRepo+"/releases/download/"+PromotionTag("v1.4.132", 6)+"/"+stage.ManifestFile], "the pass stopped at the newest promotion, before the one it revokes")
+
+	delete(r.gh.Status, newest)
+	r.cfg.Now = func() time.Time { return time.Now().Add(time.Hour) }
+	res = r.check()
+	require.Equal(t, stage.ResultStaged, res.Result, "%+v", res)
+	assert.Equal(t, "1.4.131", res.Version, "the revocation (sequence 8) is the newest promotion, and 1.4.132 is revoked")
+	st, err := verify.LoadState(r.cfg.DataDir + "/" + stage.UpdatesDir)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"1.4.132"}, st.Revoked)
+}
