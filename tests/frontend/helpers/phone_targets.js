@@ -27,6 +27,38 @@ const MEASURE = `(() => {
     }
     return { n, small, dups: [...groups.values()].filter(g => g.count > 1), unnamed }; })()`;
 
+// The icon census (#6879, the guard for the operator's (i) bug, #6750): on every screen and dialog, at 1280 and 390 px, each icon-only control (a button, link or summary with no words of its own: only a glyph and a name) has a
+// glyph of at most 24 px (the visible glyph, not the 44 px touch target around it); an (i) info button, whose circle IS the glyph, is itself at most 24 px; and when a label sits on the same row, the glyph's vertical centre is within 2 px
+// of the label's first line's centre. Reports every failure; the page expression runs on each scene in both modes.
+const ICON_ALIGN = `(() => {
+    const vis = e => { if (!e.getClientRects().length) return false; if (e.checkVisibility && !e.checkVisibility({ checkVisibilityCSS: true, contentVisibilityAuto: true })) return false; const cs = getComputedStyle(e); return cs.visibility !== 'hidden' && Number(cs.opacity) !== 0; };
+    const nm = e => (e.getAttribute('aria-label') || e.title || '').replace(/\\s+/g, ' ').trim();
+    const d = e => e.tagName.toLowerCase() + (e.id ? '#' + e.id : '') + (typeof e.className === 'string' && e.className.trim() ? '.' + e.className.trim().split(/\\s+/)[0] : '');
+    const ownWords = e => { const c = e.cloneNode(true); c.querySelectorAll('.material-icons, svg, img, [aria-hidden=true], .sr-only, .badge, .count').forEach(x => x.remove()); return (c.textContent || '').replace(/\\s+/g, ' ').trim(); };
+    const bad = []; let n = 0;
+    for (const e of document.querySelectorAll('button, a[href], summary, [role=button]')) {
+        if (!vis(e) || e.disabled || e.closest('.sr-only, .xterm, [data-census-skip]')) continue;
+        const b = e.getBoundingClientRect(); if (!b.width || !b.height) continue;
+        const iconOnly = !ownWords(e) && nm(e) && (e.querySelector('.material-icons, svg, img') || /info/.test(e.className));
+        if (!iconOnly) continue;
+        n++;
+        const isInfo = /info-btn/.test(e.className);
+        const glyphEl = isInfo ? e : (e.querySelector('.material-icons, svg, img') || e);
+        const g = glyphEl.getBoundingClientRect();
+        if (g.width > 24.5 || g.height > 24.5) bad.push(d(e) + ' "' + nm(e).slice(0, 30) + '": the visible ' + (isInfo ? 'circle' : 'glyph') + ' is ' + Math.round(g.width) + 'x' + Math.round(g.height) + ' px (at most 24)');
+        // a label on the same row: its first line's centre against the glyph's
+        const parent = e.parentElement; if (!parent) continue;
+        const label = [...parent.children].find(c => c !== e && /^(LABEL|SPAN|STRONG|LEGEND|H3|H4|P|DT)$/.test(c.tagName) && !c.matches('button, a, .material-icons, .sr-only') && !c.hidden && c.getClientRects().length && c.textContent.trim() && !c.querySelector('button, a, input, select'));
+        if (!label) continue;
+        const range = document.createRange(); range.selectNodeContents(label); const rects = [...range.getClientRects()].filter(x => x.width > 1 && x.height > 1); if (!rects.length) continue;
+        const first = rects[0], last = rects[rects.length - 1], gc = g.top + g.height / 2, lc = first.top + first.height / 2;
+        const lcs = [lc, last.top + last.height / 2, (Math.min(...rects.map(x => x.top)) + Math.max(...rects.map(x => x.bottom))) / 2]; // a line of the label, or the label as a block (a wrapped title the (i) is centred on)
+        if (!isInfo && !rects.every(x => Math.abs(x.top - first.top) < 3)) continue; // a wrapped title beside a toolbar: the buttons centre on the block, as they should; only an (i) follows the first line
+        const sameRow = g.bottom > first.top - 2 && g.top < first.bottom + 2; // beside the label's first line, not under it
+        if (sameRow && lcs.every(c => Math.abs(gc - c) > 2)) bad.push(d(e) + ' "' + nm(e).slice(0, 30) + '": its centre is ' + Math.round((gc - lc) * 10) / 10 + ' px from its label (' + d(label) + ' "' + label.textContent.replace(/\\s+/g, ' ').trim().slice(0, 24) + '") first line (at most 2)');
+    }
+    return { n, bad }; })()`;
+
 // Reviewed exceptions: [scene pattern, control description pattern, why]. Empty on purpose: a control under 44 px is fixed, not listed. Add one here only with the reason and a reviewer.
 const ALLOW = [];
 
@@ -175,7 +207,8 @@ async function scene(ev, results, name, setup, { min = 3, expect, contrastOnly =
     const m = contrastOnly ? { n: min, small: [], dups: [], unnamed: [] } : await ev(MEASURE); // contrastOnly (the desktop pass): only the colours are looked at
     const cr = await contrastOf(ev, name);
     const sc = await scaleOf(ev, name);
-    results.push({ name, contrast: cr.fails, contrastChecked: cr.checked, n: m.n, min, small: m.small.filter(c => !allowed(name, c)), dups: (m.dups || []).filter(d => !allowedDup(name, d)), unnamed: (m.unnamed || []).filter(u => !allowedUnnamed(name, u)), scale: sc });
+    const ia = await ev(ICON_ALIGN);
+    results.push({ name, iconBad: ia.bad, iconN: ia.n, contrast: cr.fails, contrastChecked: cr.checked, n: m.n, min, small: m.small.filter(c => !allowed(name, c)), dups: (m.dups || []).filter(d => !allowedDup(name, d)), unnamed: (m.unnamed || []).filter(u => !allowedUnnamed(name, u)), scale: sc });
 }
 
 /** The problems in the results: a scene that failed to open, one with too few controls to be the real screen, and every control under 44 px. */
@@ -186,6 +219,7 @@ function problems(results) {
         else {
             if (r.n < r.min) out.push(`${r.name}: only ${r.n} controls (expected at least ${r.min}): the scene did not render`);
             for (const c of r.small) out.push(`${r.name}: ${c.d} "${c.t}" ${c.w}x${c.h}${c.via}`);
+            for (const b of r.iconBad || []) out.push(`${r.name}: [icon] ${b}`);
             if (r.contrastChecked === 0) out.push(`${r.name}: the contrast pass looked at nothing (the scene is empty or the audit did not run)`);
             for (const f of r.contrast || []) out.push(`${r.name}: [${f.theme}] ${f.what} ${f.sel} "${f.text}" ${f.ratio}:1, needs ${f.need}:1 (${f.fg} on ${f.bg})`);
             if (r.scale) {
