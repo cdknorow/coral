@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -100,7 +101,7 @@ func startFakeSurveyClaude(t *testing.T, mode string) (rt *PTYRuntime, name, sid
 	t.Cleanup(func() { os.RemoveAll(dir) })
 	out = filepath.Join(dir, "typed.txt")
 	rt = newTestPTYRuntime()
-	sid = "11111111-2222-3333-4444-555555555555"
+	sid = fmt.Sprintf("11111111-2222-3333-4444-%012d", surveySessions.Add(1)) // a session of its own every run: the gate keeps its 30 s retry gap per session name for the whole process
 	name = "claude-" + sid
 	// the start command runs in PowerShell: call operator, quoted paths, no pipe character
 	cmd := fmt.Sprintf("& '%s' '-test.run=TestFakeSurveyClaudeHelper' '-fake-claude=%s'", exe, mode) // single-quoted: PowerShell splits an unquoted -test.run=X at the dot
@@ -120,6 +121,8 @@ func startFakeSurveyClaude(t *testing.T, mode string) (rt *PTYRuntime, name, sid
 	}
 	return
 }
+
+var surveySessions atomic.Int64
 
 const surveyNudge = "You have 1 unread message on the message board. Run 'coral-board read' to see them."
 
