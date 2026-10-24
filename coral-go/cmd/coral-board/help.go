@@ -15,13 +15,15 @@ var commands = map[string]bool{
 	"subscribers": true, "status": true, "working-mode": true, "leave": true,
 	"delete": true, "export": true, "peek": true, "task": true, "workflow": true,
 	"wait": true, "send": true, "targets": true, "health": true,
-	"queue": true,
+	"queue": true, "goal": true,
 }
 
 // textFlags take free text that is sent to the server.
 var textFlags = map[string]bool{
 	"message": true, "reason": true, "body": true, "instructions": true,
 	"custom-instructions": true, "workflow-instructions": true,
+	// Board goals (#7116): the free-text options of coral-board goal.
+	"title": true, "outcome": true, "done-when": true, "blocked-on": true, "decision": true, "recommendation": true, "if-silent": true,
 }
 
 // handleHelp prints usage when args ask for it: "--help", "-h" or "help" as
@@ -45,7 +47,7 @@ func handleHelp(args []string, w io.Writer) (bool, int) {
 		fmt.Fprintln(w, usageText)
 		return true, 0
 	}
-	subHelp := (cmd == "task" || cmd == "workflow") && len(rest) > 0 && rest[0] == "help"
+	subHelp := (cmd == "task" || cmd == "workflow" || cmd == "goal") && len(rest) > 0 && rest[0] == "help"
 	if !commands[cmd] || !(subHelp || clihelp.Requested(rest)) {
 		return false, 0
 	}
@@ -57,6 +59,8 @@ func handleHelp(args []string, w io.Writer) (bool, int) {
 // workflow subcommand when rest names it.
 func commandUsage(cmd string, rest []string) string {
 	switch cmd {
+	case "goal":
+		return goalUsageText
 	case "task", "workflow":
 		full := taskUsageText
 		if cmd == "workflow" {

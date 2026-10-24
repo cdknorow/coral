@@ -92,6 +92,8 @@ func main() {
 		cmdPeek()
 	case "task":
 		cmdTask()
+	case "goal":
+		cmdGoal()
 	case "workflow":
 		cmdWorkflow()
 	case "wait":
@@ -175,7 +177,9 @@ Commands:
   export [--output FILE] [--format json|markdown|html] [--merge FILE]
                                Export chat (auto-detects format from extension)
   task add "title" [--body "details"] [--priority P]  Create a task
-  task list                      List this board's tasks
+  task list [--goal ID]          List this board's tasks, or one goal's
+  task goal <task> <goal|none>   Put a task on a goal of this board, or take it off
+  goal add/list/show/update/close  The goals of this board (coral-board goal --help): what the team works toward, with how its tasks stand
   task detail <id>               Read requirements, dependencies and results
   task show <id> [--json]        A task's status, result message and artifact links
   task claim [id]                Claim a named ready task or next ready work

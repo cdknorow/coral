@@ -34,6 +34,26 @@ func checkKnownFlags(args []string) error {
 		spec = clihelp.FlagSpec{Bools: []string{"--activity", "--json"}, Values: []string{"--board"}}
 	case "queue":
 		spec = jsonOnly
+	case "goal":
+		if len(rest) == 0 {
+			return nil
+		}
+		sub := rest[0]
+		rest = rest[1:]
+		switch sub {
+		case "list":
+			spec = clihelp.FlagSpec{Bools: []string{"--json"}, Values: []string{"--state"}}
+		case "show":
+			spec = clihelp.FlagSpec{Bools: []string{"--json"}, Positional: 1}
+		case "add":
+			spec = clihelp.FlagSpec{Values: []string{"--outcome", "--done-when", "--state", "--driver"}, Positional: 1}
+		case "update":
+			spec = clihelp.FlagSpec{Values: []string{"--title", "--outcome", "--done-when", "--state", "--driver", "--blocked-on", "--decision", "--recommendation", "--if-silent"}, Positional: 1}
+		case "close":
+			spec = clihelp.FlagSpec{Values: []string{"--reason", "--state"}, Positional: 1}
+		default:
+			return nil
+		}
 	case "task":
 		if len(rest) == 0 {
 			return nil
@@ -41,8 +61,12 @@ func checkKnownFlags(args []string) error {
 		sub := rest[0]
 		rest = rest[1:]
 		switch sub {
-		case "list", "current":
+		case "list":
+			spec = clihelp.FlagSpec{Bools: []string{"--json"}, Values: []string{"--goal"}}
+		case "current":
 			spec = jsonOnly
+		case "goal":
+			spec = clihelp.FlagSpec{Positional: 2}
 		case "detail", "show":
 			spec = clihelp.FlagSpec{Bools: []string{"--json"}, Positional: 1}
 		default:
