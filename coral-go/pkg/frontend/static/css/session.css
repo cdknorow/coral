@@ -1689,7 +1689,7 @@
 .prompt-inspection-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; color: var(--text-secondary); font-size: 0.75rem !important; }
 .prompt-inspection-fragment { margin-top: 10px; }
 .prompt-inspection-folded { --dz-width: auto; --dz-pad: 0; --dz-size: 0.75rem; --dz-color: var(--text-secondary); --dz-gap: 4px; }
-.prompt-inspection-folded > summary { display: flex; align-items: center; list-style: none; gap: 4px; }
+.prompt-inspection-folded > summary { display: flex; align-items: center; list-style: none; gap: 4px; line-height: 1.25; } /* one line height on every platform: with "normal" the fold arrow's fallback font made the row 16 px on Windows, 15 elsewhere (#307) */
 .prompt-inspection-folded > summary::-webkit-details-marker { display: none; }
 .prompt-inspection-folded > summary::before { content: '▸' / ''; }
 .prompt-inspection-folded[open] > summary::before { content: '▾' / ''; }
