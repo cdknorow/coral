@@ -6,7 +6,7 @@ const { connect } = require('./agent_view_harness');
 
 // words a person can see in a group now, per the audit (artifact 141071b6); a group with no number has not been cut yet
 const TERMINAL_BUDGET = 60;
-const WITH_WARNING_BUDGET = 64; // 60, and the tools folder warning's label, line and button when that row shows // the same as settings_text_budget_browser's, now on a pty-only system // (Security: +3 for #6047's install ID row, "Install ID", "Copy" and its hint; "No prompts, transcripts, or secrets are sent." stays visible beside the Usage analytics switch: it is what a person reads where they decide) // (Storage: 47 on a fresh server; a server where an earlier suite turned automatic cleanup on shows its two status lines, up to 62)
+const WITH_WARNING_BUDGET = 65; // 60 (+1 for the render engine's disclosure moved here from General, #7040), and the tools folder warning's label, line and button when that row shows // the same as settings_text_budget_browser's, now on a pty-only system // (Security: +3 for #6047's install ID row, "Install ID", "Copy" and its hint; "No prompts, transcripts, or secrets are sent." stays visible beside the Usage analytics switch: it is what a person reads where they decide) // (Storage: 47 on a fresh server; a server where an earlier suite turned automatic cleanup on shows its two status lines, up to 62)
 
 (async () => {
     const { client, Page, Emulation, ev, waitFor, PRELOAD, install } = await connect();

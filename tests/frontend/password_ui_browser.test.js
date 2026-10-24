@@ -135,8 +135,8 @@ const BASE = require('./test_base').BASE;
             out.signOutCall = calls[calls.length - 1].url;
             // a caller with no browser sign-in: the list says so inline, never "signed out" (a 403, not dashboard_auth_required)
             window.__needSignIn = true;
-            await sec.loadSecurityRow(); await waitFor(() => $('settings-security') && !$('settings-security').hidden && /Sign in here to manage browsers/.test(row.textContent), 'the inline note');
-            out.needSignInNote = /Sign in here to manage browsers\./.test(row.textContent);
+            await sec.loadSecurityRow(); await waitFor(() => $('settings-security') && !$('settings-security').hidden && row.querySelector('.sec-sessions') && !row.querySelector('.sec-sessions').children.length, 'the empty sessions block');
+            out.needSignInNote = !/Sign in here to manage browsers\./.test(row.textContent) && !row.querySelector('.sec-sessions').children.length && !$('sec-sessions');
             out.noSignedOutPanel = !document.getElementById('signed-out-panel') && !document.querySelector('dialog[open]');
             window.__needSignIn = false;
             window.fetch = RealFetch; $('set-password-modal')?.remove(); row.remove();
@@ -167,7 +167,7 @@ const BASE = require('./test_base').BASE;
         assert.equal(out.wrongCurrent, 'The current password is wrong');
         assert.deepEqual(out.changeCall, { url: '/api/auth/password/change', body: { current: 'old pw', password: 'n' } });
         assert.equal(out.signOutCall, '/api/auth/sessions/sign-out-others');
-        assert.ok(out.needSignInNote, 'a 403 password_session_required shows an inline note'); assert.ok(out.noSignedOutPanel, 'and never the signed-out panel');
+        assert.ok(out.needSignInNote, 'a 403 password_session_required shows nothing under the browsers row, not a note (#7040)'); assert.ok(out.noSignedOutPanel, 'and never the signed-out panel');
         console.log('PASS browser password: prompt, Not now rules, settings list as text, change, sign out others');
     } finally { await client.close(); }
 })().catch(e => { console.error(e); process.exitCode = 1; });

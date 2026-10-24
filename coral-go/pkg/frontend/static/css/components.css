@@ -4413,7 +4413,7 @@ a.ibx-open, a.ibx-open:visited { color: var(--link-text); }
 .settings-row > .net-group-head { flex-wrap: nowrap; }
 .net-group-head > .settings-info-btn, .tb-head > .settings-info-btn { align-self: center; margin-top: 0; } /* the head is one centred row (title, (i), switch): the (i) centres with the title (a wrapped title: centred on it as a block), not at the top of the row with a margin worked out for a body label's line height (the icon census, #6879) */
 .settings-row > .net-group-head .net-group-title { min-width: 0; }
-@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) and (max-width: 950px) { #net-group-hub { order: -1; } }
+/* (the phone used to put Coral Hub first with order: -1: the pane reads in the same order at every width now, #7040) */
 .settings-info-btn { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 1.5rem; height: 1.5rem; padding: 0; flex: none; border: 1px solid var(--control-border); border-radius: 50%; background: none; color: var(--text-secondary); cursor: pointer; }
 .settings-info-btn .material-icons { font-size: 1rem; }
 /* On its label's first line, not centred on the whole row: the circle's centre is the first line's centre (a label of two lines keeps it beside the first). */
@@ -4799,3 +4799,8 @@ dialog.reminder-dialog::backdrop { background: rgba(var(--black-rgb), 0.5); }
 li > .row-btn { flex: 1 1 auto; align-self: stretch; min-width: 0; width: 100%; box-sizing: border-box; display: flex; flex-direction: inherit; align-items: inherit; justify-content: inherit; gap: inherit; min-height: inherit; margin: 0; padding: 0; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; user-select: inherit; }
 li > .row-btn:focus-visible { outline: none; }
 li:has(> .row-btn:focus-visible) { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* Settings panes with several parts (#7040): a small heading over each group of rows (Agents: Defaults, Behaviour, Team and board, Tools) */
+.settings-subsection { margin: 0 0 12px; }
+.settings-subhead { margin: 14px 0 4px; font-size: var(--fs-md); font-weight: 700; color: var(--text-primary); }
+.settings-subsection:first-of-type .settings-subhead { margin-top: 0; }

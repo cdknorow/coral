@@ -6,7 +6,7 @@ const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
 
 // words a person can see in a group now, per the audit (artifact 141071b6); a group with no number has not been cut yet
-const BUDGET = { 'Network and Hub': 91, 'Agents': 64, 'Storage and cleanup': 65, 'Terminal': 55, 'General': 40, 'Notifications': 6, 'Files and Git': 16, 'Security and privacy': 43 }; // (Security: +3 for #6047's install ID row, "Install ID", "Copy" and its hint; "No prompts, transcripts, or secrets are sent." stays visible beside the Usage analytics switch: it is what a person reads where they decide) // (Storage: 47 on a fresh server; a server where an earlier suite turned automatic cleanup on shows its two status lines, up to 62) // (Agents: +3 for #6583's switch "Coral artifact reminders": the group was already at its 61 words without the row, so any visible label raises it; the help is behind the (i) and is not counted) // (Network and Hub: 80 + 11: the Coral Hub card's level sentence and the Operator's state (#6579 part 1), and "Manage other computers from this one" with Security's line "Adds a Servers tab, with full control of those computers." (#6579 part 2))
+const BUDGET = { 'Network and Hub': 104, 'Agents': 70, 'Storage and cleanup': 65, 'Terminal': 53, 'General': 22, 'Notifications': 7, 'Files and Git': 16, 'Security and privacy': 43 }; // (Network and Hub: +13, the About block and Connect to Coral Hub moved here from General (#7040)) // (Agents: +6 for the four subheads Defaults, Behaviour, Team and board, Tools (#7040)) // (Security: +3 for #6047's install ID row, "Install ID", "Copy" and its hint; "No prompts, transcripts, or secrets are sent." stays visible beside the Usage analytics switch: it is what a person reads where they decide) // (Storage: 47 on a fresh server; a server where an earlier suite turned automatic cleanup on shows its two status lines, up to 62) // (Agents: +3 for #6583's switch "Coral artifact reminders": the group was already at its 61 words without the row, so any visible label raises it; the help is behind the (i) and is not counted) // (Network and Hub: 80 + 11: the Coral Hub card's level sentence and the Operator's state (#6579 part 1), and "Manage other computers from this one" with Security's line "Adds a Servers tab, with full control of those computers." (#6579 part 2))
 
 (async () => {
     const { client, Page, Emulation, ev, waitFor, PRELOAD, install } = await connect();
@@ -27,10 +27,15 @@ const BUDGET = { 'Network and Hub': 91, 'Agents': 64, 'Storage and cleanup': 65,
         await waitFor(`!!document.querySelector('#settings-pane-general:not([hidden])')`, 'General open', 6000);
         const seen = id => ev(`(() => { const e = document.getElementById(${JSON.stringify(id)}); return !!e && e.checkVisibility({ checkVisibilityCSS: true }); })()`);
         assert.deepEqual(await ev(`[...document.querySelectorAll('#settings-pane-general select')].filter(e => e.checkVisibility({ checkVisibilityCSS: true })).slice(0, 2).map(e => e.id)`), ['settings-theme', 'settings-agent-type'], 'Theme, then Default agent type');
+        // the render engine is a Terminal setting (#7040), behind a disclosure of its own
+        await ev(`document.getElementById('settings-tab-terminal').click(); true`);
+        await waitFor(`!!document.querySelector('#settings-pane-terminal:not([hidden])')`, 'Terminal open', 6000);
         assert.equal(await seen('settings-renderer-select'), false, 'the render engine is not shown until its disclosure opens');
-        await ev(`document.querySelector('#settings-pane-general .settings-engine-more > summary').click(); true`);
+        await ev(`document.querySelector('#settings-pane-terminal .settings-engine-more > summary').click(); true`);
         assert.equal(await seen('settings-renderer-select'), true, 'and is there when it does');
-        await ev(`document.querySelector('#settings-pane-general .settings-engine-more').open = false; true`);
+        await ev(`document.querySelector('#settings-pane-terminal .settings-engine-more').open = false; true`);
+        await ev(`document.getElementById('settings-tab-general').click(); true`);
+        await waitFor(`!!document.querySelector('#settings-pane-general:not([hidden])')`, 'General open again', 6000);
         const groups = await ev(`[...document.querySelectorAll('#settings-tabs [role=tab]')].map(b => ({ id: b.id, name: b.querySelector('.settings-tab-name').textContent.trim() }))`);
         for (const g of groups) {
             await ev(`document.getElementById(${JSON.stringify(g.id)}).click(); true`);

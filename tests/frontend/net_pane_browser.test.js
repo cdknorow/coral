@@ -42,10 +42,10 @@ const BASE = require('./test_base').BASE;
             await installAudit(ev);
             const remote = () => ev(`(() => { const c = document.getElementById('settings-remote-access-enabled'); c.click(); return c.checked; })()`);
 
-            // 1. the groups: headings, and the order (Coral Hub first on a phone)
+            // 1. the groups: headings, and the order (one order at every width)
             assert.deepEqual(await headings(), ['Remote access', 'Coral Hub', 'Manage other computers from this one'], at + 'the headings list, with nothing that could use a setup code yet');
             const order = await ev(`(() => { const t = id => document.getElementById(id).getBoundingClientRect().top; return { hubFirst: t('net-group-hub') < t('net-group-access'), accessFirst: t('net-group-access') < t('net-group-hub'), manageLast: t('net-group-manage') > t('net-group-hub') && t('net-group-manage') > t('net-group-access') }; })()`);
-            if (mobile) assert.equal(order.hubFirst, true, at + 'Coral Hub comes first on a phone'); else assert.equal(order.accessFirst, true, at + 'Remote access first on a desktop');
+            assert.equal(order.accessFirst, true, at + 'Remote access comes first at every width (#7040)');
             assert.equal(order.manageLast, true, at + 'Manage other computers last');
             assert.equal(await ev(`document.getElementById('settings-remote-access-enabled').getAttribute('aria-labelledby')`), 'net-access-title', at + 'the switch is named by its heading');
             assert.equal(await ev(vis('#net-group-setup')), false, at + 'no Setup code group while Remote access is off and no link is being made');

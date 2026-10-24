@@ -102,7 +102,7 @@ function changeForm() {
 
 function sessionsBlock(data) {
     const box = el('div', 'sec-sessions');
-    if (data && data.needSignIn) { const b = el('div', 'sec-sessions'); b.append(el('p', 'tb-note', 'Sign in here to manage browsers.')); return b; }
+    if (data && data.needSignIn) return el('div', 'sec-sessions'); // nothing to manage and nothing to say (#7040)
     const all = (data && Array.isArray(data.sessions)) ? data.sessions : null;
     const list = all && all.filter(s => s.method !== 'hub');   // Coral Hub sign-ins are listed, with Sign out, in their own block
     if (!list) { box.append(el('p', 'tb-note', 'The list of signed-in browsers could not be loaded.')); return box; }

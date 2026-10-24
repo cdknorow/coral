@@ -651,6 +651,7 @@
                         <option value="light">Light</option>
                         <option value="system">System</option>
                     </select>
+                    <button class="btn btn-small settings-theme-btn" data-on-click="m-hide-settings-modal-then-show-theme-configurator"> <span class="material-icons icon-inline" aria-hidden="true">palette</span> Customize Theme </button>
                 </dd>
                 </div>
                 <div class="settings-row">
@@ -669,31 +670,7 @@
                 {{ template "includes/toggle_row" (toggle "settings-show-scrollbars" "Show scrollbars" "Terminal and chat views." "checked") }}
                 {{ template "includes/toggle_row" (toggle "settings-check-updates" "Check for updates" "") }}
                         </dl>
-                        <details class="disclosure settings-engine-more">
-                            <summary>Render engine</summary>
-                            <dl class="info-grid settings-grid">
-                                <div class="settings-row">
-                                <dt id="settings-renderer-select-label">Default render engine</dt>
-                                <dd>
-                                    <select aria-labelledby="settings-renderer-select-label" id="settings-renderer-select" class="settings-select"></select>
-                                </dd>
-                                </div>
-                            </dl>
-                        </details>
-                        <button class="btn settings-theme-btn" data-on-click="m-hide-settings-modal-then-show-theme-configurator">
-                            <span class="material-icons icon-inline" aria-hidden="true">palette</span>
-                            Customize Theme
-                        </button>
-                        <!-- About: the version (Coral has no paid licence, #3221) -->
-                        <div class="settings-section settings-about-section" id="about-section">
-                            <h4 class="settings-about-title">About</h4>
-                            <div id="app-version-label" class="settings-version-label"></div>
-                            <!-- This machine's health from the feed (#3446); a hub-served page has no machine of its own: it is part of About (UI audit #5589, finding 19) -->
-                            <div class="settings-machine-health" data-local-only>
-                                <div id="machine-health-local"></div>
-                            </div>
-                            <button type="button" class="btn btn-small settings-editions-btn" data-editions="open">Connect to Coral Hub…</button>
-                        </div>
+
                         <div id="tier-branding-label" class="tier-branding" style="display:none"></div>
                     </section>
                     <section class="settings-pane" id="settings-pane-updates" data-group="updates" data-flag="updates" data-icon="system_update" data-title="Updates" role="tabpanel" aria-labelledby="settings-tab-updates" tabindex="-1" hidden>
@@ -702,6 +679,8 @@
                     </section>
                     <section class="settings-pane" id="settings-pane-agents" data-group="agents" data-icon="smart_toy" data-title="Agents" role="tabpanel" aria-labelledby="settings-tab-agents" tabindex="-1" hidden>
                         <h4 class="settings-pane-title">Agents</h4>
+                        <section class="settings-subsection" aria-labelledby="settings-agents-defaults">
+                        <h5 class="settings-subhead" id="settings-agents-defaults">Defaults</h5>
                         <dl class="info-grid settings-grid">
                 <div class="settings-row">
                 <dt id="settings-permission-mode-label">Default permission mode</dt>
@@ -774,13 +753,25 @@
                     <span class="settings-hint" data-info>Model ids are passed to the CLI as they are written here. They appear in every model picker, including the one that switches a running agent's model.</span>
                 </dd>
                 </div>
-                {{ template "includes/toggle_row" (toggle "settings-auto-resume" "Resume after API errors" "When an agent's CLI stops on a rate limit, an overload or another API error, Coral wakes it again after about 2, then 5, then 15 minutes, and stops trying after the third. Waking the agent yourself starts the count again.") }}
+</dl>
+                        </section>
+                        <section class="settings-subsection" aria-labelledby="settings-agents-behaviour">
+                        <h5 class="settings-subhead" id="settings-agents-behaviour">Behaviour</h5>
+                        <dl class="info-grid settings-grid">                {{ template "includes/toggle_row" (toggle "settings-auto-resume" "Resume after API errors" "When an agent's CLI stops on a rate limit, an overload or another API error, Coral wakes it again after about 2, then 5, then 15 minutes, and stops trying after the third. Waking the agent yourself starts the count again.") }}
                 {{ template "includes/toggle_row" (toggle "settings-auto-goals" "Name each agent's goal" "Coral asks Claude Code's smallest model (Haiku) for a short goal line for each agent, from your requests only: once when the agent first answers, then for a new request at most every 30 minutes. Each one is a short call made with your Claude Code account (about 1,300 input tokens). When off, the goal shows your first prompt.") }}
                 {{ template "includes/toggle_row" (toggle "settings-agent-low-priority" "Run agents at lower priority" "Agents and everything they start (builds, test runs) run below Coral itself (nice +10 on Mac and Linux, below normal on Windows), so the dashboard, Coral Hub and your own apps stay quick while agents use every CPU. It changes scheduling only, never what an agent may do. Applies to agents started after the change.") }}
-                {{ template "includes/toggle_row" (toggle "settings-board-auto-attach" "Attach files linked in posts" "When on, an agent's own board post that links a local image (png, jpg, gif, webp) or Markdown file changed in the last day has it stored as an artifact, so the team and Coral Hub can open it. When off, links stay as written and agents upload with coral-agent artifact upload.") }}
+</dl>
+                        </section>
+                        <section class="settings-subsection" aria-labelledby="settings-agents-team">
+                        <h5 class="settings-subhead" id="settings-agents-team">Team and board</h5>
+                        <dl class="info-grid settings-grid">                {{ template "includes/toggle_row" (toggle "settings-board-auto-attach" "Attach files linked in posts" "When on, an agent's own board post that links a local image (png, jpg, gif, webp) or Markdown file changed in the last day has it stored as an artifact, so the team and Coral Hub can open it. When off, links stay as written and agents upload with coral-agent artifact upload.") }}
                 {{ template "includes/toggle_row" (toggle "settings-nudge-claude-artifacts" "Coral artifact reminders" "When an agent publishes to claude.ai, Coral types one note into its terminal asking for a Coral artifact instead (coral-agent artifact upload) and a link to it. Once per artifact; Coral never uploads or posts for the agent. When off, nothing is typed.") }}
                 {{ template "includes/toggle_row" (toggle "settings-board-health-monitor" "Team health checks" "Applies to every team; each team still turns its own check on in Team settings. Takes effect after Coral restarts.") }}
-                {{ template "includes/toggle_row" (toggle "settings-codex-trust-hooks" "Trust Coral's hooks in Codex" "Codex asks you to review new hooks before it runs them, because a trusted hook runs outside its sandbox. When this is on and only an administrator can change Coral's tools folder (an installed Coral), Coral trusts its own hooks for each Codex agent it launches, so the agent starts without that question; your own hooks and a repository's still ask. Off, Codex asks every time. Applies to Codex agents launched after the change, and can only be changed on this computer.") }}
+</dl>
+                        </section>
+                        <section class="settings-subsection" aria-labelledby="settings-agents-tools">
+                        <h5 class="settings-subhead" id="settings-agents-tools">Tools</h5>
+                        <dl class="info-grid settings-grid">                {{ template "includes/toggle_row" (toggle "settings-codex-trust-hooks" "Trust Coral's hooks in Codex" "Codex asks you to review new hooks before it runs them, because a trusted hook runs outside its sandbox. When this is on and only an administrator can change Coral's tools folder (an installed Coral), Coral trusts its own hooks for each Codex agent it launches, so the agent starts without that question; your own hooks and a repository's still ask. Off, Codex asks every time. Applies to Codex agents launched after the change, and can only be changed on this computer.") }}
                         
                 <div class="settings-row settings-row-wide">
                 <dt>CLI paths</dt>
@@ -812,6 +803,8 @@
                     </details>
                 </dd>
                 </div></dl>
+                        </section>
+
                         <button class="btn settings-prompts-btn" data-on-click="m-hide-settings-modal-then-show-default-prompts-modal">
                             <span class="material-icons icon-inline" aria-hidden="true">edit</span>
                             Edit Default Prompts
@@ -869,17 +862,6 @@
                 <button type="button" class="tb-learn" id="tb-learn-fixed" aria-expanded="false" aria-controls="tb-d-fixed" hidden>Learn more</button>
                 <div class="tb-d" id="tb-d-fixed" hidden>This Coral runs agents in its own terminals (pty), the only backend here (no tmux on this system). Agents end when Coral restarts or upgrades; when it starts again Coral wakes them (up to the number set below; more after you confirm; you can turn this off), and they resume their conversation.</div>
             </div>
-                <div class="settings-row">
-                <dt class="toggle-dt">
-                    <label for="settings-debug-input-log">Log terminal input (debug)</label>
-                    <span class="toggle-desc" id="settings-debug-input-log-desc">Record everything Coral sends to agent terminals, for troubleshooting. Applies immediately.</span>
-                </dt>
-                <dd>
-                    <label class="check-hit"><input type="checkbox" id="settings-debug-input-log" aria-describedby="settings-debug-input-log-status settings-debug-input-log-desc"></label>
-                    <div id="settings-debug-input-log-status" class="settings-hint" role="status"></div>
-                    <button class="btn btn-small" type="button" id="settings-debug-input-log-delete" hidden>Delete the log</button>
-                </dd>
-                </div>
                 <div class="settings-row" id="settings-tools-folder-row" hidden>
                 <dt class="toggle-dt">
                     <span>Agent tools folder</span>
@@ -890,11 +872,23 @@
                 </dd>
                 </div>
                         </dl>
+                    
+                        <details class="disclosure settings-engine-more">
+                            <summary>Render engine</summary>
+                            <dl class="info-grid settings-grid">
+                                <div class="settings-row">
+                                <dt id="settings-renderer-select-label">Default render engine</dt>
+                                <dd>
+                                    <select aria-labelledby="settings-renderer-select-label" id="settings-renderer-select" class="settings-select"></select>
+                                </dd>
+                                </div>
+                            </dl>
+                        </details>
                     </section>
                     <section class="settings-pane" id="settings-pane-notifications" data-group="notifications" data-icon="notifications" data-title="Notifications" role="tabpanel" aria-labelledby="settings-tab-notifications" tabindex="-1" hidden>
                         <h4 class="settings-pane-title">Notifications</h4>
                         <dl class="info-grid settings-grid">
-                {{ template "includes/toggle_row" (toggle "settings-notify-needs-input" "Notifications" "Show toast when an agent needs input") }}
+                {{ template "includes/toggle_row" (toggle "settings-notify-needs-input" "Show notifications in Coral" "Show toast when an agent needs input") }}
                 {{ template "includes/toggle_row" (toggle "settings-desktop-notify" "Desktop alerts" "This browser only: alert while this tab is in the background. Shows the agent and server names (your OS may keep them in its notification history), never agent output. May duplicate a local alert.") }}
                         </dl>
                     </section>
@@ -1056,7 +1050,18 @@
                     <div id="net-remote-note" class="settings-hint" role="status"></div>
                     <div class="settings-hint" id="settings-remote-access-enabled-desc" data-info>Allow connections from other devices. Plain HTTP (unencrypted) unless Coral was started with --tls-cert and --tls-key.</div>
                 </div>
-                </section>
+                
+                        <!-- About: the version (Coral has no paid licence, #3221) -->
+                        <div class="settings-section settings-about-section" id="about-section">
+                            <h4 class="settings-about-title">About</h4>
+                            <div id="app-version-label" class="settings-version-label"></div>
+                            <!-- This machine's health from the feed (#3446); a hub-served page has no machine of its own: it is part of About (UI audit #5589, finding 19) -->
+                            <div class="settings-machine-health" data-local-only>
+                                <div id="machine-health-local"></div>
+                            </div>
+                            <button type="button" class="btn btn-small settings-editions-btn" data-editions="open">Connect to Coral Hub…</button>
+                        </div>
+                    </section>
                 <section class="settings-row settings-row-wide net-group" id="net-group-setup" aria-labelledby="net-setup-title" hidden>
                 <div class="net-group-head"><h3 id="net-setup-title" class="net-group-title">Setup code</h3></div>
                 <div class="net-body">
@@ -1164,7 +1169,6 @@
                         <button class="btn btn-small settings-copy-btn" type="button" id="settings-api-key-copy" disabled>Copy</button>
                         <button class="btn btn-small" type="button" data-on-click="m-show-mobile-connect-modal" style="margin-left:6px" title="Show QR code for mobile connection"><span class="material-icons" style="font-size:0.875rem;vertical-align:middle" aria-hidden="true">qr_code_2</span> Mobile QR</button>
                     </div>
-                    <span class="settings-hint">Keep secret.</span>
                 </dd>
                 </div>
             <!-- Settings > Browser sign-in (#3948): filled by security_settings.js; never shown through Coral Hub. -->
@@ -1198,7 +1202,18 @@
                     <span id="settings-telemetry-install-status" class="settings-hint" role="status"></span>
                 </dd>
                 </div>
-                        </dl>
+                                        <div class="settings-row">
+                <dt class="toggle-dt">
+                    <label for="settings-debug-input-log">Log terminal input (debug)</label>
+                    <span class="toggle-desc" id="settings-debug-input-log-desc">Record everything Coral sends to agent terminals, for troubleshooting. Applies immediately.</span>
+                </dt>
+                <dd>
+                    <label class="check-hit"><input type="checkbox" id="settings-debug-input-log" aria-describedby="settings-debug-input-log-status settings-debug-input-log-desc"></label>
+                    <div id="settings-debug-input-log-status" class="settings-hint" role="status"></div>
+                    <button class="btn btn-small" type="button" id="settings-debug-input-log-delete" hidden>Delete the log</button>
+                </dd>
+                </div>
+                         </dl>
                     </section>
                     </div>
                 </div>
