@@ -212,8 +212,10 @@ var (
 )
 
 func guardProc(hwnd windows.Handle, message uint32, wParam, lParam uintptr) uintptr {
-	if message == wmClose && !closeAllowed.Load() {
-		return 0 // a posted WM_CLOSE from any program on the desktop (#346): only the tray's own quit (AllowClose) may close this window
+	if (message == wmClose || message == wmDestroy) && !closeAllowed.Load() {
+		// A WM_CLOSE or WM_DESTROY posted by any program on the desktop (#346): only the tray's own quit (AllowClose) may end this window. The library's wndProc
+		// falls through from WM_DESTROY to its WM_ENDSESSION code, so a posted one ends the tray too; DestroyWindow's own WM_DESTROY comes after AllowClose.
+		return 0
 	}
 	if message == wmEndSession {
 		if wParam == 0 || !sentByAnother() {

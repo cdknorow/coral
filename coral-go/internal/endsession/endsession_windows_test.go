@@ -110,7 +110,7 @@ func TestGuardPassesOnlyASentEndOfSession(t *testing.T) {
 				got <- wParam
 				return 0
 			}
-			if message == wmClose {
+			if message == wmClose || message == wmDestroy {
 				closes <- struct{}{}
 				return 0
 			}
@@ -154,9 +154,10 @@ func TestGuardPassesOnlyASentEndOfSession(t *testing.T) {
 	// #346: a WM_CLOSE posted by any program is dropped; the owner's own quit (AllowClose, then the library's Quit posting WM_CLOSE) passes.
 	user32.NewProc("PostMessageW").Call(h, wmClose, 0, 0)
 	user32.NewProc("SendMessageW").Call(h, wmClose, 0, 0)
+	user32.NewProc("PostMessageW").Call(h, wmDestroy, 0, 0) // the library's wndProc ends the tray on a posted WM_DESTROY too (QA on #156)
 	select {
 	case <-closes:
-		t.Fatal("a WM_CLOSE reached the window before AllowClose")
+		t.Fatal("a WM_CLOSE or WM_DESTROY reached the window before AllowClose")
 	case <-time.After(300 * time.Millisecond):
 	}
 	AllowClose()
@@ -165,5 +166,11 @@ func TestGuardPassesOnlyASentEndOfSession(t *testing.T) {
 	case <-closes:
 	case <-time.After(5 * time.Second):
 		t.Fatal("the owner's own WM_CLOSE did not reach the window after AllowClose")
+	}
+	user32.NewProc("PostMessageW").Call(h, wmDestroy, 0, 0)
+	select {
+	case <-closes:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the owner's own WM_DESTROY did not reach the window after AllowClose")
 	}
 }
