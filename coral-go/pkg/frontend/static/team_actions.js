@@ -1,7 +1,7 @@
 /* What the sidebar's menus do to a team or a folder's agents: kill all, share, save as a template, sleep (moved out of render.js, #4996; no behaviour change). */
 import { state } from './state.js';
 import { registerDialog } from './modal_chrome.js';
-import { sessionFolderKey, serverFetch, sessionServer, keyLabel, splitKey, inTeam, teamFetch, boardFetch } from './server_base.js';
+import { sessionFolderKey, keyLabel, splitKey, inTeam, teamFetch, boardFetch } from './server_base.js';
 import { browserLocal } from './safe_storage.js';
 import { redrawLiveList } from './list_hooks.js';
 import { showConfirmModal } from './confirm_dialog.js';
@@ -13,6 +13,7 @@ import { killCount } from './agent_actions.js';
 import { showPromptModal } from './prompt_modals.js';
 import { worktreeConfirmWords } from './worktree_words.js';
 import { showWorktreeNotice } from './worktree_notice.js';
+import { killLiveSession, killLiveTeam, dropKilledRows } from './kill_live.js';
 
 // The agents a folder or workflow group shows, and only those (#3053): team
 // members are listed (and killed) under their team, archived agents in the
@@ -38,18 +39,12 @@ export async function killGroup(groupName) {
         async () => {
             for (const s of groupSessions) {
                 try {
-                    await serverFetch(sessionServer(s), `/api/sessions/live/${encodeURIComponent(s.name)}/kill`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ agent_type: s.agent_type, session_id: s.session_id }),
-                    });
+                    await killLiveSession(s);
                 } catch (e) {
                     console.error(`Failed to kill ${s.name}:`, e);
                 }
             }
-            const killedIds = new Set(groupSessions.map(s => s.session_id));
-            state.liveSessions = state.liveSessions.filter(s => !killedIds.has(s.session_id));
-            redrawLiveList();
+            dropKilledRows(groupSessions);
         }
     );
 }
@@ -72,24 +67,18 @@ export async function killBoard(boardName) {
         "Kill Team",
         `Kill ${killCount(boardSessions.length).agents} on board "${keyLabel(boardName)}"? This will terminate ${boardSessions.length === 1 ? 'it' : 'them'}. ${_teamWorktreeSentence(boardSessions)}${killCount(boardSessions.length).note}`,
         async () => {
-            let worktree = null; // the stop's answer about the team's worktree: the kill that ends it carries it
-            for (const s of boardSessions) {
-                try {
-                    const r = await serverFetch(sessionServer(s), `/api/sessions/live/${encodeURIComponent(s.name)}/kill`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ agent_type: s.agent_type, session_id: s.session_id }),
-                    });
-                    const answer = await r.json().catch(() => null);
-                    if (answer && answer.worktree && answer.worktree.state && answer.worktree.state !== 'none') worktree = answer.worktree;
-                } catch (e) {
-                    console.error(`Failed to kill ${s.name}:`, e);
-                }
+            // The whole team through the team route, so the team is marked stopped as an API kill does (its worktree is then not "in use" in the kept-worktrees list); its one answer carries the worktree.
+            let worktree = null;
+            try {
+                const { ok, answer } = await killLiveTeam(boardName);
+                if (!ok) showToast((answer && answer.error) || 'Could not stop the team', true);
+                else if (answer && answer.worktree && answer.worktree.state && answer.worktree.state !== 'none') worktree = answer.worktree;
+            } catch (e) {
+                console.error(`Failed to kill team ${boardName}:`, e);
+                showToast('Could not stop the team', true);
             }
             showWorktreeNotice(worktree); // an error is an alert, the rest a status; a kept one stays on screen with its path (#6818)
-            const killedIds = new Set(boardSessions.map(s => s.session_id));
-            state.liveSessions = state.liveSessions.filter(s => !killedIds.has(s.session_id));
-            redrawLiveList();
+            dropKilledRows(boardSessions);
         }
     );
 }

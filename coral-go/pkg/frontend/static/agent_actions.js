@@ -3,6 +3,7 @@ import { state } from './state.js';
 import { worktreeConfirmWords } from './worktree_words.js';
 import { showWorktreeNotice } from './worktree_notice.js';
 import { serverFetch, serverForSession, sessionServer } from './server_base.js';
+import { killLiveSession, dropKilledRows } from './kill_live.js';
 import { showToast, showView } from './utils.js';
 import { redrawLiveList } from './list_hooks.js';
 import { showConfirmModal } from './confirm_dialog.js';
@@ -26,12 +27,8 @@ export function killSessionDirect(name, agentType, sessionId) {
     const server = serverForSession(name, sessionId);
     const row = (state.liveSessions || []).find(s => s.session_id === sessionId);
     showConfirmModal('Kill Session', `Kill session "${name}"? This will terminate the agent. ${row && row.git_state && row.git_state.is_worktree ? worktreeConfirmWords(row.branch) + ' ' : ''}${KILL_LOG_NOTE}`, async () => { try {
-        const resp = await serverFetch(server, `/api/sessions/live/${encodeURIComponent(name)}/kill`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ agent_type: agentType, session_id: sessionId }),
-        });
-        const result = await resp.json();
+        const result = await killLiveSession({ name, agent_type: agentType, session_id: sessionId }, server);
+        if (!result) throw new Error('the kill answer was not JSON');
         if (result.error) { showToast(result.error, true); return; }
         if (result.changes_artifact_error) {
             showToast(`Killed, but changes.diff could not be saved: ${result.changes_artifact_error}`, true);
@@ -40,12 +37,11 @@ export function killSessionDirect(name, agentType, sessionId) {
         }
         showWorktreeNotice(result.worktree, 'agent'); // what became of its worktree, if it had one (#6707); a kept one stays on screen with its path (#6818)
         // The row goes at once: the agent's chat stays in History. A killed agent is not listed again.
-        state.liveSessions = state.liveSessions.filter(s => !(s.session_id === sessionId && sessionServer(s) === server));
+        dropKilledRows([{ session_id: sessionId, server }]);
         if (state.currentSession && state.currentSession.session_id === sessionId) {
             state.currentSession = null;
             showView("welcome-screen");
         }
-        redrawLiveList();
     } catch (e) {
         showToast("Failed to kill session", true);
     } });

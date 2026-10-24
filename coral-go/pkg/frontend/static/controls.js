@@ -10,7 +10,6 @@ import { claimOwnership } from './ownership.js';
 import { popoutTerminalBlocked } from './popout.js';
 import { escapeHtml, escapeAttr, showToast, showView } from './utils.js';
 import { registerActions, idOf } from './actions.js';
-import { stopCaptureRefresh } from './capture.js';
 import { renderLiveSessions, KILL_LOG_NOTE } from './render.js';
 import { loadAgentEvents, renderEventTimeline } from './agentic_state.js';
 import { addPendingMessage, confirmPendingMessage, removePendingMessage, resetLiveHistory, effectiveLiveViewMode } from './live_chat.js';
@@ -27,6 +26,7 @@ import { pollEvery } from './overload.js';
 import { syncSendStarting } from './agent_starting.js';
 import { worktreeConfirmWords } from './worktree_words.js';
 import { showWorktreeNotice } from './worktree_notice.js';
+import { killLiveSession, dropKilledRows } from './kill_live.js';
 import { MODES, modeFromFooterText, pressesFor } from './mode_cycle.js';
 
 // Lazy imports to avoid circular dependency (xterm_renderer imports controls)
@@ -523,28 +523,22 @@ export async function killSession() {
     const cur = state.currentSession;
     window.showConfirmModal('Kill Session', `Kill session "${cur.name}"? This will terminate the agent. ${cur.git_state && cur.git_state.is_worktree ? worktreeConfirmWords(cur.branch) + ' ' : ''}${KILL_LOG_NOTE}`, async () => {
         try {
-            const resp = await serverFetch(currentServer(), `/api/sessions/live/${encodeURIComponent(state.currentSession.name)}/kill`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ agent_type: state.currentSession.agent_type, session_id: state.currentSession.session_id }),
-            });
-            const result = await resp.json();
+            const killed = state.currentSession;
+            const result = await killLiveSession(killed, currentServer());
+            if (!result) throw new Error("the kill answer was not JSON");
             if (result.error) {
                 showToast(result.error, true);
             } else {
-                const killedSid = state.currentSession.session_id;
                 if (result.changes_artifact_error) {
                     showToast(`Killed, but changes.diff could not be saved: ${result.changes_artifact_error}`, true);
                 } else {
-                    showToast(`Killed and saved changes.diff: ${state.currentSession.name}`);
+                    showToast(`Killed and saved changes.diff: ${killed.name}`);
                 }
                 showWorktreeNotice(result.worktree, 'agent'); // what became of its worktree, if it had one (#6707); a kept one stays on screen with its path (#6818)
                 // The row goes at once; the agent's chat stays in History.
-                stopCaptureRefresh();
+                dropKilledRows([{ session_id: killed.session_id, server: currentServer() }]);
                 state.currentSession = null;
                 showView("welcome-screen");
-                state.liveSessions = state.liveSessions.filter(s => s.session_id !== killedSid);
-                renderLiveSessions(state.liveSessions);
             }
         } catch (e) {
             showToast("Failed to kill session", true);

@@ -43,6 +43,28 @@ const BASE = require('./test_base').BASE;
         check('1. the capture refresh stopped', await ev(`import(${S} + 'state.js').then(st => st.state.captureInterval === null)`));
         check('1. a kept worktree is said with its path', /worktree was kept/.test(await ev(`document.body.innerText`)) && /\/tmp\/wt\/agent-1/.test(await ev(`document.body.innerText`)));
 
+        // 2. a session id on two servers: only the killed server's row goes (the agent view dropped both)
+        await open([row(7), row(7, { server: 'remote-1', name: 'agent-7' }), row(8)]);
+        await select('sid-7');
+        await ev(`import(${S} + 'controls.js').then(m => m.killSession()); true`); await yes();
+        check('2. the same session id on another server stays', JSON.stringify(await ids()) === JSON.stringify(['sid-7@remote-1', 'sid-8@local']), JSON.stringify(await ids()));
+
+        // 3. the sidebar's Kill of the OPEN agent stops its capture refresh (it left the interval polling a dead agent)
+        await open([row(3), row(4)]);
+        await select('sid-3');
+        await ev(`import(${S} + 'agent_actions.js').then(m => m.killSessionDirect('agent-3', 'claude', 'sid-3')); true`); await yes();
+        check('3. the open agent killed from the sidebar: the capture refresh stopped', await ev(`import(${S} + 'state.js').then(st => st.state.captureInterval === null)`));
+        check('3. and the welcome screen shows', await ev(`getComputedStyle(document.getElementById('welcome-screen')).display !== 'none'`));
+        // 4. Kill Team goes through the team route, once for the whole team (so the team is marked stopped as an API kill does), and says what became of the worktree; a refused stop is said
+        await open([row(5, { board_project: 'crew' }), row(6, { board_project: 'crew' }), row(9)]);
+        await ev(`window.__teamAnswer = { ok: true, sessions_killed: 2, worktree: { state: 'kept', path: '/tmp/wt/crew', branch: 'coral-team/crew', reason: 'it has uncommitted changes' } }; import(${S} + 'team_actions.js').then(m => m.killBoard('crew')); true`); await yes();
+        const tp = await ev(`window.__posts`);
+        check('4. one request, to the team route, no per-agent kill', tp.length === 1 && /\/live\/team\/crew\/kill$/.test(tp[0].url), JSON.stringify(tp));
+        check('4. both members go, the other agent stays', JSON.stringify(await ids()) === JSON.stringify(['sid-9@local']), JSON.stringify(await ids()));
+        check('4. the kept worktree is said with its path', /worktree was kept/.test(await ev(`document.body.innerText`)) && /\/tmp\/wt\/crew/.test(await ev(`document.body.innerText`)));
+        await open([row(5, { board_project: 'crew' }), row(6, { board_project: 'crew' })]);
+        await ev(`window.__teamStatus = 500; window.__teamAnswer = { error: 'could not stop the team' }; import(${S} + 'team_actions.js').then(m => m.killBoard('crew')); true`); await yes();
+        check('4. a refused stop is said, not silent', /could not stop the team/i.test(await ev(`document.body.innerText`)));
     } finally { await client.close(); }
     if (results.some(r => !r)) { console.error(`${results.filter(r => !r).length} of ${results.length} failed`); process.exit(1); }
     console.log(`\nAll ${results.length} kill-session checks passed`);

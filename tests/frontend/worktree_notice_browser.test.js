@@ -22,7 +22,7 @@ const BASE = require('./test_base').BASE;
             await ev(`window.__coralReady.then(() => true)`);
             await ev(`(() => { const inner = window.__innerFetch || (window.__innerFetch = window.fetch); window.__answer = { ok: true, sessions_killed: 1 }; window.__copied = null;
                 navigator.clipboard.writeText = t => { window.__copied = t; return Promise.resolve(); };
-                window.fetch = (url, opts = {}) => { if (/\\/api\\/sessions\\/live\\/[^/]+\\/kill/.test(String(url))) return Promise.resolve(new Response(JSON.stringify(window.__answer), { status: 200, headers: { 'content-type': 'application/json' } })); return inner(url, opts); }; return true; })()`);
+                window.fetch = (url, opts = {}) => { if (/\\/api\\/sessions\\/live\\/(?:team\\/)?[^/]+\\/kill/.test(String(url))) return Promise.resolve(new Response(JSON.stringify(window.__answer), { status: 200, headers: { 'content-type': 'application/json' } })); return inner(url, opts); }; return true; })()`);
             const seed = () => ev(`localStorage.clear(); T.state.liveSessions = []; window.__m.agents = {};
                 window.__m.add('team-agent', 'K', 3, { sleeping: false, session_id: 't1', board_project: 'team-k' });
                 T.state.liveSessions.forEach(s => { s.branch = 'coral-team/team-k'; s.git_state = { is_worktree: true, base_branch: 'master' }; });

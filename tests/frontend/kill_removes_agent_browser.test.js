@@ -89,7 +89,7 @@ const SESSIONS = [
             assert.deepEqual(await rows(), ['sid-2'], `${w}: still gone after a redraw`);
 
             // Only the kill requests were sent: nothing of the history is deleted.
-            assert.deepEqual((await killReqs()).sort(), ['POST /api/sessions/live/agent-1/kill', 'POST /api/sessions/live/agent-3/kill', 'POST /api/sessions/live/agent-4/kill'], `${w}: one kill request each`);
+            assert.deepEqual((await killReqs()).sort(), ['POST /api/sessions/live/agent-1/kill', 'POST /api/sessions/live/team/crew/kill'], `${w}: the agent's own kill, and one request to the team route for the whole team (#6892: the team is marked stopped as an API kill does)`);
             assert.equal(await ev(`window.__reqs.some(r => /^(DELETE|PUT|PATCH) /.test(r) || /history|chats/.test(r) && !/^GET /.test(r))`), false, `${w}: no request deletes or edits history`);
         }
         console.log('PASS kill removes the row: one agent and a whole team, desktop and phone, no Dismiss, no history request');
