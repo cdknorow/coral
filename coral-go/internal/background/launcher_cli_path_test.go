@@ -5,9 +5,11 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -142,4 +144,53 @@ func TestScheduledAgentsCarryARunTagOnTmuxOnly(t *testing.T) {
 	plain.mu.Unlock()
 	assert.NotContains(t, cmd2, "CORAL_PTY_RUN", "the built-in terminal tags its own")
 	assert.Empty(t, ss.RunTagOf(ctx, res2.SessionID))
+}
+
+// stampRecorder is a runtime that records when each agent was spawned.
+type stampRecorder struct {
+	mockRuntime
+	mu     sync.Mutex
+	stamps []time.Time
+}
+
+func (s *stampRecorder) SpawnAgent(_ context.Context, _, _, _, _ string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.stamps = append(s.stamps, time.Now())
+	return nil
+}
+
+// #6839 (Codex Test's #6828): two Codex runs fired in the same minute started at once against one Codex home's state database, and one exited during its state initialisation. Codex starts are now spaced
+// apart (sharedHomeStartGap); the other agents start at once as before.
+func TestCodexRunsFiredTogetherAreStartedApart(t *testing.T) {
+	ctx := context.Background()
+	defer func(g time.Duration) { sharedHomeStartGap = g }(sharedHomeStartGap)
+	sharedHomeStartGap = 400 * time.Millisecond
+	launch := func(agentType string, n int) []time.Time {
+		rt := &stampRecorder{}
+		l := NewAgentLauncher(rt, store.NewSessionStore(setupTestDB(t)), 8450)
+		var wg sync.WaitGroup
+		for i := 0; i < n; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				_, err := l.LaunchAgent(ctx, t.TempDir(), agentType, "job", "", nil, true, "p", "", "")
+				require.NoError(t, err)
+			}()
+		}
+		wg.Wait()
+		rt.mu.Lock()
+		defer rt.mu.Unlock()
+		out := append([]time.Time(nil), rt.stamps...)
+		sort.Slice(out, func(i, j int) bool { return out[i].Before(out[j]) })
+		return out
+	}
+	codex := launch(at.Codex, 3)
+	require.Len(t, codex, 3)
+	for i := 1; i < len(codex); i++ {
+		assert.GreaterOrEqual(t, codex[i].Sub(codex[i-1]), 350*time.Millisecond, "codex start %d follows the previous by at least the gap", i)
+	}
+	claude := launch(at.Claude, 3)
+	require.Len(t, claude, 3)
+	assert.Less(t, claude[2].Sub(claude[0]), 300*time.Millisecond, "other agents are not delayed")
 }
