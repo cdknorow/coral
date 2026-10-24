@@ -23,11 +23,12 @@ import (
 type WorktreesHandler struct {
 	teams *store.TeamStore
 	sched *store.ScheduleStore
+	sess  *store.SessionStore
 	cfg   *config.Config
 }
 
 func NewWorktreesHandler(db *store.DB, cfg *config.Config) *WorktreesHandler {
-	return &WorktreesHandler{teams: store.NewTeamStore(db), sched: store.NewScheduleStore(db), cfg: cfg}
+	return &WorktreesHandler{teams: store.NewTeamStore(db), sched: store.NewScheduleStore(db), sess: store.NewSessionStore(db), cfg: cfg}
 }
 
 // worktreeEntry is one Coral-made worktree. ID is opaque to the caller and names a team or a job run Coral knows: the remove asks for an id, never for a path.
@@ -40,7 +41,7 @@ type worktreeEntry struct {
 	Branch   string `json:"branch"`
 	Dirty    bool   `json:"dirty"`    // uncommitted or untracked changes
 	Unmerged int    `json:"unmerged"` // commits on its branch that no other branch holds
-	InUse    bool   `json:"in_use"`   // its team is running or its run is still going
+	InUse    bool   `json:"in_use"`   // an agent of its team is live in it, or its run is still going
 	Checked  bool   `json:"checked"`  // false: git had not answered in time, so dirty and unmerged are not known (not "clean")
 }
 
@@ -48,6 +49,7 @@ type worktreeEntry struct {
 func (h *WorktreesHandler) entries(ctx context.Context, probe bool) []worktreeEntry {
 	out := []worktreeEntry{}
 	root := coralnames.WorktreesRoot(h.cfg.CoralDir())
+	live, liveErr := h.sess.GetAllLiveSessions(ctx) // a team's worktree is in use while a live session is in it, whichever way its agents were stopped (#6942)
 	if teams, err := h.teams.ListTeams(ctx, ""); err == nil {
 		for _, t := range teams {
 			if t.IsWorktree != 1 || t.WorkingDir == "" || !coralnames.InWorktreesRoot(h.cfg.CoralDir(), t.WorkingDir) {
@@ -58,7 +60,7 @@ func (h *WorktreesHandler) entries(ctx context.Context, probe bool) []worktreeEn
 			}
 			json.Unmarshal([]byte(t.ConfigJSON), &cfg)
 			out = append(out, worktreeEntry{ID: "team-" + strconv.FormatInt(t.ID, 10), Kind: "team", Name: t.Name, Path: t.WorkingDir,
-				RepoPath: cfg.WorkingDir, Branch: coralnames.TeamBranch(filepath.Base(t.WorkingDir)), InUse: t.Status != "stopped"})
+				RepoPath: cfg.WorkingDir, Branch: coralnames.TeamBranch(filepath.Base(t.WorkingDir)), InUse: liveErr != nil || liveSessionIn(live, t)}) // a live list that cannot be read fails closed: in use
 		}
 	}
 	if runs, err := h.sched.ListRunsWithWorktree(ctx); err == nil {
@@ -84,6 +86,24 @@ func (h *WorktreesHandler) entries(ctx context.Context, probe bool) []worktreeEn
 		probeWorktrees(ctx, kept)
 	}
 	return kept
+}
+
+// liveSessionIn reports whether a live session belongs to the team or runs in its worktree. Killing a team's agents one by one (the dashboard's Kill Team) never marks the team stopped, so the team's own status says nothing.
+func liveSessionIn(live []store.LiveSession, t store.Team) bool {
+	dir := filepath.Clean(t.WorkingDir)
+	within := func(p string) bool {
+		p = filepath.Clean(p)
+		return p == dir || strings.HasPrefix(p, dir+string(filepath.Separator))
+	}
+	for _, ls := range live {
+		if ls.TeamID != nil && *ls.TeamID == t.ID {
+			return true
+		}
+		if ls.WorkingDir != "" && within(ls.WorkingDir) || ls.WorktreePath != nil && *ls.WorktreePath != "" && within(*ls.WorktreePath) {
+			return true
+		}
+	}
+	return false
 }
 
 // worktreeProbeWorkers is how many entries are checked with git at once, and worktreeListBudget how long the whole list may take: an entry git has not answered for by then is returned as not

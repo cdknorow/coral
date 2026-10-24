@@ -111,6 +111,7 @@ func teamServerH(t *testing.T) (url string, cfg *config.Config, h *SessionsHandl
 	r.Post("/api/sessions/launch-team", h.LaunchTeam)
 	r.Get("/api/sessions/live", h.List)
 	r.Post("/api/sessions/live/team/{boardName}/kill", h.KillTeam)
+	r.Post("/api/sessions/live/{name}/kill", h.Kill)
 	r.Post("/api/teams/detail/{name}/resurrect", h.ResurrectTeam)
 	wh := NewWorktreesHandler(h.db, cfg)
 	r.Get("/api/worktrees", wh.List)
