@@ -113,3 +113,28 @@ func TestWorktreeAddNeverRollsBackAFolderOrBranchThatWasThereBefore(t *testing.T
 		})
 	}
 }
+
+// Security's #6934 LOW (#6936): a git that cannot say whether the run's branch exists (here: rev-parse fails with a status other than "not found", as it does when the shutdown cancelled it) is not "the branch is not there": the add is refused,
+// so the rollback's branch -D can never run on a branch this add did not make.
+func TestWorktreeAddIsRefusedWhenGitCannotSayWhetherTheBranchExists(t *testing.T) {
+	e := newExitEnv(t, "exit-revparse-error")
+	repo := exitGitRepo(t)
+	real, err := exec.LookPath("git")
+	require.NoError(t, err)
+	dir := t.TempDir()
+	script := "#!/bin/sh\nfor a in \"$@\"; do\n  if [ \"$a\" = rev-parse ]; then for b in \"$@\"; do case \"$b\" in refs/heads/coral/job-run-*) exit 2;; esac; done; fi\ndone\nexec '" + real + "' \"$@\"\n"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "git"), []byte(script), 0o755))
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	wt := e.s.runWorktreeDir(repo, e.runID)
+
+	e.s.launchAndWatch(e.runID, store.ScheduledJob{AgentType: "claude"}, runConfig{repoPath: repo, createWorktree: true, cleanupWorktree: true})
+
+	r := e.run(t)
+	assert.Equal(t, "failed", r.Status)
+	require.NotNil(t, r.ErrorMsg)
+	assert.Contains(t, *r.ErrorMsg, "could not tell")
+	assert.NoDirExists(t, wt, "no add was attempted")
+	branches, err := exec.Command("git", "-C", repo, "branch", "--list", "coral/job-run-*").CombinedOutput()
+	require.NoError(t, err)
+	assert.Empty(t, string(branches))
+}
