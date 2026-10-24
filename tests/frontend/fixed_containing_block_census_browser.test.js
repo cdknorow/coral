@@ -5,6 +5,7 @@
 // with the reason and the check that proves it. Drives Chrome over CDP through agent_view_harness.js against the isolated dev server.
 const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
+const { removeBoards } = require('./helpers/board_cleanup');
 const BASE = require('./test_base').BASE;
 const { STUB: ARTIFACT_STUB, HEX } = require('./helpers/comments_scale');
 const { UPDATE_STAGED } = require('./helpers/census_world');
@@ -96,7 +97,7 @@ const SCAN = `(() => { const sel = e => (e.id ? '#' + e.id : e.tagName.toLowerCa
                 }
             }
         }
-    } finally { await client.close(); }
+    } finally { await removeBoards(ev, ['census-fixed-team']); await client.close(); } // the team board the "a team board" scene makes is taken away again (the runner's end-check names a board left behind, --fail-on-leak)
     if (results.some(r => !r)) { console.error(`${results.filter(r => !r).length} of ${results.length} failed`); process.exit(1); }
     console.log(`\nAll ${results.length} containing-block census checks passed`);
 })().catch(e => { console.error(e); process.exit(1); });
