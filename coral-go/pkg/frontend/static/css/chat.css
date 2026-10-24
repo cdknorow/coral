@@ -1739,3 +1739,6 @@ h3.cni-question { margin-bottom: 4px; } /* a heading with its text under it (#30
     font-size: 0.8rem;
     color: var(--text-muted);
 }
+
+/* An idle agent has nothing to stop: the chat view's Stop (the terminal's Esc key is another matter) is drawn only while the agent works, asks or is stuck (#7065). */
+#command-pane.chat-mode[data-can-stop="false"] .btn-esc { display: none; }

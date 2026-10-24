@@ -252,7 +252,9 @@ body.panel-dragging .sidebar {
 
 .sidebar-search-icon {
     position: absolute;
-    left: 10px;
+    width: 0.875rem; /* rem, with the input's padding below: at 200% text the icon and the padding grow together, and the icon no longer sits on the placeholder (#7065) */
+    height: 0.875rem;
+    left: 0.625rem;
     top: 50%;
     transform: translateY(-50%);
     color: var(--text-muted);
@@ -263,7 +265,7 @@ body.panel-dragging .sidebar {
     width: 100%;
     height: var(--ctl-h, 36px);
     box-sizing: border-box;
-    padding: 0 10px 0 30px;
+    padding: 0 0.625rem 0 1.875rem;
     background: var(--bg-primary);
     border: 1px solid var(--control-border);
     border-radius: var(--radius-lg);

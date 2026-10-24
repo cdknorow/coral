@@ -73,6 +73,8 @@ const { settle } = require('./helpers/wait');
             await ev(`window.selectLiveSession('docs-bot', 'claude', 'docs-bot-id', 'local'); true`);
             await waitFor(`!!document.querySelector('#command-input') && document.querySelector('#command-toolbar button, .mobile-send-btn')`, 'the composer', 8000);
             await settle(ev, 800); // sleep-ok: the toolbar fills after the first live answers
+            // an agent that works has a Stop (an idle one has none since #7065)
+            await ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'session_state.js'); m.applyTerminalDot(document.getElementById('terminal-status-dot'), { working: true }); return true; })()`);
             // Tab into the composer from the control before it: the first stop in the pane is the text box
             await ev(`(() => { const t = document.getElementById('command-input'); const f = [...document.querySelectorAll('button, a[href], input, textarea, select, [tabindex="0"]')].filter(e => e.offsetParent && !e.disabled && e.tabIndex >= 0); const i = f.indexOf(t); f[i - 1].focus(); return true; })()`);
             const into = await tabs(1);

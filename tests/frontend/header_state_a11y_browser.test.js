@@ -25,8 +25,8 @@ const { connect } = require('./agent_view_harness');
         let d = await dot();
         assert.equal(d.role, 'img'); assert.equal(d.title, d.label); assert.ok(d.label && d.label.length > 2, 'a state word: ' + d.label);
         assert.equal(d.word, d.label, 'the word beside it is the same state'); assert.equal(d.textNodes, '', 'it is generated content: the identity\'s own text is unchanged'); assert.equal(d.wordHidden, 'true', 'the word is hidden from assistive technology');
-        assert.equal(d.wordShown, false, 'a mouse screen has the tip, not the word');
-        ok('the dot has a role, a tip and an accessible name with the sidebar\'s state word; the word beside it is aria-hidden and not drawn with a mouse');
+        assert.equal(d.wordShown, true, 'a mouse screen draws the word beside the dot too (#7065), not only the tip');
+        ok('the dot has a role, a tip and an accessible name with the sidebar\'s state word; the word beside it is aria-hidden and drawn beside the dot');
 
         // it follows the live feed
         for (const [patch, word] of [[{ working: true }, 'Working'], [{ working: false, waiting_for_input: true }, 'Needs input'], [{ waiting_for_input: false, stuck: true }, 'Stuck']]) {
@@ -37,7 +37,7 @@ const { connect } = require('./agent_view_harness');
         }
         ok('the name, the tip and the word follow a state change from the live feed (Working, Needs input, Stuck)');
 
-        // a touch screen wider than a phone shows the word; a phone does not (it has its own chip)
+        // a screen wider than a phone shows the word (a mouse one too since #7065); a phone does not (it has its own chip)
         await Emulation.setTouchEmulationEnabled({ enabled: true, maxTouchPoints: 5 });
         await Emulation.setDeviceMetricsOverride({ width: 900, height: 800, deviceScaleFactor: 1, mobile: true }); await sleep(400); // sleep-ok: layout settles after the emulation change
         assert.equal((await dot()).wordShown, true, 'on a touch screen at 900 px the state word is drawn beside the dot');

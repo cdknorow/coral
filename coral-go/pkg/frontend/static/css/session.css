@@ -287,16 +287,16 @@
     align-items: center;
     gap: 4px;
     min-width: 0;
-    min-height: 16px;
-    height: 16px;
-    line-height: 16px;
+    min-height: 1rem;
+    height: 1rem; /* rem, not px: at 200% text the name's line is 2 rem tall, not cut at 16 px (#7065) */
+    line-height: 1rem;
 }
 
 .session-name-row .sidebar-kebab-btn {
     /* 16px tall so line 1 stays 16px; the ::after pad gives a 24x24 hit target */
     padding: 0 5px;
-    height: 16px;
-    line-height: 16px;
+    height: 1rem;
+    line-height: 1rem;
     font-size: 0.875rem;
     position: relative;
 }
@@ -316,8 +316,8 @@
     /* Line 2 starts exactly under the agent name (not under the dot) */
     margin-left: var(--row-dot-block, 16px);
     font-size: var(--fs-base);
-    line-height: 14px;
-    height: 14px;
+    line-height: 0.875rem;
+    height: 0.875rem;
     /* Quiet italic, dimmer than secondary so the goal recedes behind the name,
        but still >= 4.5:1 on row, hover and selected surfaces */
     font-style: italic;
@@ -666,7 +666,7 @@
     background: var(--bg-tertiary);
     border-radius: var(--radius-lg);
     padding: 0 5px;
-    line-height: 16px;
+    line-height: 1rem;
 }
 
 .session-group-name {
@@ -1454,9 +1454,9 @@
 
 /* Selected-agent header: the identity may shrink; the actions on the right
    never do. */
-.terminal-state-word { display: none; flex: none; font-size: 0.75rem; color: var(--text-secondary); white-space: nowrap; } /* #4327: the state in words where there is no hover (touch screens wider than a phone) */
+.terminal-state-word { display: none; flex: none; font-size: 0.75rem; color: var(--text-secondary); white-space: nowrap; } /* #4327: the state in words beside the dot; since #7065 on every screen wider than a phone, not only where there is no hover (a dot and a tooltip are not the state) */
 .terminal-state-word::before { content: attr(data-word); } /* generated, so the identity's text stays the name (the pop-out and its tests read it) */
-@media (pointer: coarse) and (min-width: 768px) { .terminal-state-word[data-word]:not([data-word=""]) { display: inline; } }
+@media (min-width: 768px) { .terminal-state-word[data-word]:not([data-word=""]) { display: inline; } } /* a phone has its own state chip */
 .terminal-header-left {
     flex: 1 1 auto;
     /* The identity keeps room (dot + at least ~120px of name) while the folder/branch in the actions shrink first. */

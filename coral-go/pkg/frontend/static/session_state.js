@@ -186,6 +186,8 @@ export function applyTerminalDot(dot, s) {
     setAttr(dot, 'role', 'img');
     setAttr(dot, 'aria-label', info.label);
     setAttr(document.getElementById('terminal-state-word'), 'data-word', info.label);
+    // Stop (Escape) has something to stop only while the agent works, asks or is stuck: in the chat view it is hidden otherwise (#7065); the terminal's Esc key stays
+    setAttr(document.getElementById('command-pane'), 'data-can-stop', ['working', 'needs_input', 'check_terminal', 'stuck'].includes(info.key) ? 'true' : 'false');
 }
 
 export function getMobileStatusChip(s) {
