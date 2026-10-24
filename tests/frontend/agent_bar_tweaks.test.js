@@ -632,7 +632,7 @@ async function run() {
             fullWidth: document.querySelector('.layout').classList.contains('sidebar-hidden'),
         }))()`);
         check('clicking Analytics activates the same tab id', navAfter.active === 'nav-tab-tokens', navAfter.active);
-        check('clicking Analytics opens the same token-usage view', navAfter.viewShown && navAfter.heading === 'Token Usage' && navAfter.fullWidth, JSON.stringify(navAfter));
+        check('clicking Analytics opens the same token-usage view', navAfter.viewShown && navAfter.heading === 'Analytics' && navAfter.fullWidth, JSON.stringify(navAfter));
         await evalInPage(`window.switchNavTab('agents'); true`);
         await until(`document.querySelector('.top-nav-tab.active')?.id === 'nav-tab-agents'`, 'the Agents tab');
         check('switching back restores the Agents tab', await evalInPage(`document.querySelector('.top-nav-tab.active')?.id`) === 'nav-tab-agents');
