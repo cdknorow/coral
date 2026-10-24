@@ -355,7 +355,7 @@ func TestRunWhoseAgentExitedBeforeItStartedIsFailed(t *testing.T) {
 			}
 			assert.Equal(t, "failed", r.Status)
 			require.NotNil(t, r.ExitReason)
-			assert.Equal(t, "the agent exited before it started: it ended within seconds without reporting anything", *r.ExitReason)
+			assert.Equal(t, "agent_exited_before_start", *r.ExitReason, "the code in exit_reason, the sentence in error_msg (#7016)")
 			require.NotNil(t, r.ErrorCode)
 			assert.Equal(t, "agent_exited_before_start", *r.ErrorCode)
 			require.NotNil(t, r.ErrorMsg)
@@ -372,7 +372,9 @@ func TestRunWhoseStartCommandCouldNotBeHandedOverFailsWithAPlainReasonAndCode(t 
 	r := e.run(t)
 	assert.Equal(t, "failed", r.Status)
 	require.NotNil(t, r.ExitReason)
-	assert.Equal(t, ptymanager.ErrStartCommand.Error(), *r.ExitReason)
+	assert.Equal(t, "start_command_failed", *r.ExitReason, "the code in exit_reason, the sentence in error_msg (#7016)")
+	require.NotNil(t, r.ErrorMsg)
+	assert.Equal(t, ptymanager.ErrStartCommand.Error(), *r.ErrorMsg)
 	require.NotNil(t, r.ErrorCode)
 	assert.Equal(t, "start_command_failed", *r.ErrorCode)
 }
@@ -395,6 +397,7 @@ func TestRunWhoseTerminalSitsAtAnIdleShellWithNoEventIsFailedAsNeverStarted(t *t
 			e := newExitEnv(t, fmt.Sprintf("exit-never-%v", reported))
 			e.s.SetRuntime(idleShellRuntime{e.rt})
 			e.s.SetEventCheck(func(context.Context, string) bool { return reported })
+			require.NoError(t, e.sess.RegisterLiveSession(context.Background(), &store.LiveSession{SessionID: e.sid, AgentType: "claude", AgentName: "a", WorkingDir: "/tmp"}))
 			release := make(chan struct{})
 			e.launch(t, func(ctx context.Context) error { // the launch function waits on the session, as the real one does
 				select {
@@ -425,9 +428,16 @@ func TestRunWhoseTerminalSitsAtAnIdleShellWithNoEventIsFailedAsNeverStarted(t *t
 			}
 			assert.Equal(t, "failed", r.Status)
 			require.NotNil(t, r.ExitReason)
-			assert.Equal(t, agentNeverStartedMsg, *r.ExitReason)
+			assert.Equal(t, agentNeverStartedCode, *r.ExitReason, "the code in exit_reason, the sentence in error_msg (#7016)")
+			require.NotNil(t, r.ErrorMsg)
+			assert.Equal(t, agentNeverStartedMsg, *r.ErrorMsg)
 			require.NotNil(t, r.ErrorCode)
 			assert.Equal(t, agentNeverStartedCode, *r.ErrorCode)
+			ls, err := e.sess.GetLiveSession(context.Background(), e.sid)
+			require.NoError(t, err)
+			require.NotNil(t, ls)
+			assert.Equal(t, "inactive", ls.Status, "its live row is ended like a killed session's, not left active")
+			assert.NotNil(t, ls.StoppedAt)
 			assert.Equal(t, []string{"claude-" + e.sid}, e.rt.kills(), "its session is killed")
 		})
 	}
