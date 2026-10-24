@@ -19,6 +19,8 @@ import (
 type BoardRemotesHandler struct {
 	rbs *store.RemoteBoardStore
 	cfg *config.Config
+	// resolve is the SSRF check of a remote's URL (the address the request is pinned to); nil: httputil.ResolveAndValidateURL. A test whose remote is on loopback sets its own.
+	resolve func(rawURL string) (string, error)
 }
 
 // NewBoardRemotesHandler creates a new BoardRemotesHandler.
@@ -182,7 +184,11 @@ func (h *BoardRemotesHandler) proxyGet(ctx context.Context, remoteServer, path s
 	}
 
 	// Resolve and validate IP to prevent SSRF + DNS rebinding
-	resolvedIP, err := httputil.ResolveAndValidateURL(remoteServer)
+	resolveURL := h.resolve
+	if resolveURL == nil {
+		resolveURL = httputil.ResolveAndValidateURL
+	}
+	resolvedIP, err := resolveURL(remoteServer)
 	if err != nil {
 		return nil, http.StatusForbidden, err
 	}
@@ -204,7 +210,8 @@ func (h *BoardRemotesHandler) proxyGet(ctx context.Context, remoteServer, path s
 
 	pinnedURL := fmt.Sprintf("%s://%s:%s/api/board%s", parsed.Scheme, resolvedIP, port, path)
 
-	client := &http.Client{Timeout: 5 * time.Second}
+	// A redirect is not followed (as remote_servers.go): the check above is of the registered address only, and a Location could send this request to any host and bring its body back (CodeQL #490, #7046).
+	client := &http.Client{Timeout: 5 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	req, err := http.NewRequestWithContext(ctx, "GET", pinnedURL, nil)
 	if err != nil {
 		return nil, http.StatusBadGateway, fmt.Errorf("failed to create request: %w", err)
@@ -223,6 +230,9 @@ func (h *BoardRemotesHandler) proxyGet(ctx context.Context, remoteServer, path s
 		return nil, http.StatusBadGateway, fmt.Errorf("failed to read remote response: %w", err)
 	}
 
+	if resp.StatusCode >= 300 && resp.StatusCode < 400 {
+		return nil, http.StatusBadGateway, fmt.Errorf("remote server redirected the request, which is not followed")
+	}
 	if resp.StatusCode >= 400 {
 		return nil, resp.StatusCode, fmt.Errorf("remote server error: %s", string(body))
 	}
