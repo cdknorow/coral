@@ -152,6 +152,9 @@ type Enrolled struct {
 	// OwnerUser is that account's hub-user-<8 hex> label as the hub stamps it (#5280, the update routes' owner check); "" when
 	// the hub doesn't say or says something that is not one.
 	OwnerUser string
+	// TeamOrg is the Coral Hub organisation's id (a canonical lower-case UUID) when the hub enrolled this machine as a team's (#7061), and "" for a machine enrolled to a person. A team's machine has no
+	// Account and no OwnerUser: the person who pressed Confirm is not its owner.
+	TeamOrg string
 }
 
 func hubPost(ctx context.Context, hc *http.Client, hubURL, path string, in, out any) (int, error) {
@@ -276,6 +279,8 @@ func PollEnrollment(ctx context.Context, hc *http.Client, hubURL, deviceCode str
 		Label    string `json:"label"`
 		Account  string `json:"account"`
 		Owner    string `json:"owner_user"`
+		Kind     string `json:"owner_kind"`
+		Org      string `json:"owner_org"`
 		Error    string `json:"error"`
 	}
 	status, err := hubPost(ctx, hc, hubURL, "/api/enroll/poll", map[string]string{"device_code": deviceCode}, &r)
@@ -285,6 +290,22 @@ func PollEnrollment(ctx context.Context, hc *http.Client, hubURL, deviceCode str
 	switch status {
 	case http.StatusOK:
 		if !strings.HasPrefix(r.Token, tokenPrefix) || len(r.Token) > 256 || !serverIDRe.MatchString(r.ServerID) {
+			return nil, ErrHubResponse
+		}
+		// What the machine is enrolled as (#7061): nothing or "personal" is a person's (and an organisation then is a refusal, not ignored), "team" needs the organisation's id, and anything else is
+		// refused. A reply this code does not understand is never "treated as personal": a stray personal owner marker would then be valid on a machine the hub meant as a team's.
+		switch r.Kind {
+		case "", tunnel.OwnerKindPersonal:
+			if r.Org != "" {
+				return nil, ErrHubResponse
+			}
+		case tunnel.OwnerKindTeam:
+			if !tunnel.ValidHubOrg(r.Org) {
+				return nil, ErrHubResponse
+			}
+			// A team's machine has no person owner: neither the account nor the label is kept (the sign-in is refused there, and the owner check is the organisation's).
+			return &Enrolled{Token: r.Token, ServerID: r.ServerID, Label: cleanLabel(r.Label), TeamOrg: r.Org}, nil
+		default:
 			return nil, ErrHubResponse
 		}
 		// A malformed account is no account: Hub sign-in then stays off until one is pinned.

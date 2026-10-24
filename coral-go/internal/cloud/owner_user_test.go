@@ -61,3 +61,47 @@ func TestOwnerLabelIsPinnedOnceAndClearedByANewEnrollment(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, pinned, "another server's enrolment is not this one")
 }
+
+// #7061: a team's enrolment records the organisation with the enrolment and no person (neither the account that pressed Confirm nor its label), the Hello says "team", and a new personal enrolment
+// clears the record.
+func TestTeamEnrollmentRecordsTheOrgAndNoPersonAndTheHelloSaysTeam(t *testing.T) {
+	const org = "0b9f1c2e-3d4a-4b5c-8d6e-7f8091a2b3c4"
+	e := newEnv(t)
+	e.hub.ownerKind.Store("team")
+	e.hub.ownerOrg.Store(org)
+	e.hub.ownerUser.Store("hub-user-1234abcd")
+	e.hub.account.Store("acct_1")
+	e.hub.approveAt.Store(2)
+	m := e.manager(e.hub.srv.URL)
+	start(t, m)
+	ctx := context.Background()
+	require.NoError(t, m.Connect(ctx))
+	waitState(t, m, StateConnected)
+
+	kind, got, err := e.cs.OwnerRecord(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "team", kind)
+	assert.Equal(t, org, got)
+	label, _ := e.cs.OwnerUser(ctx)
+	assert.Empty(t, label, "the person who confirmed is not the team's owner")
+	acct, _ := e.cs.Owner(ctx)
+	assert.Empty(t, acct, "and is not pinned as the Hub sign-in's owner")
+	s := e.hub.session(t)
+	assert.Equal(t, "team", s.PeerOwnerKind())
+	assert.True(t, s.HasPeerCapability("team_owner/1"))
+
+	require.NoError(t, e.cs.Save(ctx, e.hub.srv.URL, "srv_1", "again", fakeToken))
+	kind, got, _ = e.cs.OwnerRecord(ctx)
+	assert.Equal(t, "personal", kind)
+	assert.Empty(t, got)
+}
+
+func TestPersonalEnrollmentsHelloSaysPersonal(t *testing.T) {
+	e := newEnv(t)
+	e.hub.approveAt.Store(2)
+	m := e.manager(e.hub.srv.URL)
+	start(t, m)
+	require.NoError(t, m.Connect(context.Background()))
+	waitState(t, m, StateConnected)
+	assert.Equal(t, "personal", e.hub.session(t).PeerOwnerKind())
+}

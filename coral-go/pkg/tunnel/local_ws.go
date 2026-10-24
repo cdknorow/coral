@@ -32,6 +32,7 @@ func (l *LocalHandler) serveWS(ctx context.Context, s *Stream) {
 	defer release()
 	hdr := l.stamp(scrub(h.Headers, http.MethodGet, dec))
 	stampRole(hdr, h, http.MethodGet, dec)
+	stampTeam(hdr, h, http.MethodGet, dec)
 	if l.Authorize != nil {
 		l.Authorize(hdr)
 	}

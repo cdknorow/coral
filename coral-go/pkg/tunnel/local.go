@@ -254,6 +254,7 @@ func (l *LocalHandler) serveHTTP(ctx context.Context, s *Stream) {
 	}
 	req.Header = l.stamp(scrub(h.Headers, h.Method, dec))
 	stampRole(req.Header, h, h.Method, dec)
+	stampTeam(req.Header, h, h.Method, dec)
 	stampUploader(req.Header, h, h.Method, dec)
 	stampLinks(req.Header, s, h.Method, dec)
 	redactRoute := l.redactFor(viewerTier(h))() && redactsRoute(h.Method, dec)

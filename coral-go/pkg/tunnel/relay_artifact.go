@@ -464,6 +464,6 @@ func (s *Session) serveArtifact(st io.ReadWriteCloser, h Header, setDeadline fun
 // nothing else, and a length of 1 to max.
 func validArtifactHeader(h Header, max int64) bool {
 	return h.Kind == KindRelay && h.Method == http.MethodPost && h.Path == RelayArtifactPath &&
-		h.Query == "" && len(h.Headers) == 0 && len(h.Protocols) == 0 && h.HubUser == "" && h.HubTier == "" && h.HubRole == "" &&
+		h.Query == "" && len(h.Headers) == 0 && len(h.Protocols) == 0 && h.HubUser == "" && h.HubTier == "" && h.HubRole == "" && h.HubOrg == "" && h.HubTeamRole == "" && h.HubUserID == "" &&
 		h.ContentLength >= 1 && h.ContentLength <= max
 }

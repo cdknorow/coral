@@ -45,6 +45,8 @@ type fakeHub struct {
 	routeKey  atomic.Value // string: the route key Welcome carries (#3683); unset: none
 	account   atomic.Value // string: the account the enrollment reply names (#3966); unset: none
 	ownerUser atomic.Value // string: the owner's hub-user label the enrollment reply names (#5280); unset: none
+	ownerKind atomic.Value // string: the owner_kind the enrollment reply names (#7061); unset: none
+	ownerOrg  atomic.Value // string: the owner_org the enrollment reply names; unset: none
 	signin    atomic.Value // signinFunc: answers Hub sign-in (#3966); unset: not advertised
 	onMode    atomic.Value // func(tunnel.Mode): takes the local mode message (#5918); unset: local_mode/1 is not advertised
 	routeMu   sync.Mutex
@@ -105,6 +107,12 @@ func newFakeHub(t *testing.T) *fakeHub {
 		}
 		if u, ok := h.ownerUser.Load().(string); ok {
 			reply["owner_user"] = u
+		}
+		if k, ok := h.ownerKind.Load().(string); ok {
+			reply["owner_kind"] = k
+		}
+		if o, ok := h.ownerOrg.Load().(string); ok {
+			reply["owner_org"] = o
 		}
 		json.NewEncoder(w).Encode(reply)
 	})

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/subgentic/coral/pkg/secretbox"
+	"github.com/subgentic/coral/pkg/tunnel"
 )
 
 // Cloud connection states.
@@ -66,6 +67,19 @@ func (s *CloudStore) CheckSecrets(ctx context.Context) error {
 // Save replaces any existing enrollment with a new, active one. The token is
 // sealed before it touches the database.
 func (s *CloudStore) Save(ctx context.Context, hubURL, serverID, label, token string) error {
+	return s.save(ctx, hubURL, serverID, label, token, nil)
+}
+
+// SaveTeam is Save for an enrollment of a Coral Hub organisation's machine (#7061): org (a canonical lower-case UUID) is recorded with the enrollment in the same statement, so there is no moment
+// when a team's machine is stored as a personal one. A malformed org is refused.
+func (s *CloudStore) SaveTeam(ctx context.Context, hubURL, serverID, label, token, org string) error {
+	if !tunnel.ValidHubOrg(org) {
+		return errors.New("a team enrollment needs the organisation's id")
+	}
+	return s.save(ctx, hubURL, serverID, label, token, &org)
+}
+
+func (s *CloudStore) save(ctx context.Context, hubURL, serverID, label, token string, teamOrg *string) error {
 	box, err := s.rs.getBox(ctx, true, false)
 	if err != nil {
 		return err
@@ -76,12 +90,51 @@ func (s *CloudStore) Save(ctx context.Context, hubURL, serverID, label, token st
 	}
 	// A new enrollment starts without a route key (#3683) or an owner (#3966): an earlier one's
 	// belonged to it.
-	_, err = s.db.ExecContext(ctx, `INSERT INTO cloud_connection (id, hub_url, server_id, label, token, state, created_at, route_key, hub_owner, hub_owner_user)
-		VALUES (1, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL)
+	// The kind and organisation are the new enrollment's own, or none: a team record is never inherited.
+	var kind, org any
+	if teamOrg != nil {
+		kind, org = OwnerKindTeam, *teamOrg
+	}
+	_, err = s.db.ExecContext(ctx, `INSERT INTO cloud_connection (id, hub_url, server_id, label, token, state, created_at, route_key, hub_owner, hub_owner_user, hub_owner_kind, hub_owner_org)
+		VALUES (1, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET hub_url=excluded.hub_url, server_id=excluded.server_id, label=excluded.label,
-		  token=excluded.token, state=excluded.state, created_at=excluded.created_at, last_error=NULL, route_key=NULL, hub_owner=NULL, hub_owner_user=NULL, hub_owner_adopted_at=NULL`,
-		strings.TrimRight(hubURL, "/"), serverID, label, env, CloudStateActive, nowUTC())
+		  token=excluded.token, state=excluded.state, created_at=excluded.created_at, last_error=NULL, route_key=NULL, hub_owner=NULL, hub_owner_user=NULL, hub_owner_adopted_at=NULL,
+		  hub_owner_kind=excluded.hub_owner_kind, hub_owner_org=excluded.hub_owner_org`,
+		strings.TrimRight(hubURL, "/"), serverID, label, env, CloudStateActive, nowUTC(), kind, org)
 	return err
+}
+
+// OwnerKindTeam and OwnerKindPersonal are what OwnerRecord reports as the kind.
+const (
+	OwnerKindPersonal = tunnel.OwnerKindPersonal
+	OwnerKindTeam     = tunnel.OwnerKindTeam
+)
+
+// OwnerRecord is what the machine is enrolled as (#7061): OwnerKindPersonal and "" for an enrollment made for a person (or before teams existed), OwnerKindTeam and the organisation's id for a team's.
+// There is no enrollment: personal, "", and no error (nothing is owned, and nothing here is a team's). Any other stored kind, or a team with no well-formed organisation, is an error, which every
+// caller treats as "no owner": a record this code does not understand never falls back to personal.
+func (s *CloudStore) OwnerRecord(ctx context.Context) (kind, org string, err error) {
+	var r struct {
+		Kind sql.NullString `db:"hub_owner_kind"`
+		Org  sql.NullString `db:"hub_owner_org"`
+	}
+	err = s.db.GetContext(ctx, &r, "SELECT hub_owner_kind, hub_owner_org FROM cloud_connection WHERE id = 1")
+	if errors.Is(err, sql.ErrNoRows) {
+		return OwnerKindPersonal, "", nil
+	}
+	if err != nil {
+		return "", "", err
+	}
+	switch {
+	case !r.Kind.Valid || r.Kind.String == "" || r.Kind.String == OwnerKindPersonal:
+		if r.Org.String != "" {
+			return "", "", errors.New("a personal enrollment records an organisation")
+		}
+		return OwnerKindPersonal, "", nil
+	case r.Kind.String == OwnerKindTeam && tunnel.ValidHubOrg(r.Org.String):
+		return OwnerKindTeam, r.Org.String, nil
+	}
+	return "", "", errors.New("the enrollment's owner record is not understood")
 }
 
 // Get returns the enrollment without its token.

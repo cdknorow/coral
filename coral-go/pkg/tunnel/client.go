@@ -116,6 +116,8 @@ type ClientOptions struct {
 	// LocalMode reports the connector's maximum access mode in the handshake. It is
 	// read on every (re)connect. Nil reports view.
 	LocalMode func() Mode
+	// OwnerKind reports what the machine is enrolled as, OwnerKindPersonal or OwnerKindTeam (#7061), echoed in the handshake. It is read on every (re)connect. Nil, or anything else, reports personal.
+	OwnerKind func() string
 	// OnState is called from Run when the tunnel connects (nil error) or a
 	// connection attempt or session ends (with the reason).
 	OnState func(connected bool, err error)
@@ -274,7 +276,7 @@ func Dial(ctx context.Context, rawURL, token string, o ClientOptions) (*ClientSe
 		return nil, err
 	}
 	c.SetReadLimit(maxHandshakeBytes)
-	hello, _ := json.Marshal(Hello{ProtocolVersion: ProtocolVersion, ServerToken: token, CoralVersion: o.CoralVersion, LocalMode: currentMode(o.LocalMode).String(), Capabilities: []string{CapCrossTeamAllowlist, CapCrossTeamLinks, CapabilityLocalMode, CapGoals}, BootID: thisBoot.id, StartedAt: thisBoot.at.Format(time.RFC3339)})
+	hello, _ := json.Marshal(Hello{ProtocolVersion: ProtocolVersion, ServerToken: token, CoralVersion: o.CoralVersion, LocalMode: currentMode(o.LocalMode).String(), Capabilities: []string{CapCrossTeamAllowlist, CapCrossTeamLinks, CapabilityLocalMode, CapGoals, CapTeamOwner}, OwnerKind: currentOwnerKind(o.OwnerKind), BootID: thisBoot.id, StartedAt: thisBoot.at.Format(time.RFC3339)})
 	if err := c.Write(hctx, websocket.MessageBinary, hello); err != nil {
 		_ = c.Close(websocket.StatusInternalError, "")
 		return nil, err

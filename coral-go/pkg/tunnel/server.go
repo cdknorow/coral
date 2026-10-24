@@ -162,6 +162,7 @@ type Session struct {
 	bootID    string       // the connector's Hello.BootID when well formed (#5855), else ""
 	startedAt time.Time    // the connector process's Hello.StartedAt when it parses, else the zero time
 	localMode atomic.Int32 // the connector's maximum mode (a Mode): its Hello, then each local_mode message
+	peerKind  string       // the connector's Hello.OwnerKind when it is "personal" or "team" (#7061), else ""
 	peerCaps  []string     // the connector's Hello.Capabilities when the whole list is well formed, else nil
 	active    atomic.Int32
 	closeOnce sync.Once
@@ -287,7 +288,7 @@ func Accept(ctx context.Context, c *websocket.Conn, auth AuthFunc, cfg SessionCo
 		_ = nc.Close()
 		return nil, err
 	}
-	s := &Session{ys: ys, ws: c, cfg: cfg, cancel: cancel, identity: identity, version: v, coralVer: hello.CoralVersion, peerCaps: wellFormedCapabilities(hello.Capabilities),
+	s := &Session{ys: ys, ws: c, cfg: cfg, cancel: cancel, identity: identity, version: v, coralVer: hello.CoralVersion, peerCaps: wellFormedCapabilities(hello.Capabilities), peerKind: wellFormedOwnerKind(hello.OwnerKind),
 		hooks: hooks, artifactHook: artifactHook, relaySlot: make(chan struct{}, cfg.MaxRelayStreams)}
 	s.localMode.Store(int32(parseLocalMode(hello.LocalMode)))
 	s.bootID, s.startedAt = parsePeerBoot(hello.BootID, hello.StartedAt) // informational (#5855)
@@ -362,6 +363,9 @@ func parseLocalMode(v string) Mode {
 // PeerCapabilities are the capabilities the connector reported in its Hello (#5572), each "name/version". A list that is too long or holds any malformed string reads as none (never a partial
 // read), as HasCapability does. The hub sends a feature only to a connector that says it has it.
 func (s *Session) PeerCapabilities() []string { return append([]string(nil), s.peerCaps...) }
+
+// PeerOwnerKind is what the connector says it is enrolled as, OwnerKindPersonal or OwnerKindTeam, or "" from a Coral that does not say (one older than team machines) or says anything else.
+func (s *Session) PeerOwnerKind() string { return s.peerKind }
 
 // HasPeerCapability reports whether the connector's Hello named want exactly (HasCapability on its Hello list).
 func (s *Session) HasPeerCapability(want string) bool { return HasCapability(s.peerCaps, want) }
@@ -553,6 +557,9 @@ func (s *Session) RoundTrip(req *http.Request) (*http.Response, error) {
 		Kind: KindHTTP, Method: req.Method, Path: req.URL.EscapedPath(), Query: req.URL.RawQuery,
 		Headers: req.Header.Clone(), ContentLength: req.ContentLength, HubUser: hubUserFrom(ctx),
 		HubTier: hubTierFrom(ctx), HubRole: hubRoleFrom(ctx),
+	}
+	if t := hubTeamFrom(ctx); t != (HubTeam{}) {
+		hdr.HubOrg, hdr.HubTeamRole, hdr.HubUserID = t.Org, t.Role, t.UserID
 	}
 	hs, err := s.OpenStream(ctx, hdr)
 	if err != nil {
