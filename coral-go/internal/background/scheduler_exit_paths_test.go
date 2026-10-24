@@ -379,3 +379,59 @@ func TestRunWhoseStartCommandCouldNotBeHandedOverFailsWithAPlainReasonAndCode(t 
 	require.NotNil(t, r.ErrorCode)
 	assert.Equal(t, "start_command_failed", *r.ErrorCode)
 }
+
+// idleShellRuntime is a runtime whose terminal is at an idle shell (the CLI never ran).
+type idleShellRuntime struct{ *killRecorder }
+
+func (idleShellRuntime) AgentShellIdle(context.Context, string, string, string) (bool, string, bool) {
+	return true, "sh", true
+}
+
+// The backstop (#6978, QA's #6989): a run whose terminal sits at an idle shell with no event from the agent for neverStartedAfter is failed as never started, with one sentence and a fixed code, and its session is killed,
+// whatever the cause of the idle shell; a run whose agent has reported is left alone.
+func TestRunWhoseTerminalSitsAtAnIdleShellWithNoEventIsFailedAsNeverStarted(t *testing.T) {
+	for _, reported := range []bool{false, true} {
+		t.Run(fmt.Sprintf("reported=%v", reported), func(t *testing.T) {
+			prevAfter, prevRecheck := neverStartedAfter, neverStartedRecheck
+			neverStartedAfter, neverStartedRecheck = 150*time.Millisecond, 50*time.Millisecond
+			t.Cleanup(func() { neverStartedAfter, neverStartedRecheck = prevAfter, prevRecheck })
+			e := newExitEnv(t, fmt.Sprintf("exit-never-%v", reported))
+			e.s.SetRuntime(idleShellRuntime{e.rt})
+			e.s.SetEventCheck(func(context.Context, string) bool { return reported })
+			release := make(chan struct{})
+			e.launch(t, func(ctx context.Context) error { // the launch function waits on the session, as the real one does
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-release:
+					return nil
+				}
+			})
+			done := make(chan struct{})
+			go func() {
+				e.s.launchAndWatch(e.runID, store.ScheduledJob{AgentType: "claude"}, runConfig{})
+				close(done)
+			}()
+			if reported {
+				time.Sleep(600 * time.Millisecond) // sleep-ok: the backstop's whole window passes with nothing to do
+				close(release)
+			}
+			select {
+			case <-done:
+			case <-time.After(10 * time.Second):
+				t.Fatal("the run did not end")
+			}
+			r := e.run(t)
+			if reported {
+				assert.Equal(t, "completed", r.Status, "an agent that reported is left alone")
+				return
+			}
+			assert.Equal(t, "failed", r.Status)
+			require.NotNil(t, r.ExitReason)
+			assert.Equal(t, agentNeverStartedMsg, *r.ExitReason)
+			require.NotNil(t, r.ErrorCode)
+			assert.Equal(t, agentNeverStartedCode, *r.ErrorCode)
+			assert.Equal(t, []string{"claude-" + e.sid}, e.rt.kills(), "its session is killed")
+		})
+	}
+}
