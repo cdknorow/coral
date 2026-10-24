@@ -108,6 +108,7 @@ func teamServerH(t *testing.T) (url string, cfg *config.Config, h *SessionsHandl
 	r := chi.NewRouter()
 	r.Use(testIdentity(h.db))
 	r.Post("/api/sessions/launch-team", h.LaunchTeam)
+	r.Get("/api/sessions/live", h.List)
 	r.Post("/api/sessions/live/team/{boardName}/kill", h.KillTeam)
 	r.Post("/api/teams/detail/{name}/resurrect", h.ResurrectTeam)
 	wh := NewWorktreesHandler(h.db, cfg)
@@ -334,4 +335,24 @@ func TestRefusedTeamLaunchLeavesNoBoardAndTheRetryGoesThrough(t *testing.T) {
 
 	status, out = postTeam(t, url, body("master"))
 	assert.Equal(t, http.StatusOK, status, "the same name, the field fixed: %v", out)
+}
+
+// UI Accessibility's #6806 (#6817): a freshly launched worktree team's live rows carry the branch and the worktree state at once, not after the git poller's next pass, so the Kill Team confirmation can name the
+// worktree.
+func TestLaunchedWorktreeTeamRowsCarryTheirBranchAtOnce(t *testing.T) {
+	url, cfg := teamServer(t)
+	_, id, wt := launchWorktreeTeam(t, url, cfg, "rowsbranch")
+	resp, err := http.Get(url + "/api/sessions/live")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	var rows []map[string]any
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&rows))
+	require.NotEmpty(t, rows)
+	for _, r := range rows {
+		assert.Equal(t, "coral-team/"+id, r["branch"], "the team's own branch, from the launch")
+		state, _ := r["git_state"].(map[string]any)
+		require.NotNil(t, state, "the worktree state is there too")
+		assert.Equal(t, true, state["is_worktree"])
+		_ = wt
+	}
 }

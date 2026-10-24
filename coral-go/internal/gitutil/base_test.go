@@ -128,3 +128,18 @@ func TestResolveBaseSaysWhyThereIsNothingToStartFrom(t *testing.T) {
 	_, err = ResolveBase(context.Background(), baseRepo(t, "master", false), "")
 	assert.ErrorIs(t, err, ErrNoCommits, "a repository with no commit says so")
 }
+
+// #6817: Coral's own branches are not offered as bases in the missing-base answer.
+func TestBranchMissingLeavesOutCoralsOwnBranches(t *testing.T) {
+	dir := baseRepo(t, "master", true)
+	for _, b := range []string{"coral-team/b-abc123", "coral/job-run-12", "develop"} {
+		out, err := exec.Command("git", "-C", dir, "branch", b).CombinedOutput()
+		require.NoError(t, err, string(out))
+	}
+	_, err := ResolveBase(context.Background(), dir, "release")
+	var missing *BranchMissingError
+	require.ErrorAs(t, err, &missing)
+	assert.Equal(t, []string{"develop", "master"}, missing.Branches)
+	assert.NotContains(t, err.Error(), "coral-team")
+	assert.NotContains(t, err.Error(), "job-run")
+}
