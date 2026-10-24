@@ -488,9 +488,12 @@ func (h *SessionsHandler) recordWorktreeRow(ctx context.Context, sessionID, work
 	if out, err := gitutil.Command(ctx, worktreePath, "rev-parse", "--abbrev-ref", "HEAD").Output(); err == nil {
 		snap.Branch = strings.TrimSpace(string(out))
 	}
-	if out, err := gitutil.Command(ctx, worktreePath, "log", "-1", "--format=%H%n%s").Output(); err == nil {
-		hash, subject, _ := strings.Cut(strings.TrimSpace(string(out)), "\n")
-		snap.CommitHash, snap.CommitSubject = hash, subject
+	if out, err := gitutil.Command(ctx, worktreePath, "log", "-1", "--format=%H%n%aI%n%s").Output(); err == nil {
+		parts := strings.SplitN(strings.TrimSpace(string(out)), "\n", 3)
+		if len(parts) == 3 {
+			snap.CommitHash, snap.CommitSubject = parts[0], parts[2]
+			snap.CommitTimestamp = &parts[1] // the commit's time, as the poller records it (Security's SHOULD on #6831)
+		}
 	}
 	if err := h.gs.UpsertGitSnapshot(ctx, snap); err != nil {
 		log.Printf("[worktree] could not record the git row for %s: %v", ls.AgentName, err)
