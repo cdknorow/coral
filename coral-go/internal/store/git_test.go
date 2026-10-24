@@ -123,3 +123,24 @@ func TestChangedFiles(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 3, counts["sess-1"])
 }
+
+// #6832 (Security's #6831): a commit subject and a branch name are the repository's text. Escape sequences and the characters that reorder or hide text are taken out before they are stored.
+func TestGitSnapshotTextIsCleanedBeforeItIsStored(t *testing.T) {
+	db := openTestDB(t)
+	s := NewGitStore(db)
+	ctx := context.Background()
+	sid := "sess-clean"
+	snap := &GitSnapshot{
+		AgentName: "clean-repo", AgentType: "claude", WorkingDirectory: "/tmp/repo", SessionID: &sid, CommitHash: "def456",
+		Branch:        "feature/‮pwned\x1b[31m",
+		CommitSubject: "fix \x1b[2Jthe build ‮gpj.exe​ and ⁦more⁩",
+	}
+	require.NoError(t, s.UpsertGitSnapshot(ctx, snap))
+	got, err := s.GetLatestGitStateBySession(ctx, sid)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, "feature/pwned", got.Branch)
+	assert.Equal(t, "fix the build gpj.exe and more", got.CommitSubject)
+	assert.NotContains(t, got.CommitSubject, "\x1b")
+	assert.NotContains(t, got.CommitSubject, "‮")
+}
