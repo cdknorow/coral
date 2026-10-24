@@ -1442,6 +1442,11 @@ button.subscriber-history-link {
 #warning-toasts:has(.security-warning-toast) { margin-bottom: 10px; }
 #notices:not(:has(.toast, .update-toast)) { display: none; } /* nothing to show: no empty "Notifications" region either */
 #warning-toasts > .security-warning-toast { position: static; min-width: 0; pointer-events: auto; animation: none; }
+/* While a dialog is open the warnings step aside, never over its buttons (#313: at 1200 x 800 they covered the right end of the first-run dialog's "Set password" and the
+   Confirm "Show"); closed again, they are back. A dialog is a .modal that is not hidden. Only the warnings: the column stays above the page and the dialogs, so a short toast
+   fired while a dialog is open (Settings' cleanup results, an upload's Retry) is still seen and can be clicked (QA's #344). Lowering the whole column put those under the
+   dialog's backdrop. */
+body:has(.modal:not([hidden]):not([style*="display: none"]):not([style*="display:none"])) #warning-toasts { display: none; }
 #warning-toasts .security-warning-text { max-height: 26vh; } /* three can show at once: each scrolls its own text before the column outgrows the window */
 /* The update notice is a child of the column too: on a desktop it stays fixed at the top right, as it was. */
 #warning-toasts > .update-toast:not(.security-warning-toast) { pointer-events: auto; }
