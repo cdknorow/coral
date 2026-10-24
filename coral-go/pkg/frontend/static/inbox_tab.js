@@ -8,6 +8,8 @@ import { state } from './state.js';
 import { isCloud, sessionServer, keyLabel, identityKey } from './server_base.js';
 import { importOnce } from './import_once.js';
 import { browserLocal } from './safe_storage.js';
+import { waitingText } from './waiting_text.js';
+import { pollEvery } from './overload.js';
 import { resolveSessionIdentity, sessionStateInfo } from './session_state.js';
 import './safe_markdown.js'; // the shared Inbox renderer's wrapper: the lazy Inbox modules import it, and a lazy module imports only what loads at startup (import_hygiene)
 
@@ -79,18 +81,20 @@ function announceNewlyWaiting(tab) {
 const askOf = s => String(s.waiting_summary || '').replace(/\s+/g, ' ').trim();
 const needsWords = s => { const why = sessionStateInfo(s).label, ask = askOf(s); return ask && ask !== why ? `${why}. ${ask}` : why; };
 
-let _needsKey = null;
+let _needsKey = null, _needsTimer = 0;
 /** The Needs you list of the dashboard's own Inbox: the agents waiting for input, each a button that opens that agent. Drawn only while that Inbox is on screen, and only when the list changed. */
 function renderNeedsYou(force = false) {
     const local = document.getElementById('inbox-local');
     const list = document.getElementById('inbox-needs-list');
     if (!local || local.hidden || !list) return;
     const rows = (state.liveSessions || []).filter(s => s && s.waiting_for_input);
-    const key = JSON.stringify(rows.map(s => [sessionServer(s), s.session_id, s.name, s.display_name, s.waiting_kind, s.board_project, s.board_project ? keyLabel(identityKey(sessionServer(s), s.board_project)) : '', askOf(s)])); // the team's name is in the key: a label that arrives later redraws the row (#6961)
+    const key = JSON.stringify(rows.map(s => [sessionServer(s), s.session_id, s.name, s.display_name, s.waiting_kind, s.board_project, s.board_project ? keyLabel(identityKey(sessionServer(s), s.board_project)) : '', askOf(s), waitingText(s.waiting_since)])); // the waiting words change by the minute, so a re-draw follows them; // the team's name is in the key: a label that arrives later redraws the row (#6961)
     if (!force && key === _needsKey) return;
     _needsKey = key;
+    if (rows.some(s => s.waiting_since) && !_needsTimer) _needsTimer = pollEvery(() => renderNeedsYou(), 30000); // "waiting 4 min" moves on while the list is open
     const empty = document.getElementById('inbox-needs-empty');
     if (empty) empty.hidden = rows.length > 0;
+    const heldId = list.contains(document.activeElement) ? document.activeElement.dataset.sessionId : ''; // the row the keyboard is on: the minute's redraw must not take it away (#7004)
     // Built with the DOM: no text from an agent is ever read as markup.
     list.replaceChildren(...rows.map(s => {
         const li = document.createElement('li');
@@ -103,6 +107,8 @@ function renderNeedsYou(force = false) {
         const name = document.createElement('span'); name.className = 'inbox-needs-name'; name.textContent = resolveSessionIdentity(s);
         const why = document.createElement('span'); why.className = 'inbox-needs-why'; why.textContent = sessionStateInfo(s).label;
         const head = document.createElement('span'); head.className = 'inbox-needs-head'; head.append(lead, name, why);
+        const wt = waitingText(s.waiting_since); // nothing when the start is unknown
+        if (wt) { const w = document.createElement('span'); w.className = 'inbox-needs-waited'; w.textContent = wt; head.append(w); }
         if (s.board_project) { const t = document.createElement('span'); t.className = 'inbox-needs-team'; t.textContent = keyLabel(identityKey(sessionServer(s), s.board_project)); head.append(t); }
         const dir = String(s.working_directory || '').replace(/[\\/]+$/, '').split(/[\\/]/).pop(); // the folder's own name: two agents of one role in two folders are told apart (#7122)
         if (dir) { const f = document.createElement('span'); f.className = 'inbox-needs-folder'; f.textContent = dir; f.title = String(s.working_directory); head.append(f); }
@@ -117,6 +123,7 @@ function renderNeedsYou(force = false) {
         li.append(b);
         return li;
     }));
+    if (heldId) [...list.querySelectorAll('.inbox-needs-item')].find(b => b.dataset.sessionId === heldId)?.focus({ preventScroll: true });
 }
 
 // The two tabs of the dashboard's own Inbox (as the hub's): one panel shows at a time. The chosen tab is kept for this browser (and across a reload) (browserLocal).

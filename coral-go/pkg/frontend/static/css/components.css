@@ -4187,6 +4187,7 @@ dialog.signed-out-panel code { background: var(--bg-tertiary); padding: 1px 6px;
 .inbox-panel[hidden] { display: none; }
 .inbox-needs-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .inbox-needs-item { width: 100%; box-sizing: border-box; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 2px 12px; text-align: left; font: inherit; font-size: 0.875rem; color: var(--text-primary); background: var(--bg-secondary); border: 1px solid var(--control-border); border-left: 3px solid var(--warning); border-radius: var(--radius-ml); padding: 10px 12px; min-height: 44px; cursor: pointer; }
+.inbox-needs-waited { color: var(--text-secondary); font-size: 0.8125rem; }
 .inbox-needs-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; min-width: 0; }
 .inbox-needs-item:hover { background: var(--bg-tertiary); }
 .inbox-needs-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
