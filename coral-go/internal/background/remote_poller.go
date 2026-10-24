@@ -24,16 +24,20 @@ type RemoteBoardPoller struct {
 	interval   time.Duration
 	logger     *slog.Logger
 	discoverFn func(ctx context.Context) ([]AgentInfo, error)
+	// validateURL is the check that a remote server's URL does not resolve to an internal address (a test replaces it: its servers are on the loopback).
+	validateURL func(rawURL string) (string, error)
 }
 
 // NewRemoteBoardPoller creates a new RemoteBoardPoller.
 func NewRemoteBoardPoller(rbStore *store.RemoteBoardStore, runtime AgentRuntime, interval time.Duration) *RemoteBoardPoller {
 	return &RemoteBoardPoller{
-		store:    rbStore,
-		runtime:  runtime,
-		client:   &http.Client{Timeout: 10 * time.Second},
-		interval: interval,
-		logger:   slog.Default().With("service", "remote_board_poller"),
+		store:   rbStore,
+		runtime: runtime,
+		// Redirects are not followed: the URL was checked above, and a redirect would send the poll to an address that was not (#7053).
+		client:      &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
+		interval:    interval,
+		logger:      slog.Default().With("service", "remote_board_poller"),
+		validateURL: httputil.ResolveAndValidateURL,
 	}
 }
 
@@ -83,7 +87,7 @@ func (p *RemoteBoardPoller) RunOnce(ctx context.Context) error {
 		}
 
 		// SSRF protection: validate remote server URL doesn't resolve to internal IPs
-		if _, err := httputil.ResolveAndValidateURL(sub.RemoteServer); err != nil {
+		if _, err := p.validateURL(sub.RemoteServer); err != nil {
 			p.logger.Warn("remote board subscription blocked by SSRF check",
 				"server", sub.RemoteServer, "session_id", sub.SessionID, "error", err)
 			continue
@@ -100,6 +104,12 @@ func (p *RemoteBoardPoller) RunOnce(ctx context.Context) error {
 		resp, err := p.client.Do(req)
 		if err != nil {
 			p.logger.Debug("remote poll failed", "server", sub.RemoteServer, "error", err)
+			continue
+		}
+		// Only a success is an answer: a redirect (never followed), an error page and the rest are not read, whatever their body says (#7053).
+		if resp.StatusCode < 200 || resp.StatusCode > 299 {
+			p.logger.Debug("remote poll answered with a status that is not a success", "server", sub.RemoteServer, "status", resp.StatusCode)
+			resp.Body.Close()
 			continue
 		}
 		var data struct {
