@@ -39,6 +39,7 @@ jobs:
       - name: the test, then the test without the retry
         working-directory: coral-go
         run: |
+          set +e +o pipefail
           git --version
           go test -count=1 -tags "dev fts5" -run TestRollbackRemovesAHalfMadeFolderWhoseFileIsHeldForAMoment -v ./internal/background 2>&1 | tee "$RUNNER_TEMP/real.log"
           real=${PIPESTATUS[0]}
