@@ -1326,6 +1326,7 @@ func (h *SessionsHandler) ResurrectTeam(w http.ResponseWriter, r *http.Request) 
 
 	// Recreate worktree if team had one
 	workingDir := team.WorkingDir
+	resurrectRepo := "" // the repository of the team's worktree, for its members' rows
 	if team.IsWorktree == 1 {
 		// Parse base_branch from stored config
 		var cfg struct {
@@ -1342,6 +1343,7 @@ func (h *SessionsHandler) ResurrectTeam(w http.ResponseWriter, r *http.Request) 
 			errBadRequest(w, "failed to recreate worktree: "+err.Error())
 			return
 		}
+		resurrectRepo = repoDir
 		if err := gitutil.ValidRef(branch); err != nil { // a stored config is checked again (#3601, W24)
 			errBadRequest(w, "the team's base_branch: "+err.Error())
 			return
@@ -1400,6 +1402,10 @@ func (h *SessionsHandler) ResurrectTeam(w http.ResponseWriter, r *http.Request) 
 		// Update team member: active, new session_id
 		h.teamStore.UpdateMemberStatus(ctx, m.ID, "active", &sessionID)
 		h.ss.SetTeamID(ctx, sessionID, team.ID)
+		if team.IsWorktree == 1 { // a resurrected member is in the team's worktree like a launched one: its row names it, so a stop or a kill finds it (#6817)
+			h.ss.UpdateWorktreeInfo(ctx, sessionID, team.WorkingDir, resurrectRepo)
+			h.recordWorktreeRow(ctx, sessionID, team.WorkingDir)
+		}
 
 		// Setup board subscription
 		h.setupBoardAndPrompt(sessionID, result["session_name"].(string),

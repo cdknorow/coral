@@ -221,7 +221,9 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 			categories = append(categories, category)
 		}
 		if _, bad := entry["error"]; !bad && worktreePath != "" {
-			h.recordWorktreeLaunch(ctx, body, entry, worktreePath)
+			if sid, _ := entry["session_id"].(string); sid != "" {
+				h.recordWorktreeRow(ctx, sid, worktreePath)
+			}
 		}
 		launched = append(launched, entry)
 	}
@@ -471,24 +473,27 @@ func checkTeamRequest(body launchTeamRequest) string {
 	return ""
 }
 
-// recordWorktreeLaunch gives a team member launched into a worktree its git row at once (its branch, that it is a worktree, its commit), instead of after the git poller's next pass (20 s or more): the dashboard's
-// Kill Team confirmation names the worktree from it, and a person must not be asked to confirm a stop blind (#6817, UI Accessibility's #6806). The poller refreshes the row as before; a failure here is only logged.
-func (h *SessionsHandler) recordWorktreeLaunch(ctx context.Context, body launchTeamRequest, entry map[string]any, worktreePath string) {
-	sid, _ := entry["session_id"].(string)
-	if sid == "" || h.gs == nil || h.ss == nil {
+// recordWorktreeRow gives an agent launched into a team worktree (a team launch's member, a resurrected one) its git row at once (its branch, that it is a worktree, its commit), instead of after the git poller's next
+// pass (20 s or more): the dashboard's Kill Team and Kill Session confirmations name the worktree from it, and a person must not be asked to confirm a stop blind (#6817, UI Accessibility's #6806). The branch is
+// what git says the worktree is on. The poller refreshes the row as before; a failure here is only logged.
+func (h *SessionsHandler) recordWorktreeRow(ctx context.Context, sessionID, worktreePath string) {
+	if sessionID == "" || h.gs == nil || h.ss == nil {
 		return
 	}
-	ls, err := h.ss.GetLiveSession(ctx, sid)
+	ls, err := h.ss.GetLiveSession(ctx, sessionID)
 	if err != nil || ls == nil {
 		return
 	}
-	snap := &store.GitSnapshot{AgentName: ls.AgentName, AgentType: ls.AgentType, WorkingDirectory: worktreePath, Branch: gitutil.TeamBranch(body.BoardName), SessionID: &sid, Worktree: true}
+	snap := &store.GitSnapshot{AgentName: ls.AgentName, AgentType: ls.AgentType, WorkingDirectory: worktreePath, SessionID: &sessionID, Worktree: true}
+	if out, err := gitutil.Command(ctx, worktreePath, "rev-parse", "--abbrev-ref", "HEAD").Output(); err == nil {
+		snap.Branch = strings.TrimSpace(string(out))
+	}
 	if out, err := gitutil.Command(ctx, worktreePath, "log", "-1", "--format=%H%n%s").Output(); err == nil {
 		hash, subject, _ := strings.Cut(strings.TrimSpace(string(out)), "\n")
 		snap.CommitHash, snap.CommitSubject = hash, subject
 	}
 	if err := h.gs.UpsertGitSnapshot(ctx, snap); err != nil {
-		log.Printf("[launch-team] could not record the worktree's git row for %s: %v", ls.AgentName, err)
+		log.Printf("[worktree] could not record the git row for %s: %v", ls.AgentName, err)
 	}
 }
 

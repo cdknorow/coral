@@ -356,3 +356,36 @@ func TestLaunchedWorktreeTeamRowsCarryTheirBranchAtOnce(t *testing.T) {
 		_ = wt
 	}
 }
+
+// The same for a resurrected team (#6817): its members are put back in the worktree, their rows name it (branch, worktree state) and the live session records the worktree, as a launched one's does, so a stop or a
+// single kill finds it.
+func TestResurrectedWorktreeTeamRowsCarryTheirBranch(t *testing.T) {
+	url, cfg, h := teamServerH(t)
+	git, id, wt := launchWorktreeTeam(t, url, cfg, "resurrectrows")
+	require.NoError(t, os.WriteFile(filepath.Join(wt, "work.txt"), []byte("w"), 0o644))
+	git("-C", wt, "add", "work.txt")
+	git("-C", wt, "commit", "-q", "-m", "w") // so the branch outlives the stop
+	stopTeam(t, url, id)
+	status, body := apiPost(t, url+"/api/teams/detail/"+id+"/resurrect")
+	require.Equal(t, http.StatusOK, status, body)
+
+	resp, err := http.Get(url + "/api/sessions/live")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	var rows []map[string]any
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&rows))
+	var found int
+	for _, r := range rows {
+		if r["branch"] == "coral-team/"+id {
+			found++
+			state, _ := r["git_state"].(map[string]any)
+			require.NotNil(t, state)
+			assert.Equal(t, true, state["is_worktree"])
+			ls, err := h.ss.GetLiveSession(t.Context(), r["session_id"].(string))
+			require.NoError(t, err)
+			require.NotNil(t, ls.WorktreePath, "the live session records the worktree it is in")
+			assert.Equal(t, wt, *ls.WorktreePath)
+		}
+	}
+	assert.Greater(t, found, 0, "a resurrected member's row names the team's branch: %v", rows)
+}
