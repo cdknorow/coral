@@ -42,11 +42,7 @@ jobs:
           set +e +o pipefail
           go test -count=1 -tags fts5 -run 'TestTeamLaunchWithAWorktreeInARepositoryNotOnMain|TestTeamWorktreeForABoardNameGitRefusesInABranch' -v ./internal/server/routes 2>&1 | grep -E "^(--- |ok|FAIL|PASS)|Error:|Messages|unexpected" | cut -c1-300
           exit ${PIPESTATUS[0]}
-      - name: the whole routes package
-        if: ${{ !cancelled() }}
+      - name: the 18 failing tests, with their messages
         run: |
           set +e +o pipefail
-          start=$(date +%s)
-          go test -count=1 -timeout 40m -tags fts5 ./internal/server/routes 2>&1 | tee "$RUNNER_TEMP/routes.log" | grep -E "^(--- FAIL|ok|FAIL|panic)" | cut -c1-200
-          echo "ROUTES WALL SECONDS: $(( $(date +%s) - start ))"
-          echo "FAILED TESTS: $(grep -c '^--- FAIL' "$RUNNER_TEMP/routes.log")"
+          go test -count=1 -tags fts5 -run '^(TestShellWritesIntoGitHookPlacesAreHeld|TestPowerShellAndCmdWritesIntoGitHookPlacesAreHeld|TestShellRisk|TestFileRisk|TestShellRiskSeesThroughWrappers|TestShellWriteRisk|TestShellRiskV23|TestShellRiskEnvSplitString|TestScreenActionReadsAWrappedToolLine|TestLongInRepoPathWrappedMidWordIsAnswered|TestShellRisk3207|TestPathsInsideTheWorkingFolderAreStillSafeOnWindows|TestBackslashPathsAreJudgedAsPathsOnWindows|TestInputRedirectionsAreNotWriteTargets|TestShellRiskReadsWindowsCommandsOnWindows|TestWindowsDiscardRedirectionsAreQuiet|TestBrowseThroughTheHubWalksDownAndUp|TestSensitivePathAgentCredentials)$' -v ./internal/server/routes 2>&1 | grep -vE "^(=== RUN|=== PAUSE|=== CONT)" | grep -E "^(--- |    --- |ok|FAIL)|Error Trace|Error:|expected|actual|Messages|panic|Diff:|^\s+[-+] " | cut -c1-260 | head -150
