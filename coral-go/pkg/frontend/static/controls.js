@@ -14,7 +14,7 @@ import { stopCaptureRefresh } from './capture.js';
 import { renderLiveSessions, KILL_LOG_NOTE } from './render.js';
 import { loadAgentEvents, renderEventTimeline } from './agentic_state.js';
 import { addPendingMessage, confirmPendingMessage, removePendingMessage, unconfirmPendingMessage, resetLiveHistory, effectiveLiveViewMode } from './live_chat.js';
-import { serverFetch, currentServer, serverForSession, sessionServer, isCloud } from './server_base.js';
+import { serverFetch, currentServer, serverForSession, sessionServer } from './server_base.js';
 import { applySleepingView } from './sleeping_view.js';
 import { hubBlocked, blockedReason } from './hub_access.js';
 import { prepareImage, artifactErrorText, PICKER_ACCEPT, parseUploadReply, uploadStatusFailure, uploadCodeFailure, UPLOAD_UNFINISHED } from './image_attach.js';
