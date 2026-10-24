@@ -36,6 +36,7 @@ const ICON_ALIGN = `(() => {
     const d = e => e.tagName.toLowerCase() + (e.id ? '#' + e.id : '') + (typeof e.className === 'string' && e.className.trim() ? '.' + e.className.trim().split(/\\s+/)[0] : '');
     const ownWords = e => { const c = e.cloneNode(true); c.querySelectorAll('.material-icons, svg, img, [aria-hidden=true], .sr-only, .badge, .count').forEach(x => x.remove()); return (c.textContent || '').replace(/\\s+/g, ' ').trim(); };
     const bad = []; let n = 0, labelled = 0, infos = 0;
+    const lim = Math.max(24.5, 1.55 * parseFloat(getComputedStyle(document.documentElement).fontSize)); // 1.5rem: the (i) and the icons grow with the text size on purpose, so does the limit (24 px at the base size)
     for (const e of document.querySelectorAll('button, a[href], summary, [role=button]')) {
         if (!vis(e) || e.disabled || e.closest('.sr-only, .xterm, [data-census-skip]')) continue;
         const b = e.getBoundingClientRect(); if (!b.width || !b.height) continue;
@@ -45,7 +46,7 @@ const ICON_ALIGN = `(() => {
         const isInfo = /info-btn/.test(e.className);
         const glyphEl = isInfo ? e : (e.querySelector('.material-icons, svg, img') || e);
         const g = glyphEl.getBoundingClientRect();
-        if (g.width > 24.5 || g.height > 24.5) bad.push(d(e) + ' "' + nm(e).slice(0, 30) + '": the visible ' + (isInfo ? 'circle' : 'glyph') + ' is ' + Math.round(g.width) + 'x' + Math.round(g.height) + ' px (at most 24)');
+        if (g.width > lim || g.height > lim) bad.push(d(e) + ' "' + nm(e).slice(0, 30) + '": the visible ' + (isInfo ? 'circle' : 'glyph') + ' is ' + Math.round(g.width) + 'x' + Math.round(g.height) + ' px (at most ' + Math.round(lim - 0.5) + ')');
         // a label on the same row: its first line's centre against the glyph's
         const parent = e.parentElement; if (!parent) continue;
         const label = [...parent.children].find(c => c !== e && /^(LABEL|SPAN|STRONG|LEGEND|H3|H4|P|DT)$/.test(c.tagName) && !c.matches('button, a, .material-icons, .sr-only') && !c.hidden && c.getClientRects().length && c.textContent.trim() && !c.querySelector('button, a, input, select'));
@@ -217,8 +218,8 @@ async function scene(ev, results, name, setup, { min = 3, expect, contrastOnly =
     await new Promise(r => setTimeout(r, 600)); // sleep-ok: the scene's own transitions settle
     const m = contrastOnly ? { n: min, small: [], dups: [], unnamed: [] } : await ev(MEASURE); // contrastOnly (the desktop pass): only the colours are looked at
     const cr = await contrastOf(ev, name);
+    const ia = await ev(ICON_ALIGN); // before the 200% pass: that pass puts the root font back and the (i) is still shrinking (a transition) for a moment, 45 to 48 px, when it ends
     const sc = await scaleOf(ev, name);
-    const ia = await ev(ICON_ALIGN);
     { const line = `icon census: ${name}: ${ia.n} icon-only controls checked, ${ia.labelled} against a label on their row, ${ia.infos} (i)`; console.log(line); if (process.env.ICON_CENSUS_LOG) require('node:fs').appendFileSync(process.env.ICON_CENSUS_LOG, line + '\n'); } // how much each scene checked: a scene that checks nothing is visible here
     results.push({ name, iconBad: ia.bad, iconN: ia.n, contrast: cr.fails, contrastChecked: cr.checked, n: m.n, min, small: m.small.filter(c => !allowed(name, c)), dups: (m.dups || []).filter(d => !allowedDup(name, d)), unnamed: (m.unnamed || []).filter(u => !allowedUnnamed(name, u)), scale: sc });
 }
