@@ -702,6 +702,7 @@ function registerRouteHandlers() {
         if (!shown) await window.selectLiveSession(s.name, s.agent_type, s.session_id, sessionServer(s));
         else if (isPhoneLayout()) showView('live-session-view'); // the phone's Agents tab showed the list
         if (r.sub) switchAgenticTab(r.sub, 'top');
+        if (r.terminal) showTerminalView(); // /agents/<session>?view=terminal (coral-hub, #6752): the terminal for this visit; the saved Chat/Terminal choice is left as it was
     });
 
     route('chats', async (r, opts) => {

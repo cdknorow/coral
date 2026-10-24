@@ -38,6 +38,20 @@ rt('/docs/README', { view: 'docs', id: 'README' });
 rt('/servers/m2', { view: 'servers', id: 'm2' });
 assert.deepEqual(parse('/'), { view: 'agents' }, '/ is home');
 
+// ?view=terminal on an agent route (coral-hub, #6752): exactly one view parameter with exactly the value terminal sets terminal: true; anything else is as if there were no query. Agents routes only.
+const TERM = { view: 'agents', server: null, id: S, sub: null, terminal: true }, PLAIN = { view: 'agents', server: null, id: S, sub: null };
+for (const [q, want, why] of [
+    ['?view=terminal', TERM, 'the link'], ['?x=1&view=terminal', TERM, 'other keys are not read'], ['?view=terminal&x=1', TERM, 'other keys are not read, after'],
+    ['', PLAIN, 'no query'], ['?', PLAIN, 'an empty query'], ['?view=', PLAIN, 'an empty value'], ['?view=chat', PLAIN, 'another value'], ['?view=Terminal', PLAIN, 'case matters'], ['?view=terminal%20', PLAIN, 'a trailing space'],
+    ['?view=terminal&view=terminal', PLAIN, 'a second view, the same'], ['?view=terminal&view=chat', PLAIN, 'a second view, another'], ['?view=chat&view=terminal', PLAIN, 'a second view, first other'],
+    ['?view[]=terminal', PLAIN, 'junk key'], ['?VIEW=terminal', PLAIN, 'the key is lower case'], ['?terminal', PLAIN, 'junk'], ['?view', PLAIN, 'no value'],
+]) assert.deepEqual(parse(`/agents/${S}`, q), want, `agents ${q || '(none)'}: ${why}`);
+assert.deepEqual(parse(`/agents/@m2/${S}/files`, '?view=terminal'), { view: 'agents', server: 'm2', id: S, sub: 'files', terminal: true }, 'a server and a sub tab keep their fields');
+assert.deepEqual(parse('/agents', '?view=terminal'), { view: 'agents' }, 'the agents list has no terminal');
+for (const path of ['/chats', `/chats/${S}`, '/jobs', '/workflows', '/docs/board', `/team/coral-go-team`, `/board/qa`]) assert.ok(!('terminal' in (parse(path, '?view=terminal') || {})), `${path}: only an agent route reads view=terminal`);
+assert.equal(build(TERM), `/agents/${S}`, 'build writes the path without the query');
+assert.deepEqual(normalize(TERM), PLAIN, 'a route that went through normalize has lost the flag: it is read from the URL once');
+
 // The Chats query keeps only its own keys and drops page=1.
 assert.equal(chatsQuery('?q=x&page=1&page_size=50&debug=1'), 'q=x');
 

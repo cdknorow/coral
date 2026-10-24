@@ -4,6 +4,7 @@
    A route is { view, server?, id?, sub?, run?, query? }:
      /agents                              { view: 'agents' }
      /agents/[@<server>/]<session>[/<sub>]  { view: 'agents', server, id, sub }
+     /agents/[@<server>/]<session>[/<sub>]?view=terminal  the same, plus terminal: true (the link opens the agent on its terminal; coral-hub, #6752)
      /chats[/@<server>][?filters]         { view: 'chats', query }
      /chats/[@<server>/]<id>              { view: 'chats', id }
      /team/[@<server>/]<team>[/settings]  { view: 'team', server, id, sub }
@@ -78,7 +79,9 @@ export function parse(pathname, search = '') {
             if (id === null || !SESSION_RE.test(id)) return null;
             const sub = rest[1] === undefined ? null : rest[1];
             if (sub !== null && !AGENT_SUBTABS.includes(sub)) return null;
-            return { view: 'agents', server: t.server, id: id.toLowerCase(), sub };
+            const route = { view: 'agents', server: t.server, id: id.toLowerCase(), sub };
+            if (terminalQuery(search)) route.terminal = true; // read once from the URL: build() writes the path without it, so the address bar loses it as the page starts
+            return route;
         }
         case 'chats': {
             const t = take();
@@ -119,6 +122,12 @@ export function parse(pathname, search = '') {
         default:
             return null;
     }
+}
+
+/** Whether a query string asks for the terminal: exactly one view parameter, and its value is exactly "terminal". Any other value, a second view, junk or none is no. Other keys are not read. */
+function terminalQuery(search) {
+    const v = new URLSearchParams(search || '').getAll('view');
+    return v.length === 1 && v[0] === 'terminal';
 }
 
 /** The Chats tab's filters from a query string (only its own keys). */
