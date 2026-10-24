@@ -58,7 +58,7 @@ func launchedRisk(cmd string, args []string, seg, workDir, cwd string, inner fun
 			return run(words...)
 		}
 	case "find":
-		return findExecRisk(args, run)
+		return findExecRisk(args, cwd, func(dir string, words ...string) string { return inner(strings.Join(words, " "), workDir, dir) })
 	case "source", ".":
 		if len(args) > 0 && (strings.HasPrefix(args[0], "<(") || args[0] == "/dev/stdin" || args[0] == "-" || strings.HasPrefix(args[0], "/dev/fd/") || strings.HasPrefix(args[0], "/proc/self/fd/")) {
 			return whyInputCommand
@@ -75,8 +75,10 @@ func launchedRisk(cmd string, args []string, seg, workDir, cwd string, inner fun
 func launcherCommand(cmd string, args []string) []string {
 	skip := 0
 	switch cmd {
-	case "chrt", "taskset", "flock":
+	case "chrt", "taskset":
 		skip = 1
+	case "flock":
+		return flockCommand(args)
 	}
 	var out []string
 	for _, a := range args {
@@ -89,14 +91,34 @@ func launcherCommand(cmd string, args []string) []string {
 		}
 		out = append(out, a)
 	}
-	if cmd == "flock" && len(args) > 0 { // flock -c 'command' file: the command is the value of -c
-		for i, a := range args {
-			if (a == "-c" || a == "--command") && i+1 < len(args) {
-				return args[i+1:]
+	return out
+}
+
+// flockCommand is the command flock runs: flock [options] file|fd command args, or flock [options] file|fd -c 'command'. -w/--timeout/--wait, -E/--conflict-exit-code take a value.
+func flockCommand(args []string) []string {
+	takes := map[string]bool{"-w": true, "--timeout": true, "--wait": true, "-E": true, "--conflict-exit-code": true}
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "-c" || a == "--command":
+			// The command is the quoted text that follows (cut into words here, with the lock file after it when it comes last): all of it is read as a command line.
+			return args[i+1:]
+		case strings.HasPrefix(a, "--command="):
+			return append([]string{strings.TrimPrefix(a, "--command=")}, args[i+1:]...)
+		case takes[a]:
+			i++
+		case strings.HasPrefix(a, "-") && a != "-":
+			// -n -x -s -u -o, --nonblock ... and the attached forms (-w5, --timeout=5)
+		default:
+			// the lock file or descriptor, then the command or -c 'command'
+			rest := args[i+1:]
+			if len(rest) > 0 && (rest[0] == "-c" || rest[0] == "--command") {
+				return rest[1:]
 			}
+			return rest
 		}
 	}
-	return out
+	return nil
 }
 
 // trapCommand is the action of a trap command (trap 'action' SIGNAL ...), read from the segment because the action holds spaces; "" and false for trap -l, trap -p, trap - SIGNAL and a trap
@@ -183,27 +205,37 @@ func watchCommand(args []string) []string {
 	return nil
 }
 
-// findExecRisk judges the command each -exec, -execdir, -ok and -okdir of a find runs, once for every search root with {} standing for it (and once for the current folder when there is none).
-func findExecRisk(args []string, run func(words ...string) string) string {
+// findExecRisk judges the command each -exec, -execdir, -ok and -okdir of a find runs, once for every search root with {} standing for it. -exec and -ok run in the folder find runs in; -execdir and
+// -okdir run in the folder of each match, so a relative path there is judged from the search root, and {} is ./name in it.
+func findExecRisk(args []string, cwd string, runIn func(dir string, words ...string) string) string {
 	roots, _ := findDeletes(args)
 	for j := 0; j < len(args); j++ {
+		var inMatchDir bool
 		switch args[j] {
-		case "-exec", "-execdir", "-ok", "-okdir":
-			var words []string
-			for k := j + 1; k < len(args); k++ {
-				if args[k] == ";" || args[k] == "+" || args[k] == `\;` {
-					break
-				}
-				words = append(words, args[k])
+		case "-exec", "-ok":
+		case "-execdir", "-okdir":
+			inMatchDir = true
+		default:
+			continue
+		}
+		var words []string
+		for k := j + 1; k < len(args); k++ {
+			if args[k] == ";" || args[k] == "+" || args[k] == `\;` {
+				break
 			}
-			for _, root := range roots {
-				sub := make([]string, len(words))
-				for n, w := range words {
-					sub[n] = strings.ReplaceAll(w, "{}", root)
-				}
-				if why := run(sub...); why != "" {
-					return why
-				}
+			words = append(words, args[k])
+		}
+		for _, root := range roots {
+			dir, match := cwd, root
+			if inMatchDir {
+				dir, match = changeDir(cwd, []string{root}), "./match"
+			}
+			sub := make([]string, len(words))
+			for n, w := range words {
+				sub[n] = strings.ReplaceAll(w, "{}", match)
+			}
+			if why := runIn(dir, sub...); why != "" {
+				return why
 			}
 		}
 	}
