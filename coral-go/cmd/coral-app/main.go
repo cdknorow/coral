@@ -423,6 +423,7 @@ func main() {
 	log.Printf("[WEBVIEW] navigating to %s", loginlink.Redact(startURL))
 	w.Navigate(startURL)
 
+	watchEndSession(w.Terminate)
 	log.Printf("[WEBVIEW] starting event loop (goroutines=%d)", runtime.NumGoroutine())
 	w.Run()
 	log.Printf("[WEBVIEW] event loop exited (goroutines=%d)", runtime.NumGoroutine())

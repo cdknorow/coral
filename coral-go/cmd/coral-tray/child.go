@@ -86,6 +86,18 @@ func runServerChild(host string, port int, backendType string) {
 		cancel()
 	}()
 
+	// Windows asks a program with no window of its own nothing: a hidden one lets an installer's Restart Manager (or the end of the session)
+	// close this server the normal way, and waits for that stop before answering (#335).
+	stopped := make(chan struct{})
+	watchEndSession("Coral server", func(closeApp bool) {
+		log.Printf("[SHUTDOWN] Windows asked the server to close (installer: %v)", closeApp)
+		cancel()
+		select {
+		case <-stopped:
+		case <-time.After(20 * time.Second):
+		}
+	})
+
 	var restart, quitForUpdate atomic.Bool
 	// The instance lock before config.Load touches the data folder (#6388): a second server child against a folder another holds writes nothing there.
 	instance, lockErr := startup.LockInstance(config.ResolveCoralDir(""))
@@ -155,6 +167,7 @@ func runServerChild(host string, port int, backendType string) {
 	rs.Shutdown(10 * time.Second)
 	rs.Close()
 	log.Println("[SHUTDOWN] done")
+	close(stopped)
 	if restart.Load() {
 		os.Exit(childExitRestart)
 	}

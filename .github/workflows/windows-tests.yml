@@ -273,6 +273,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "go build coral-tray failed" }
           go build -trimpath -overlay $overlay -tags "webview,$buildTags" -ldflags "-H windowsgui $ldflags" -o "..\dist\windows\bin\coral-app.exe" "./cmd/coral-app/"
           if ($LASTEXITCODE -ne 0) { throw "go build coral-app failed" }
+          # The MSI's custom-action helper (#335, tools/coral.wxs): carried in the MSI's Binary table and never installed, so it is built beside bin\
+          # (the package and the portable zip), not in it.
+          $env:CGO_ENABLED = "0"
+          go build -trimpath -overlay $overlay -tags $buildTags -ldflags "$ldflags" -o "..\dist\windows\coral-msi-helper.exe" "./cmd/coral-msi-helper/"
+          if ($LASTEXITCODE -ne 0) { throw "go build coral-msi-helper failed" }
           powershell -ExecutionPolicy Bypass -File ..\tests\release\verify_standard_bundle.ps1 -PackageDir ..\dist\windows\bin
           if ($LASTEXITCODE -ne 0) { throw "verify_standard_bundle.ps1 failed" }
           bash ../tests/release/verify_no_fake_identity.sh ../dist/windows/bin
