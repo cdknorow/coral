@@ -24,7 +24,21 @@ const (
 // zero-width joiner and non-joiner stay so emoji and scripts render; a name or title that must
 // not carry them goes through CleanName. A string sequence with no
 // terminator loses only its introducer, so no text after it is lost.
+//
+// What it removes can join what is left: a control byte between the bytes of a UTF-8 character (a stray "\xe2\x80", a C0 byte, "\xae") makes the character whole once the byte is gone, and a
+// right-to-left override or a byte-order mark would come out of a cleaner that ran once (#6878, found by fuzzing). So it cleans again until nothing changes; each pass only removes, so it ends.
 func Clean(s string) string {
+	for {
+		out := cleanOnce(s)
+		if out == s {
+			return out
+		}
+		s = out
+	}
+}
+
+// cleanOnce is one pass of Clean.
+func cleanOnce(s string) string {
 	if clean(s) {
 		return s
 	}
