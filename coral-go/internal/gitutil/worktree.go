@@ -43,6 +43,13 @@ func RemoveWorktree(ctx context.Context, repoDir, path, branch string) (Worktree
 		}
 		return res, fmt.Errorf("%s is not a git worktree of a repository Coral knows", path)
 	}
+	// Git runs, and prunes, only in a repository that lists this folder as one of its worktrees (#7056), whoever worked out which repository that is: the caller's, or the one the folder's own git
+	// file names (a planted folder can name any). A folder its repository does not list is kept as it is and that repository is not touched.
+	if !gone && !registered(ctx, repoDir, path) {
+		res.State = "kept"
+		res.Reason = "its repository does not list it as a worktree"
+		return res, nil
+	}
 	if !gone {
 		// No --force, and no second try: git itself refuses a worktree with modified or untracked files, a locked one, a broken one; that worktree stays and the person is told.
 		if out, err := Command(ctx, repoDir, "worktree", "remove", "--", path).CombinedOutput(); err != nil {

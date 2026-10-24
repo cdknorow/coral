@@ -21,6 +21,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/gitutil"
 	"github.com/subgentic/coral/internal/store"
 	"github.com/subgentic/coral/internal/store/storetest"
 )
@@ -524,4 +525,46 @@ func TestRemoveOfAJobRunFolderNotRegisteredInItsRepositoryTouchesNothingThere(t 
 	}
 	assert.Contains(t, registrations(), "stale", "the other repository's registration is still there: nothing was pruned in it")
 	assert.DirExists(t, planted)
+}
+
+// #7056: after the list's read of a run folder's repository timed out (the entry has no repository), a remove must not let git work out the repository from the folder's own git file and run there
+// unchecked. A planted run folder that names a repository which does not list it is kept as it is, and that repository is not pruned.
+func TestRemoveOfARunFolderWhoseRepositoryReadTimedOutNeverTouchesAnotherRepository(t *testing.T) {
+	url, cfg, h := teamServerH(t)
+	other, otherGit := repoOn(t, "master", true) // the repository the planted folder names; it has a stale registration a prune would remove
+	staleDir := filepath.Join(t.TempDir(), "stale")
+	otherGit("worktree", "add", "-b", "stale-branch", "--", staleDir, "master")
+	require.NoError(t, os.RemoveAll(staleDir))
+
+	jobRepo, _ := repoOn(t, "master", true)
+	sched := store.NewScheduleStore(h.db)
+	job, err := sched.CreateScheduledJob(t.Context(), &store.ScheduledJob{Name: "nightly", CronExpr: "0 9 * * *", RepoPath: jobRepo, Prompt: "p", AgentType: "claude"})
+	require.NoError(t, err)
+	runID, err := sched.CreateScheduledRun(t.Context(), job.ID, "2026-10-23T09:00:00Z", "completed")
+	require.NoError(t, err)
+	root := filepath.Join(cfg.CoralDir(), "worktrees")
+	require.NoError(t, os.MkdirAll(root, 0o755))
+	planted := filepath.Join(root, "job-run-"+strconv.FormatInt(runID, 10)+"-"+filepath.Base(other)) // a run folder of the run, named for the repository its git file names
+	require.NoError(t, os.MkdirAll(planted, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(planted, ".git"), []byte("gitdir: "+filepath.Join(other, ".git", "worktrees", "stale")+"\n"), 0o644))
+	require.NoError(t, sched.UpdateScheduledRun(t.Context(), runID, map[string]interface{}{"worktree_path": planted}))
+
+	// The first read of a run folder's repository does not answer (as when it timed out); the later ones, the remove's own among them, do.
+	var reads atomic.Int32
+	defer func(f func(context.Context, string) string) { worktreeRepoOf = f }(worktreeRepoOf)
+	worktreeRepoOf = func(ctx context.Context, path string) string {
+		if reads.Add(1) == 1 {
+			return ""
+		}
+		return gitutil.RepoOfWorktree(ctx, path)
+	}
+
+	// The remove lists the folders itself, and that read is the one that stalls: the entry has no repository, and the remove goes on to RemoveWorktree, whose own read of the folder works.
+	code, out := removeWorktree(t, url, "run-"+strconv.FormatInt(runID, 10))
+	require.EqualValues(t, 1, reads.Load(), "the remove's own listing read the run folder's repository once, and got no answer")
+	assert.Equal(t, http.StatusOK, code)
+	assert.Equal(t, "kept", out["state"], fmt.Sprint(out))
+	assert.DirExists(t, planted, "the planted folder is as it was")
+	assert.Contains(t, otherGit("worktree", "list", "--porcelain"), "stale", "the repository it names was not pruned")
+	assert.Contains(t, otherGit("branch", "--list", "stale-branch"), "stale-branch")
 }
