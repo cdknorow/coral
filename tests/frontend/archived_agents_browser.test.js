@@ -35,7 +35,7 @@ const SLEEPING_PLACEHOLDER = 'Agent is sleeping — wake it to send commands';
         }
         return {
             summary: summary ? summary.textContent.trim() : null,
-            expanded: summary ? summary.getAttribute('aria-expanded') : null,
+            expanded: summary && summary.querySelector('.row-btn') ? summary.querySelector('.row-btn').getAttribute('aria-expanded') : null, // the button in the row says it (#7006)
             main, archived, captions,
             sleepingSummaries: [...list.querySelectorAll('.sleeping-summary-row:not(.archived-summary-row)')].map(x => x.textContent.trim()),
         };
@@ -88,7 +88,7 @@ const SLEEPING_PLACEHOLDER = 'Agent is sleeping — wake it to send commands';
         console.log(`   ✓ main list clean, 'Archived (5)' collapsed, team-one: 1 sleeping`);
 
         await ev(`document.querySelector('#live-sessions-list .archived-summary-row').click()`);
-        await waitFor(`document.querySelector('#live-sessions-list .archived-summary-row').getAttribute('aria-expanded') === 'true'`, 'section to expand');
+        await waitFor(`document.querySelector('#live-sessions-list .archived-summary-row .row-btn').getAttribute('aria-expanded') === 'true'`, 'section to expand');
         sb = await sidebar();
         assert.equal(await ev(`localStorage.getItem('coral-archived-expanded')`), 'true', 'expanded state persisted');
         const capLower = sb.captions.map(c => c.toLowerCase());

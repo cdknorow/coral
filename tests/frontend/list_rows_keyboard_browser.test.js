@@ -30,17 +30,38 @@ const S = `(window.__coralStatic || '/static/')`;
         await ev(`import(${S} + 'scheduler.js').then(m => { window.__sched = m; return true; })`);
         await ev(`window.switchNavTab('jobs'); window.__sched.refreshJobs().then(() => true)`);
         await waitFor(`document.querySelectorAll('#scheduled-jobs-list .sched-row').length === 2`, 'two job rows', 8000);
-        const row = await ev(`(() => { const r = document.querySelector('#scheduled-jobs-list .sched-row'); return { role: r.getAttribute('role'), tab: r.tabIndex, keyClick: r.hasAttribute('data-key-click') }; })()`);
-        assert.deepEqual(row, { role: 'button', tab: 0, keyClick: true }, 'a job row is a button with one Tab stop: ' + JSON.stringify(row));
-        await ev(`document.querySelector('#scheduled-jobs-list .sched-row').focus(); true`);
+        // a row of a list keeps its list item (a screen reader says "list of 2"): the button is inside the li, not the li's role (#7006)
+        const row = await ev(`(() => { const r = document.querySelector('#scheduled-jobs-list .sched-row'); const b = r.querySelectorAll('button.row-btn'); return { role: r.getAttribute('role'), liTab: r.getAttribute('tabindex'), buttons: b.length, btnTab: b[0] && b[0].tabIndex }; })()`);
+        assert.deepEqual(row, { role: null, liTab: null, buttons: 1, btnTab: 0 }, 'a job row is an li holding one real button: ' + JSON.stringify(row));
+        await ev(`document.querySelector('#scheduled-jobs-list .sched-row .row-btn').focus(); true`);
         await key('Enter', 13, '\r');
         await waitFor(`!!document.querySelector('#scheduler-detail .sched-runs-section') && /nightly/.test(document.getElementById('scheduler-detail').textContent)`, 'the job opened by Enter', 6000);
-        assert.equal(await ev(`document.querySelector('#scheduled-jobs-list .sched-row[aria-current="true"] .sched-row-name').textContent`), 'nightly', 'the open job is the current one');
+        const cur = () => ev(`[...document.querySelectorAll('#scheduled-jobs-list [aria-current="true"]')].map(e => e.closest('li').querySelector('.sched-row-name').textContent)`);
+        assert.deepEqual(await cur(), ['nightly'], 'the open job is the current one, and only it');
+        await ev(`document.querySelectorAll('#scheduled-jobs-list .sched-row')[1].querySelector('.row-btn').click(); true`);
+        await waitFor(`/weekly/.test(document.getElementById('scheduler-detail').textContent)`, 'the second job opened', 6000);
+        assert.deepEqual(await cur(), ['weekly'], 'aria-current moved with the open job');
+        await ev(`document.querySelectorAll('#scheduled-jobs-list .sched-row')[0].querySelector('.row-btn').click(); true`);
+        await waitFor(`!!document.querySelector('#scheduler-detail .sched-runs-section') && /nightly/.test(document.getElementById('scheduler-detail').textContent)`, 'the first job again', 6000);
         // its Runs table: the first cell holds a real button; Enter on it opens the run (the table keeps its rows)
         await waitFor(`!!document.querySelector('.sched-runs-table tbody tr button.row-open-btn')`, 'the run row button', 6000);
         const btn = await ev(`(() => { const b = document.querySelector('.sched-runs-table tbody tr button.row-open-btn'); return b ? { tag: b.tagName, name: b.textContent.trim() } : null; })()`);
         assert.ok(btn && btn.tag === 'BUTTON' && btn.name, 'a run row has a real button in its first cell: ' + JSON.stringify(btn));
         assert.equal(await ev(`document.querySelector('.sched-runs-table tbody tr').getAttribute('role')`), null, 'the row keeps its table semantics (no button role on the tr)');
+        // Chats: a row is an li holding a button, and aria-current follows the open chat wherever the highlight moves (#7006)
+        await ev(`window.switchNavTab('history'); (async () => { const m = await import(${S} + 'history_list.js'); window.__st = (await import(${S} + 'state.js')).state; window.__ctl = await import(${S} + 'controls.js');
+            const rows = [1, 2, 3].map(i => ({ session_id: 'aaaaaa' + i, summary_title: 'Chat ' + i, source_type: 'claude', display_name: 'Ada', last_timestamp: new Date().toISOString() })).concat([{ type: 'group', session_id: 'board:team-a', title: 'team-a', updated_at: new Date().toISOString(), message_count: 2, subscriber_count: 1 }]);
+            m.renderHistorySessions(rows, rows.length, 1, 50); return true; })()`);
+        await waitFor(`document.querySelectorAll('#history-sessions-list li').length === 4`, 'four chat rows', 8000);
+        const chat = await ev(`[...document.querySelectorAll('#history-sessions-list li')].map(li => ({ role: li.getAttribute('role'), tab: li.getAttribute('tabindex'), buttons: li.querySelectorAll('button.row-btn').length }))`);
+        assert.deepEqual(chat, Array(4).fill({ role: null, tab: null, buttons: 1 }), 'a chat row is an li holding one real button: ' + JSON.stringify(chat));
+        const curChat = () => ev(`[...document.querySelectorAll('#history-sessions-list [aria-current="true"]')].map(e => e.closest('li').dataset.sessionId)`);
+        await ev(`window.__st.currentSession = { type: 'history', name: 'aaaaaa2' }; window.__ctl.updateSidebarActive(); true`);
+        assert.deepEqual(await curChat(), ['aaaaaa2'], 'the open chat is the current one');
+        await ev(`window.__st.currentSession = { type: 'history', name: 'aaaaaa3' }; window.__ctl.updateSidebarActive(); true`);
+        assert.deepEqual(await curChat(), ['aaaaaa3'], 'aria-current moved with the open chat');
+        await ev(`window.__st.currentSession = null; window.__ctl.updateSidebarActive(); true`);
+        assert.deepEqual(await curChat(), [], 'no chat is current when none is open');
         // Workflows: a card is a button too
         await ev(`window.switchNavTab('workflows'); true`);
         await waitFor(`document.querySelectorAll('.wf-card').length === 2`, 'two workflow cards', 8000);

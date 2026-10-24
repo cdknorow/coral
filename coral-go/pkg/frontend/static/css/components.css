@@ -4794,3 +4794,8 @@ dialog.reminder-dialog::backdrop { background: rgba(var(--black-rgb), 0.5); }
 .row-open-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-xs); }
 
 @media (pointer: coarse), (max-width: 767px) { .row-open-btn { display: inline-flex; align-items: center; min-width: var(--control-touch-height, 44px); min-height: var(--control-touch-height, 44px); } } /* a table row's open button is a 44 px target on a phone */
+
+/* A row of a list is an li that holds one real button (#7006), so a screen reader still says "list of 9" and Tab, Enter and Space are the button's own. The button takes the li's inside layout (direction, alignment, gap) so the row looks as it did, and the ring is drawn on the li. */
+li > .row-btn { flex: 1 1 auto; align-self: stretch; min-width: 0; width: 100%; box-sizing: border-box; display: flex; flex-direction: inherit; align-items: inherit; justify-content: inherit; gap: inherit; min-height: inherit; margin: 0; padding: 0; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; user-select: inherit; }
+li > .row-btn:focus-visible { outline: none; }
+li:has(> .row-btn:focus-visible) { outline: 2px solid var(--accent); outline-offset: -2px; }

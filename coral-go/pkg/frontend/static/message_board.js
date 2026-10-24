@@ -74,10 +74,10 @@ function renderBoardSidebar(projects) {
     }
     list.innerHTML = projects.map(p => {
         const active = currentProject === p.project ? 'active' : '';
-        return `<li class="session-list-item ${escapeAttr(active)}" data-on-click="mb-project" role="button" tabindex="0" data-key-click data-project="${escapeAttr(p.project)}">
+        return `<li class="session-list-item ${escapeAttr(active)}" data-on-click="mb-project" data-project="${escapeAttr(p.project)}"><button type="button" class="row-btn"${active ? ' aria-current="true"' : ''}>
             <span class="session-name">${escapeHtml(keyLabel(p.project))}</span>
             <span class="mb-project-count">${p.message_count} msgs</span>
-        </li>`;
+        </button></li>`;
     }).join('');
 }
 
@@ -198,14 +198,14 @@ async function loadBoardProjectList() {
         }
         empty.style.display = 'none';
         ul.innerHTML = projects.map(p => `
-            <li class="session-list-item" data-on-click="mb-project" role="button" tabindex="0" data-key-click data-project="${escapeAttr(p.project)}"
-                style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px">
+            <li class="session-list-item" data-on-click="mb-project" data-project="${escapeAttr(p.project)}"
+                style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px"><button type="button" class="row-btn">
                 <div>
                     <strong>${escapeHtml(keyLabel(p.project))}</strong>
                     <div class="mb-project-meta">${p.server ? escapeHtml((state.servers || []).find(s => s.id === p.server)?.label || p.server) + ' · ' : ''}${p.subscriber_count} subscriber${p.subscriber_count !== 1 ? 's' : ''}</div>
                 </div>
                 <span class="mb-project-meta">${p.message_count} messages</span>
-            </li>
+            </button></li>
         `).join('');
     } catch (e) {
         console.error('Failed to load board project list:', e);

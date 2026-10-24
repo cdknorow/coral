@@ -148,10 +148,10 @@ async function loadBrowserEntries(path) {
         }
 
         list.innerHTML = data.entries.map(name =>
-            `<li data-on-click="browser-nav" role="button" tabindex="0" data-key-click data-name="${escapeAttr(name)}" title="${escapeAttr(name)}">
+            `<li data-on-click="browser-nav" data-name="${escapeAttr(name)}" title="${escapeAttr(name)}"><button type="button" class="row-btn">
                 <span class="dir-icon">&#128193;</span>
                 <span class="dir-name">${escapeHtml(name)}</span>
-            </li>`
+            </button></li>`
         ).join("");
     } catch (e) {
         list.innerHTML = '<li class="empty-state">Failed to load</li>';

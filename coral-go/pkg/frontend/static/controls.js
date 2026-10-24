@@ -8,7 +8,7 @@ import { state, sessionKey, saveSessionDraft } from './state.js';
 import { updateSettingList, removeFirst } from './settings_lists.js';
 import { claimOwnership } from './ownership.js';
 import { popoutTerminalBlocked } from './popout.js';
-import { escapeHtml, escapeAttr, showToast, showView } from './utils.js';
+import { escapeHtml, escapeAttr, showToast, showView, setRowCurrent } from './utils.js';
 import { registerActions, idOf } from './actions.js';
 import { renderLiveSessions, KILL_LOG_NOTE } from './render.js';
 import { loadAgentEvents, renderEventTimeline } from './agentic_state.js';
@@ -1156,17 +1156,17 @@ function moveActiveRow() {
 export function updateSidebarActive() {
     if (moveActiveRow()) {
         // a history entry that was highlighted is not any more
-        document.querySelectorAll("#history-sessions-list li.active").forEach(li => li.classList.remove("active"));
+        document.querySelectorAll("#history-sessions-list li.active").forEach(li => setRowCurrent(li, false));
         return;
     }
-    document.querySelectorAll(".session-list li").forEach(li => li.classList.remove("active"));
+    document.querySelectorAll(".session-list li").forEach(li => setRowCurrent(li, false));
     if (state.liveSessions.length) renderLiveSessions(state.liveSessions);
 
     // Highlight the active history session: its row carries the session id (data-session-id)
     if (state.currentSession && state.currentSession.type === "history") {
         const sid = state.currentSession.name;
         document.querySelectorAll("#history-sessions-list li").forEach(li => {
-            if ((li.dataset.sessionId || "") === sid) li.classList.add("active");
+            if ((li.dataset.sessionId || "") === sid) setRowCurrent(li, true);
         });
     }
 }

@@ -2,7 +2,7 @@
 
 import { isPhoneLayout } from './phone_layout.js';
 import { state } from './state.js';
-import { escapeHtml, escapeAttr, showToast, showView } from './utils.js';
+import { escapeHtml, escapeAttr, showToast, showView, setRowCurrent } from './utils.js';
 import { registerActions, withId, uuidOf } from './actions.js';
 import { pollEvery } from './overload.js';
 import { changedFields, NOTHING_TO_SAVE } from './settings_diff.js';
@@ -94,11 +94,11 @@ function renderJobsSidebar() {
         const problem = job.last_run && job.last_run.status === 'failed' ? (job.last_run.error_code ? runError(job.last_run) : reasonWords(job.last_run)) : ''; // any failed run says why (#6956): the server's plain sentence for a coded one, the run's own error for the rest
         const note = exitNote(job.last_run); // what the last run's exit_reason adds to its status (#6907): on the row as text, not only on hover
         const nextTitle = job.enabled && job.next_fire_at ? `Next run ${atWords(job.next_fire_at)} your time` : '';
-        return `<li class="session-list-item sched-row ${escapeAttr(active)}" data-on-click="job-select" role="button" tabindex="0" data-key-click${active ? ' aria-current="true"' : ''} data-job-id="${Number(job.id)}" title="${escapeAttr(nextTitle)}">
+        return `<li class="session-list-item sched-row ${escapeAttr(active)}" data-on-click="job-select" data-job-id="${Number(job.id)}" title="${escapeAttr(nextTitle)}"><button type="button" class="row-btn"${active ? ' aria-current="true"' : ''}>
             <span class="sched-row-head"><span class="sched-dot sched-dot-${dot}" role="img" aria-label="${escapeAttr(dotWords)}" title="${escapeAttr(dotWords)}"></span> <span class="sched-row-name">${escapeHtml(job.name)}</span> ${paused} ${failBadge}</span>
             <span class="sched-row-meta">${escapeHtml(meta)}</span>
             ${problem ? `<span class="sched-row-problem">${escapeHtml(problem)}</span>` : note && !problem ? `<span class="sched-row-note">${escapeHtml(note)}</span>` : ''}
-        </li>`;
+        </button></li>`;
     }).join('');
     updateJobsSectionCount();
 }
@@ -129,7 +129,7 @@ export async function selectScheduledJob(jobId) {
     // Deselect live/history sessions
     state.currentSession = null;
     document.querySelectorAll('.session-list-item.active').forEach(el => {
-        if (!el.closest('#scheduled-jobs-list')) el.classList.remove('active');
+        if (!el.closest('#scheduled-jobs-list')) setRowCurrent(el, false);
     });
 
     const [runs] = await Promise.all([fetchJobRuns(jobId), job.workflow_id ? loadWorkflowsById() : null]);

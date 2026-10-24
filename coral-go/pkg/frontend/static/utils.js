@@ -169,3 +169,10 @@ export async function refusedTooLarge(resp) {
     if (!resp || resp.status !== 502 || !/json/i.test(resp.headers.get('Content-Type') || '')) return false;
     try { return (await resp.clone().json()).code === 'hub_reply_too_large'; } catch { return false; }
 }
+
+/** Moves a list row's highlight and its aria-current together (#7006): a row is an li holding a .row-btn, and the button, the thing a screen reader lands on, says it is the current one. */
+export function setRowCurrent(li, on) {
+    li.classList.toggle('active', on);
+    const btn = li.querySelector(':scope > .row-btn');
+    if (btn) { if (on) btn.setAttribute('aria-current', 'true'); else btn.removeAttribute('aria-current'); }
+}
