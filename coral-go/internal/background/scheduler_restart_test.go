@@ -152,18 +152,19 @@ func TestARunWhoseAgentEndedWhileCoralWasDownClaimsSuccessOnlyWithProof(t *testi
 	ctx := context.Background()
 	for _, c := range []struct {
 		name, last, want string
-		fn               bool
+		fn, failed       bool
 	}{
-		{"its last event is a stop", "stop", "agent_done", true},
-		{"its last event is the session's end", "session_end", "agent_done", true},
-		{"its last event is a tool call", "tool_use", "ended_while_coral_was_down", true},
-		{"it reported nothing", "", "ended_while_coral_was_down", true},
-		{"the last event is not known here", "", "agent_done", false},
+		{"its last event is a stop", "stop", "agent_done", true, false},
+		{"its last event is a stop that was a failed turn", "stop", "ended_while_coral_was_down", true, true},
+		{"its last event is the session's end", "session_end", "agent_done", true, false},
+		{"its last event is a tool call", "tool_use", "ended_while_coral_was_down", true, false},
+		{"it reported nothing", "", "ended_while_coral_was_down", true, false},
+		{"the last event is not known here", "", "agent_done", false, false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			e, _ := restartEnv(t, "left-proof-"+c.last)
+			e, _ := restartEnv(t, "left-proof-"+c.last+fmt.Sprint(c.failed))
 			if c.fn {
-				e.s.SetLastEventType(func(context.Context, string) string { return c.last })
+				e.s.SetLastEventType(func(context.Context, string) (string, bool) { return c.last, c.failed })
 			}
 			id := e.leftRun(t, time.Minute, "sid-proof")
 			e.s.reapStaleRuns(ctx)
@@ -219,6 +220,32 @@ func TestASettledRunNeverRemovesTheJobsOwnRepository(t *testing.T) {
 	e.s.reapStaleRuns(ctx)
 	assert.DirExists(t, repo)
 	assert.DirExists(t, filepath.Join(repo, ".git"))
+}
+
+// Security's LOW 2 on #6904: a run row that names another registered worktree of the job's repository (a person's own linked checkout, not the folder the scheduler makes for the run) is neither removed nor
+// its branch deleted when the run is settled at startup: only IsRunWorktreeFolder's folder is Coral's. (The kept-worktrees list applies the same rule: TestAJobsOwnCheckoutIsNeverListedOrRemoved in server/routes.)
+func TestASettledRunNeverRemovesAnotherLinkedCheckoutOfTheRepository(t *testing.T) {
+	ctx := context.Background()
+	e, _ := restartEnv(t, "left-linked")
+	repo := exitGitRepo(t)
+	own := filepath.Join(t.TempDir(), "feature") // a normal `git worktree add ../feature`
+	out, err := exec.Command("git", "-C", repo, "worktree", "add", "-b", "feature", "--", own, "main").CombinedOutput()
+	require.NoError(t, err, string(out))
+	id := e.leftRun(t, time.Minute, "sid-linked")
+	_, err = e.ss.UpdateScheduledJob(ctx, e.runOf(t, id).JobID, map[string]interface{}{"repo_path": repo, "cleanup_worktree": 1})
+	require.NoError(t, err)
+	require.NoError(t, e.ss.UpdateScheduledRun(ctx, id, map[string]interface{}{"worktree_path": own}))
+
+	e.s.reapStaleRuns(ctx)
+
+	assert.Equal(t, "completed", e.runOf(t, id).Status, "the run is settled")
+	assert.DirExists(t, own, "the person's linked checkout is not removed")
+	list, err := exec.Command("git", "-C", repo, "worktree", "list").CombinedOutput()
+	require.NoError(t, err)
+	assert.Contains(t, string(list), "feature", "and still registered")
+	branches, err := exec.Command("git", "-C", repo, "branch", "--list", "feature").CombinedOutput()
+	require.NoError(t, err)
+	assert.Contains(t, string(branches), "feature", "with its branch")
 }
 
 // Security's LOW on #6904: the run's agent type is the one its session row says, not the job's current one: a job edited from claude to codex since the run started must not make a live agent look gone.

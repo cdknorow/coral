@@ -164,12 +164,17 @@ func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Conf
 	launcher.SetServer(cfg.AgentHost(), cfg.CoralDir()) // the agents it starts dial this server and use this data folder (#6767)
 	scheduler.SetLaunchFn(launcher.BuildSchedulerLaunchFn(schedStore))
 	scheduler.SetSessionStore(sessStore)
-	scheduler.SetLastEventType(func(ctx context.Context, sessionID string) string { // what a run's agent last did, for a run that ended while Coral was down (#6898)
+	scheduler.SetLastEventType(func(ctx context.Context, sessionID string) (string, bool) { // what a run's agent last did, for a run that ended while Coral was down (#6898)
 		last, err := taskStore.GetLatestEventTypes(ctx, []string{sessionID})
 		if err != nil {
-			return ""
+			return "", false
 		}
-		return last[sessionID][0]
+		typ := last[sessionID][0]
+		if typ != "stop" {
+			return typ, false
+		}
+		_, failed, err := taskStore.LatestStopFailure(ctx, sessionID)
+		return typ, failed && err == nil
 	})
 	scheduler.SetEventCheck(func(ctx context.Context, sessionID string) bool { // a run whose agent ended within seconds without a single event is recorded failed (#6842)
 		got, err := taskStore.SessionsWithAnyEvent(ctx, []string{sessionID})
