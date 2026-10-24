@@ -32,7 +32,7 @@ jobs:
           cache: false
       - name: the handle tests
         working-directory: coral-go
-        run: go test ./internal/ptymanager/ -count=1 -v -run 'LeaveNoHandlesOpen|HandlesAreFreed' 2>&1 | tail -80 
+        run: go test ./internal/ptymanager/ -count=1 -v -run 'HoldNoMoreHandles|HandlesAreFreed' 2>&1 | tail -80 
       - name: the whole ptymanager package
         working-directory: coral-go
         run: go test ./internal/ptymanager/ -count=1 2>&1 | tail -20
