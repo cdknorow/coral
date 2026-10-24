@@ -225,7 +225,7 @@ func (s *Store) DelegateReview(ctx context.Context, project string, id int64, ac
 			continue
 		}
 		rt, err := s.CreateTaskWithOpts(ctx, project, fmt.Sprintf("Review #%d: %s", id, task.Title), reviewTaskBody(id, task.Title, w.OriginalAuthor, round.Round), task.Priority, actor,
-			&CreateTaskOpts{Workflow: TaskWorkflow{ReviewOf: id, ReviewRound: round.Round}}, r)
+			&CreateTaskOpts{Workflow: TaskWorkflow{ReviewOf: id, ReviewRound: round.Round}, reviewTask: true}, r)
 		if err != nil {
 			return nil, nil, err
 		}

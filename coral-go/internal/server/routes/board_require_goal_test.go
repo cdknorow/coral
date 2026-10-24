@@ -84,4 +84,11 @@ func TestATaskWithNoGoalOnARequireGoalBoardIs400GoalRequired(t *testing.T) {
 	tasks, err := h.bs.ListTasks(ctx, "team")
 	require.NoError(t, err)
 	assert.Empty(t, tasks, "nothing was stored")
+
+	// review_of is a field of the request, not an exemption: a task that claims to be a review is refused all the same.
+	code, out = post(`{"title":"pretend review","subscriber_id":"Operator","workflow":{"review_of":12345,"review_round":1}}`)
+	assert.Equal(t, 400, code, "%v", out)
+	assert.Equal(t, "goal_required", out["code"])
+	tasks, _ = h.bs.ListTasks(ctx, "team")
+	assert.Empty(t, tasks, "nothing was stored")
 }
