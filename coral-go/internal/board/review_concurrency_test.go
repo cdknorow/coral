@@ -84,3 +84,23 @@ func TestReviewSubmitAndCompleteRaceToExactlyOne(t *testing.T) {
 		})
 	}
 }
+
+// The store never writes to the rows a caller passes in (its own stamps and clears go on a copy): a caller's Seq, AttachedBy and landed fields are still there after a submit, a completion and an attach.
+func TestTheStoreDoesNotWriteToTheCallersArtifactRows(t *testing.T) {
+	ctx := context.Background()
+	s, err := NewStoreWithKey(filepath.Join(t.TempDir(), "board.db"), "")
+	require.NoError(t, err)
+	defer s.Close()
+	_, err = s.Subscribe(ctx, "team", "lead", "Orchestrator", "lead-session", nil, "all")
+	require.NoError(t, err)
+	task, err := s.CreateTask(ctx, "team", "Build", "", "medium", "lead", "worker")
+	require.NoError(t, err)
+	_, err = s.ClaimTask(ctx, "team", "worker", task.ID)
+	require.NoError(t, err)
+	rows := []TaskArtifact{{Name: "build", Content: "x", Revision: "r1", Seq: 7, AttachedBy: "someone", LandedBy: "x", LandedAt: "2026-01-01T00:00:00Z"}}
+	_, err = s.SubmitCompletionReview(ctx, "team", task.ID, "worker", "m", "success", "review please", rows)
+	require.NoError(t, err)
+	assert.Equal(t, 7, rows[0].Seq, "the caller's Seq is untouched")
+	assert.Equal(t, "someone", rows[0].AttachedBy)
+	assert.Equal(t, "x", rows[0].LandedBy)
+}

@@ -60,6 +60,7 @@ func (s *Store) SubmitCompletionReviewAtRevisionAndCandidate(ctx context.Context
 	if outcome != "success" && outcome != "failed" {
 		return nil, fmt.Errorf("proposed outcome must be success or failed")
 	}
+	artifacts = copyArtifacts(artifacts) // the caller's rows are never written to (data race under concurrent submits of one slice)
 	if _, err := validateTaskArtifacts(artifacts); err != nil {
 		return nil, err
 	}
