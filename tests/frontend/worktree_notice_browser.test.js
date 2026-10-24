@@ -1,6 +1,6 @@
 // A worktree a stop kept stays on screen (#6818, UI Accessibility's #6806 finding 3): when a stop keeps a worktree (or cannot remove it) its words, with the path, stay in the notice column until dismissed
 // instead of fading in a few seconds, with a Copy path button that copies the path and leaves the notice open; the notice is announced once (a polite status; an alert for a failure). A removed worktree is a
-// short toast with no button. Team stop and single agent kill, at 1280 and 390 px with touch. The kill answers are the page's fetch (Backend's #6701 shape). Drives Chrome over CDP through agent_view_harness.js.
+// short toast with no button. Team stop and single agent kill, on a desktop (a phone shows the bar of worktree_dock_browser, #6859). The kill answers are the page's fetch (Backend's #6701 shape). Drives Chrome over CDP through agent_view_harness.js.
 const fs = require('node:fs');
 const { connect } = require('./agent_view_harness');
 const BASE = require('./test_base').BASE;
@@ -15,7 +15,7 @@ const BASE = require('./test_base').BASE;
     const KEPT = { ok: true, sessions_killed: 1, worktree: { state: 'kept', path: PATH, branch: 'coral-team/team-k', reason: 'it has uncommitted changes' } };
     try {
         await Page.enable(); await Page.addScriptToEvaluateOnNewDocument({ source: PRELOAD });
-        for (const [w, h, mobile] of [[1280, 900, false], [390, 844, true]]) {
+        for (const [w, h, mobile] of [[1280, 900, false]]) { // a phone's layout shows the notice as a bar in the page's flow (worktree_dock_browser, #6859)
             const tag = `${w}px`;
             await Emulation.setDeviceMetricsOverride({ width: w, height: h, deviceScaleFactor: 1, mobile }); await Emulation.setTouchEmulationEnabled({ enabled: mobile });
             await Page.navigate({ url: BASE }); await Page.loadEventFired(); await install();

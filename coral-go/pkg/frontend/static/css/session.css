@@ -2221,3 +2221,17 @@
 @media (max-width: 767px), (pointer: coarse) and (max-height: 500px) and (max-width: 950px) {
     html body #terminal-open-window-link { display: none !important; }
 }
+
+/* The kept-worktree notice on a phone (#6859): a bar in the page's flow at the foot of the main stage, so it covers nothing (the floating toast covered the Chat/Terminal toggle, and at 200% text the composer).
+   One line (the title, Copy path, Details, Dismiss: they wrap under the title when the text is large); the words are behind Details, which scrolls inside the bar. */
+.worktree-dock { flex: none; display: flex; flex-direction: column; gap: 6px; padding: 6px 12px; background: var(--bg-tertiary); border-top: 1px solid var(--border); color: var(--text-primary); font-size: 0.8125rem; }
+.worktree-dock[hidden] { display: none; }
+.worktree-dock.error { border-top-color: var(--error); }
+.worktree-dock-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.worktree-dock-title { font-weight: 600; margin-right: auto; min-width: 0; overflow-wrap: anywhere; }
+.worktree-dock.error .worktree-dock-title { color: var(--error-text); }
+.worktree-dock .btn { min-height: var(--control-touch-height, 44px); min-width: var(--control-touch-height, 44px); padding-inline: 10px; margin: 0; } /* (the phone's .btn has a 20 px side margin of its own) */
+.worktree-dock-body { max-height: 40vh; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+.worktree-dock-body[hidden] { display: none; }
+.worktree-dock-item { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.worktree-dock-text { min-width: 0; flex: 1 1 12rem; overflow-wrap: anywhere; }
