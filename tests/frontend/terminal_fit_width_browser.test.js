@@ -118,14 +118,15 @@ const VIEW = `(async () => {
 
 const PHONE_BASE = 10; // a phone-wide window with no size chosen in Settings draws at 10 px (terminal_font.js, #6577); a desktop at 13
 
-async function openTab({ contextId, width, height, mobile, fakeHubView = false, dpr = 1 }) {
+// fitDefault: false stores the person's choice "off" before the page runs, so the steps that start from the full-size terminal keep doing so now that a phone starts with Fit width on (#6783); true leaves the device with no choice made.
+async function openTab({ contextId, width, height, mobile, fakeHubView = false, dpr = 1, fitDefault = false }) {
     const b = await browserClient();
     const { targetId } = await b.Target.createTarget({ url: 'about:blank', browserContextId: contextId });
     await b.close();
     const client = await CDP({ port: CDP_PORT, target: targetId });
     const { Page, Runtime, Emulation } = client;
     await Promise.all([Page.enable(), Runtime.enable()]);
-    await Page.addScriptToEvaluateOnNewDocument({ source: PRELOAD + (fakeHubView ? 'window.__fakeHubView = true;' : '') });
+    await Page.addScriptToEvaluateOnNewDocument({ source: PRELOAD + (fakeHubView ? 'window.__fakeHubView = true;' : '') + (fitDefault ? '' : `try { if (localStorage.getItem('coral-terminal-fit-width') === null) localStorage.setItem('coral-terminal-fit-width', '0'); } catch {}`) });
     await Emulation.setDeviceMetricsOverride({ width, height, deviceScaleFactor: dpr, mobile });
     await Emulation.setTouchEmulationEnabled({ enabled: !!mobile }); // a phone has a coarse pointer
     await Page.bringToFront();
@@ -188,6 +189,25 @@ function assertFits(v, what) {
         const phoneCtx = await newContext(); contexts.push(phoneCtx);
         const phone = await openTab({ contextId: phoneCtx, width: 390, height: 844, mobile: true });
         tabs.push(phone);
+
+        console.log('0. A phone with no choice made starts with Fit width on (#6783), at 390 and 360 px; a stored choice wins');
+        for (const [pw, ph] of [[390, 844], [360, 740]]) {
+            const ctx = await newContext(); contexts.push(ctx);
+            const tab = await openTab({ contextId: ctx, width: pw, height: ph, mobile: true, fitDefault: true });
+            tabs.push(tab);
+            assert.equal(await tab.ev(`localStorage.getItem('coral-terminal-fit-width')`), null, 'a fresh device has made no choice');
+            let d = await show(tab, A, narrow);
+            d = await settled(tab, 'fitted with no click', `v.btn && v.btn.shown && v.btn.pressed === 'true' && v.font < ${PHONE_BASE}`);
+            assertFits(d, `${pw} px, nothing chosen`);
+            assert.equal(d.btn.label, 'Show the terminal at full size (scroll sideways)');
+            assert.equal(await tab.ev(`localStorage.getItem('coral-terminal-fit-width')`), null, 'being on by default stores nothing');
+            await click(tab); // the person turns it off: that is a choice, and it is kept
+            d = await settled(tab, 'full size after turning it off', `v.font === ${PHONE_BASE} && v.btn.pressed === 'false'`);
+            await tab.load(); await show(tab, A, narrow);
+            d = await settled(tab, 'still off after a reload', `v.btn && v.btn.shown && v.btn.pressed === 'false' && v.font === ${PHONE_BASE}`);
+            console.log(`   ✓ ${pw} px: fitted at once (${d.font === PHONE_BASE ? 'then off by choice, kept after a reload' : ''})`);
+            await tab.close(); tabs.pop();
+        }
 
         console.log('1. A phone on an 80-column pane');
         let v = await show(phone, A, narrow);

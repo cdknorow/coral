@@ -116,7 +116,7 @@ async function openTab(url, { contextId, width = 1400, height = 900, mobile = fa
     const client = await CDP({ port: CDP_PORT, target: targetId });
     const { Page, Runtime, Emulation, Fetch } = client;
     await Promise.all([Page.enable(), Runtime.enable()]);
-    await Page.addScriptToEvaluateOnNewDocument({ source: PRELOAD + (fakeHubView ? 'window.__fakeHubView = true;' : '') });
+    await Page.addScriptToEvaluateOnNewDocument({ source: PRELOAD + (fakeHubView ? 'window.__fakeHubView = true;' : '') + `try { if (localStorage.getItem('coral-terminal-fit-width') === null) localStorage.setItem('coral-terminal-fit-width', '0'); } catch {}` /* this suite is about whose size the pane has, at full size: a phone starts with Fit width on (#6783), terminal_fit_width covers that */ });
     const size = async (w, h) => Emulation.setDeviceMetricsOverride({ width: w, height: h, deviceScaleFactor: 1, mobile });
     await size(width, height);
     const ev = async expr => {

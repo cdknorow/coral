@@ -45,13 +45,14 @@ let _followBox = '';     // the container's size when this window started follow
 // While following a pane wider than the window (a phone, a narrow viewer), the operator can scale
 // the font down so every column fits instead of scrolling sideways. Only the font changes: the
 // pane keeps its size for everyone. Below MIN_FIT_FONT it stops shrinking and scrolls the rest.
-// Remembered per device.
+// Remembered per device. On a phone's layout it starts ON (a pane made for a wider screen is read whole, not scrolled sideways); a choice the person has made, either way, wins (#6783).
 const FIT_WIDTH_KEY = 'coral-terminal-fit-width';
 const MIN_FIT_FONT = 11;       // a window with room (a desktop beside two sidebars): never smaller than this, a cell of about 6.5 px, so a prompt can be read at a glance (#6231); the rest scrolls sideways
 const MIN_FIT_FONT_PHONE = 7; // a phone that asked to see every column of a pane made for a wider screen: small, and the person's own choice (the toggle) until they turn it off
 const _minFitFont = () => (_isPhoneWidth() ? MIN_FIT_FONT_PHONE : MIN_FIT_FONT);
 let _baseFont = DESKTOP_FONT; // the font size from Settings (or this window's default), used whenever not fitting
-let _fitWidth = (() => { try { return browserLocal.get(FIT_WIDTH_KEY) === '1'; } catch { return false; } })();
+let _fitChoice = (() => { try { const v = browserLocal.get(FIT_WIDTH_KEY); return v === '1' ? true : v === '0' ? false : null; } catch { return null; } })(); // null: the person has not chosen
+const _fitOn = () => (_fitChoice === null ? _isPhoneWidth() : _fitChoice);
 
 function _fitButton() {
     return document.getElementById('terminal-fit-width-btn');
@@ -78,7 +79,7 @@ function _setFont(size) {
 // Applies the fit-to-width font, or the Settings font, and shows the toggle when it can help.
 function _applyFitWidth() {
     if (!terminal) { _updateFitButton(false); return; }
-    if (!_following || !_fitWidth) {
+    if (!_following || !_fitOn()) {
         _setFont(_baseFont);
         _updateFitButton(_following && _overflowsAtBase());
         return;
@@ -116,16 +117,16 @@ function _updateFitButton(show) {
     const btn = _fitButton();
     if (!btn) return;
     btn.hidden = !show;
-    btn.setAttribute('aria-pressed', String(_fitWidth));
-    const label = _fitWidth ? 'Show the terminal at full size (scroll sideways)' : 'Fit the terminal to the screen width';
+    btn.setAttribute('aria-pressed', String(_fitOn()));
+    const label = _fitOn() ? 'Show the terminal at full size (scroll sideways)' : 'Fit the terminal to the screen width';
     btn.setAttribute('aria-label', label);
     btn.title = label;
 }
 
 /** Turns fit to width on or off on this device (#3455). */
- function toggleTerminalFitWidth(on = !_fitWidth) {
-    _fitWidth = !!on;
-    try { browserLocal.set(FIT_WIDTH_KEY, _fitWidth ? '1' : '0'); } catch { /* private mode */ }
+ function toggleTerminalFitWidth(on = !_fitOn()) {
+    _fitChoice = !!on;
+    try { browserLocal.set(FIT_WIDTH_KEY, _fitChoice ? '1' : '0'); } catch { /* private mode */ }
     _applyFitWidth();
 }
 
