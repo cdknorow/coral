@@ -17,6 +17,9 @@ type AgentDocsHandler struct {
 	docsFS fs.FS
 }
 
+// AgentDocsFS is what the handler reads: a plain fs.FS of <name>.md files (the server's unzips the embedded .md.gz ones, #6814).
+type AgentDocsFS = fs.FS
+
 // NewAgentDocsHandler creates a handler that serves docs from the given filesystem.
 func NewAgentDocsHandler(docsFS fs.FS) *AgentDocsHandler {
 	return &AgentDocsHandler{docsFS: docsFS}
@@ -90,9 +93,42 @@ func (h *AgentDocsHandler) Get(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// GetAll returns all documentation files concatenated.
+// gzipAller is a docs filesystem that holds its docs gzipped and can hand them over as one gzip stream (the server's, #6814).
+type gzipAller interface {
+	GzipAll() ([]byte, bool)
+}
+
+// acceptsGzip reports whether the request's Accept-Encoding allows gzip (a gzip;q=0 does not).
+func acceptsGzip(r *http.Request) bool {
+	for _, part := range strings.Split(r.Header.Get("Accept-Encoding"), ",") {
+		coding, params, _ := strings.Cut(strings.TrimSpace(part), ";")
+		if !strings.EqualFold(strings.TrimSpace(coding), "gzip") {
+			continue
+		}
+		if q := strings.TrimSpace(params); strings.HasPrefix(q, "q=") {
+			if v := strings.TrimPrefix(q, "q="); v == "0" || v == "0.0" || v == "0.00" || v == "0.000" {
+				return false
+			}
+		}
+		return true
+	}
+	return false
+}
+
+// GetAll returns all documentation files concatenated. A client that accepts gzip gets the docs as they are stored (gzipped, Content-Encoding: gzip); any other gets the plain text.
 // GET /api/agent-docs/all
 func (h *AgentDocsHandler) GetAll(w http.ResponseWriter, r *http.Request) {
+	if g, ok := h.docsFS.(gzipAller); ok && acceptsGzip(r) {
+		if body, ok := g.GzipAll(); ok {
+			w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+			w.Header().Set("Content-Encoding", "gzip")
+			w.Header().Add("Vary", "Accept-Encoding")
+			w.WriteHeader(http.StatusOK)
+			w.Write(body)
+			return
+		}
+	}
+	w.Header().Add("Vary", "Accept-Encoding")
 	entries, err := fs.ReadDir(h.docsFS, ".")
 	if err != nil {
 		errInternalServer(w, "failed to read docs directory")

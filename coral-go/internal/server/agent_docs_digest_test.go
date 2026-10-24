@@ -33,8 +33,9 @@ func TestAgentDocsStartupLine(t *testing.T) {
 // embeds docs, each must equal its agent_docs/ source and none may be missing or extra. CI and make sync first, so this bites
 // only a stale local copy; with no docs embedded (a fresh tree, never synced) the startup warning says so and this is skipped.
 func TestEmbeddedAgentDocsMatchTheSources(t *testing.T) {
-	embedded, err := fs.Sub(staticFS, "static/agent_docs")
+	sub, err := fs.Sub(staticFS, "static/agent_docs")
 	require.NoError(t, err)
+	embedded := newGzDocsFS(sub) // the docs are embedded gzipped (#6814): compared as the plain text they unzip to
 	n, _ := agentDocsDigest(embedded)
 	if n == 0 {
 		t.Skip("this build embeds no agent docs (run tools/sync-agent-docs.sh to embed and check them)")
