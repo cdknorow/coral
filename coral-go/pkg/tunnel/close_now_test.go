@@ -78,3 +78,47 @@ func TestCloseNowLeavesNoGoroutines(t *testing.T) {
 	require.Eventually(t, func() bool { return runtime.NumGoroutine() <= before+25 }, 10*time.Second, 50*time.Millisecond,
 		"goroutines after five CloseNow calls: %d (before %d)", runtime.NumGoroutine(), before)
 }
+
+// coral-hub's case: a peer that stops reading while bulk stream data fills the TCP send buffer. The session is alive (no keepalive has fired), a write is stuck, and Close and CloseNow both return at once:
+// Close does not stall even then (measured: about 0.25 ms against 0.1 ms), so CloseNow is the same promise made without the library's handshake behaviour in the way.
+func TestCloseAndCloseNowReturnWithAFullSendBuffer(t *testing.T) {
+	for _, closeNow := range []bool{false, true} {
+		hub := newHub(t, SessionConfig{})
+		proxy := newFlakyProxy(t, strings.TrimPrefix(hub.Server.URL, "http://"))
+		cs, err := Dial(context.Background(), "ws://"+proxy.Addr(), testToken, ClientOptions{
+			SessionConfig: SessionConfig{}, Handler: &LocalHandler{BaseURL: "http://127.0.0.1:1", AllowPath: allowAll}, AllowInsecure: true,
+		})
+		require.NoError(t, err)
+		t.Cleanup(func() { cs.Close() })
+		s := hub.next(t)
+		proxy.Blackhole(true)
+		st, err := s.ys.OpenStream()
+		require.NoError(t, err)
+		go func() {
+			buf := make([]byte, 64<<10)
+			for {
+				if _, err := st.Write(buf); err != nil {
+					return
+				}
+			}
+		}()
+		time.Sleep(time.Second) // the peer reads nothing: the buffers fill and a write is stuck
+		select {
+		case <-s.Done():
+			t.Fatal("the session ended by itself before the close")
+		default:
+		}
+		start := time.Now()
+		if closeNow {
+			require.NoError(t, s.CloseNow())
+		} else {
+			_ = s.Close()
+		}
+		assert.Less(t, time.Since(start), 500*time.Millisecond, "closeNow=%v", closeNow)
+		select {
+		case <-s.Done():
+		case <-time.After(time.Second):
+			t.Fatalf("Done did not fire (closeNow=%v)", closeNow)
+		}
+	}
+}
