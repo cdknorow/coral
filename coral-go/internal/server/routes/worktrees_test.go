@@ -467,6 +467,61 @@ func TestKeptJobRunWorktreeIsListedAndLeftWhenItsRepositoryIsGone(t *testing.T) 
 	assert.Equal(t, false, list[0]["checked"], "not checked: git cannot read it")
 	code, out := removeWorktree(t, url, list[0]["id"].(string))
 	assert.Equal(t, http.StatusOK, code)
-	assert.NotEqual(t, "removed", out["state"], "nothing is removed that git could not check")
+	assert.Equal(t, "failed", out["state"], "nothing is removed that git could not check")
+	assert.Equal(t, "git could not find its repository", out["reason"], "the plain words for a repository that is gone")
 	assert.FileExists(t, filepath.Join(wt, "unsaved.txt"))
+}
+
+// Security Windows's LOW on #7026 (#7035), the name check: a folder job-run-<id>-wrong whose git file names a repository of another name is not the run's, and is not listed.
+func TestAJobRunFolderWhoseGitFileNamesARepositoryOfAnotherNameIsNotListed(t *testing.T) {
+	url, cfg, h := teamServerH(t)
+	repo, git := repoOn(t, "master", true)
+	other, _ := repoOn(t, "master", true)
+	sched := store.NewScheduleStore(h.db)
+	job, err := sched.CreateScheduledJob(t.Context(), &store.ScheduledJob{Name: "nightly", CronExpr: "0 9 * * *", RepoPath: other, Prompt: "p", AgentType: "claude"})
+	require.NoError(t, err)
+	runID, err := sched.CreateScheduledRun(t.Context(), job.ID, "2026-10-23T09:00:00Z", "completed")
+	require.NoError(t, err)
+	require.NoError(t, os.MkdirAll(filepath.Join(cfg.CoralDir(), "worktrees"), 0o755))
+	wt := filepath.Join(cfg.CoralDir(), "worktrees", fmt.Sprintf("job-run-%d-wrong", runID)) // not repo's base name
+	git("worktree", "add", "-b", "coral/some-branch", "--", wt, "master")
+	require.NoError(t, sched.UpdateScheduledRun(t.Context(), runID, map[string]interface{}{"worktree_path": wt}))
+	assert.NotEqual(t, "wrong", filepath.Base(repo))
+	assert.Empty(t, listWorktrees(t, url), "the folder's name is not the name of the repository its git file names")
+}
+
+// Security Windows's LOW on #7026 (#7035), the prune: a remove must not run git in a repository whose registration of the folder it cannot find. A planted run folder whose git file names another repository (named as that repository is)
+// is listed, and a remove leaves that repository alone: its stale registration is still there, which git worktree prune would have taken.
+func TestRemoveOfAJobRunFolderNotRegisteredInItsRepositoryTouchesNothingThere(t *testing.T) {
+	url, cfg, h := teamServerH(t)
+	victim, vgit := repoOn(t, "master", true)
+	stale := filepath.Join(t.TempDir(), "stale")
+	vgit("worktree", "add", "-b", "stalebranch", "--", stale, "master")
+	require.NoError(t, os.RemoveAll(stale)) // a registration with no folder: what prune takes
+	registrations := func() string { return vgit("worktree", "list", "--porcelain") }
+	require.Contains(t, registrations(), "stale")
+	adminDirs, err := filepath.Glob(filepath.Join(victim, ".git", "worktrees", "*"))
+	require.NoError(t, err)
+	require.Len(t, adminDirs, 1)
+
+	sched := store.NewScheduleStore(h.db)
+	job, err := sched.CreateScheduledJob(t.Context(), &store.ScheduledJob{Name: "nightly", CronExpr: "0 9 * * *", RepoPath: t.TempDir(), Prompt: "p", AgentType: "claude"})
+	require.NoError(t, err)
+	runID, err := sched.CreateScheduledRun(t.Context(), job.ID, "2026-10-23T09:00:00Z", "completed")
+	require.NoError(t, err)
+	root := filepath.Join(cfg.CoralDir(), "worktrees")
+	require.NoError(t, os.MkdirAll(root, 0o755))
+	planted := filepath.Join(root, fmt.Sprintf("job-run-%d-%s", runID, filepath.Base(victim)))
+	require.NoError(t, os.MkdirAll(planted, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(planted, ".git"), []byte("gitdir: "+adminDirs[0]+"\n"), 0o644)) // its git file names the victim's stale registration
+	require.NoError(t, sched.UpdateScheduledRun(t.Context(), runID, map[string]interface{}{"worktree_path": planted}))
+
+	list := listWorktrees(t, url)
+	if len(list) == 1 { // listed or not, a remove must leave the victim alone
+		code, out := removeWorktree(t, url, list[0]["id"].(string))
+		assert.Equal(t, http.StatusOK, code)
+		assert.NotEqual(t, "removed", out["state"])
+	}
+	assert.Contains(t, registrations(), "stale", "the other repository's registration is still there: nothing was pruned in it")
+	assert.DirExists(t, planted)
 }
