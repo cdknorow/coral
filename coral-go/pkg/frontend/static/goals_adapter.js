@@ -49,6 +49,11 @@ export function toTaskList(json) {
     return rows.map(toTask).sort((a, b) => a.id - b.id);
 }
 
+/** A page of a goal's tasks: the rows and the cursor that continues them ('' when there is no more; today the route answers every task up to its cap with no cursor, and a cursor is followed when it comes). */
+export function toTaskPage(json) {
+    return { rows: toTaskList(json), cursor: text(json && !Array.isArray(json) ? json.next_cursor : '') };
+}
+
 /** The states the list route is asked for: it answers only the open ones (proposed, active, blocked) by default, and the view's chips include Done and Dropped. */
 export const LIST_PATH = '/goals?state=proposed,active,blocked,done,dropped';
 

@@ -61,6 +61,13 @@ export const noGoalsText = 'No goals yet. A goal says what the team is for and w
 /** The terminal line shown under it (the same fields as New goal). */
 export const noGoalsCommand = 'coral-board goal add "title" --done-when "..."';
 
+/** The button under a long task list: "Show 50 more" (never more than the page, never more than is left). */
+export const showMoreText = (left, page = 50) => `Show ${Math.min(page, Math.max(0, left))} more`;
+/** Said once after it: "Showing 100 of 120 tasks". */
+export const tasksShownText = (shown, total) => `Showing ${shown} of ${total} tasks`;
+/** Under the list when the route sent fewer tasks than the goal's rollup counts (its cap): honest about it, and where the rest are. */
+export const tasksCappedText = (shown, total) => `Showing ${shown} of ${total} tasks. The rest are on the Tasks panel.`;
+
 /** A goal's task list when it has none. */
 export const noTasksText = (id) => `No tasks in this goal yet. Add one with coral-board task add "title" --goal ${Number(id) || 0}.`;
 

@@ -53,4 +53,7 @@ assert.deepEqual(W.waitingGoals(goals), [goals[2]], 'only a goal blocked on some
 assert.deepEqual(W.waitingGoals(null), []);
 assert.equal(W.errorWords('goal_title_required', 'x'), 'A goal needs a title.'); assert.equal(W.errorWords('goal_driver_unknown', ''), 'That driver is not on this board.');
 assert.equal(W.errorWords('some_new_code', 'The server says this'), 'The server says this', 'an unknown code shows the server\'s sentence'); assert.equal(W.errorWords('', ''), 'try again');
+assert.equal(W.showMoreText(120), 'Show 50 more'); assert.equal(W.showMoreText(20), 'Show 20 more'); assert.equal(W.showMoreText(0), 'Show 0 more');
+assert.equal(W.tasksShownText(100, 120), 'Showing 100 of 120 tasks');
+assert.equal(W.tasksCappedText(120, 130), 'Showing 120 of 130 tasks. The rest are on the Tasks panel.');
 console.log('goal_words: ok');

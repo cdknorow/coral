@@ -6,7 +6,9 @@ import { state } from './state.js';
 import { boardFetch, keyLabel } from './server_base.js';
 import { setRowCurrent, OPERATOR_ID } from './utils.js';
 import { whenText } from './when_text.js';
-import { toGoalList, toTaskList, toDrivers, createBody, errorOf, LIST_PATH } from './goals_adapter.js';
+import { toGoalList, toTaskPage, toDrivers, createBody, errorOf, LIST_PATH } from './goals_adapter.js';
+
+const PAGE = 50; // a goal's tasks are drawn this many at a time
 import * as W from './goal_words.js';
 
 const model = { project: '', goals: [], requireGoal: false, filter: 'all', openId: 0, tasks: new Map(), loading: false, failed: '', asOf: '', creating: false };
@@ -52,12 +54,33 @@ export async function loadGoals() {
 
 async function loadTasks(id) {
     try {
-        model.tasks.set(id, toTaskList(await readJson(`/tasks?goal=${encodeURIComponent(id)}`)));
+        const page = toTaskPage(await readJson(`/tasks?goal=${encodeURIComponent(id)}`));
+        model.tasks.set(id, { rows: page.rows, cursor: page.cursor, shown: PAGE, moreFailed: '' });
     } catch (e) {
         model.tasks.set(id, { failed: String((e && e.message) || '') });
     }
     if (model.openId === id) drawDetail();
 }
+
+/** Show the next page of a goal's tasks: from the rows already read, and from the route's cursor when it has sent one. */
+async function showMoreTasks(id) {
+    const t = model.tasks.get(id); if (!t || !t.rows) return;
+    const before = t.shown;
+    if (t.shown >= t.rows.length && t.cursor) {
+        try {
+            const page = toTaskPage(await readJson(`/tasks?goal=${encodeURIComponent(id)}&cursor=${encodeURIComponent(t.cursor)}`));
+            t.rows = t.rows.concat(page.rows); t.cursor = page.cursor; t.moreFailed = '';
+        } catch (e) { t.moreFailed = W.failedText(String((e && e.message) || '')).replace('Goals', 'More tasks'); drawDetail(); return; }
+    }
+    t.shown = Math.min(t.rows.length, t.shown + PAGE);
+    drawDetail();
+    say(W.tasksShownText(t.shown, taskTotal(goalById(id), t)));
+    const first = root.querySelectorAll('.goal-task')[before]; // focus goes to the first task that was not there before
+    if (first) first.focus();
+}
+
+/** How many tasks the goal has: the rollup's count (the route's own numbers), at least the rows read. */
+const taskTotal = (goal, t) => Math.max(t.rows.length, goal ? goal.rollup.done + goal.rollup.active + goal.rollup.blocked + goal.rollup.queued : 0);
 
 const goalById = (id) => model.goals.find(g => g.id === id);
 const visible = () => model.goals.filter(g => W.keepsGoal(model.filter, g));
@@ -161,7 +184,7 @@ function drawListRaw() {
 }
 
 function taskRow(t) {
-    const li = el('li', 'goal-task');
+    const li = el('li', 'goal-task'); li.tabIndex = -1; // focus goes to the first task a Show more adds
     const head = el('span', 'goal-task-head');
     head.append(el('span', 'goal-task-id', `#${t.id}`), el('span', 'goal-task-title', t.title));
     const chip = el('span', `goal-chip goal-state-task-${W.taskStateWord(t.state).toLowerCase()}`); chip.append(el('span', 'goal-dot'), document.createTextNode(W.taskStateWord(t.state)));
@@ -204,8 +227,14 @@ function drawDetailRaw() {
     const tasks = model.tasks.get(g.id);
     if (!tasks) col.append(el('p', 'goals-note', 'Loading tasks…'));
     else if (tasks.failed !== undefined) { const f = el('div', 'goals-failed'); f.setAttribute('role', 'alert'); f.append(el('span', null, W.failedText(tasks.failed).replace('Goals', 'Tasks')), btn('btn btn-small', 'Try again', () => loadTasks(g.id))); col.append(f); }
-    else if (!tasks.length) col.append(el('p', 'goals-note', W.noTasksText(g.id)));
-    else { const ul = el('ul', 'goal-tasks'); for (const t of tasks) ul.append(taskRow(t)); col.append(ul); }
+    else if (!tasks.rows.length) col.append(el('p', 'goals-note', W.noTasksText(g.id)));
+    else {
+        const ul = el('ul', 'goal-tasks'); for (const t of tasks.rows.slice(0, tasks.shown)) ul.append(taskRow(t)); col.append(ul);
+        const total = taskTotal(g, tasks), left = Math.max(tasks.rows.length - tasks.shown, 0) || (tasks.cursor ? Math.max(total - tasks.shown, 1) : 0);
+        if (left) col.append(btn('btn goals-more', W.showMoreText(left, PAGE), () => showMoreTasks(g.id)));
+        if (tasks.moreFailed) { const f = el('div', 'goals-failed'); f.setAttribute('role', 'alert'); f.append(el('span', null, tasks.moreFailed)); col.append(f); }
+        if (left || tasks.shown < total) col.append(el('p', 'goals-note', !left && !tasks.cursor ? W.tasksCappedText(Math.min(tasks.shown, tasks.rows.length), total) : W.tasksShownText(Math.min(tasks.shown, tasks.rows.length), total)));
+    }
     if (keepFocus) h.focus();
 }
 

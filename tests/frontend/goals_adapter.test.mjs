@@ -1,6 +1,6 @@
 // The one place the goals routes' JSON becomes the Goals view's model (#7113): Security's posted contract (goal fields, rollup with total, {goals: [...]}, the tasks page shape, {error, code}).
 import assert from 'node:assert/strict';
-import { toGoal, toGoalList, toTask, toTaskList, toDrivers, createBody, errorOf, LIST_PATH } from '../../coral-go/pkg/frontend/static/goals_adapter.js';
+import { toGoal, toGoalList, toTask, toTaskList, toTaskPage, toDrivers, createBody, errorOf, LIST_PATH } from '../../coral-go/pkg/frontend/static/goals_adapter.js';
 
 const g = toGoal({ id: 4, goal_uid: 'u', board_id: 'b', title: 'T', outcome: 'O', done_when: 'D', state: 'BLOCKED', blocked_on: 'the Operator', driver: 'QA', decision: 'Ship?', recommendation: 'Yes', if_silent: 'Nothing', created_at: 'x', updated_at: '2026-10-24T12:00:00Z', rollup: { done: 5, active: 2, blocked: 1, queued: 1, total: 9 } });
 assert.deepEqual(g, { id: 4, title: 'T', outcome: 'O', doneWhen: 'D', state: 'blocked', blockedOn: 'the Operator', driver: 'QA', updatedAt: '2026-10-24T12:00:00Z', rollup: { done: 5, active: 2, blocked: 1, queued: 1 }, decision: 'Ship?', recommendation: 'Yes', ifSilent: 'Nothing' });
@@ -18,6 +18,8 @@ assert.equal(toTask({ id: 8, assigned_to: null, status: 'pending', session_id: '
 assert.equal(toTask({ id: 8, assigned_to: null }).assignee, '');
 assert.deepEqual(toTaskList({ tasks: [{ id: 9 }, { id: 3 }], next_cursor: '', totals: {} }).map(x => x.id), [3, 9], 'the page shape: tasks, sorted by number');
 assert.deepEqual(toTaskList(null), []);
+assert.deepEqual(toTaskPage({ tasks: [{ id: 2 }, { id: 1 }], next_cursor: 'c9' }).rows.map(x => x.id), [1, 2]); assert.equal(toTaskPage({ tasks: [{ id: 2 }], next_cursor: 'c9' }).cursor, 'c9');
+assert.equal(toTaskPage({ tasks: [] }).cursor, '', 'no cursor: nothing more'); assert.equal(toTaskPage([{ id: 1 }]).cursor, ''); assert.equal(toTaskPage(null).cursor, '');
 
 assert.deepEqual(errorOf({ error: 'a goal needs a title', code: 'goal_title_required' }), { code: 'goal_title_required', message: 'a goal needs a title' });
 assert.deepEqual(errorOf(null), { code: '', message: '' });
