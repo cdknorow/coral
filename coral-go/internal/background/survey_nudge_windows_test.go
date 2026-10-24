@@ -107,10 +107,17 @@ func startFakeSurveyClaude(t *testing.T, mode string) (rt *PTYRuntime, name, sid
 	require.NoError(t, rt.SpawnAgent(context.Background(), name, dir, "", cmd), "the fake Claude starts on a ConPTY")
 	t.Cleanup(func() { rt.KillAgent(context.Background(), name) })
 	// wait until the fake has drawn the survey (a nudge typed before it is drawn lands on it as the first key)
-	require.Eventually(t, func() bool {
+	if !assert.Eventually(t, func() bool {
 		scr, serr := rt.AgentScreen(context.Background(), name, "claude", sid)
 		return serr == nil && strings.Contains(scr, "How is Claude doing this session?")
-	}, 30*time.Second, 100*time.Millisecond, "the fake Claude draws the survey")
+	}, 30*time.Second, 100*time.Millisecond, "the fake Claude draws the survey") {
+		d, _ := os.ReadFile(out + ".diag")
+		scr, serr := rt.AgentScreen(context.Background(), name, "claude", sid)
+		t.Logf("DIAG command: %s", cmd)
+		t.Logf("DIAG fake's log: %q", string(d))
+		t.Logf("DIAG screen (err %v): %.1500q", serr, scr)
+		t.FailNow()
+	}
 	return
 }
 
