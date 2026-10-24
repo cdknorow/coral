@@ -15,6 +15,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -53,10 +54,15 @@ func TestFakeSurveyClaudeHelper(t *testing.T) {
 	f, err := os.OpenFile(out, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 	require.NoError(t, err)
 	defer f.Close()
+	diag, _ := os.OpenFile(out+".diag", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	defer diag.Close()
+	fmt.Fprintf(diag, "fake started, mode %s\n", mode)
 	buf := make([]byte, 4096)
 	first := true
 	for {
 		n, err := os.Stdin.Read(buf)
+		fmt.Fprintf(diag, "read n=%d err=%v bytes=%q\n", n, err, buf[:n])
+		diag.Sync()
 		if n > 0 {
 			if first && mode == "survey" {
 				first = false
@@ -104,14 +110,24 @@ const surveyNudge = "You have 1 unread message on the message board. Run 'coral-
 func TestWindowsABoardNudgeBehindTheSurveyDismissesItWithOneZeroAndIsDelivered(t *testing.T) {
 	rt, name, sid, out := startFakeSurveyClaude(t, "survey")
 	done := make(chan error, 1)
+	var logs strings.Builder
+	lg := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	go func() {
-		_, err := deliverAutomatedIfWanted(context.Background(), rt, slog.Default(), name, "claude", sid, "nudge-1", surveyNudge, "board nudge", false, true, nil)
+		_, err := deliverAutomatedIfWanted(context.Background(), rt, lg, name, "claude", sid, "nudge-1", surveyNudge, "board nudge", false, true, nil)
 		done <- err
 	}()
-	require.Eventually(t, func() bool {
+	ok := assert.Eventually(t, func() bool {
 		b, _ := os.ReadFile(out)
 		return strings.Contains(string(b), "unread message")
 	}, 45*time.Second, 200*time.Millisecond, "the survey is dismissed and the nudge is typed")
+	if !ok {
+		d, _ := os.ReadFile(out + ".diag")
+		scr, serr := rt.AgentScreen(context.Background(), name, "claude", sid)
+		t.Logf("DIAG fake's log: %q", string(d))
+		t.Logf("DIAG screen (err %v): %q", serr, scr)
+		t.Logf("DIAG gate logs: %s", logs.String())
+		t.FailNow()
+	}
 	b, _ := os.ReadFile(out)
 	got := string(b)
 	t.Logf("what the fake Claude received (after its marker): %q", strings.ReplaceAll(got, "\x1b", "<ESC>"))

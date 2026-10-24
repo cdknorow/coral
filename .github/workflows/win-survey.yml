@@ -41,7 +41,7 @@ jobs:
         run: |
           set +e +o pipefail
           git --version
-          go test -count=1 -tags "dev fts5" -run 'TestWindows(ABoardNudge|NothingIsTyped)' -v ./internal/background 2>&1 | tee "$RUNNER_TEMP/real.log" | grep -E "^(=== RUN|--- |ok|FAIL|PASS)|received|Error|panic"
+          go test -count=1 -tags "dev fts5" -run 'TestWindows(ABoardNudge|NothingIsTyped)' -v ./internal/background 2>&1 | tee "$RUNNER_TEMP/real.log" | grep -E "^(=== RUN|--- |ok|FAIL|PASS)|received|Error|panic|DIAG"
           real=${PIPESTATUS[0]}
           python3 - <<'PY'
           p = "internal/background/runtime_pty.go"
