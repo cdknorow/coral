@@ -90,8 +90,25 @@ func shellRisk(command, workDir string) string {
 	return shellRiskFrom(strings.ReplaceAll(command, `\`, "/"), workDir, workDir)
 }
 
-// shellRiskFrom is shellRisk for a command that starts in dir (a bash -c after a cd).
+// shellRiskFrom is shellRisk for a command that starts in dir (a bash -c after a cd). The rules per command (shellRiskSimple) read the command as a list of simple commands cut at
+// ; | && || and newlines, which is not how a shell reads { ...; }, if/then/fi, for/while/until, case, select, function bodies, ( ... ) with spaces, ! and $( ) (#7086): compoundRisk
+// reads the command with a real shell parser and judges every simple command inside, so a risky command is found wherever the grammar puts it. The answer is never weaker than
+// shellRiskSimple's.
 func shellRiskFrom(command, workDir, dir string) string {
+	if why := shellRiskCore(command, workDir, dir, shellRiskFrom); why != "" {
+		return why
+	}
+	return compoundRisk(command, workDir, dir)
+}
+
+// shellRiskSimple is the rule per command over the command cut at the shell's separators, and the command inside a shell wrapper read the same way: what shellRiskFrom was before
+// #7086, kept as the floor the compound reading is never below (and as the function #4599's equivalence test compares).
+func shellRiskSimple(command, workDir, dir string) string {
+	return shellRiskCore(command, workDir, dir, shellRiskSimple)
+}
+
+// shellRiskCore is the rules per command; inner judges the command inside a bash -c '...'.
+func shellRiskCore(command, workDir, dir string, inner func(command, workDir, dir string) string) string {
 	if curlPipeRe.MatchString(command) || curlSubstRe.MatchString(command) {
 		return "it pipes a download into a shell"
 	}
@@ -149,7 +166,7 @@ func shellRiskFrom(command, workDir, dir string) string {
 		if shellWrapperRe.MatchString(words[0]) {
 			for i, a := range args {
 				if strings.HasPrefix(a, "-") && strings.Contains(a, "c") && i+1 < len(args) {
-					if why := shellRiskFrom(strings.Join(args[i+1:], " "), workDir, cwd); why != "" {
+					if why := inner(strings.Join(args[i+1:], " "), workDir, cwd); why != "" {
 						return why
 					}
 					break

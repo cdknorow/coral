@@ -173,8 +173,8 @@ func agreeOn(t testing.TB, wd string, dirs []string, cmd string) {
 // disagreeOn says how the new and the old rule differ on a command, or "" when they agree (it touches no testing.T, so goroutines can call it).
 func disagreeOn(wd string, dirs []string, cmd string) string {
 	for _, dir := range dirs {
-		if got, want := shellRiskFrom(cmd, wd, dir), shellRiskFromBefore4599(cmd, wd, dir); got != want {
-			return fmt.Sprintf("shellRiskFrom(%q, wd, %q) = %q; before #4599 it was %q", cmd, dir, got, want)
+		if got, want := shellRiskSimple(cmd, wd, dir), shellRiskFromBefore4599(cmd, wd, dir); got != want {
+			return fmt.Sprintf("shellRiskSimple(%q, wd, %q) = %q; before #4599 it was %q", cmd, dir, got, want)
 		}
 	}
 	return ""

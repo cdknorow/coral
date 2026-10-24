@@ -40,7 +40,10 @@ require (
 
 require go.uber.org/goleak v1.3.0
 
-require github.com/evanw/esbuild v0.25.0
+require (
+	github.com/evanw/esbuild v0.25.0
+	mvdan.cc/sh/v3 v3.14.1
+)
 
 require (
 	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
