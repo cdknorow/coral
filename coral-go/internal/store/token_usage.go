@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"database/sql"
+	"github.com/subgentic/coral/internal/clitext"
+	"sort"
 	"strings"
 	"time"
 
@@ -665,7 +667,36 @@ func (s *TokenUsageStore) GetUsageSummaryByBranch(ctx context.Context, since str
 	query += ` GROUP BY gs.branch, gs.remote_url, COALESCE(t.board_name, '') ORDER BY cost_usd DESC`
 	var summaries []BranchUsageSummary
 	err := s.db.Reader().SelectContext(ctx, &summaries, query, args...)
-	return summaries, err
+	return mergeCleanedBranches(summaries), err
+}
+
+// mergeCleanedBranches shows each branch cleaned (a name stored before the write path cleaned it, #6832) and merges the rows whose names clean to the same one (same remote and board too): two raw spellings of
+// one branch are one row, their tokens and cost added (num_agents added too: it is an upper bound for the merged row), the biggest spender first as before.
+func mergeCleanedBranches(in []BranchUsageSummary) []BranchUsageSummary {
+	type key struct{ branch, remote, board string }
+	index := map[key]int{}
+	out := make([]BranchUsageSummary, 0, len(in))
+	for _, r := range in {
+		r.Branch = clitext.CleanName(r.Branch)
+		k := key{r.Branch, r.RemoteURL, r.BoardName}
+		i, seen := index[k]
+		if !seen {
+			index[k] = len(out)
+			out = append(out, r)
+			continue
+		}
+		m := &out[i]
+		m.InputTokens += r.InputTokens
+		m.OutputTokens += r.OutputTokens
+		m.CacheReadTokens += r.CacheReadTokens
+		m.CacheWriteTokens += r.CacheWriteTokens
+		m.TotalTokens += r.TotalTokens
+		m.CostUSD += r.CostUSD
+		m.NumAgents += r.NumAgents
+		m.PRNumber = max(m.PRNumber, r.PRNumber)
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].CostUSD > out[j].CostUSD })
+	return out
 }
 
 // GetUsageSummaryByBoard returns per-board (team) usage aggregates since a given time.
