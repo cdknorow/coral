@@ -160,18 +160,28 @@ func (h *BoardHandler) TaskChangesDiff(w http.ResponseWriter, r *http.Request) {
 		errNotFound(w, "task changes artifact not found")
 		return
 	}
-	path := h.taskArtifactPath(found.BoardID, taskID)
-	if info, serr := os.Stat(path); serr == nil && writtenBefore(info.ModTime(), found.CreatedAt) { // an older task's file under a repeated id (#6948)
-		errNotFound(w, "task changes artifact not found")
-		return
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			errNotFound(w, "task changes artifact not found")
+	// The diff is kept by board and id; one written before that (by id alone) is still read, so no task loses the history it had. Either must have been written after the task was made: a file older than the task is an
+	// older task's under a repeated id (#6948).
+	var data []byte
+	served := false
+	for _, path := range []string{h.taskArtifactPath(found.BoardID, taskID), h.legacyTaskArtifactPath(taskID)} {
+		info, serr := os.Stat(path)
+		if serr != nil || writtenBefore(info.ModTime(), found.CreatedAt) {
+			continue
+		}
+		b, rerr := os.ReadFile(path)
+		if rerr != nil {
+			if os.IsNotExist(rerr) {
+				continue
+			}
+			errInternalServer(w, rerr.Error())
 			return
 		}
-		errInternalServer(w, err.Error())
+		data, served = b, true
+		break
+	}
+	if !served {
+		errNotFound(w, "task changes artifact not found")
 		return
 	}
 	if cloud.Tunneled(r) {
