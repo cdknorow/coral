@@ -198,7 +198,7 @@ func (s *Store) deleteProject(ctx context.Context, project string, onlyIfUnused 
 	defer tx.Rollback()
 	if onlyIfUnused {
 		for _, table := range []struct{ name, col string }{{"board_messages", "project"}, {"board_tasks", "board_id"}, {"board_subscribers", "project"}, {"board_groups", "project"},
-			{"board_reminders", "project"}, {"board_waits", "project"}} {
+			{"board_reminders", "project"}, {"board_waits", "project"}, {"board_goals", "board_id"}} {
 			var n int
 			if err := tx.GetContext(ctx, &n, "SELECT COUNT(*) FROM "+table.name+" WHERE "+table.col+" = ?", project); err != nil {
 				return false, err
@@ -221,6 +221,8 @@ func (s *Store) deleteProject(ctx context.Context, project string, onlyIfUnused 
 		{"DELETE FROM task_dependency_rules WHERE task_id IN " + mine + " OR upstream_id IN " + mine, 2},
 		{"DELETE FROM task_ready_notifications WHERE task_id IN " + mine, 1},
 		{"DELETE FROM board_tasks WHERE board_id = ?", 1},
+		{"DELETE FROM board_goals WHERE board_id = ?", 1},
+		{"DELETE FROM board_goal_meta WHERE board_id = ?", 1},
 		{"DELETE FROM board_messages WHERE project = ?", 1},
 		{"DELETE FROM board_subscribers WHERE project = ?", 1},
 		{"DELETE FROM board_reminders WHERE project = ?", 1},

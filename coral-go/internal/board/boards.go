@@ -14,6 +14,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 
 	"github.com/subgentic/coral/internal/secfile"
@@ -32,6 +33,9 @@ type Board struct {
 	Label     string `db:"label" json:"board_label"`
 	CreatedAt string `db:"created_at" json:"created_at"`
 	CreatedBy string `db:"created_by" json:"created_by"`
+	// UID is the board's own random UUID (canonical lower-case), made when the board is created and never changed, not even by a re-key of its id (#7087): the stable name a reference to this
+	// board from another machine is made of. nil for a board made before it existed, which is not backfilled: such a board is not cross-linkable.
+	UID *string `db:"board_uid" json:"board_uid"`
 }
 
 // ErrAmbiguousBoard: a key that is no board's id names more than one board's label.
@@ -148,7 +152,7 @@ func (s *Store) BoardsLabelled(ctx context.Context, label string) ([]Board, erro
 func (s *Store) BoardsLabelledForLaunch(ctx context.Context, label string) ([]Board, error) {
 	since := time.Now().UTC().Add(-10 * time.Minute).Format(time.RFC3339)
 	var out []Board
-	err := s.db.SelectContext(ctx, &out, `SELECT b.id, b.label, b.created_at, b.created_by FROM boards b WHERE b.label = ?
+	err := s.db.SelectContext(ctx, &out, `SELECT b.id, b.label, b.created_at, b.created_by, b.board_uid FROM boards b WHERE b.label = ?
 		AND (b.created_at >= ?
 		  OR EXISTS (SELECT 1 FROM board_subscribers WHERE project = b.id)
 		  OR EXISTS (SELECT 1 FROM board_messages WHERE project = b.id)
@@ -213,8 +217,9 @@ func (s *Store) CreateBoard(ctx context.Context, label, createdBy string) (*Boar
 		if taken > 0 {
 			continue
 		}
-		b := Board{ID: id, Label: label, CreatedAt: nowUTC(), CreatedBy: createdBy}
-		res, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO boards (id, label, created_at, created_by) VALUES (?, ?, ?, ?)`, b.ID, b.Label, b.CreatedAt, b.CreatedBy)
+		uid := uuid.NewString()
+		b := Board{ID: id, Label: label, CreatedAt: nowUTC(), CreatedBy: createdBy, UID: &uid}
+		res, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO boards (id, label, created_at, created_by, board_uid) VALUES (?, ?, ?, ?, ?)`, b.ID, b.Label, b.CreatedAt, b.CreatedBy, uid)
 		if err != nil {
 			return nil, err
 		}
@@ -283,7 +288,7 @@ var boardKeyColumns = [][2]string{
 	{"board_subscribers", "project"}, {"board_messages", "project"}, {"board_reminders", "project"},
 	{"board_groups", "project"}, {"board_tasks", "board_id"}, {"task_dependencies", "blocked_by_board_id"},
 	{"board_settings", "project"}, {"hub_operator_actions", "project"}, {"board_waits", "project"},
-	{"board_working_modes", "board_id"}, {"board_workflow_presets", "board_id"}, {"board_settings_log", "board_id"}, {"cross_team_switch_log", "project"},
+	{"board_working_modes", "board_id"}, {"board_workflow_presets", "board_id"}, {"board_goals", "board_id"}, {"board_goal_meta", "board_id"}, {"board_settings_log", "board_id"}, {"cross_team_switch_log", "project"},
 }
 
 // rekeyUnusableBoards gives every board whose key can't be an id in a URL ("." , "..", a

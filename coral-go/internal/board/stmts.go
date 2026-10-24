@@ -15,8 +15,8 @@ import (
 // whose schema changed. Only fixed SQL is here: a query built per call stays unprepared.
 const (
 	sqlSubscriptionBySessionName = "SELECT * FROM board_subscribers WHERE session_name = ? AND is_active = 1 ORDER BY subscribed_at DESC, rowid DESC LIMIT 1"
-	sqlBoardByID                 = `SELECT id, label, created_at, created_by FROM boards WHERE id = ?`
-	sqlBoardsLabelled            = `SELECT b.id, b.label, b.created_at, b.created_by FROM boards b WHERE b.label = ?
+	sqlBoardByID                 = `SELECT id, label, created_at, created_by, board_uid FROM boards WHERE id = ?`
+	sqlBoardsLabelled            = `SELECT b.id, b.label, b.created_at, b.created_by, b.board_uid FROM boards b WHERE b.label = ?
 		AND (EXISTS (SELECT 1 FROM board_subscribers WHERE project = b.id)
 		  OR EXISTS (SELECT 1 FROM board_messages WHERE project = b.id)
 		  OR EXISTS (SELECT 1 FROM board_tasks WHERE board_id = b.id))
