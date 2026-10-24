@@ -1,12 +1,15 @@
 package routes
 
 import (
+	"encoding/json"
+	"path/filepath"
 	"sort"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/subgentic/coral/internal/agentsignin"
 	"github.com/subgentic/coral/internal/tracking"
 )
 
@@ -47,10 +50,20 @@ func TestSignInAnswerIsCountedWithOnlyToolStatusAndSource(t *testing.T) {
 	}{{"false", "1", tracking.PrereqSignedOut}, {"true", "0", tracking.PrereqSignedIn}} {
 		t.Run(tc.status, func(t *testing.T) {
 			sink := captureAnalytics(t)
-			fakeClaude(t, signInFixture(tc.loggedIn), int(tc.exit[0]-'0'))
-			cliCheckBody(t, "type=claude&signin=1")
-			require.Eventually(t, func() bool { return len(signInEvents(sink)) >= 1 }, 15*time.Second, 5*time.Millisecond)
-			tracking.WaitForAsyncForTest() // any further event the request sent has left too: wait on the tracker, not on a fixed time
+			// This checks the clear answer's telemetry, not how quickly a shell starts.
+			// Reuse the healthy-probe fixture's isolated lookup and generous guard.
+			clis := useFakeCLIs(t)
+			authRuns := fakeClaude(t, signInFixture(tc.loggedIn), int(tc.exit[0]-'0'))
+			clis.present["claude"] = filepath.Join(filepath.Dir(authRuns), "claude")
+			t.Cleanup(agentsignin.SetCheckTimeoutForTests(time.Minute))
+			body := cliCheckBody(t, "type=claude&signin=1")
+			var reply map[string]any
+			require.NoError(t, json.Unmarshal([]byte(body), &reply))
+			require.Equal(t, probeOK, reply["probe"], "healthy fixture must answer before checking its telemetry")
+			require.Equal(t, tc.loggedIn == "true", reply["signed_in"])
+			// The handler enqueued tracking before it answered. Drain that work, rather
+			// than polling for an event that a timed-out version probe never emits.
+			tracking.WaitForAsyncForTest()
 			events := signInEvents(sink)
 			require.Len(t, events, 1)
 			assert.Equal(t, tracking.ToolClaude, events[0]["tool"])

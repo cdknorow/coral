@@ -246,28 +246,65 @@ func TestWorktreeListProbesInParallelAndWithinABudget(t *testing.T) {
 // checked: true.
 func TestWorktreeEntryIsNotCheckedWhenTheUnmergedReadStalls(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("the fake git is a shell script")
+		t.Skip("the fake git uses a shell and named pipes")
 	}
 	realGit, err := exec.LookPath("git")
 	require.NoError(t, err)
-	url, cfg := teamServer(t)
-	_, id, wt := launchWorktreeTeam(t, url, cfg, "stalls")
+	repo, git := repoOn(t, "master", true)
+	wt := filepath.Join(t.TempDir(), "worktree")
+	git("worktree", "add", "-b", "stalls", wt, "master")
 	require.NoError(t, os.WriteFile(filepath.Join(wt, "unsaved.txt"), []byte("mine"), 0o644))
 
-	// the fake git: every command goes to the real one, except the branch listing the unmerged count reads, which never answers
+	// Signal when the unmerged read actually begins. Keep its read blocked on
+	// a pipe until context cancellation: no sleep and no 1.5s status-read race.
 	fakeDir := t.TempDir()
-	script := "#!/bin/sh\nfor a in \"$@\"; do\n  if [ \"$a\" = for-each-ref ]; then exec sleep 30; fi\ndone\nexec " + realGit + " \"$@\"\n"
+	readyPath := filepath.Join(fakeDir, "ready")
+	holdPath := filepath.Join(fakeDir, "hold")
+	require.NoError(t, exec.Command("mkfifo", readyPath, holdPath).Run())
+	ready, err := os.OpenFile(readyPath, os.O_RDWR, 0o600)
+	require.NoError(t, err)
+	defer ready.Close()
+	hold, err := os.OpenFile(holdPath, os.O_RDWR, 0o600)
+	require.NoError(t, err)
+	defer hold.Close()
+	quote := func(v string) string { return "'" + strings.ReplaceAll(v, "'", "'\"'\"'") + "'" }
+	script := "#!/bin/sh\nfor a in \"$@\"; do\n  if [ \"$a\" = for-each-ref ]; then\n    printf 1 > " + quote(readyPath) + "\n    read ignored < " + quote(holdPath) + "\n    exit 1\n  fi\ndone\nexec " + quote(realGit) + " \"$@\"\n"
 	require.NoError(t, os.WriteFile(filepath.Join(fakeDir, "git"), []byte(script), 0o755))
 	t.Setenv("PATH", fakeDir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	defer func(b time.Duration) { worktreeListBudget = b }(worktreeListBudget)
-	worktreeListBudget = 1500 * time.Millisecond
-
-	start := time.Now()
-	list := listWorktrees(t, url)
-	require.Len(t, list, 1, id)
-	assert.Less(t, time.Since(start), 5*time.Second, "the list returns at its budget")
-	assert.Equal(t, true, list[0]["dirty"], "the status read answered")
-	assert.Equal(t, false, list[0]["checked"], "the unmerged read did not: not checked")
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	reached := make(chan error, 1)
+	go func() { var b [1]byte; _, err := io.ReadFull(ready, b[:]); reached <- err }()
+	done := make(chan struct{})
+	var entry worktreeEntry
+	go func() {
+		defer close(done)
+		entry = probeWorktree(ctx, worktreeEntry{Path: wt, RepoPath: repo, Branch: "stalls"})
+	}()
+	defer func() {
+		cancel()
+		select {
+		case <-done:
+		case <-time.After(10 * time.Second):
+			t.Error("git probe did not stop after cancellation")
+		}
+	}()
+	select {
+	case err := <-reached:
+		require.NoError(t, err)
+	case <-done:
+		t.Fatal("git probe ended before reaching the unmerged read")
+	case <-time.After(30 * time.Second):
+		t.Fatal("git probe did not reach the unmerged read")
+	}
+	cancel() // exercise the precise cancellation boundary, after status succeeded
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("git probe did not stop")
+	}
+	assert.True(t, entry.Dirty, "status answered before cancellation")
+	assert.False(t, entry.Checked, "the interrupted unmerged read is not checked")
 }
 
 // UI Accessibility's #6938 HIGH (#6942): the dashboard's Kill Team kills agent by agent, and only the team route marks the team stopped, so a worktree kept after the single kills (unsaved work) was "in use" for good and had
