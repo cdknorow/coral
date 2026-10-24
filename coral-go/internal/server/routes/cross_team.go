@@ -233,6 +233,10 @@ func (h *BoardHandler) UpdateBoardSettings(w http.ResponseWriter, r *http.Reques
 			writeJSON(w, http.StatusForbidden, map[string]string{"code": "local_only", "error": "cross-team settings can be changed only on this computer, not through Coral Hub"})
 			return
 		}
+		if body.RequireGoal != nil { // whether a board requires a goal for every task is decided on this computer, on or off (#7116)
+			writeJSON(w, http.StatusForbidden, map[string]string{"code": "local_only", "error": "require_goal can be changed only on this computer, not through Coral Hub"})
+			return
+		}
 	}
 	if body.CrossTeamArtifacts != nil && cloud.Tunneled(r) {
 		writeError( // Accepting files from other teams is decided on this computer only (#4379; coral-hub's
@@ -286,6 +290,10 @@ func (h *BoardHandler) UpdateBoardSettings(w http.ResponseWriter, r *http.Reques
 		body.CrossTeamAllowed = &clean
 		before, _ = h.bs.GetBoardSettings(r.Context(), project)
 	}
+	var beforeRequire board.BoardSettings
+	if body.RequireGoal != nil {
+		beforeRequire, _ = h.bs.GetBoardSettings(r.Context(), project)
+	}
 	var beforeSwitches board.BoardSettings
 	touchesSwitch := body.CrossTeamMessaging != nil || body.CrossTeamArtifacts != nil
 	if touchesSwitch {
@@ -297,6 +305,16 @@ func (h *BoardHandler) UpdateBoardSettings(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	listEditRefused = false
+	if body.RequireGoal != nil && *body.RequireGoal != beforeRequire.RequireGoal {
+		// Who changed it and when, in the board's settings log like the other owner changes (#7116).
+		actor := callerActor(r).Name
+		if actor == "" {
+			actor = crossTeamOperatorID
+		}
+		if err := h.bs.AppendEditLog(context.WithoutCancel(r.Context()), project, actor, "require_goal", fmt.Sprint(beforeRequire.RequireGoal), fmt.Sprint(*body.RequireGoal)); err != nil {
+			slog.Warn("goals: could not log a require_goal change", "board", project, "error", err)
+		}
+	}
 	if touchesSwitch {
 		// So "last changed by" on the Messaging tab never names a hub user after the owner here changed the switch again (#5572).
 		ctx := context.WithoutCancel(r.Context())

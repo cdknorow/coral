@@ -61,6 +61,8 @@ type BoardSettings struct {
 	CrossTeamAllowed []AllowedSender `json:"cross_team_allowed"`
 	// Health is the team's health check configuration (#4175).
 	Health HealthSettings `json:"health"`
+	// RequireGoal: every new task of this board needs a goal, and none is moved to no goal (#7116). Off by default; only the Operator on this computer may change it, never through Coral Hub.
+	RequireGoal bool `json:"require_goal"`
 	// MessagingStored and ArtifactsStored say that the owner set the switch (to either value), as against the default.
 	MessagingStored bool `json:"-"`
 	ArtifactsStored bool `json:"-"`
@@ -83,6 +85,8 @@ type BoardSettingsUpdate struct {
 	CrossTeamAllowed *[]AllowedSender `json:"cross_team_allowed"`
 	// Health replaces the whole health configuration (clamped; the handler checks the recipient).
 	Health *HealthSettings `json:"health"`
+	// RequireGoal turns the board's require-a-goal rule on or off (#7116).
+	RequireGoal *bool `json:"require_goal"`
 }
 
 const (
@@ -207,6 +211,8 @@ func (s *Store) GetBoardSettings(ctx context.Context, project string) (BoardSett
 			out.CrossTeamArtifacts, out.ArtifactsStored = r.Value == "true", true
 		case settingCrossTeamAllowed:
 			_ = json.Unmarshal([]byte(r.Value), &out.CrossTeamAllowed)
+		case settingRequireGoal:
+			out.RequireGoal = r.Value == "true"
 		}
 	}
 	out.Health = s.GetHealthSettings(ctx, project)
@@ -265,6 +271,11 @@ func (s *Store) UpdateBoardSettings(ctx context.Context, project string, u Board
 	}
 	if u.CrossTeamArtifacts != nil {
 		if err := upsert(tx, settingCrossTeamArtifacts, fmt.Sprint(*u.CrossTeamArtifacts)); err != nil {
+			return BoardSettings{}, err
+		}
+	}
+	if u.RequireGoal != nil {
+		if err := upsert(tx, settingRequireGoal, fmt.Sprint(*u.RequireGoal)); err != nil {
 			return BoardSettings{}, err
 		}
 	}

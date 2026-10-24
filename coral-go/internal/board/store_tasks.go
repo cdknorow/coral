@@ -87,6 +87,15 @@ func (s *Store) CreateTaskWithOpts(ctx context.Context, project, title, body, pr
 	} else if w.RetryOf != 0 {
 		goalID = s.inheritedGoal(ctx, project, w.RetryOf)
 	}
+	// A board that requires a goal refuses a task with none, before anything is stored (#7116). A review task Coral makes for a task in review is not the person's to give a goal: it is exempt, or
+	// a board that requires goals could not review its own work.
+	if goalID == nil && w.ReviewOf == 0 {
+		if on, err := s.requiresGoal(ctx, project); err != nil {
+			return nil, err
+		} else if on {
+			return nil, ErrGoalRequired
+		}
+	}
 
 	result, err := s.db.ExecContext(ctx,
 		`INSERT INTO board_tasks (board_id, title, body, status, priority, created_by, assigned_to, created_at, goal_id)
