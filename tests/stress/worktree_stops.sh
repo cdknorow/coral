@@ -115,6 +115,7 @@ stop_case() {
     local name="$1" mode="$2" prog="$3"
     local dd="$TMPROOT/d-$name" rp="$TMPROOT/repos/$name"
     mkdir -p "$dd" "$rp"; git -C "$rp" init -q -b main; echo hi >"$rp/README.md"; git -C "$rp" add .; git -c user.name=Test -c user.email=test@test.invalid -C "$rp" commit -q -m initial
+    export CORAL_DATA_DIR="$dd"   # curl (tests/lib/agent_env.sh) reads this folder's api_key; the server itself gets the native path below
     local go="$TMPROOT/go-$name" out="$TMPROOT/out-$name" lg="$TMPROOT/log-$name"
     rm -f "$go" "$out"
     local prog_args
