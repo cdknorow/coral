@@ -25,7 +25,7 @@ import { flushReply } from './chat_announce.js';
 // input box took it and it was submitted (#4587): Sent means submitted.
 const PENDING_TTL_MS = 15 * 60 * 1000;
 const STORAGE_KEY_PENDING = "coral-pending-messages";
-const pendingBySession = new Map(); // session_id -> [{ id, text, at, queued, sending }]
+const pendingBySession = new Map(); // session_id -> [{ id, text, at, queued, sending, unconfirmed (its note) }]
 let pendingSeq = 0;
 const recentUserEntriesBySession = new Map();
 
@@ -226,6 +226,22 @@ export function confirmPendingMessage(sessionId, sentAt) {
     announceSend(sessionId, p.queued ? "Message queued" : "Message sent");
 }
 
+/** The server could not confirm the send at sentAt, though it may well have arrived (its answer said not_sent: false, #318): its
+ *  bubble stays, with the note (what Coral can't confirm and why) in place of Sent, and nothing is put back in the box. */
+export function unconfirmPendingMessage(sessionId, sentAt, note) {
+    const p = (pendingBySession.get(sessionId) || []).find(x => x.at === sentAt);
+    if (!p || !p.sending) return;
+    p.sending = false;
+    p.unconfirmed = note || "Sent, but Coral can't confirm the agent received it";
+    savePendingToStorage();
+    const container = document.getElementById("live-history-messages");
+    if (container && state.currentSession && state.currentSession.session_id === sessionId) {
+        syncPendingBubbles(container, sessionId);
+        syncWorkingIndicator(container, state.currentSession);
+    }
+    announceSend(sessionId, p.unconfirmed);
+}
+
 /** Withdraw the pending bubble of a send that was refused (its terminal was gone, #3218). */
 export function removePendingMessage(sessionId, sentAt) {
     const list = pendingBySession.get(sessionId);
@@ -336,7 +352,7 @@ function dropStaleSentPending(sessionId, msg) {
     if (list.length !== before) savePendingToStorage();
 }
 
-function syncPendingGroup(container, cls, items, label) {
+function syncPendingGroup(container, cls, items, label) { // label: the group's words, or a function of the message
     let wrap = container.querySelector(`:scope > .pending-messages.${cls}`);
     if (!items.length) {
         if (wrap) wrap.remove();
@@ -357,9 +373,10 @@ function syncPendingGroup(container, cls, items, label) {
         const coral = /^\[Coral UI panel request\b/i.test(normalizeNudgeText(p.text));
         const lead = splitSharedImages(unwrapPastedContent(p.text));
         const summary = coralNoticeSummary(normalizeNudgeText(p.text));
+        const labelHtml = escapeHtml(typeof label === "function" ? label(p) : label); // the group's words, or this message's (unconfirmed)
         const el = coral
-            ? makeBubble("chat-system chat-system-general pending", `<span class="material-icons" aria-hidden="true">notifications</span><span class="chat-system-label">Coral</span><span class="chat-system-text" title="${escapeHtml(summary)}">${escapeHtml(summary)}</span><span class="pending-label">${label}</span>`)
-            : makeBubble("chat-bubble human pending", `<div class="message-text">${renderMarkdown(lead.rest, CHAT_MARKDOWN, 'chat')}</div><div class="pending-images"></div><div class="pending-label">${label}</div>`);
+            ? makeBubble("chat-system chat-system-general pending", `<span class="material-icons" aria-hidden="true">notifications</span><span class="chat-system-label">Coral</span><span class="chat-system-text" title="${escapeHtml(summary)}">${escapeHtml(summary)}</span><span class="pending-label">${labelHtml}</span>`)
+            : makeBubble("chat-bubble human pending", `<div class="message-text">${renderMarkdown(lead.rest, CHAT_MARKDOWN, 'chat')}</div><div class="pending-images"></div><div class="pending-label">${labelHtml}</div>`);
         el.dataset.pendingId = String(p.id);
         // Images pasted in the dashboard lead the text as links and a download hint for the agent (#5284): the person sees the same thumbnail chips the sent message will have, never the links (#6199).
         if (!coral && lead.images.length) {
@@ -386,11 +403,12 @@ export function syncPendingBubbles(container, sessionId) {
     const list = (pendingBySession.get(sessionId) || []).filter(p => now - p.at < PENDING_TTL_MS);
     pendingBySession.set(sessionId, list);
     savePendingToStorage();
-    const sent = syncPendingGroup(container, "pending-sent", list.filter(p => !p.queued && !p.sending), "Sent");
-    const queued = syncPendingGroup(container, "pending-queued", list.filter(p => p.queued && !p.sending), "Queued");
+    const sent = syncPendingGroup(container, "pending-sent", list.filter(p => !p.queued && !p.sending && !p.unconfirmed), "Sent");
+    const unconfirmed = syncPendingGroup(container, "pending-unconfirmed", list.filter(p => !p.sending && p.unconfirmed), p => p.unconfirmed);
+    const queued = syncPendingGroup(container, "pending-queued", list.filter(p => p.queued && !p.sending && !p.unconfirmed), "Queued");
     const sending = syncPendingGroup(container, "pending-sending", list.filter(p => p.sending), "Sending…");
-    // Always last, below any newly rendered messages: sent, then queued, then the ones still sending
-    for (const wrap of [sent, queued, sending]) {
+    // Always last, below any newly rendered messages: sent, then the unconfirmed, then queued, then the ones still sending
+    for (const wrap of [sent, unconfirmed, queued, sending]) {
         if (wrap && container.lastElementChild !== wrap) container.appendChild(wrap);
     }
 }

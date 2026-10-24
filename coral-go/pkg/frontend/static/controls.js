@@ -13,7 +13,7 @@ import { registerActions, idOf } from './actions.js';
 import { stopCaptureRefresh } from './capture.js';
 import { renderLiveSessions, KILL_LOG_NOTE } from './render.js';
 import { loadAgentEvents, renderEventTimeline } from './agentic_state.js';
-import { addPendingMessage, confirmPendingMessage, removePendingMessage, resetLiveHistory, effectiveLiveViewMode } from './live_chat.js';
+import { addPendingMessage, confirmPendingMessage, removePendingMessage, unconfirmPendingMessage, resetLiveHistory, effectiveLiveViewMode } from './live_chat.js';
 import { serverFetch, currentServer, serverForSession, sessionServer } from './server_base.js';
 import { applySleepingView } from './sleeping_view.js';
 import { hubBlocked, blockedReason } from './hub_access.js';
@@ -21,7 +21,7 @@ import { prepareImage, artifactErrorText, PICKER_ACCEPT, parseUploadReply, uploa
 import { attachmentsLead, sentToastText } from './shared_images.js';
 import { loadModals } from './lazy_panels.js';
 import { responseErrorText, responseError } from './server_status.js';
-import { reportSendError, showComposerError, clearComposerError, awaitSocketAccept, nextInputId, refuseSocketSends } from './terminal_gone.js';
+import { reportSendError, showComposerError, clearComposerError, awaitSocketAccept, nextInputId, refuseSocketSends, mayHaveArrived } from './terminal_gone.js';
 import { rememberSend, noteHeld } from './held_sends.js'; // a message held behind the agent's question shows as queued under the box (#6611)
 import { pollEvery } from './overload.js';
 import { syncSendStarting } from './agent_starting.js';
@@ -180,6 +180,19 @@ export async function sendCommand({ nudge = false } = {}) {
                 body: JSON.stringify({ command, agent_type: targetAgentType, session_id: sentSessionId }),
             });
             if (!resp.ok) {
+                let body = null;
+                try { body = await resp.clone().json(); } catch { /* not JSON */ }
+                if (body && mayHaveArrived(body.code, body.not_sent)) {
+                    // It may well have arrived (#318): the bubble stays with what Coral can't confirm, the box stays empty, and
+                    // the attachments went with it. Sending it again would type it twice.
+                    unconfirmPendingMessage(sentSessionId, sentAt, unconfirmedNote(body.code));
+                    clearAttachments(targetSession);
+                    const key = sessionKey(targetSession);
+                    if (key) saveSessionDraft(key, "");
+                    const { text, code, exited } = await responseError(resp, sessionServer(targetSession), `The message was not confirmed (HTTP ${resp.status}).`);
+                    reportSendError(targetSession, text, code, exited);
+                    return;
+                }
                 notSent();
                 // Plain text naming the server; never the raw response (#3151). The draft stays.
                 // Said under the composer (#3218); a gone terminal also marks the agent and offers Restart.
@@ -220,12 +233,24 @@ export async function sendCommand({ nudge = false } = {}) {
     }
 }
 
-/** A composer send over the terminal socket was accepted or refused (#3218). */
+// What an unconfirmed message's bubble says in place of Sent (#318), by the server's code.
+const UNCONFIRMED_NOTES = { hooks_unreachable: "Sent, but Coral can't confirm the agent received it: its hooks aren't running" };
+function unconfirmedNote(code) {
+    return Object.hasOwn(UNCONFIRMED_NOTES, code) ? UNCONFIRMED_NOTES[code] : "Sent, but Coral can't confirm the agent received it";
+}
+
+/** A composer send over the terminal socket was accepted, refused, or not confirmed though it may have arrived (#3218, #318). */
 function _settleSocketSend(session, command, sentAt, ok) {
     const key = sessionKey(session);
     const saved = (key && state.sessionInputText[key]) || "";
     const input = document.getElementById("command-input");
     const onIt = !!(input && state.currentSession && sessionKey(state.currentSession) === key);
+    if (ok && ok.unconfirmed) {
+        // Not taken back: the bubble stays with its note (the reason is under the box), and the draft is not put back.
+        unconfirmPendingMessage(session.session_id, sentAt, unconfirmedNote(ok.code));
+        if (key && saved.trim() === command) saveSessionDraft(key, "");
+        return;
+    }
     if (ok) {
         confirmPendingMessage(session.session_id, sentAt);
         // Text typed since the send is a new draft and stays.

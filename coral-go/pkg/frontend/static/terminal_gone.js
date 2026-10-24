@@ -174,7 +174,8 @@ let _nextInputId = 1;
 export function nextInputId() { return _nextInputId++; }
 
 /** Resolves true when a socket send for `session` is accepted (the server answered every frame
- *  in ids), false when it is refused or not answered in SOCKET_ACK_TIMEOUT_MS. */
+ *  in ids), false when it is refused or not answered in SOCKET_ACK_TIMEOUT_MS, and { unconfirmed, code, error } when
+ *  the server could not confirm it though it may have arrived (mayHaveArrived, #318). */
 export function awaitSocketAccept(session, ids) {
     return new Promise(resolve => {
         const p = { sid: session && session.session_id, resolve, ids: new Set(ids) };
@@ -190,13 +191,22 @@ function _settle(p, ok) {
     return true;
 }
 
-/** Refuse the sends for sessionId (all of them, or only the one that sent frame `id`). */
-export function refuseSocketSends(sessionId, id) {
+/** Refuse the sends for sessionId (all of them, or only the one that sent frame `id`); `outcome` is what they resolve
+ *  to (false: not sent). */
+export function refuseSocketSends(sessionId, id, outcome = false) {
     for (const p of [..._socketSends]) {
         if (sessionId && p.sid !== sessionId) continue;
         if (id !== undefined && id !== null && !p.ids.has(id)) continue;
-        _settle(p, false);
+        _settle(p, outcome);
     }
+}
+
+/** A refused send that may well have reached the agent (#318): the server said not_sent false (an agent whose hooks are gone,
+ *  with nothing to confirm the message). It is not taken back: the person sending it again would type it twice. A message
+ *  left in the agent's box unsubmitted (not_submitted) is the exception: its text asks for it to be sent again, and the
+ *  server answers that with Enter, never a second copy. */
+export function mayHaveArrived(code, notSent) {
+    return notSent === false && code !== 'not_submitted';
 }
 
 // A message held behind the agent's question (#6610): the server types it once no box is left, and answers by this id then. It waits as long as the server holds it (30 minutes), not the usual seconds.
@@ -224,11 +234,11 @@ document.addEventListener('coral:terminal-input-ack', e => {
 
 // Input refused by the server (it could not deliver it) or by the Coral Hub (read-only).
 document.addEventListener('coral:terminal-input-refused', e => {
-    const { sessionId, id, error } = e.detail || {};
+    const { sessionId, id, error, code, notSent } = e.detail || {};
     const before = _socketSends.size;
     const own = wasCancelled(sessionId, id); // the person cancelled it: its refusal is theirs, not an error
     noteDone(sessionId, id);
-    refuseSocketSends(sessionId, id);
+    refuseSocketSends(sessionId, id, mayHaveArrived(code, notSent) ? { unconfirmed: true, code, error } : false);
     const cur = state.currentSession;
     if (error && !own && _socketSends.size < before && cur && (!sessionId || sessionId === cur.session_id)) showComposerError(error);
 });

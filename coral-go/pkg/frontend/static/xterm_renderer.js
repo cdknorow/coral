@@ -852,7 +852,8 @@ export function connectTerminalWs(name, agentType, sessionId, server) {
             // The id, when there is one, names the refused input (#3276).
             document.dispatchEvent(new CustomEvent('coral:terminal-gone', { detail: { sessionId, id: data.id } }));
         } else if (data.type === "terminal_input_failed") {
-            document.dispatchEvent(new CustomEvent('coral:terminal-input-refused', { detail: { sessionId, id: data.id, error: data.error } }));
+            // not_sent false: the message may well have arrived, though Coral can't confirm it (#318)
+            document.dispatchEvent(new CustomEvent('coral:terminal-input-refused', { detail: { sessionId, id: data.id, error: data.error, code: data.code, notSent: data.not_sent } }));
         } else if (data.type === "hub_read_only") {
             // The Cloud Hub dropped our input for this server's access mode (#3068): a refusal
             // of that input (#3276), named by its id when the hub echoes one.
