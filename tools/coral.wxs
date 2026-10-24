@@ -31,7 +31,8 @@
 
     <MediaTemplate EmbedCab="yes" />
 
-    <!-- Install to Program Files\Coral -->
+    <!-- Install to Program Files\Coral. The package must be built with `wix build -arch x64` (release.yml, tools/build_windows.ps1):
+         a package built without it is x86, and ProgramFiles64Folder then resolves to Program Files (x86) (#200). -->
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="Coral">
         <Component Id="CoralExe" Guid="A1B2C3D4-E5F6-7890-ABCD-EF1234567890">
