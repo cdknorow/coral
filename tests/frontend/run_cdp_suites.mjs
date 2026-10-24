@@ -413,6 +413,7 @@ function ensureRunDir() {
     restoring = (async () => {
       console.log(`  [runner] the run's folder ${tmp} (or coral's binary in it) is gone: something outside this run removed it. Recreating it and building coral again ...`);
       fs.mkdirSync(tmp, { recursive: true });
+      ownerOnlyOnWindows(tmp, true); // owner only again, as when it was first made (#293)
       const built = await new Promise(resolve => {
         const p = spawn('go', goBuildArgs, { cwd: goDir, stdio: 'inherit' });
         p.on('error', e => resolve({ error: e.message }));
