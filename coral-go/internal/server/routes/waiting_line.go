@@ -139,5 +139,10 @@ func waitingSince(s sessionstate.State) any {
 	if !s.NeedsInput || s.Since.IsZero() {
 		return nil
 	}
+	// A login or launch-prompt wait is raised from the screen, not from an event: Since is when the event-derived phase began (a stop hours ago), so it would say "waiting 3 h" for a screen that just appeared (Security
+	// Reviewer Windows's #6984). Those say nothing; Since itself is left alone, the paste gate reads it.
+	if s.NeedsLogin || s.WaitingKind == sessionstate.KindLogin || s.WaitingKind == sessionstate.KindStartup {
+		return nil
+	}
 	return s.Since.UTC().Format(time.RFC3339)
 }
