@@ -93,7 +93,7 @@ func (s *Store) CreateTaskWithOpts(ctx context.Context, project, title, body, pr
 	// A board that requires a goal refuses a task with none, before anything is stored (#7116). A review task Coral makes for a task in review is not the person's to give a goal: it is exempt, or
 	// a board that requires goals could not review its own work.
 	if goalID == nil && (opts == nil || !opts.reviewTask) {
-		if on, err := s.requiresGoal(ctx, project); err != nil {
+		if on, err := s.requiresGoal(ctx, s.db, project); err != nil {
 			return nil, err
 		} else if on {
 			return nil, ErrGoalRequired

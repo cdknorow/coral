@@ -14,9 +14,10 @@ const settingRequireGoal = "require_goal"
 var ErrGoalRequired = &GoalError{"goal_required", "this board requires a goal for every task: create or pick one with coral-board goal"}
 
 // requiresGoal reports whether the board requires a goal for every task. A setting that cannot be read is an error, never "off": the check fails closed.
-func (s *Store) requiresGoal(ctx context.Context, project string) (bool, error) {
+// The setting is read through q: the store, or the transaction of a write that holds the board database's single writer connection (a read through the store from inside it would wait for itself).
+func (s *Store) requiresGoal(ctx context.Context, q goalQuerier, project string) (bool, error) {
 	var v string
-	err := s.db.GetContext(ctx, &v, `SELECT value FROM board_settings WHERE project = ? AND key = ?`, project, settingRequireGoal)
+	err := q.GetContext(ctx, &v, `SELECT value FROM board_settings WHERE project = ? AND key = ?`, project, settingRequireGoal)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return false, nil

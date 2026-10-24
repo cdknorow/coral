@@ -250,3 +250,22 @@ func TestGoalHelp(t *testing.T) {
 	assert.Contains(t, res.stdout, "goal add/list/show/update/close")
 	assert.Contains(t, res.stdout, "task goal <task> <goal|none>")
 }
+
+// #7087 round 2: a goal's task answer that is cut says so, and goal show says so too (the first 500 tasks are all the route sends).
+func TestGoalShowSaysWhenItsTasksAreCut(t *testing.T) {
+	gs := newGoalServer(t)
+	gs.reply["GET /api/board/team/goals/3"] = `{"id":3,"title":"Big","state":"active","rollup":{"done":0,"active":0,"blocked":0,"queued":2,"total":600}}`
+	gs.reply["GET /api/board/team/tasks"] = `{"tasks":[{"id":11,"title":"A","status":"pending"},{"id":12,"title":"B","status":"pending"}],"next_cursor":"","truncated":true}`
+	res := goalRun(t, gs, "goal", "show", "3")
+	require.Equal(t, 0, res.code, res.stderr)
+	assert.Contains(t, res.stdout, "only the first 2 tasks are listed")
+	res = goalRun(t, gs, "goal", "show", "3", "--json")
+	require.Equal(t, 0, res.code, res.stderr)
+	var one map[string]any
+	require.NoError(t, json.Unmarshal([]byte(res.stdout), &one))
+	assert.Equal(t, true, one["tasks_truncated"])
+
+	gs.reply["GET /api/board/team/tasks"] = `{"tasks":[{"id":11,"title":"A","status":"pending"}],"next_cursor":""}`
+	res = goalRun(t, gs, "goal", "show", "3")
+	assert.NotContains(t, res.stdout, "only the first")
+}
