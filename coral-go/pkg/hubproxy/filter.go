@@ -393,7 +393,7 @@ var forwardToConnector = map[string]bool{
 	"Cache-Control": true, "Last-Event-Id": true, "User-Agent": true,
 	// The Coral Hub user behind a board write (#3377, #3404); only on those routes, see below.
 	tunnel.HubUserHeader: true,
-	// The client's request id, only on the five routes that take it (#5841), see below.
+	// The client's request id, only on the six routes that take it (#5841), see below.
 	tunnel.IdempotencyKeyHeader: true,
 }
 

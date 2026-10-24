@@ -252,8 +252,8 @@ func TestAPanickingHandlerKeepsNothing(t *testing.T) {
 	assert.EqualValues(t, 2, runs.Load())
 }
 
-// The middleware form keys on tunnel.ForwardsIdempotencyKey: the five routes are deduplicated, every other route (a team's wake included) runs every time, key or not.
-func TestIdempotencyMiddlewareCoversExactlyTheFiveRoutes(t *testing.T) {
+// The middleware form keys on tunnel.ForwardsIdempotencyKey: the six routes are deduplicated, every other route (a team's wake included) runs every time, key or not.
+func TestIdempotencyMiddlewareCoversExactlyTheSixRoutes(t *testing.T) {
 	c, i := newCounting(200), NewIdempotency()
 	h := i.Middleware(c.handler())
 	serve := func(path string) *httptest.ResponseRecorder {
@@ -261,7 +261,7 @@ func TestIdempotencyMiddlewareCoversExactlyTheFiveRoutes(t *testing.T) {
 		h.ServeHTTP(rec, idemReq(path, `{}`, "hub-user-1234abcd", idemKey))
 		return rec
 	}
-	for _, path := range []string{"/api/sessions/launch", "/api/sessions/launch-team", "/api/sessions/live/claude-x/resume", "/api/sessions/live/claude-x/wake", "/api/tasks/run"} {
+	for _, path := range []string{"/api/sessions/launch", "/api/sessions/launch-team", "/api/sessions/live/claude-x/resume", "/api/sessions/live/claude-x/wake", "/api/tasks/run", "/api/artifacts/" + strings.Repeat("b", 64) + "/comments"} {
 		before := c.runs.Load()
 		serve(path)
 		again := serve(path)

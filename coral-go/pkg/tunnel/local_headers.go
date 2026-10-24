@@ -41,7 +41,7 @@ var forwardRequestHeaders = map[string]bool{
 	// The sending team of a relayed message or file, and the marker of a link snapshot (#5572): each forwarded only on its own routes (scrub).
 	"X-Coral-Hub-Source-Team": true,
 	"X-Coral-Hub-Links":       true,
-	// The client's request id for the five routes that start something (#5841): forwarded only on those routes (scrub).
+	// The client's request id for the six routes that start something (#5841): forwarded only on those routes (scrub).
 	"Idempotency-Key": true,
 }
 
@@ -55,7 +55,7 @@ const HubUserHeader = "X-Coral-Hub-User"
 var hubUserRoute = regexp.MustCompile(`^/api/board/[^/]+/.+$`)
 
 // ForwardsHubUser reports whether X-Coral-Hub-User is forwarded for a request: a write
-// (not GET or HEAD) to /api/board/{project}/..., a POST to one of the five routes that
+// (not GET or HEAD) to /api/board/{project}/..., a POST to one of the six routes that
 // take an Idempotency-Key (#5841: the key is scoped to the hub user). The hub (pkg/hubproxy) and
 // the connector apply the same rule. (The image upload gets the hub user too, but from the stream's
 // own HubUser field, never from a header: see stampUploader.)
@@ -73,10 +73,10 @@ func ForwardsHubUser(method, decodedPath string) bool {
 // body) with the first answer instead of starting a second agent or team.
 const IdempotencyKeyHeader = "Idempotency-Key"
 
-// idempotentRoute is the five routes that take an Idempotency-Key: launch, launch-team, one agent's resume and wake (not a team's), and a one-shot task run.
-var idempotentRoute = regexp.MustCompile(`^/api/(sessions/(launch|launch-team)|sessions/live/[^/]+/(resume|wake)|tasks/run)$`)
+// idempotentRoute is the six routes that take an Idempotency-Key: launch, launch-team, one agent's resume and wake (not a team's), a one-shot task run, and an artifact comment (a replayed key answers with the first comment, not a second).
+var idempotentRoute = regexp.MustCompile(`^/api/(sessions/(launch|launch-team)|sessions/live/[^/]+/(resume|wake)|tasks/run|artifacts/[0-9a-f]{64}/comments)$`)
 
-// ForwardsIdempotencyKey reports whether Idempotency-Key is forwarded for a request: a POST to one of those five routes, and nothing else. The hub (pkg/hubproxy) and the connector apply
+// ForwardsIdempotencyKey reports whether Idempotency-Key is forwarded for a request: a POST to one of those six routes, and nothing else. The hub (pkg/hubproxy) and the connector apply
 // the same rule.
 func ForwardsIdempotencyKey(method, decodedPath string) bool {
 	return method == http.MethodPost && idempotentRoute.MatchString(decodedPath)

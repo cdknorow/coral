@@ -2,14 +2,15 @@ package tunnel
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
-// #5841: the connector forwards the Idempotency-Key header, and the Coral Hub user behind it, ONLY on a POST to one of the five routes that start something (launch, launch-team, one
+// #5841: the connector forwards the Idempotency-Key header, and the Coral Hub user behind it, ONLY on a POST to one of the six routes that start something (launch, launch-team, one
 // agent's resume and wake, a task run); every other route and method, and a team's wake, drop both. The key is never the connector's to invent: it is not stamped, only carried.
-func TestScrubForwardsTheIdempotencyKeyOnlyOnTheFiveStartingRoutes(t *testing.T) {
+func TestScrubForwardsTheIdempotencyKeyOnlyOnTheSixStartingRoutes(t *testing.T) {
 	in := http.Header{}
 	in.Set(IdempotencyKeyHeader, "0123456789abcdef-key")
 	in.Set(HubUserHeader, "hub-user-1234abcd")
@@ -22,10 +23,14 @@ func TestScrubForwardsTheIdempotencyKeyOnlyOnTheFiveStartingRoutes(t *testing.T)
 		{http.MethodPost, "/api/sessions/live/claude-abc/resume", true},
 		{http.MethodPost, "/api/sessions/live/claude-abc/wake", true},
 		{http.MethodPost, "/api/tasks/run", true},
+		{http.MethodPost, "/api/artifacts/" + strings.Repeat("a", 64) + "/comments", true},
+		{http.MethodPost, "/api/artifacts/" + strings.Repeat("a", 64) + "/comments/c1/resolve", false},
+		{http.MethodPost, "/api/artifacts/abc/comments", false},
+		{http.MethodGet, "/api/artifacts/" + strings.Repeat("a", 64) + "/comments", false},
 		{http.MethodGet, "/api/sessions/launch", false},
 		{http.MethodPut, "/api/tasks/run", false},
 		{http.MethodDelete, "/api/sessions/live/claude-abc/wake", false},
-		{http.MethodPost, "/api/sessions/live/team/b-1/wake", false}, // a team's wake is not one of the five
+		{http.MethodPost, "/api/sessions/live/team/b-1/wake", false}, // a team's wake is not one of the six
 		{http.MethodPost, "/api/sessions/live/wake-all", false},
 		{http.MethodPost, "/api/sessions/live/x/restart", false},
 		{http.MethodPost, "/api/sessions/live/x/send", false},
