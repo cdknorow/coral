@@ -28,6 +28,9 @@ var UntrustedMountDir = func(binary string) (string, bool) {
 
 // untrustedMountDir is UntrustedMountDir with the PATH, PATHEXT and the lookup given (a test stands in for Windows' answer).
 func untrustedMountDir(binary, pathEnv, pathExt string, stat func(string) (os.FileInfo, error)) (string, bool) {
+	if binary == "" || strings.ContainsAny(binary, `/\`) {
+		return "", false // a name only: a configured path or a ?binary= value with a separator is not looked up along PATH
+	}
 	exts := []string{""}
 	if pathExt == "" {
 		pathExt = ".com;.exe;.bat;.cmd"
