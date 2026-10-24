@@ -12,7 +12,7 @@ const ALLOW_KEYBOARD = [
 const allowedKb = (scene, kind, c) => ALLOW_KEYBOARD.some(([s, p, k]) => new RegExp(s).test(scene) && new RegExp(p).test(c) && new RegExp(k).test(kind));
 
 async function press(Input, key, { shift = false, ctrl = false } = {}) {
-    const vk = { Tab: 9, Escape: 27, Enter: 13 }[key];
+    const vk = { Tab: 9, Escape: 27, Enter: 13, F6: 117 }[key];
     const o = { key, code: key, windowsVirtualKeyCode: vk, modifiers: (shift ? 8 : 0) | (ctrl ? 2 : 0) };
     await Input.dispatchKeyEvent({ type: 'rawKeyDown', ...o }); await Input.dispatchKeyEvent({ type: 'keyUp', ...o });
 }
@@ -39,27 +39,28 @@ async function walk(ev, Input, { max = 250, within = null } = {}) {
     await ev(`(() => { if (!document.getElementById('__kbnotrans')) { const st = document.createElement('style'); st.id = '__kbnotrans'; st.textContent = '*, *::before, *::after { transition: none !important; animation: none !important; }'; document.head.appendChild(st); } window.__kbSeen = []; return true; })()`); // a ring caught mid-fade is not the ring the control has
     await reset(ev);
     let dateParts = 0;
-    const stops = []; let trapped = '', escaped = false, terminalEscape = ''; const extra = [];
+    const stops = []; let trapped = '', escaped = false, terminalEscape = '', landed = false; const extra = [];
     for (let i = 0; i < max; i++) {
-        await press(Input, 'Tab');
+        if (landed) landed = false; else await press(Input, 'Tab'); // F6 out of the terminal already moved the focus to the next stop
         const s = await ev(`(() => { const e = document.activeElement; if (!e || e === document.body || e === document.documentElement) return { body: true }; const i = window.__kbSeen.indexOf(e); if (i >= 0) return { again: i }; window.__kbSeen.push(e);
             const b = e.getBoundingClientRect(); return { n: window.__kbSeen.length - 1, d: window.__kb.name(e), on: window.__kb.snap(e), inside: ${within ? `!!e.closest(${JSON.stringify(within)})` : 'true'},
                 onScreen: b.width > 0 && b.height > 0 && b.bottom > 0 && b.right > 0 && b.top < innerHeight && b.left < innerWidth, tab: e.tabIndex }; })()`);
         if (s.again !== undefined) {
             // a date or time field is several tab stops in one element (its day, month and year parts): Tab moves between them and then on, so the same element again is not a trap until its parts are used up (#6288)
             if (s.again === stops.length - 1 && stops.length && /^(date|time|datetime-local|month|week)$/.test(await ev(`document.activeElement.type || ''`)) && (dateParts += 1) <= 4) continue;
-            // the same control again: Tab goes nowhere. The terminal keeps Tab for the shell by design and says how to leave (its status bar: Ctrl+Shift+Esc to unfocus): that way out must work, and the walk goes on from there.
+            // the same control again: Tab goes nowhere. The terminal keeps Tab for the shell by design and says how to leave (its status bar names F6 on every platform, and
+            // Ctrl+Shift+Esc too where the system leaves that key to the page; Windows gives it to Task Manager, #287): F6 must work, and the walk goes on from the control it lands on.
             if (s.again === stops.length - 1 && stops.length) {
                 const last = stops[stops.length - 1];
                 if (/xterm-helper-textarea/.test(last.d) && !escaped) {
                     escaped = true;
-                    const h = await ev(`(() => { const t = document.activeElement; const el = t.getAttribute('aria-describedby') && document.getElementById(t.getAttribute('aria-describedby')); return { ok: !!el && el.getClientRects().length > 0 && /Ctrl\\+Shift\\+Esc/.test(el.textContent), op: el ? Number(getComputedStyle(el).opacity) : 0 }; })()`);
-                    if (!h.ok) extra.push('the terminal input is not described by a visible hint that names Ctrl+Shift+Esc (how a keyboard user leaves it)');
+                    const h = await ev(`(() => { const t = document.activeElement; const el = t.getAttribute('aria-describedby') && document.getElementById(t.getAttribute('aria-describedby')); return { ok: !!el && el.getClientRects().length > 0 && /\\bF6\\b/.test(el.textContent), op: el ? Number(getComputedStyle(el).opacity) : 0 }; })()`);
+                    if (!h.ok) extra.push('the terminal input is not described by a visible hint that names F6 (how a keyboard user leaves it)');
                     else if (h.op < 0.85) extra.push('the terminal hint is dimmed to ' + h.op + ' while the terminal has focus');
-                    await press(Input, 'Escape', { shift: true, ctrl: true });
+                    await press(Input, 'F6');
                     const left = await ev(`document.activeElement !== window.__kbSeen[window.__kbSeen.length - 1]`);
-                    if (left) { terminalEscape = 'Ctrl+Shift+Esc releases the terminal'; continue; }
-                    trapped = last.d + ' (and Ctrl+Shift+Esc does not release it)'; break;
+                    if (left) { terminalEscape = 'F6 releases the terminal'; landed = true; continue; }
+                    trapped = last.d + ' (and F6 does not release it)'; break;
                 }
                 trapped = last.d;
             }
