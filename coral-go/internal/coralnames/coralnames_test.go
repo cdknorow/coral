@@ -38,7 +38,6 @@ func TestNamesOfWorktreesAndBranches(t *testing.T) {
 	assert.False(t, IsCoralBranch("main"))
 	assert.False(t, IsCoralBranch("feature/coral-team/x"), "only the prefix of a branch name")
 	assert.Equal(t, p("/data/worktrees"), WorktreesRoot(p("/data")))
-	assert.Equal(t, p("/data/worktrees/b-1"), TeamWorktree(p("/data"), "b-1"))
 	assert.True(t, InWorktreesRoot(p("/data"), p("/data/worktrees/b-1")))
 	assert.False(t, InWorktreesRoot(p("/data"), p("/data/worktrees/b-1/sub")))
 	assert.False(t, InWorktreesRoot(p("/data"), p("/elsewhere/worktrees/b-1")))
@@ -58,4 +57,18 @@ func TestIsJobRunWorktree(t *testing.T) {
 	assert.False(t, IsJobRunWorktree(root, repo, 7, p(root+"/x/job-run-7-proj")), "not directly in the folder")
 	assert.False(t, IsJobRunWorktree("", repo, 7, p(root+"/job-run-7-proj")), "no root, no folder")
 	assert.False(t, IsJobRunWorktree(root, "", 7, p(root+"/job-run-7-")))
+}
+
+// The shape of a run's folder, whatever repository its job named: job-run-<id>-<name> directly in the worktrees folder (#7026).
+func TestIsJobRunFolder(t *testing.T) {
+	p := filepath.FromSlash
+	root := p("/data/worktrees")
+	assert.True(t, IsJobRunFolder(root, 7, p(root+"/job-run-7-proj")))
+	assert.True(t, IsJobRunFolder(root, 7, p(root+"/job-run-7-an old repo")), "any repository name")
+	assert.False(t, IsJobRunFolder(root, 7, p(root+"/job-run-8-proj")), "another run's")
+	assert.False(t, IsJobRunFolder(root, 7, p(root+"/job-run-70-proj")), "run 70 is not run 7")
+	assert.False(t, IsJobRunFolder(root, 7, p(root+"/job-run-7-")), "a name is needed")
+	assert.False(t, IsJobRunFolder(root, 7, p(root+"/x/job-run-7-proj")), "not directly in the folder")
+	assert.False(t, IsJobRunFolder(root, 7, p("/elsewhere/job-run-7-proj")), "not in the worktrees folder")
+	assert.False(t, IsJobRunFolder("", 7, p(root+"/job-run-7-proj")), "no root, no folder")
 }

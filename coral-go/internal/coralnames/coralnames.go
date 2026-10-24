@@ -69,11 +69,6 @@ func IsCoralBranch(name string) bool {
 // WorktreesRoot is the folder Coral's team worktrees and job-run worktrees go in: the "worktrees" folder of its data folder.
 func WorktreesRoot(coralDir string) string { return filepath.Join(coralDir, worktreesDir) }
 
-// TeamWorktree is a team's worktree folder, named by its board.
-func TeamWorktree(coralDir, board string) string {
-	return filepath.Join(WorktreesRoot(coralDir), board)
-}
-
 // InWorktreesRoot reports whether path is a folder directly inside the worktrees folder of coralDir (cleaned, not resolved through links).
 func InWorktreesRoot(coralDir, path string) bool {
 	return filepath.Clean(filepath.Dir(path)) == filepath.Clean(WorktreesRoot(coralDir))
@@ -98,4 +93,16 @@ func IsJobRunWorktree(root, repo string, runID int64, path string) bool {
 		return true
 	}
 	return filepath.Dir(path) == filepath.Dir(repo) && path == filepath.Clean(JobRunWorktree("", repo, runID))
+}
+
+// IsJobRunFolder reports whether path is a folder the scheduler makes for run runID of some job, whatever repository that job named: job-run-<id>-<name> directly in the worktrees folder root. It is the shape only: the
+// repository named in its git file must make the same name (IsJobRunWorktree) before the folder is taken for the run's (#7026).
+func IsJobRunFolder(root string, runID int64, path string) bool {
+	path = filepath.Clean(path)
+	if root == "" || filepath.Clean(filepath.Dir(path)) != filepath.Clean(root) {
+		return false
+	}
+	prefix := fmt.Sprintf("job-run-%d-", runID)
+	base := filepath.Base(path)
+	return strings.HasPrefix(base, prefix) && len(base) > len(prefix)
 }

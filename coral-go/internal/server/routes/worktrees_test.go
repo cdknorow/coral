@@ -3,6 +3,7 @@ package routes
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"github.com/subgentic/coral/internal/coralnames"
 	"io"
 	"net/http"
@@ -386,4 +387,86 @@ func TestBeginTeamResurrectCountsOverlappingResurrects(t *testing.T) {
 	assert.True(t, teamResurrecting(42), "one is still under way")
 	end2()
 	assert.False(t, teamResurrecting(42))
+}
+
+// QA's note on #6911 (#7026): a kept job-run worktree of a job whose repository changed since, or is gone, is still Coral's to list and to remove: the folder is the one the scheduler made for the run, and its own git file says
+// which repository it belongs to, not the job's current repo_path.
+func TestKeptJobRunWorktreeIsStillListedAfterTheJobsRepositoryChanged(t *testing.T) {
+	url, cfg, h := teamServerH(t)
+	repo, git := repoOn(t, "master", true)
+	other, _ := repoOn(t, "master", true)
+	sched := store.NewScheduleStore(h.db)
+	job, err := sched.CreateScheduledJob(t.Context(), &store.ScheduledJob{Name: "nightly", CronExpr: "0 9 * * *", RepoPath: repo, Prompt: "p", AgentType: "claude"})
+	require.NoError(t, err)
+	runID, err := sched.CreateScheduledRun(t.Context(), job.ID, "2026-10-23T09:00:00Z", "completed")
+	require.NoError(t, err)
+	require.NoError(t, os.MkdirAll(filepath.Join(cfg.CoralDir(), "worktrees"), 0o755))
+	wt := filepath.Join(cfg.CoralDir(), "worktrees", fmt.Sprintf("job-run-%d-%s", runID, filepath.Base(repo)))
+	git("worktree", "add", "-b", fmt.Sprintf("coral/job-run-%d", runID), "--", wt, "master")
+	require.NoError(t, sched.UpdateScheduledRun(t.Context(), runID, map[string]interface{}{"worktree_path": wt}))
+	require.Len(t, listWorktrees(t, url), 1, "listed while the job still names the repository")
+
+	_, err = sched.UpdateScheduledJob(t.Context(), job.ID, map[string]interface{}{"repo_path": other}) // the job now names another repository
+	require.NoError(t, err)
+	list := listWorktrees(t, url)
+	require.Len(t, list, 1, "still listed: the folder is the run's, whatever the job names now")
+	assert.Equal(t, "job", list[0]["kind"])
+	assert.Equal(t, "nightly", list[0]["name"])
+	realRepo, err := filepath.EvalSymlinks(repo) // git answers with the resolved path (/private/tmp on a Mac)
+	require.NoError(t, err)
+	assert.Equal(t, realRepo, list[0]["repo_path"], "its own repository, from the worktree's git file")
+
+	code, out := removeWorktree(t, url, list[0]["id"].(string))
+	assert.Equal(t, http.StatusOK, code)
+	assert.Equal(t, "removed", out["state"])
+	assert.NoDirExists(t, wt)
+	assert.Empty(t, git("branch", "--list", fmt.Sprintf("coral/job-run-%d", runID)), "its branch went with it: from the right repository")
+}
+
+// A run folder is only taken for the run's own: another run's, a name that is not the scheduler's, and a folder outside the worktrees folder are not listed when the job's repository differs.
+func TestAJobRunFolderThatIsNotTheRunsOwnIsNotListedAfterTheRepositoryChanged(t *testing.T) {
+	url, cfg, h := teamServerH(t)
+	repo, _ := repoOn(t, "master", true)
+	other, _ := repoOn(t, "master", true)
+	sched := store.NewScheduleStore(h.db)
+	job, err := sched.CreateScheduledJob(t.Context(), &store.ScheduledJob{Name: "nightly", CronExpr: "0 9 * * *", RepoPath: other, Prompt: "p", AgentType: "claude"})
+	require.NoError(t, err)
+	runID, err := sched.CreateScheduledRun(t.Context(), job.ID, "2026-10-23T09:00:00Z", "completed")
+	require.NoError(t, err)
+	root := filepath.Join(cfg.CoralDir(), "worktrees")
+	require.NoError(t, os.MkdirAll(root, 0o755))
+	for _, wt := range []string{filepath.Join(root, "something-else"), filepath.Join(root, fmt.Sprintf("job-run-%d-x", runID+1)), filepath.Join(t.TempDir(), fmt.Sprintf("job-run-%d-x", runID))} {
+		require.NoError(t, os.MkdirAll(wt, 0o755))
+		require.NoError(t, sched.UpdateScheduledRun(t.Context(), runID, map[string]interface{}{"worktree_path": wt}))
+		assert.Empty(t, listWorktrees(t, url), wt)
+	}
+	_ = repo
+}
+
+// The job's repository is gone altogether: the kept run folder is still listed (its work may be in it), not checked (git cannot read it), and a remove says plainly that git could not find the repository and leaves the folder (#7026).
+func TestKeptJobRunWorktreeIsListedAndLeftWhenItsRepositoryIsGone(t *testing.T) {
+	url, cfg, h := teamServerH(t)
+	repo, git := repoOn(t, "master", true)
+	sched := store.NewScheduleStore(h.db)
+	job, err := sched.CreateScheduledJob(t.Context(), &store.ScheduledJob{Name: "nightly", CronExpr: "0 9 * * *", RepoPath: repo, Prompt: "p", AgentType: "claude"})
+	require.NoError(t, err)
+	runID, err := sched.CreateScheduledRun(t.Context(), job.ID, "2026-10-23T09:00:00Z", "completed")
+	require.NoError(t, err)
+	require.NoError(t, os.MkdirAll(filepath.Join(cfg.CoralDir(), "worktrees"), 0o755))
+	wt := filepath.Join(cfg.CoralDir(), "worktrees", fmt.Sprintf("job-run-%d-%s", runID, filepath.Base(repo)))
+	git("worktree", "add", "-b", fmt.Sprintf("coral/job-run-%d", runID), "--", wt, "master")
+	require.NoError(t, os.WriteFile(filepath.Join(wt, "unsaved.txt"), []byte("mine"), 0o644))
+	require.NoError(t, sched.UpdateScheduledRun(t.Context(), runID, map[string]interface{}{"worktree_path": wt}))
+	other, _ := repoOn(t, "master", true)
+	_, err = sched.UpdateScheduledJob(t.Context(), job.ID, map[string]interface{}{"repo_path": other})
+	require.NoError(t, err)
+	require.NoError(t, os.RemoveAll(repo))
+
+	list := listWorktrees(t, url)
+	require.Len(t, list, 1, "listed although its repository is gone")
+	assert.Equal(t, false, list[0]["checked"], "not checked: git cannot read it")
+	code, out := removeWorktree(t, url, list[0]["id"].(string))
+	assert.Equal(t, http.StatusOK, code)
+	assert.NotEqual(t, "removed", out["state"], "nothing is removed that git could not check")
+	assert.FileExists(t, filepath.Join(wt, "unsaved.txt"))
 }
