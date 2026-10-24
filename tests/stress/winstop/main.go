@@ -56,7 +56,6 @@ func main() {
 	if r, _, err := procAllocConsole.Call(); r == 0 {
 		fmt.Fprintln(os.Stderr, "AllocConsole:", err)
 	}
-	procSetCtrl.Call(0, 1) // this program ignores Ctrl-C itself
 
 	lf, err := os.Create(*logFile)
 	if err != nil {
@@ -81,6 +80,8 @@ func main() {
 		fmt.Fprintln(os.Stderr, "start:", err)
 		os.Exit(2)
 	}
+	// Ignore Ctrl-C in this program only now: a process started after this call would inherit the setting and ignore it too.
+	procSetCtrl.Call(0, 1)
 	done := make(chan error, 1)
 	go func() { done <- cmd.Wait() }()
 	for {
@@ -107,6 +108,13 @@ func main() {
 		hwnd, _, _ := procGetConWin.Call()
 		r, _, err := procPostMessage.Call(hwnd, wmClose, 0, 0)
 		how = fmt.Sprintf("WM_CLOSE to the console window (hwnd set: %v): %v %v", hwnd != 0, r != 0, errText(r, err))
+		select { // some consoles take the system menu's Close and not a posted WM_CLOSE
+		case err := <-done:
+			done <- err
+		case <-time.After(3 * time.Second):
+			procPostMessage.Call(hwnd, 0x0112, 0xF060, 0) // WM_SYSCOMMAND, SC_CLOSE
+			how += " then WM_SYSCOMMAND SC_CLOSE after 3 s"
+		}
 	case "stdin":
 		stdin.Close()
 		how = "standard input closed"
