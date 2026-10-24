@@ -50,7 +50,8 @@ var (
 
 // ismexSend is InSendMessageEx's flag for a message another thread or process SENT (SendMessage, as Restart Manager and the end of the
 // session do); a POSTED message has it clear, and any program on the desktop can post one (QA on #335: a posted WM_ENDSESSION stopped the
-// server in under a second).
+// server in under a second). Sent is not the same as "from Restart Manager": any program in the session, another account's too, can send
+// one, and nothing tells the sender apart; that is accepted (Security on #155).
 const ismexSend = 0x00000001
 
 // sentByAnother reports whether the message being handled was sent by another thread or process, not posted.
