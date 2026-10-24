@@ -7,6 +7,7 @@ import (
 	"github.com/subgentic/coral/internal/logsafe"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -971,10 +972,17 @@ func (s *JobScheduler) runWorktreeExisting(ctx context.Context, repoPath, dir, b
 	if _, err := os.Lstat(dir); err == nil {
 		return "the run's worktree folder already exists"
 	}
-	if runGitCmd(ctx, repoPath, "rev-parse", "--verify", "--quiet", "refs/heads/"+branch) == nil {
+	// Only git's clean "not found" (exit status 1 with --quiet) says the branch is not there: any other failure (a cancelled context, a broken repository) is unknown, and the add is refused (#6936).
+	err := gitutil.Command(ctx, repoPath, "rev-parse", "--verify", "--quiet", "refs/heads/"+branch).Run()
+	var exit *exec.ExitError
+	switch {
+	case err == nil:
 		return "the run's branch already exists"
+	case errors.As(err, &exit) && exit.ExitCode() == 1:
+		return ""
+	default:
+		return "git could not tell whether the run's branch already exists"
 	}
-	return ""
 }
 
 // rollBackWorktreeAdd leaves no folder, registration or branch of a worktree add that failed (#6717). It runs on a context of its own: a shutdown that ended the add (killing git halfway, folder and registration made)
