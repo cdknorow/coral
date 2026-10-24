@@ -896,8 +896,9 @@ func (s *Server) registerStatic(r *chi.Mux) {
 	if err != nil {
 		log.Printf("Warning: failed to load agent_docs: %v", err)
 	} else {
-		log.Print(agentDocsStartupLine(agentDocsSub)) // a synced copy: say what this build carries (agent_docs_digest.go)
-		docsHandler := routes.NewAgentDocsHandler(agentDocsSub)
+		docsFS := newGzDocsFS(agentDocsSub)     // the docs are embedded gzipped (#6814); this shows them as the plain .md files
+		log.Print(agentDocsStartupLine(docsFS)) // a synced copy: say what this build carries (agent_docs_digest.go)
+		docsHandler := routes.NewAgentDocsHandler(docsFS)
 		r.Get("/api/agent-docs", docsHandler.List)
 		r.Get("/api/agent-docs/all", docsHandler.GetAll)
 		r.Get("/api/agent-docs/{name}", docsHandler.Get)
