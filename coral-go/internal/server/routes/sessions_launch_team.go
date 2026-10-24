@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/subgentic/coral/internal/coralnames"
 	"github.com/subgentic/coral/internal/logsafe"
 	"log"
 	"net/http"
@@ -308,7 +309,7 @@ func (h *SessionsHandler) rollBackTeamLaunch(ctx context.Context, body launchTea
 			log.Printf("[launch-team] could not remove the empty team's worktree %s: %v: %s", logsafe.Dir(worktreePath), err, strings.TrimSpace(string(out)))
 		} else if branchCreated {
 			// The branch this request made; one that was already there (a previous run's work) stays.
-			branch := gitutil.TeamBranch(body.BoardName)
+			branch := coralnames.TeamBranch(body.BoardName)
 			if out, err := gitutil.Command(ctx, body.WorkingDir, "branch", "-D", "--", branch).CombinedOutput(); err != nil {
 				log.Printf("[launch-team] could not remove the empty team's branch %s: %v: %s", branch, err, strings.TrimSpace(string(out)))
 			}
@@ -516,10 +517,10 @@ func (h *SessionsHandler) createTeamWorktree(ctx context.Context, body launchTea
 	if !background.ValidKnowledgeTeam(body.BoardName) {
 		return "", "", false, errors.New("the board name cannot name a worktree folder")
 	}
-	worktreeDir := filepath.Join(h.cfg.CoralDir(), "worktrees")
+	worktreeDir := coralnames.WorktreesRoot(h.cfg.CoralDir())
 	os.MkdirAll(worktreeDir, 0755)
 	worktreePath = filepath.Join(worktreeDir, body.BoardName)
-	worktreeBranch := gitutil.TeamBranch(body.BoardName) // a board name git refuses in a branch name (a space, "~", "..") is slugged: the folder keeps the name (#6701)
+	worktreeBranch := coralnames.TeamBranch(body.BoardName) // a board name git refuses in a branch name (a space, "~", "..") is slugged: the folder keeps the name (#6701)
 	branchCreated, err = gitutil.AddTeamWorktree(ctx, body.WorkingDir, worktreePath, worktreeBranch, branch)
 	if err != nil {
 		return "", "", false, err

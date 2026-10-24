@@ -3,6 +3,7 @@ package routes
 import (
 	"context"
 	"encoding/json"
+	"github.com/subgentic/coral/internal/coralnames"
 	"io"
 	"net/http"
 	"os"
@@ -19,7 +20,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/subgentic/coral/internal/config"
-	"github.com/subgentic/coral/internal/gitutil"
 	"github.com/subgentic/coral/internal/store"
 )
 
@@ -147,7 +147,7 @@ func TestSingleKillTakesTheTeamBranchOfACleanWorktree(t *testing.T) {
 	_, h, _, _ := setupSessionsTestServerWithConfig(t, config.Load(t.TempDir()))
 	root := filepath.Join(h.cfg.CoralDir(), "worktrees")
 	assert.Equal(t, "coral-team/b-abc123", h.teamBranchOf(filepath.Join(root, "b-abc123")))
-	assert.Equal(t, gitutil.TeamBranch("my team"), h.teamBranchOf(filepath.Join(root, "my team")))
+	assert.Equal(t, coralnames.TeamBranch("my team"), h.teamBranchOf(filepath.Join(root, "my team")))
 	assert.Empty(t, h.teamBranchOf(filepath.Join(t.TempDir(), "agent-wt")), "not Coral's worktrees folder")
 	assert.Empty(t, h.teamBranchOf(filepath.Join(root, "nested", "x")))
 }
