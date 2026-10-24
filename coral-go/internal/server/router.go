@@ -129,7 +129,7 @@ func (s *Server) useMiddleware(r *chi.Mux) {
 	// A board's name in /api/board/<key>/... resolves to its id (#3536), after the identity
 	// checks so only an authenticated caller sees an ambiguity's candidates.
 	r.Use(routes.BoardKeyResolver(s.boardStore))
-	// Idempotency-Key for the five routes that start something, through Coral Hub (#5841): last, so that only a request the layers above admitted is recorded.
+	// Idempotency-Key for the six routes that start something, through Coral Hub (#5841): last, so that only a request the layers above admitted is recorded.
 	// The routes are named once, by tunnel.ForwardsIdempotencyKey, which is also what the connector and the hub proxy forward the header by.
 	r.Use(routes.NewIdempotency().Middleware)
 }

@@ -9,7 +9,7 @@ import (
 	"github.com/subgentic/coral/pkg/tunnel"
 )
 
-// #5841: the hub forwards Idempotency-Key (and the hub user with it) only with a POST to the five routes that start something, as the connector does, in any spelling.
+// #5841: the hub forwards Idempotency-Key (and the hub user with it) only with a POST to the six routes that start something, as the connector does, in any spelling.
 func TestAllowlistHeadersIdempotencyKey(t *testing.T) {
 	for _, c := range []struct {
 		method, path string

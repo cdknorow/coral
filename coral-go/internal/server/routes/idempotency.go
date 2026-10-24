@@ -70,7 +70,7 @@ func NewIdempotency() *Idempotency {
 	return &Idempotency{entries: map[[sha256.Size]byte]*idemEntry{}, perUser: map[string]int{}, now: time.Now}
 }
 
-// Middleware is Wrap for the five routes tunnel.ForwardsIdempotencyKey names, and nothing else: one definition of "the routes that take a key" for what the connector and the hub proxy
+// Middleware is Wrap for the six routes tunnel.ForwardsIdempotencyKey names, and nothing else: one definition of "the routes that take a key" for what the connector and the hub proxy
 // forward and what Coral deduplicates. It is mounted after the identity layers, so a request they refused never reaches it.
 func (i *Idempotency) Middleware(next http.Handler) http.Handler {
 	wrapped := i.Wrap(next.ServeHTTP)

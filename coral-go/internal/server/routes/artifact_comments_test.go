@@ -62,6 +62,7 @@ func newCmtRig(t *testing.T) *cmtRig {
 			withIdent.ServeHTTP(w, req)
 		})
 	})
+	r.Use(NewIdempotency().Middleware)
 	h.RegisterArtifactComments(r)
 	h.RegisterAgentArtifacts(r)
 	srv := httptest.NewServer(r)
@@ -766,4 +767,29 @@ func TestArtifactCommentsTheHubOwnerAndTheDashboardShareOneRateLimit(t *testing.
 		}
 	}
 	assert.Equal(t, http.StatusTooManyRequests, last, "the %dth write, from either side, is limited", maxCommentWrites+1)
+}
+
+// A comment typed through the Hub takes an Idempotency-Key (the sixth route that does): the same key and body again is answered with the first comment, and no second one is stored.
+func TestArtifactCommentThroughTheHubReplaysOnItsKey(t *testing.T) {
+	rig := newCmtRig(t)
+	withLabel(t, cmtHubUser, nil)
+	post := func(key, body string) (int, map[string]any) {
+		hdr := map[string]string{tunnel.IdempotencyKeyHeader: key}
+		for k, v := range cmtAsHubOwner {
+			hdr[k] = v
+		}
+		return rig.do("POST", cp(cmtDoc), hdr, map[string]any{"body": body, "anchor": anchorOf("the lock")})
+	}
+	code, first := post("0123456789abcdef-key", "typed once")
+	require.Equal(t, http.StatusCreated, code, fmt.Sprint(first))
+	code, again := post("0123456789abcdef-key", "typed once")
+	require.Equal(t, http.StatusCreated, code, fmt.Sprint(again))
+	assert.Equal(t, first["id"], again["id"], "the replay is the first comment")
+	stored, err := rig.ss.ListArtifactComments(context.Background(), cmtDoc, "", nil)
+	require.NoError(t, err)
+	assert.Len(t, stored, 1, "no second comment")
+	code, _ = post("0123456789abcdef-other", "typed once")
+	require.Equal(t, http.StatusCreated, code)
+	stored, _ = rig.ss.ListArtifactComments(context.Background(), cmtDoc, "", nil)
+	assert.Len(t, stored, 2, "another key is another comment")
 }
