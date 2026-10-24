@@ -1,7 +1,7 @@
 // The kept-worktree notice on a phone is a bar in the page's flow (#6859, UI Accessibility's #6851): the floating toast covered the Chat/Terminal toggle and, at 200% text, the whole composer. At 360 and
 // 390 px with touch, 100% and 200% text, the keyboard down (844 high) and up (464 high), with an agent open in the chat view: the bar (#worktree-dock) overlaps nothing (the Chat/Terminal toggle, the message
 // box, the toolbar), is inside the screen, is one 44 px line (title, Copy path, Details, ×) with the words behind Details, announces once, copies the path, and several kept worktrees are one bar that
-// lists each with its own Copy path. A desktop keeps the toast. Drives Chrome over CDP through agent_view_harness.js against the isolated dev server.
+// lists each with its own Copy path. A desktop gets the same bar (#6943). Drives Chrome over CDP through agent_view_harness.js against the isolated dev server.
 const fs = require('node:fs');
 const { connect } = require('./agent_view_harness');
 const BASE = require('./test_base').BASE;
@@ -86,14 +86,14 @@ const S = `(window.__coralStatic || '/static/')`;
         await waitFor(`document.activeElement && document.activeElement !== document.body`, 'the focus to come back', 3000);
         check('and the focus is not left on the page', await ev(`document.activeElement !== document.body`));
 
-        console.log('a desktop keeps the toast');
+        console.log('a desktop gets the bar too (#6943)');
         await Emulation.setEmulatedMedia({ features: [] }); await Emulation.setTouchEmulationEnabled({ enabled: false });
         await Emulation.setDeviceMetricsOverride({ width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
         await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired(); await install();
         await ev(`window.__coralReady.then(() => true)`);
         await ev(`import(${S} + 'worktree_notice.js').then(m => { m.showWorktreeNotice(${JSON.stringify(WT(1))}, 'team'); return true; })`);
-        await waitFor(`!!document.querySelector('.toast.worktree-notice')`, 'the toast', 4000);
-        check('on a desktop the notice is the toast with Copy path, and the bar stays hidden', await ev(`!!document.querySelector('.toast.worktree-notice .toast-action') && document.getElementById('worktree-dock').hidden`));
+        await waitFor(`!!document.querySelector('#worktree-dock:not([hidden])')`, 'the bar', 4000);
+        check('on a desktop the notice is the same bar, not a toast (worktree_notice_browser has the real Kill flows)', await ev(`!document.querySelector('.toast.worktree-notice') && document.querySelectorAll('.toast').length === 0 && !!document.querySelector('#worktree-dock .worktree-dock-copy')`));
     } finally { await client.close(); }
     if (results.some(r => !r)) { console.error(`${results.filter(r => !r).length} of ${results.length} failed`); process.exit(1); }
     console.log(`\nAll ${results.length} worktree bar checks passed`);

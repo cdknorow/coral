@@ -81,6 +81,15 @@ const S = `(window.__coralStatic || '/static/')`;
             await ev(`import(${S} + 'worktrees_panel.js').then(m => m.loadWorktrees()).then(() => true)`);
             await waitFor(`document.querySelectorAll('#wt-list .wt-item').length === 2`, 'the two rows again', 6000);
 
+            console.log(`${tag}: a team is named by its name, with its board id beside it (#6943)`);
+            await ev(`(async () => { const sb = await import(${S} + 'server_base.js'); sb.noteBoardLabel('local', 'b-6de2yafh7f', 'desktop-1'); window.__keep2 = window.__wt; window.__wt = [{ id: 'w9', kind: 'team', name: 'b-6de2yafh7f', path: '/data/worktrees/b-6de2yafh7f', repo_path: '/work/repo', branch: 'coral-team/b-6de2yafh7f', dirty: true, unmerged: false, in_use: false, checked: true }, { id: 'w8', kind: 'team', name: 'b-nolabel1', path: '/data/worktrees/b-nolabel1', repo_path: '/work/repo', branch: 'coral-team/b-nolabel1', dirty: false, unmerged: true, in_use: false, checked: true }];
+                const m = await import(${S} + 'worktrees_panel.js'); await m.loadWorktrees(); return true; })()`);
+            await waitFor(`document.querySelectorAll('#wt-list .wt-item').length === 2`, 'the two team rows', 6000);
+            const named = await ev(`[...document.querySelectorAll('#wt-list .wt-item')].map(li => ({ name: li.querySelector('.wt-name').textContent, id: (li.querySelector('.wt-id') || {}).textContent || '', aria: li.querySelector('.wt-remove').getAttribute('aria-label') }))`);
+            check(`${tag}: a team with a known name shows the name first and its board id beside it; one without shows the id once`, named[0].name === 'desktop-1' && named[0].id === 'b-6de2yafh7f' && named[0].aria === 'Remove the worktree of desktop-1 if it is clean' && named[1].name === 'b-nolabel1' && named[1].id === '', JSON.stringify(named));
+            await ev(`window.__wt = window.__keep2; import(${S} + 'worktrees_panel.js').then(m => m.loadWorktrees()).then(() => true)`);
+            await waitFor(`document.querySelectorAll('#wt-list .wt-item').length === 2`, 'the rows again', 6000);
+
             console.log(`${tag}: through Coral Hub, and empty`);
             await ev(`window.__hub = import(${S} + 'worktrees_panel.js').then(m => m.loadWorktrees({ canRemove: false })).then(() => true)`);
             await waitFor(`document.querySelectorAll('#wt-list .wt-item').length === 2 && document.querySelectorAll('#wt-list .wt-remove').length === 0`, 'the list without Remove', 6000);

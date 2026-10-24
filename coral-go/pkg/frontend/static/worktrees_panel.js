@@ -2,7 +2,7 @@
  * (#6701), so kept ones pile up: this lists them (GET /api/worktrees: id, kind, name, path, repo_path, branch, dirty, unmerged, in_use) with what keeps each, and Remove asks Coral to remove one the same
  * safe way (POST /api/worktrees/remove {id}: never forced, an id from the list only). The answer {state, path, branch, reason} is said in the status that is always in the page, and the list is read again.
  * Remove is this computer's dashboard only: through Coral Hub the list shows and Remove does not (a Hub viewer must not delete folders on the owner's computer). */
-import { isCloud } from './server_base.js';
+import { isCloud, keyLabel } from './server_base.js';
 import { showToast } from './utils.js';
 import { worktreeAnswerWords } from './worktree_words.js';
 
@@ -24,9 +24,12 @@ export function worktreeBadges(w) {
 function item(w, canRemove) {
     const li = document.createElement('li'); li.className = 'wt-item'; li.dataset.id = String(w.id);
     const head = document.createElement('div'); head.className = 'wt-head';
-    const name = document.createElement('strong'); name.className = 'wt-name'; name.textContent = w.name || '(unnamed)';
+    // a team is named by its name, as the Kill Team confirmation names it (the board's label), not by its board id, which is kept beside it (#6943); a job by its own name
+    const label = w.kind === 'team' && w.name ? keyLabel(w.name) : w.name;
+    const name = document.createElement('strong'); name.className = 'wt-name'; name.textContent = label || '(unnamed)';
     const kind = document.createElement('span'); kind.className = 'wt-kind'; kind.textContent = w.kind === 'job' ? 'job run' : 'team';
     head.append(name, ' ', kind);
+    if (w.kind === 'team' && w.name && label && label !== w.name) { const id = document.createElement('span'); id.className = 'wt-id'; id.textContent = w.name; head.append(' ', id); }
     const meta = document.createElement('div'); meta.className = 'wt-meta';
     const parts = [];
     if (w.branch) { const b = document.createElement('code'); b.textContent = w.branch; parts.push('Branch ', b); }
@@ -42,7 +45,7 @@ function item(w, canRemove) {
         // a row that holds work (or was not checked) is only removed when git finds nothing left: the button says so where the person decides
         const held = w.dirty || w.unmerged || w.checked === false;
         const rm = document.createElement('button'); rm.type = 'button'; rm.className = 'btn btn-small wt-remove'; rm.textContent = held ? 'Remove if clean' : 'Remove';
-        rm.setAttribute('aria-label', `Remove the worktree of ${w.name || 'this team'}${held ? ' if it is clean' : ''}`);
+        rm.setAttribute('aria-label', `Remove the worktree of ${label || 'this team'}${held ? ' if it is clean' : ''}`);
         rm.addEventListener('click', () => removeOne(w, rm));
         li.append(rm);
     }
