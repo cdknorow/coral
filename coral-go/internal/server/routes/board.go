@@ -171,10 +171,11 @@ func (h *BoardHandler) legacyTaskArtifactPath(taskID int64) string {
 	return filepath.Join(h.coralDir, "artifacts", "tasks", strconv.FormatInt(taskID, 10), "changes.diff")
 }
 
-// TaskBoardKey is the folder name a board's task diffs are kept under.
+// TaskBoardKey is the folder name a board's task diffs are kept under: a "b" and a hash of the board id. The letter keeps a key that happens to be all decimal digits from being taken for an older task folder
+// (those are named by their number alone) by the prune's walk (#6948, Security Reviewer Windows's LOW).
 func TaskBoardKey(boardID string) string {
 	sum := sha256.Sum256([]byte(boardID))
-	return hex.EncodeToString(sum[:8])
+	return "b" + hex.EncodeToString(sum[:8])
 }
 
 // taskArtifactTimeout bounds the after-the-reply writing of a task's changes.diff: the agent's working tree is diffed (git diff,

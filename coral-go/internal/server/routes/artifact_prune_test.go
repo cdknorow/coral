@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -648,4 +649,21 @@ func TestPruneTaskDiffsByBoardKeyAndTheOlderLayout(t *testing.T) {
 	assert.True(t, gone(legacy), "the older layout is aged out too")
 	assert.False(t, gone(rig.taskDiff(open)), "the open task keeps its diff")
 	assert.True(t, gone(other), "another board's old diff is an orphan by age, not taken for the open task's")
+}
+
+// A board key that is all decimal digits was read as an older task folder (named by its number) and its diffs were never aged out (Security Reviewer Windows's LOW on #6948): board id probe-1432 hashes to such a key. The key now
+// starts with a letter, and the walk tells the layouts apart.
+func TestTaskBoardKeyIsNeverTakenForAnOlderTaskFolder(t *testing.T) {
+	key := TaskBoardKey("probe-1432")
+	_, err := strconv.ParseInt(key, 10, 64)
+	assert.Error(t, err, "never a number: %s", key)
+
+	taskDir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(taskDir, key, "7"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(taskDir, "9"), 0o755)) // an older task folder
+	got := map[string]string{}
+	for _, d := range taskDiffDirs(taskDir) {
+		got[d.id] = d.boardKey
+	}
+	assert.Equal(t, map[string]string{"7": key, "9": ""}, got, "the board's task is found under its key; the older folder has none")
 }
