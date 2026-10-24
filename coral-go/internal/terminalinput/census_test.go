@@ -346,7 +346,7 @@ var reviewedOrigins = map[string]bool{
 	"internal/ptymanager/tmux_backend.go	TmuxBackend.Restart	SendKeysToTarget	Internal":                              true,
 	"internal/ptymanager/tmux_backend.go	TmuxBackend.sendInput	SendTerminalInputToTarget	o":                          true,
 	"internal/ptymanager/tmux_backend.go	TmuxBackend.Spawn	SendKeysToTarget	Internal":                                true,
-	"internal/server/routes/agent_exited.go	deliverAutomated	SendInput	Coral":                                        true,
+	"internal/server/routes/agent_exited.go	deliverAutomatedWhile	SendInput	Coral":                                   true,
 	"internal/server/routes/agent_ui_request.go	SessionsHandler.agentUIRequest	SendPrompt	Coral":                     true,
 	"internal/server/routes/auto_accept.go	AutoAcceptor.check	SendRawInput	Internal":                                 true,
 	"internal/server/routes/human_send.go	SessionsHandler.deliverHumanSend	SendInput	Person":                         true,
