@@ -19,20 +19,43 @@ import (
 // maxParsedCommand bounds what is parsed: a longer command is read with the separator reading only.
 const maxParsedCommand = 256 << 10
 
-// compoundRisk is why a command is high-risk once its compound structure is read ("" when it is not): the parsed reading, then the separator reading. Each stands on its own (the tests
-// run each alone on every form); the second always runs, not only when the parser failed, because the parser reads the Bash grammar, and a command written for another shell (PowerShell's
-// ForEach-Object { ... }, zsh's glob qualifiers) can parse as Bash and still be something else.
-func compoundRisk(command, workDir, dir string) string {
-	if why := parsedRisk(command, workDir, dir); why != "" {
+// riskRun is one judgement of one command. The three readings (the rules, the parsed leaves, the separated text) each meet a shell wrapper's inner command (bash -c '...') and judge it
+// again, so a wrapper in a wrapper in a wrapper was read three times per level (#7086, QA's round 2: 2.5 times more per level than the old linear reading). A run remembers what it has judged
+// by (command, folder, directory): each distinct inner command is judged once, whichever reading meets it first, and the cost is the depth times one pass.
+type riskRun struct{ memo map[riskKey]string }
+
+type riskKey struct{ command, workDir, dir string }
+
+func newRiskRun() *riskRun { return &riskRun{memo: map[riskKey]string{}} }
+
+// from is shellRiskFrom within this run.
+func (r *riskRun) from(command, workDir, dir string) string {
+	k := riskKey{command, workDir, dir}
+	if why, ok := r.memo[k]; ok {
 		return why
 	}
-	return separatedRisk(command, workDir, dir)
+	why := shellRiskCore(command, workDir, dir, r.from)
+	if why == "" {
+		why = r.compound(command, workDir, dir)
+	}
+	r.memo[k] = why
+	return why
 }
 
-// parsedRisk judges every simple command the parser finds, in source order. It also reads what the separator reading cannot: a single & between commands, |&, a line continuation. A command
+// compound is why a command is high-risk once its compound structure is read ("" when it is not): the parsed reading, then the separator reading. Each stands on its own (the tests
+// run each alone on every form); the second always runs, not only when the parser failed, because the parser reads the Bash grammar, and a command written for another shell (PowerShell's
+// ForEach-Object { ... }, zsh's glob qualifiers) can parse as Bash and still be something else.
+func (r *riskRun) compound(command, workDir, dir string) string {
+	if why := r.parsed(command, workDir, dir); why != "" {
+		return why
+	}
+	return r.separated(command, workDir, dir)
+}
+
+// parsed judges every simple command the parser finds, in source order. It also reads what the separator reading cannot: a single & between commands, |&, a line continuation. A command
 // so nested that reading it would cost more than a few passes over its own text (a $( ) inside a $( ) a thousand times: each level is a command with the rest inside it) is not read: it is
 // answered as risky, so the person is asked, which fails closed and takes the time of one pass (#7086, QA's round 1).
-func parsedRisk(command, workDir, dir string) string {
+func (r *riskRun) parsed(command, workDir, dir string) string {
 	if len(command) > maxParsedCommand {
 		return ""
 	}
@@ -43,12 +66,23 @@ func parsedRisk(command, workDir, dir string) string {
 	case leavesUnreadable:
 		return ""
 	}
-	return shellRiskCore(strings.Join(leaves, "\n"), workDir, dir, shellRiskFrom)
+	return shellRiskCore(strings.Join(leaves, "\n"), workDir, dir, r.from)
 }
 
-// separatedRisk judges the command with the constructs' punctuation and keywords turned into separators.
+// separated judges the command with the constructs' punctuation and keywords turned into separators.
+func (r *riskRun) separated(command, workDir, dir string) string {
+	return shellRiskCore(separatedCompound(command), workDir, dir, r.from)
+}
+
+// compoundRisk, parsedRisk and separatedRisk are the readings in a run of their own (the tests run each alone).
+func compoundRisk(command, workDir, dir string) string {
+	return newRiskRun().compound(command, workDir, dir)
+}
+func parsedRisk(command, workDir, dir string) string {
+	return newRiskRun().parsed(command, workDir, dir)
+}
 func separatedRisk(command, workDir, dir string) string {
-	return shellRiskCore(separatedCompound(command), workDir, dir, shellRiskFrom)
+	return newRiskRun().separated(command, workDir, dir)
 }
 
 // leafCommands is every simple command of command, in source order, each as one line of text, and ok false when the parser could not read it or the command is too complex to read. A

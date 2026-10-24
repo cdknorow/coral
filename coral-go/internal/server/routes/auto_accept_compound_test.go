@@ -223,3 +223,34 @@ func TestLeafBudgetIsFourTimesTheCommandAndAMargin(t *testing.T) {
 	_, status = readLeaves("if true; then")
 	assert.Equal(t, leavesUnreadable, status)
 }
+
+// QA's round 2 (#7086): each of the three readings judged a bash -c inner command again, so a wrapper in a wrapper cost three reads per level. A run judges each distinct command once.
+func TestShellRiskWrapperRecursionIsMemoizedPerRun(t *testing.T) {
+	wd := t.TempDir()
+	dq := strings.NewReplacer(`\`, `\\`, `"`, `\"`, "$", `\$`)
+	for _, depth := range []int{13, 15} { // each level doubles the escapes of the one inside: 15 deep is already 60 KB
+		cmd := "echo hi"
+		for d := 0; d < depth; d++ {
+			cmd = "bash -c \"" + dq.Replace(cmd) + "\""
+		}
+		start := time.Now()
+		why := shellRisk(cmd, wd)
+		assert.Less(t, time.Since(start), time.Second, "bash -c nested %d deep (%d bytes)", depth, len(cmd))
+		assert.Empty(t, why, "an ordinary command in wrappers is not risky")
+		// A risky command at the bottom of the same wrappers is still found.
+		deep := "rm -rf /etc"
+		for d := 0; d < depth; d++ {
+			deep = "bash -c \"" + dq.Replace(deep) + "\""
+		}
+		assert.Contains(t, shellRisk(deep, wd), "deletes recursively", "depth %d", depth)
+	}
+	// The same inner command judged from two directories in one run is judged twice: the answer depends on where it runs.
+	assert.Empty(t, shellRisk("bash -c 'rm -rf x'", wd))
+	assert.Contains(t, shellRisk("bash -c 'rm -rf x'; cd /tmp; bash -c 'rm -rf x'", wd), "deletes recursively")
+	assert.Contains(t, shellRisk("cd /tmp; bash -c 'rm -rf x'", wd), "deletes recursively")
+	r := newRiskRun()
+	assert.Empty(t, r.from("rm -rf x", wd, wd))
+	assert.Contains(t, r.from("rm -rf x", wd, "/tmp"), "deletes recursively", "the memo is keyed by the directory too")
+	assert.Empty(t, r.from("rm -rf x", wd, wd), "and answers the same again from the memo")
+	assert.Len(t, r.memo, 2)
+}

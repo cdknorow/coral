@@ -95,10 +95,7 @@ func shellRisk(command, workDir string) string {
 // reads the command with a real shell parser and judges every simple command inside, so a risky command is found wherever the grammar puts it. The answer is never weaker than
 // shellRiskSimple's.
 func shellRiskFrom(command, workDir, dir string) string {
-	if why := shellRiskCore(command, workDir, dir, shellRiskFrom); why != "" {
-		return why
-	}
-	return compoundRisk(command, workDir, dir)
+	return newRiskRun().from(command, workDir, dir)
 }
 
 // shellRiskSimple is the rule per command over the command cut at the shell's separators, and the command inside a shell wrapper read the same way: what shellRiskFrom was before
