@@ -124,43 +124,51 @@ except Exception as e: print('?',e)" | tr -d '\r')"
 team_before=$(api GET "/api/teams/detail/${BID}")
 row old-team-before-stop "team status" "status=$(printf '%s' "$team_before" | jget status)"
 
-# ── stop the old build, start the new on the same data folder ─────────────────────────────────────────
+# the team's worktree gets an unsaved file, as real work would leave
+WTDIR=$(ls -d "$(upath "$CORAL_DATA_DIR")"/worktrees/*/ 2>/dev/null | head -1)
+[[ -n "$WTDIR" ]] && echo "unsaved work" >"${WTDIR}unsaved.txt"
+row old-unsaved-file "an unsaved file written into the team's worktree" "$([[ -f "${WTDIR}unsaved.txt" ]] && echo written || echo NOT-written)"
+
+# ── stop the old build 25 s before a slot, start the new 10 s after it: the slot falls in the gap ──────
+w=$(secs_to_slot); [[ $w -lt 40 ]] && w=$((w + 300)); sleep "$((w - 25))"
 STOP_AT=$(date -u +%H:%M:%S)
 stop_server
 if [[ -n "${GITHUB_ACTIONS:-}" ]]; then taskkill //IM mock-agent.exe //F >/dev/null 2>&1 || true; fi   # a throwaway runner: the old server's mock agents die with it on Windows
-row stop-old "the old server stopped at $STOP_AT UTC" "$(disk_state)"
+row stop-old "the old server stopped at $STOP_AT UTC (25 s before a slot)" "$(disk_state)"
+sleep 35
 start_server "$TMPROOT/new" new || exit 2
 START_AT=$(date -u +%H:%M:%S)
-sleep 5
+sleep 8
 team_after=$(api GET "/api/teams/detail/${BID}")
 live=$(api GET "/api/sessions/live")
-row new-started "new server up at $START_AT UTC (stopped $STOP_AT)" "team status=$(printf '%s' "$team_after" | jget status); live sessions listed: $(printf '%s' "$live" | python3 -c "import sys,json
+row new-started "new server up at $START_AT UTC (old stopped $STOP_AT; the slot fell between)" "team status=$(printf '%s' "$team_after" | jget status); live sessions listed: $(printf '%s' "$live" | python3 -c "import sys,json
 try:
     d=json.load(sys.stdin); r=d if isinstance(d,list) else d.get('sessions',d.get('rows',[]))
     print(len(r))
 except Exception: print('?')" | tr -d '\r')"
+row new-disk-after-start "disk state on the new build (the unsaved file is still there: $([[ -f "${WTDIR}unsaved.txt" ]] && echo yes || echo NO))" "$(disk_state)"
+
+# ── Stop team on the new build: the worktree has unsaved work, so it is kept and listed; then resurrect ──
+resp=$(api_code POST "/api/sessions/live/team/${BID}/kill" -d '{}'); code="${resp##*$'\n'}"
+sleep 8
+row new-stop-team "POST Stop team (worktree has an unsaved file)" "http=$code worktree answer: $(printf '%s' "${resp%$'\n'*}" | jget worktree | sed -e 's#b-[a-z0-9]\{10\}#b-ID#g' | clean x 250)"
 kept=$(api GET "/api/worktrees")
-row new-kept-worktrees "GET /api/worktrees before any resurrect" "$(printf '%s' "$kept" | sed -e 's#b-[a-z0-9]\{10\}#b-ID#g' | clean x 500)"
-row new-disk-after-start "disk state on the new build" "$(disk_state)"
-if [[ "$(printf '%s' "$team_after" | jget status)" == stopped ]]; then
-    resp=$(api_code POST "/api/teams/detail/${BID}/resurrect" -d '{}'); code="${resp##*$'\n'}"; body="${resp%$'\n'*}"
-    sleep 4
-    live2=$(api GET "/api/sessions/live")
-    row new-resurrect "POST resurrect (the team was stopped: offered)" "http=$code agents=$(printf '%s' "$body" | python3 -c "import sys,json
+row new-kept-worktrees "GET /api/worktrees after Stop team" "$(printf '%s' "$kept" | sed -e 's#b-[a-z0-9]\{10\}#b-ID#g' | clean x 500)"
+row new-team-status "the team after Stop team" "status=$(api GET "/api/teams/detail/${BID}" | jget status)"
+resp=$(api_code POST "/api/teams/detail/${BID}/resurrect" -d '{}'); code="${resp##*$'\n'}"; body="${resp%$'\n'*}"
+sleep 6
+live2=$(api GET "/api/sessions/live")
+row new-resurrect "POST resurrect on the stopped team" "http=$code board_id in answer: $([[ -n "$(printf '%s' "$body" | jget board_id)" ]] && echo yes || echo no); agents=$(printf '%s' "$body" | python3 -c "import sys,json
 try:
     print(len(json.load(sys.stdin).get('agents',[])))
 except Exception: print('?')" | tr -d '\r'); live rows carrying a branch: $(printf '%s' "$live2" | python3 -c "import sys,json
 try:
     d=json.load(sys.stdin); r=d if isinstance(d,list) else d.get('sessions',d.get('rows',[]))
-    print(sum(1 for x in r if isinstance(x,dict) and any('branch' in k and x[k] for k in x)))
+    print(sum(1 for x in r if isinstance(x,dict) and any('branch' in k and x[k] for k in x)),'of',len(r))
 except Exception: print('?')" | tr -d '\r')"
-else
-    row new-resurrect "the team is not 'stopped' after the restart, so nothing to resurrect" "status=$(printf '%s' "$team_after" | jget status)"
-    live2=$live
-fi
-row new-disk-after-resurrect "disk state after the resurrect step" "$(disk_state)"
+row new-disk-after-resurrect "disk state after the resurrect (unsaved file: $([[ -f "${WTDIR}unsaved.txt" ]] && echo yes || echo NO))" "$(disk_state)"
 
-# ── the next slot fires on the new build ──────────────────────────────────────────────────────────────
+# ── the slots on the new build ────────────────────────────────────────────────────────────────────────
 w=$(secs_to_slot); log "waiting $((w + 90)) s for the next slot on the new build and its run"; sleep "$((w + 90))"
 runs_all=$(api GET "/api/scheduled/jobs/${JID}/runs")
 row runs-per-slot "every run of the job, by slot (UTC minute), status, reason" "$(printf '%s' "$runs_all" | python3 -c "import sys,json,collections
@@ -170,11 +178,19 @@ try:
     print(len(r),'run(s); per slot:',dict(sorted(slots.items())),'| one run per slot:',all(v==1 for v in slots.values()),'|',[(x.get('scheduled_at','')[11:16],x.get('status'),x.get('exit_reason')) for x in sorted(r,key=lambda x:x.get('scheduled_at',''))])
 except Exception as e: print('?',e)" | tr -d '\r')"
 
-# ── stop the team and the job; what is left ───────────────────────────────────────────────────────────
+# ── finish: job off, Stop team, remove the kept worktree; what is left ─────────────────────────────────
 api PUT "/api/scheduled/jobs/${JID}" -d '{"enabled": 0}' >/dev/null
 resp=$(api_code POST "/api/sessions/live/team/${BID}/kill" -d '{}'); code="${resp##*$'\n'}"
 sleep 8
-row final-stop-team "POST Stop team on the new build" "http=$code worktree answer: $(printf '%s' "${resp%$'\n'*}" | jget worktree | sed -e 's#b-[a-z0-9]\{10\}#b-ID#g' | clean x 200)"
+row final-stop-team "second Stop team" "http=$code worktree answer: $(printf '%s' "${resp%$'\n'*}" | jget worktree | sed -e 's#b-[a-z0-9]\{10\}#b-ID#g' | clean x 250)"
+row final-disk-before-remove "disk state before removing the kept worktree" "$(disk_state)"
+KID=$(api GET "/api/worktrees" | python3 -c "import sys,json
+try:
+    w=json.load(sys.stdin).get('worktrees',[]); print(w[0]['id'] if w else '')
+except Exception: print('')" | tr -d '\r')
+if [[ -n "$KID" ]]; then
+    resp=$(api_code POST "/api/worktrees/remove" -d "{\"id\": \"$KID\"}"); row final-remove-kept "POST /api/worktrees/remove on the listed worktree" "http=${resp##*$'\n'} $(printf '%s' "${resp%$'\n'*}" | clean x 200)"
+fi
 row final-disk "disk state at the end" "$(disk_state)"
 kept2=$(api GET "/api/worktrees"); row final-kept-worktrees "GET /api/worktrees at the end" "$(printf '%s' "$kept2" | sed -e 's#b-[a-z0-9]\{10\}#b-ID#g' | clean x 300)"
 
