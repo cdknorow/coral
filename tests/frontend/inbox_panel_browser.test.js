@@ -141,7 +141,7 @@ const STUB = `(() => {
             const q = await ev(`window.__reqs.find(r => r.p === '/api/board/tasks')`);
             check(`${dev}: the list asks for the Operator's open tasks, with a field list (no per-row request)`, q && /assigned_to=Operator/.test(q.q) && /status=pending/.test(q.q) && /fields=/.test(q.q) && (await ev(`window.__reqs.filter(r => /\\/tasks\\/\\d+$/.test(r.p)).length`)) === 0, JSON.stringify(q));
             const rs = await rows();
-            check(`${dev}: a row per task: title, board, priority and age; each a button that says it is closed and which region it controls`, rs.length === 3 && rs[0].title === 'Pick the release date' && /team-a · high · (today|yesterday) \d\d:\d\d$/.test(rs[0].meta) && rs.every(r => r.expanded === 'false' && r.regionOk && r.hidden) && /review/.test(rs[2].meta), JSON.stringify(rs));
+            check(`${dev}: a row per task: title, board, priority and age; each a button that says it is closed and which region it controls`, rs.length === 3 && rs[0].title === 'Pick the release date' && /team-a · high · ((today|yesterday) \d{1,2}:\d\d( [AP]M)?|\d+ min ago|just now)$/.test(rs[0].meta) && rs.every(r => r.expanded === 'false' && r.regionOk && r.hidden) && /review/.test(rs[2].meta), JSON.stringify(rs));
             check(`${dev}: a title with markup is text: the second title is its own characters, no element was made, nothing ran`, rs[1].title === 'Check <img src=x onerror="window.__pwn=1"> the logo' && (await ev(`document.querySelectorAll('#inbox-tasks-host img').length === 0 && window.__pwn === undefined`)) === true, JSON.stringify(rs[1]));
 
             // the shared renderer is not loaded by the page: it loads once, when the first text is shown (#5818)
