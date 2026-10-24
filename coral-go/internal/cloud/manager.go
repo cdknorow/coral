@@ -502,7 +502,13 @@ func (m *Manager) pollEnrollment(ctx context.Context, gen int, dc *DeviceCode) {
 		switch {
 		case err == nil:
 			_ = m.o.Store.ClearEnrollment(ctx) // enrolled: no pending code, no rate limit
-			if serr := m.o.Store.Save(ctx, m.o.HubURL, en.ServerID, en.Label, en.Token); serr != nil {
+			var serr error
+			if en.TeamOrg != "" {
+				serr = m.o.Store.SaveTeam(ctx, m.o.HubURL, en.ServerID, en.Label, en.Token, en.TeamOrg)
+			} else {
+				serr = m.o.Store.Save(ctx, m.o.HubURL, en.ServerID, en.Label, en.Token)
+			}
+			if serr != nil {
 				// No token in the message or the log: serr is about the key, never the token.
 				m.finishEnroll(gen, "Coral Hub enrolled this computer, but the token could not be stored here ("+serr.Error()+
 					"), so it can't connect. Remove this computer in Coral Hub, then connect again.")
@@ -607,6 +613,7 @@ func (m *Manager) runTunnel(ctx context.Context, gen int) {
 		Handler:       local,
 		CoralVersion:  m.o.CoralVersion,
 		LocalMode:     m.currentMode,
+		OwnerKind:     m.ownerKind,
 		AllowInsecure: config.AllowInsecureCloud,
 		HTTPClient:    m.hc,
 		Backoff:       m.o.Backoff,
@@ -852,4 +859,14 @@ func (m *Manager) RelayArtifact(ctx context.Context, n int64, body io.Reader) (t
 		return tunnel.RelayResponse{}, ctx.Err()
 	}
 	return cs.RelayArtifact(ctx, n, body)
+}
+
+// ownerKind is what this machine is enrolled as, for the handshake (#7061): "team" only when the store says so. A record that cannot be read or understood reports personal here: it is the hub's
+// information and nothing is decided on it; the owner check reads the record itself and fails closed.
+func (m *Manager) ownerKind() string {
+	kind, _, err := m.o.Store.OwnerRecord(context.Background())
+	if err != nil || kind != store.OwnerKindTeam {
+		return tunnel.OwnerKindPersonal
+	}
+	return tunnel.OwnerKindTeam
 }

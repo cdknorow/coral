@@ -81,6 +81,9 @@ type Hello struct {
 	// Capabilities are what this Coral can do beyond the base protocol, each "name/version" (#5508): "cross_team_allowlist/1" means it keeps and checks a board's list of allowed senders
 	// by cross-team board id. A hub reads it only from the destination's own Hello (never from a sender's request or message); absent, malformed or another version means unsupported.
 	Capabilities []string `json:"capabilities,omitempty"`
+	// OwnerKind is what this machine is enrolled as: "personal" or "team" (#7061), echoed to the hub at every connect. Informational for the hub: Coral never trusts what the hub says back about it, it
+	// keeps the kind it recorded at enrolment. Absent from an older Coral, which the hub reads as one that does not know team machines.
+	OwnerKind string `json:"owner_kind,omitempty"`
 	// BootID is random, made once per Coral process, and StartedAt (RFC 3339, UTC) is when that process started (#5855). Both are the same on every connection of one process and
 	// change with a restart, so a hub that sent a request on one connection and sees another BootID on the next knows that what Coral keeps in memory (an Idempotency-Key's record,
 	// for one) is gone: a retry may start a second one. Informational: nothing in the protocol depends on them, and a Hello without them is as before.
@@ -263,6 +266,11 @@ type Header struct {
 	// HubRole is "owner" when the viewer is the hub account this machine is enrolled to, set by the hub on the two update routes only
 	// (hubrole.go, #5280). Missing or anything else is no role.
 	HubRole string `json:"hub_role,omitempty"`
+	// HubOrg, HubTeamRole and HubUserID say who a request to a team-owned machine is for (#7061, hubteam.go): the organisation (a canonical lower-case UUID), the person's role in it (owner, admin or
+	// member) and their stable id (hub-uid-<32 hex>). They are fields of the stream like HubRole, set from the hub's context only; a machine that is not a team's ignores them.
+	HubOrg      string `json:"hub_org,omitempty"`
+	HubTeamRole string `json:"hub_team_role,omitempty"`
+	HubUserID   string `json:"hub_user_id,omitempty"`
 }
 
 // ResponseHeader answers a Header (connector to hub).
@@ -357,6 +365,18 @@ func (h *Header) validate(l Limits) error {
 	}
 	if h.HubRole != "" && h.HubRole != HubRoleOwner {
 		return fmt.Errorf("%w: hub role", ErrBadHeader)
+	}
+	if h.HubOrg != "" && !ValidHubOrg(h.HubOrg) {
+		return fmt.Errorf("%w: hub org", ErrBadHeader)
+	}
+	if h.HubTeamRole != "" && !ValidHubTeamRole(h.HubTeamRole) {
+		return fmt.Errorf("%w: hub team role", ErrBadHeader)
+	}
+	if h.HubUserID != "" && !ValidHubUserID(h.HubUserID) {
+		return fmt.Errorf("%w: hub user id", ErrBadHeader)
+	}
+	if h.HubTeamRole != "" && h.HubOrg == "" {
+		return fmt.Errorf("%w: hub team role without an org", ErrBadHeader)
 	}
 	if len(h.Protocols) > 16 {
 		return fmt.Errorf("%w: protocols", ErrBadHeader)

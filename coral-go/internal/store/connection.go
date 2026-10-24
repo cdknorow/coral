@@ -324,6 +324,10 @@ var columnMigrations = []struct {
 	{"cloud_connection", "hub_owner", "TEXT"},    // the Coral Hub account that owns this enrollment (#3966)
 	// The owner's hub-user-<8 hex> label as the hub stamps it, recorded at enrolment only (#5280); NULL = unknown.
 	{"cloud_connection", "hub_owner_user", "TEXT"},
+	// What the machine is enrolled as (#7061): "team" with the Hub organisation's id in hub_owner_org (a canonical lower-case UUID), recorded at enrolment only; NULL = personal, which is every
+	// enrolment made before this existed. A new enrolment clears both.
+	{"cloud_connection", "hub_owner_kind", "TEXT"},
+	{"cloud_connection", "hub_owner_org", "TEXT"},
 	{"cloud_connection", "hub_owner_adopted_at", "TEXT"}, // set only when the owner label was adopted locally by the person at this computer (#6108)
 	// A Hub sign-in's grant (#3966): empty for every other browser session.
 	{"browser_sessions", "hub_grant", "TEXT NOT NULL DEFAULT ''"},

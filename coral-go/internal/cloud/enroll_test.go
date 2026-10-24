@@ -217,3 +217,47 @@ func TestHubCallsSendACoralUserAgent(t *testing.T) {
 	require.ErrorIs(t, err, ErrAuthorizationPending)
 	require.Regexp(t, `^Coral/\S+ \(`+runtime.GOOS+`/`+runtime.GOARCH+`\)$`, ua)
 }
+
+// #7061: what the enrolment reply says the machine is enrolled as. Personal needs no org; team needs the canonical org and keeps no person; anything this code does not understand is refused, never
+// read as personal.
+func TestPollEnrollmentOwnerKind(t *testing.T) {
+	const tok = `"server_token":"coralhub_srv_abcd1234_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx","server_id":"srv_1"`
+	const org = "0b9f1c2e-3d4a-4b5c-8d6e-7f8091a2b3c4"
+	run := func(extra string) (*Enrolled, error) {
+		url, hc := hubWith(t, func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(`{` + tok + extra + `}`)) })
+		return PollEnrollment(context.Background(), hc, url, "dev")
+	}
+	for name, extra := range map[string]string{
+		"no kind":        ``,
+		"personal":       `,"owner_kind":"personal"`,
+		"personal, user": `,"owner_kind":"personal","owner_user":"hub-user-1234abcd","account":"acct_1"`,
+	} {
+		en, err := run(extra)
+		require.NoError(t, err, name)
+		require.Empty(t, en.TeamOrg, name)
+	}
+	en, err := run(`,"owner_user":"hub-user-1234abcd","owner_kind":"personal"`)
+	require.NoError(t, err)
+	require.Equal(t, "hub-user-1234abcd", en.OwnerUser, "a personal enrolment still records its owner")
+
+	en, err = run(`,"owner_kind":"team","owner_org":"` + org + `","owner_user":"hub-user-1234abcd","account":"acct_1"`)
+	require.NoError(t, err)
+	require.Equal(t, org, en.TeamOrg)
+	require.Empty(t, en.OwnerUser, "a team's machine has no person owner, whatever the reply carried")
+	require.Empty(t, en.Account, "the account that pressed Confirm is not a standing way in")
+
+	for name, extra := range map[string]string{
+		"team, no org":         `,"owner_kind":"team"`,
+		"team, empty org":      `,"owner_kind":"team","owner_org":""`,
+		"team, upper-case org": `,"owner_kind":"team","owner_org":"` + strings.ToUpper(org) + `"`,
+		"team, no hyphens":     `,"owner_kind":"team","owner_org":"` + strings.ReplaceAll(org, "-", "") + `"`,
+		"team, hub-org id":     `,"owner_kind":"team","owner_org":"hub-org-1234abcd"`,
+		"unknown kind":         `,"owner_kind":"organisation","owner_org":"` + org + `"`,
+		"another case":         `,"owner_kind":"Team","owner_org":"` + org + `"`,
+		"personal, with org":   `,"owner_kind":"personal","owner_org":"` + org + `"`,
+		"no kind, with org":    `,"owner_org":"` + org + `"`,
+	} {
+		_, err := run(extra)
+		require.ErrorIs(t, err, ErrHubResponse, name)
+	}
+}
