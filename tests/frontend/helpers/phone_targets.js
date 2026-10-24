@@ -35,7 +35,7 @@ const ICON_ALIGN = `(() => {
     const nm = e => (e.getAttribute('aria-label') || e.title || '').replace(/\\s+/g, ' ').trim();
     const d = e => e.tagName.toLowerCase() + (e.id ? '#' + e.id : '') + (typeof e.className === 'string' && e.className.trim() ? '.' + e.className.trim().split(/\\s+/)[0] : '');
     const ownWords = e => { const c = e.cloneNode(true); c.querySelectorAll('.material-icons, svg, img, [aria-hidden=true], .sr-only, .badge, .count').forEach(x => x.remove()); return (c.textContent || '').replace(/\\s+/g, ' ').trim(); };
-    const bad = []; let n = 0;
+    const bad = []; let n = 0, labelled = 0, infos = 0;
     for (const e of document.querySelectorAll('button, a[href], summary, [role=button]')) {
         if (!vis(e) || e.disabled || e.closest('.sr-only, .xterm, [data-census-skip]')) continue;
         const b = e.getBoundingClientRect(); if (!b.width || !b.height) continue;
@@ -49,15 +49,26 @@ const ICON_ALIGN = `(() => {
         // a label on the same row: its first line's centre against the glyph's
         const parent = e.parentElement; if (!parent) continue;
         const label = [...parent.children].find(c => c !== e && /^(LABEL|SPAN|STRONG|LEGEND|H3|H4|P|DT)$/.test(c.tagName) && !c.matches('button, a, .material-icons, .sr-only') && !c.hidden && c.getClientRects().length && c.textContent.trim() && !c.querySelector('button, a, input, select'));
-        if (!label) continue;
-        const range = document.createRange(); range.selectNodeContents(label); const rects = [...range.getClientRects()].filter(x => x.width > 1 && x.height > 1); if (!rects.length) continue;
+        // the label's lines: a sibling label, else (the label is not a sibling: a text in another wrapper of the same row) the nearest text in front of the control within four ancestors
+        let rects = null, lab = null;
+        if (label) { const range = document.createRange(); range.selectNodeContents(label); rects = [...range.getClientRects()].filter(x => x.width > 1 && x.height > 1); lab = label; }
+        else if (isInfo) { // only an (i) is looked up beyond its siblings: any other icon button has no label to follow. The label is the element just before it, or just before its wrapper (up to four wrappers up), with all its lines
+            for (let X = e, i = 0; X && i < 4 && !rects; X = X.parentElement, i++) {
+                let prev = X.previousElementSibling; while (prev && (!prev.getClientRects().length || prev.matches('.sr-only, [hidden], input, script, style') || !prev.textContent.trim())) prev = prev.previousElementSibling;
+                if (!prev) continue;
+                const r2 = document.createRange(); r2.selectNodeContents(prev); const rs = [...r2.getClientRects()].filter(x => x.width > 1 && x.height > 1);
+                if (rs.length) { rects = rs; lab = prev; }
+            }
+        }
+        if (!rects || !rects.length) { if (isInfo) { infos++; bad.push(d(e) + ' "' + nm(e).slice(0, 30) + '": an (i) with no text in front of it to check it against'); } continue; }
+        labelled++; if (isInfo) infos++;
         const first = rects[0], last = rects[rects.length - 1], gc = g.top + g.height / 2, lc = first.top + first.height / 2;
         const lcs = [lc, last.top + last.height / 2, (Math.min(...rects.map(x => x.top)) + Math.max(...rects.map(x => x.bottom))) / 2]; // a line of the label, or the label as a block (a wrapped title the (i) is centred on)
         if (!isInfo && !rects.every(x => Math.abs(x.top - first.top) < 3)) continue; // a wrapped title beside a toolbar: the buttons centre on the block, as they should; only an (i) follows the first line
         const sameRow = g.bottom > first.top - 2 && g.top < first.bottom + 2; // beside the label's first line, not under it
-        if (sameRow && lcs.every(c => Math.abs(gc - c) > 2)) bad.push(d(e) + ' "' + nm(e).slice(0, 30) + '": its centre is ' + Math.round((gc - lc) * 10) / 10 + ' px from its label (' + d(label) + ' "' + label.textContent.replace(/\\s+/g, ' ').trim().slice(0, 24) + '") first line (at most 2)');
+        if (sameRow && lcs.every(c => Math.abs(gc - c) > 2)) bad.push(d(e) + ' "' + nm(e).slice(0, 30) + '": its centre is ' + Math.round((gc - lc) * 10) / 10 + ' px from its label (' + d(lab) + ' "' + lab.textContent.replace(/\\s+/g, ' ').trim().slice(0, 24) + '") first line (at most 2)');
     }
-    return { n, bad }; })()`;
+    return { n, labelled, infos, bad }; })()`;
 
 // Reviewed exceptions: [scene pattern, control description pattern, why]. Empty on purpose: a control under 44 px is fixed, not listed. Add one here only with the reason and a reviewer.
 const ALLOW = [];
@@ -208,6 +219,7 @@ async function scene(ev, results, name, setup, { min = 3, expect, contrastOnly =
     const cr = await contrastOf(ev, name);
     const sc = await scaleOf(ev, name);
     const ia = await ev(ICON_ALIGN);
+    { const line = `icon census: ${name}: ${ia.n} icon-only controls checked, ${ia.labelled} against a label on their row, ${ia.infos} (i)`; console.log(line); if (process.env.ICON_CENSUS_LOG) require('node:fs').appendFileSync(process.env.ICON_CENSUS_LOG, line + '\n'); } // how much each scene checked: a scene that checks nothing is visible here
     results.push({ name, iconBad: ia.bad, iconN: ia.n, contrast: cr.fails, contrastChecked: cr.checked, n: m.n, min, small: m.small.filter(c => !allowed(name, c)), dups: (m.dups || []).filter(d => !allowedDup(name, d)), unnamed: (m.unnamed || []).filter(u => !allowedUnnamed(name, u)), scale: sc });
 }
 
