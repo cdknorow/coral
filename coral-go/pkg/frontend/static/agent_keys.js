@@ -79,7 +79,7 @@ function paintStop(want) {
 
 function inputState() {
     const box = $('command-input');
-    return { text: box ? box.value : '', pictures: document.querySelectorAll('#image-attachments > *').length };
+    return { text: box ? box.value : '', pictures: (document.getElementById('image-attachments') || { childElementCount: 0 }).childElementCount }; // (an id lookup: a selector over the page on every keystroke used the whole per-key budget, perf_budgets)
 }
 
 /** Called with the open agent's row each time the page learns of its state (updateWaitingIndicator), and when the box changes. */

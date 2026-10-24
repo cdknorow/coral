@@ -35,6 +35,7 @@ const { framesJs } = require('./helpers/wait');
         const typed = await taken();
         const walkers = typed.filter(s => !/^#[\w-]+$/.test(s));
         assert.ok(walkers.length <= 32, `at most one page-wide lookup per keystroke (32 keys): ${walkers.length}: ${[...new Set(walkers)].join(' | ')}`);
+        assert.ok(!walkers.includes('#image-attachments > *'), `the composer's picture count is read by id, not by a selector over the page on every key (#6802): ${[...new Set(walkers)].join(' | ')}`);
         assert.ok(!typed.some(s => s.includes('chat-file-menu') || s.includes('command-mention-dropdown')), 'neither the file menu nor the /command list is looked up by selector: ' + [...new Set(typed)].join(' | '));
 
         console.log('2. Scrolling the chat: no selector over the whole document per scroll event');
