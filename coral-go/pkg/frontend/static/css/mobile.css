@@ -455,7 +455,7 @@
         overscroll-behavior: contain;
     }
 
-    /* The bar under the terminal on a phone: state and size only (there is no Ctrl+Shift+Esc to hint at). */
+    /* The bar under the terminal on a phone: state and size only (there is no F6 or Ctrl+Shift+Esc to hint at). */
     .terminal-statusbar .xterm-focus-hint { display: none; }
 
     /* Hide tab bar when virtual keyboard is open */
