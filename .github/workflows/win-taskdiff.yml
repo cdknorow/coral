@@ -1,0 +1,44 @@
+name: Windows task diff test (trial)
+
+# #6973 (#6948): the task diff tests on Windows: a diff is judged by its task's folder time (directory times, hard-linked shared diffs), the board key, the prune walk.
+# A trial run on a push to a trial/win-taskdiff-* branch or by hand.
+on:
+  workflow_dispatch:
+  push:
+    branches: ["trial/win-taskdiff-*"]
+
+permissions:
+  contents: read
+
+env:
+  CORAL_TELEMETRY_DISABLED: "1"
+
+jobs:
+  taskdiff:
+    name: taskdiff (windows-latest)
+    runs-on: windows-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out LF line endings
+        working-directory: ${{ runner.temp }}
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: coral-go/go.mod
+          cache: false
+      - name: A C compiler for the dev build
+        shell: pwsh
+        run: |
+          if (-not (Get-Command gcc -ErrorAction SilentlyContinue)) { choco install mingw --version=16.1.0 -y --no-progress; if ($LASTEXITCODE -ne 0) { throw "choco install mingw failed" } }
+      - name: the task diff tests
+        working-directory: coral-go
+        run: |
+          git --version
+          go test -count=1 -tags "dev fts5" -run 'Diff|Prune|StepFile|TaskChanges|TaskBoardKey|Shared|WaitingSince|ProbeDirTime' -v ./internal/server/routes 2>&1 | tee "$RUNNER_TEMP/taskdiff.log" | grep -E "^(--- |ok|FAIL|PASS)|panic|Error"
+          exit ${PIPESTATUS[0]}
