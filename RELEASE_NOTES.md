@@ -1,5 +1,41 @@
 # Release Notes
 
+## v1.4.164 — A phone chat with Stop and keys, a Settings view of kept worktrees, and agents that end cleanly
+
+### Changes
+
+- **A phone's terminal starts with Fit width on** (#6783): every column shows at once, the font shrinking to fit (about 7 px at 390 px, never below 7). One tap on Fit width turns it off and Coral remembers that; a window that is not a phone is unchanged.
+- **The phone chat has Stop and the agent's keys** (#6802, #6820; for a person at Interact or above): Send turns into a red Stop while the agent works and the box is empty (it sends Escape once), and a Keys chip opens Esc, the arrows, Enter and Ctrl-C as 44 px keys above the message box. A question or menu opens the keys by itself. A Stop that was not sent says so ("Stop was not sent: the agent is not taking input") and can be pressed again at once.
+- **A queued message that is clipped to its first words opens to the whole message on a tap** (#6794), and closes on another tap or when it is sent or cancelled.
+- **Settings > Storage and cleanup lists the kept worktrees** (#6743): the name, the team or job run, the branch, the repository and the folder, with what keeps each in words (Unsaved changes, Unmerged commits, In use). Remove takes one away; it never forces, and it only works on this computer. The list checks its entries four at a time within about 8 seconds, and an entry git did not answer for is shown as not checked, never as clean (#6754).
+- **A worktree a stop kept stays on screen until dismissed, with a Copy path button** (#6818): it used to fade as a toast in a few seconds. After your own Kill it takes the keyboard focus, and dismissing it puts the focus back where you work (#6830, #6837). On a phone it is a bar at the foot of the page, not a toast over the terminal toggle: one line ("Worktree kept") with Copy path, Details and Dismiss, and several kept worktrees are one bar ("3 worktrees kept") whose Details lists each with its own Copy path (#6859, which replaced #6830's cap of two). A desktop keeps the toast.
+- **A team's rows show their branch at once,** when it is launched and when it is resurrected, so Kill Team can name the worktree before the next git pass; the list of branches in a "base branch missing" answer leaves out Coral's own (#6817). Killing the last member of a resurrected team now removes a clean worktree (#6817).
+- **The team resurrect answer carries board_id and board_label,** like a launch does (#6861).
+- **/agents/<session>?view=terminal opens the agent on its terminal** for that visit; your saved Chat or Terminal choice is not changed (#6752, coral-hub's request).
+- **On a phone the header's side-panel button and the view toggle are 6 px from the screen edge** (they were 2 px, where an edge swipe can win), and the agent name still has 100 px at 320 px (#6777, #6790). Open Agent Tab is in the agent's "..." menu in the Agents list (#6777).
+- **Screen readers:** the job editor's Base branch field is described by its message, and the confirm dialog (Kill Team and every other confirmation) by what Yes will do (#6806).
+- **Commit subjects and branch names are cleaned** of control sequences and of characters that reorder or hide text, before they are stored and as they are shown (#6832).
+
+### Fixes
+
+- **A scheduled run no longer leaks a terminal handle:** a run that ended on its own kept one PTY open in the server (about 144 a day for a job every 10 minutes); on Windows the handle growth was about 10 per run. Now none is left per natural exit (#6821).
+- **On Windows, when an agent's own process ends on its own, Coral closes its terminal** (#6821); the pseudo console's pipe only ends when it is closed.
+- **A scheduled run whose agent exited within seconds without reporting anything is recorded failed,** with "the agent exited before it started: it ended within seconds without reporting anything", not completed (#6842). A run whose agent reported an event, one that ran longer, a killed run and a CLI that reports no events are judged as before.
+- **Codex starts are spaced four seconds apart,** whichever path starts them (#6839, #6848): two Codex runs fired in the same minute no longer start at once against Codex's shared state database, where one exited with an error before it did anything. A team launch still answers at once; the starts are typed later. Other agents are not delayed.
+- **Agents started by launch-coral report to their own Coral** (its address, data folder and session name), where they used to dial port 8420 (#6799; every launch path is now pinned by a test, #6792).
+
+### Known issues
+
+- **A scheduled run that is under way when Coral restarts or updates stays "running"** until it is twice the job's maximum run time old (2 hours by default), and the job skips its slots until then. This was already so in earlier versions; the fix is #6898.
+- **A Codex run whose hooks you have not approved stores no events,** so if it also ends in under 15 seconds it is recorded as failed ("exited before it started") although it ran (#6842). On macOS and Linux Codex asks you to approve its hooks once, and Coral cannot see the answer.
+- **A scheduled run's exit code is not recorded:** the runtime does not hand one to the scheduler (#6842).
+
+### Internal
+
+- **Tests:** a suite can run at a chosen time of day with `CORAL_TEST_FAKE_NOW` (the page's and the suite's clock only, not the server's, timers or performance.now; #6809); team_artifacts waits for its preview text (#6793); settings_text_budget counts the same words after any suite (#6778); jobs_screen accepts "in N min" before the 02:00 UTC fire; the worktrees panel suite waits for its page, and banner_pills and the composer's picture count follow the new Keys strip (#6802); the git poller test counts its own warning (#6867); Windows handle-count tests for #6821 (#6827); a benchmark for #6745's two reads (#6810).
+- **Hub:** `Session.CloseNow` ends a tunnel's WebSocket at once and then shuts the session down, also with a peer that stopped reading (#6813, coral-hub's request).
+- **Smaller bundle:** the agent docs are read from gzipped copies, and /api/agent-docs/all serves the stored gzip to a client that accepts it (#6814); two docs screenshots are palette PNGs, 88 KB smaller (#6811).
+
 ## v1.4.163 — Worktrees that start from your branch and never lose work, a phone terminal with a key bar, and a phone chat that keeps its answers in reach
 
 ### Changes
