@@ -34,8 +34,28 @@ const { framesJs } = require('./helpers/wait');
         for (const ch of 'hello there, a few words to type') { await Input.dispatchKeyEvent({ type: 'keyDown', key: ch, text: ch }); await Input.dispatchKeyEvent({ type: 'keyUp', key: ch }); }
         const typed = await taken();
         const walkers = typed.filter(s => !/^#[\w-]+$/.test(s));
-        assert.ok(walkers.length <= 32, `at most one page-wide lookup per keystroke (32 keys): ${walkers.length}: ${[...new Set(walkers)].join(' | ')}`);
+        // Typing makes no page-wide lookup (#6887): the budget used to be one per key (32), which a per-key lookup in the Stop/Keys state used up entirely (#6802: 32 + the Saved count refresh = 33 failed the 164 gate).
+        // The one lookup a typing run may hold is not a key's: the Saved count's paint (saved_marks.js refreshSavedCount, 50 ms after a coral:route-changed or coral:saved-changed event, not a timer), so it is left out of the
+        // per-key count, which is exactly 0, and counted on its own (a stuck refresh loop would still show).
+        const SAVED = '#saved-btn .saved-count, .saved-menu-item .saved-count';
+        const perKey = walkers.filter(x => x !== SAVED);
+        assert.equal(perKey.length, 0, `typing makes no page-wide lookup per keystroke (32 keys): ${perKey.length}: ${[...new Set(perKey)].join(' | ')}`);
+        assert.ok(walkers.length - perKey.length <= 3, `the Saved count paints at most 3 times in a typing run (a stuck refresh loop would show): ${walkers.length - perKey.length}`);
         assert.ok(!walkers.includes('#image-attachments > *'), `the composer's picture count is read by id, not by a selector over the page on every key (#6802): ${[...new Set(walkers)].join(' | ')}`);
+        { // the same on a phone's layout, where the Stop button and the Keys strip read the composer on every key (#6802)
+            await Emulation.setEmulatedMedia({ features: [{ name: 'pointer', value: 'coarse' }, { name: 'hover', value: 'none' }] });
+            await Emulation.setDeviceMetricsOverride({ width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+            await ev(`new Promise(r => setTimeout(r, 600))`); // sleep-ok: the layout change's own lookups (the top tabs) settle before the keys are counted
+            await ev(`document.getElementById('command-input').value = ''; document.getElementById('command-input').focus(); true`); await taken();
+            for (const ch of 'hello there, a few words to type') { await Input.dispatchKeyEvent({ type: 'keyDown', key: ch, text: ch }); await Input.dispatchKeyEvent({ type: 'keyUp', key: ch }); }
+            const phoneTyped = (await taken()).filter(s => !/^#[\w-]+$/.test(s));
+            const phonePerKey = phoneTyped.filter(x => x !== SAVED);
+            assert.equal(phonePerKey.length, 0, `on a phone's layout too: typing makes no page-wide lookup per keystroke (${phonePerKey.length}: ${[...new Set(phonePerKey)].join(' | ')})`);
+            assert.ok(phoneTyped.length - phonePerKey.length <= 3, `and the Saved count paints at most 3 times there (${phoneTyped.length - phonePerKey.length})`);
+            await Emulation.setEmulatedMedia({ features: [] });
+            await Emulation.setDeviceMetricsOverride({ width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+            await ev(`new Promise(r => setTimeout(r, 400))`); // sleep-ok: back to the desktop layout before the next step
+        }
         assert.ok(!typed.some(s => s.includes('chat-file-menu') || s.includes('command-mention-dropdown')), 'neither the file menu nor the /command list is looked up by selector: ' + [...new Set(typed)].join(' | '));
 
         console.log('2. Scrolling the chat: no selector over the whole document per scroll event');
