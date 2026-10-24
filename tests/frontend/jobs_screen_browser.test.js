@@ -82,7 +82,7 @@ const S = `(window.__coralStatic || '/static/')`;
             const expectNext = await ev(`(() => { const t = new Date(window.__nextDaily(0, 2)); const p = n => String(n).padStart(2, '0'); const day = d => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); const dd = Math.round((day(t) - day(new Date())) / 86400000); return (dd === 0 ? 'today ' : dd === 1 ? 'tomorrow ' : t.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ') + p(t.getHours()) + ':' + p(t.getMinutes()); })()`);
             assert.equal(facts[1], `Next=${expectNext} your time`, `${at}: Next is the schedule's next 02:00 UTC in the viewer's time`);
             assert.match(facts[1], /^Next=(today|tomorrow|[A-Z][a-z]{2} \d+) \d\d:\d\d your time$/);
-            assert.match(await ev(`document.querySelector('#scheduler-detail > .sched-facts dd:nth-of-type(2)').title`), /^in \d+ h$/, `${at}: the relative part is a title, the absolute time is the text`);
+            assert.match(await ev(`document.querySelector('#scheduler-detail > .sched-facts dd:nth-of-type(2)').title`), /^in (\d+ h|\d+ min|now)$/, `${at}: the relative part is a title, the absolute time is the text`); // hours, or minutes in the hour before 02:00 UTC (the schedule's own time): the gate failed 01:00 to 02:00Z on /^in \d+ h$/
             assert.equal(facts[2], 'Does=Workflow nightly-build (2 steps)');
             assert.equal(facts.length, 3, `${at}: three facts, the rest is in Settings: ${JSON.stringify(facts)}`);
             assert.equal(await ev(`document.querySelector('#scheduler-detail .sched-settings').open`), false, `${at}: Settings is closed`);
