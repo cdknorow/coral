@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
@@ -165,8 +166,12 @@ func (h *BoardHandler) TaskChangesDiff(w http.ResponseWriter, r *http.Request) {
 	var data []byte
 	served := false
 	for _, path := range []string{h.taskArtifactPath(found.BoardID, taskID), h.legacyTaskArtifactPath(taskID)} {
-		info, serr := os.Stat(path)
-		if serr != nil || writtenBefore(info.ModTime(), found.CreatedAt) {
+		if _, serr := os.Stat(path); serr != nil {
+			continue
+		}
+		// Judged by the task's own folder, not the file: identical diffs are stored once and every task's changes.diff is a hard link to that object (#3555), so a task whose diff repeats an older one's has a file with the
+		// older time. Putting this task's link in its folder is what sets the folder's time, and a folder is never shared.
+		if dir, derr := os.Stat(filepath.Dir(path)); derr != nil || writtenBefore(dir.ModTime(), found.CreatedAt) {
 			continue
 		}
 		b, rerr := os.ReadFile(path)
