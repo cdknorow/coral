@@ -98,6 +98,9 @@ func teamLock(id int64) *sync.Mutex {
 	return m.(*sync.Mutex)
 }
 
+// beforeRemoveLockHook runs in Remove between its first read of the entry and its taking the team's lock (a var for the tests).
+var beforeRemoveLockHook func()
+
 // afterRemoveCheckHook runs in Remove between its in-use check and its git, with the team's lock held (a var for the tests).
 var afterRemoveCheckHook func()
 
@@ -248,6 +251,9 @@ func (h *WorktreesHandler) Remove(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		if e.teamID != 0 {
+			if beforeRemoveLockHook != nil {
+				beforeRemoveLockHook()
+			}
 			mu := teamLock(e.teamID)
 			if !mu.TryLock() { // a resurrect of this team is under way: the worktree is in use
 				writeJSON(w, http.StatusOK, gitutil.WorktreeOutcome{State: "kept", Path: e.Path, Branch: e.Branch, Reason: "it is in use"})

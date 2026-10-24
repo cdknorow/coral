@@ -450,3 +450,68 @@ func TestRemoveKeepsAWorktreeWhileTheTeamIsBeingResurrected(t *testing.T) {
 	assert.Equal(t, "it is in use", out["reason"])
 	assert.DirExists(t, wt)
 }
+
+// Remove reads the entry again under the team's lock (#6977, Security Reviewer Windows's note 1): a resurrect that ran between its first read and the lock has put agents in the worktree, and the first read's "not in use" is stale.
+func TestRemoveReadsTheEntryAgainUnderTheTeamsLock(t *testing.T) {
+	url, cfg := teamServer(t)
+	git, id, wt := launchWorktreeTeam(t, url, cfg, "removereread")
+	require.NoError(t, os.WriteFile(filepath.Join(wt, "work.txt"), []byte("work"), 0o644))
+	git("-C", wt, "add", "work.txt")
+	git("-C", wt, "commit", "-q", "-m", "work")
+	stopTeam(t, url, id)
+	git("worktree", "add", "--", wt, "coral-team/"+id)
+	list := listWorktrees(t, url)
+	require.Len(t, list, 1)
+	require.Equal(t, false, list[0]["in_use"])
+
+	beforeRemoveLockHook = func() { // the first read said not in use; now the team is resurrected, whole, before Remove has the lock
+		beforeRemoveLockHook = nil
+		status, body := apiPost(t, url+"/api/teams/detail/"+id+"/resurrect")
+		require.Equal(t, http.StatusOK, status, body)
+	}
+	t.Cleanup(func() { beforeRemoveLockHook = nil })
+	code, out := removeWorktree(t, url, list[0]["id"].(string))
+	assert.Equal(t, http.StatusOK, code)
+	assert.Equal(t, "kept", out["state"], "agents are in it now: the stale read is not acted on")
+	assert.Equal(t, "it is in use", out["reason"])
+	assert.DirExists(t, wt)
+}
+
+// Two resurrects of one team started together: the second checks the team's status again once it has the lock, finds the team running, and refuses, so the members are launched once (#6977, note 2).
+func TestTwoResurrectsOfOneTeamLaunchItsMembersOnce(t *testing.T) {
+	url, cfg, h := teamServerH(t)
+	git, id, wt := launchWorktreeTeam(t, url, cfg, "resurrecttwice")
+	require.NoError(t, os.WriteFile(filepath.Join(wt, "work.txt"), []byte("work"), 0o644))
+	git("-C", wt, "add", "work.txt")
+	git("-C", wt, "commit", "-q", "-m", "work")
+	stopTeam(t, url, id)
+	ss := store.NewSessionStore(h.db)
+	before, err := ss.GetAllLiveSessions(t.Context())
+	require.NoError(t, err)
+
+	reached := make(chan struct{}, 1)
+	release := make(chan struct{})
+	afterResurrectWorktreeHook = func() { // the first resurrect holds the lock here until the second has started and is waiting for it
+		select {
+		case reached <- struct{}{}:
+			<-release
+		default:
+		}
+	}
+	t.Cleanup(func() { afterResurrectWorktreeHook = nil })
+	results := make(chan int, 2)
+	post := func() {
+		status, _ := apiPost(t, url+"/api/teams/detail/"+id+"/resurrect")
+		results <- status
+	}
+	go post()
+	<-reached
+	go post()                          // passes the status check (still stopped) and waits for the lock
+	time.Sleep(500 * time.Millisecond) // sleep-ok: the second resurrect has reached the lock
+	close(release)
+	got := []int{<-results, <-results}
+	assert.ElementsMatch(t, []int{http.StatusOK, http.StatusBadRequest}, got, "one resurrect, one refusal")
+	after, err := ss.GetAllLiveSessions(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, len(before)+1, len(after), "the team's one member was launched once")
+}

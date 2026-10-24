@@ -1333,6 +1333,10 @@ func (h *SessionsHandler) ResurrectTeam(w http.ResponseWriter, r *http.Request) 
 	resurrectLock := teamLock(team.ID) // Remove of this team's worktree and this resurrect do not interleave (#6977)
 	resurrectLock.Lock()
 	defer resurrectLock.Unlock()
+	if fresh, ferr := h.teamStore.GetTeamByID(ctx, team.ID); ferr != nil || fresh == nil || fresh.Status != "stopped" { // checked again under the lock: a resurrect that ran while this one waited has relaunched the members (#6977)
+		errBadRequest(w, "can only resurrect stopped teams (it is being or has been resurrected)")
+		return
+	}
 	defer beginTeamResurrect(team.ID)()
 
 	// Recreate worktree if team had one
