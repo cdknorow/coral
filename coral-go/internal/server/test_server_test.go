@@ -44,10 +44,11 @@ func setHome(t *testing.T, dir string) {
 	t.Setenv("USERPROFILE", dir)
 }
 
-// tildePath is how the hub shows a folder under the home: "~" and the rest with this system's
-// separators (hubDisplayPath keeps the path's own).
+// tildePath is how the hub shows a folder under the home: "~" and the rest with forward slashes on
+// every system (the Hub's "~/folder" form has one separator, #7070: hubDisplayPath turns a Windows path's
+// backslashes into slashes for a request through the Hub).
 func tildePath(rel ...string) string {
-	return filepath.Join(append([]string{"~"}, rel...)...)
+	return "~/" + strings.Join(rel, "/")
 }
 
 // homeForms are the spellings of the home directory dir that no answer to the hub may contain:
