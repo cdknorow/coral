@@ -9,7 +9,7 @@ import { changedFields, NOTHING_TO_SAVE } from './settings_diff.js';
 import { ensureBuilt } from './lazy_dom.js';
 import { formatDuration as fmtDuration } from './format.js';
 import { runFailure, runFailureTag } from './run_failure.js';
-import { cronWords, atWords, awayWords, whenWords, resultWords, reasonWords, lastWords, limitWords, exitNote } from './job_words.js';
+import { cronWords, atWords, awayWords, whenWords, resultWords, reasonWords, lastWords, limitWords, exitNote, resultLine } from './job_words.js';
 import { updateJobsSectionCount } from './live_jobs.js';
 import { limitSeconds, limitParts } from './time_limit.js';
 
@@ -229,8 +229,8 @@ const AGENT_NAMES = { claude: 'Claude', codex: 'Codex', agy: 'Antigravity', anti
 function resultCell(r) {
     const unseen = r.status === 'completed' && r.exit_reason === 'ended_while_coral_was_down'; // done, but Coral did not see the result: neutral like the row's dot, not the green of a pass (#6956)
     const cls = unseen ? 'status-none' : r.status === 'completed' ? 'status-ok' : r.status === 'failed' || r.status === 'killed' ? 'status-err' : r.status === 'running' ? 'status-running' : '';
-    const note = exitNote(r); // the exit_reason's sentence, as text under the status when the status words do not already say it (#6907, #6956)
-    return `<span class="sched-status ${cls}">${escapeHtml(resultWords(r))}</span>${runFailureTag(r)}${note && !reasonWords(r) ? `<span class="sched-status-note">${escapeHtml(note)}</span>` : ''}`;
+    const line = resultLine(r); // the line under the status where the status words do not already carry it: the exit_reason's sentence, or the server's error for a run that failed to start (#6907, #6956, #7025)
+    return `<span class="sched-status ${cls}">${escapeHtml(resultWords(r))}</span>${runFailureTag(r)}${line ? `<span class="sched-status-note">${escapeHtml(line)}</span>` : ''}`;
 }
 const tookOf = (r) => (r.started_at && r.finished_at ? formatDuration(new Date(r.finished_at) - new Date(r.started_at)) : r.started_at ? 'running...' : '-');
 
