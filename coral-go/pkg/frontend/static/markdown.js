@@ -315,6 +315,10 @@ const _mdCache = new Map();
 
 // { breaks: true } to keep single newlines as line breaks. links: the link policy for
 // agent-written text, 'board' or 'chat' (applyLinkPolicy, #3542); omit it only for Coral's own text.
+// A chat bubble's options (#297): single line breaks kept, as the board keeps them (board_message_text.js BOARD_MARKDOWN), so a
+// message typed over several lines reads as typed.
+export const CHAT_MARKDOWN = { gfm: true, breaks: true };
+
 export function renderMarkdown(content, options, links) {
     if (!content) return '';
     if (typeof marked !== 'undefined' && typeof DOMPurify !== 'undefined' && content.length <= MD_CACHE_MAX_LENGTH

@@ -158,7 +158,7 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
         await ev(`(() => { const f = window.fetch; window.__patches = 0; window.fetch = (u, o) => { if (o && o.method === 'PATCH') window.__patches++; return f(u, o); }; return true; })()`);
         await ev(`(() => { const i = document.querySelector('#team-settings-workspace .board-rename-form input'); i.value = 'bad name!'; i.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); return true; })()`);
         const bad = await ev(`({ err: document.querySelector('#team-settings-workspace .board-rename-error').textContent, invalid: document.querySelector('#team-settings-workspace .board-rename-form input').getAttribute('aria-invalid'), patches: window.__patches })`);
-        check('a bad name is refused inline, with no request', /letters, digits/.test(bad.err) && bad.invalid === 'true' && bad.patches === 0, JSON.stringify(bad));
+        check('a bad name is refused inline, with no request', /English letters \(A-Z\), digits/.test(bad.err) && bad.invalid === 'true' && bad.patches === 0, JSON.stringify(bad));
         await ev(`(() => { const i = document.querySelector('#team-settings-workspace .board-rename-form input'); i.value = 'ids-renamed'; i.closest('.board-rename-form').querySelector('.btn-primary').click(); return true; })()`);
         await until(`document.querySelector('#team-settings-workspace .working-mode-team').textContent === 'ids-renamed'`, 'the renamed heading');
         const desc = await api('GET', `/api/board/${encodeURIComponent(idB)}`);

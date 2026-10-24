@@ -1,6 +1,7 @@
 /* How a board message is shown: its text, badges, body cache, avatar and colours (moved out of utils.js, #5065; no behaviour change). */
 import { escapeHtml, escapeAttr } from './html_escape.js';
 import { renderMarkdown, _renderMarkdownUncached, FENCED_WITH_LANG } from './markdown.js';
+import { artifactLabel, learnArtifactNames } from './artifact_names.js';
 
 /** Board message text with literal "\n" escapes turned into line breaks,
  *  for messages with none (agents posting through a shell pass them). Same
@@ -206,6 +207,7 @@ export function linkArtifactRefsHtml(html) {
         nodes.push(n);
     }
     let changed = false;
+    const seen = new Set();
     for (const n of nodes) {
         const text = n.nodeValue;
         ARTIFACT_REF.lastIndex = 0;
@@ -219,9 +221,12 @@ export function linkArtifactRefsHtml(html) {
             a.setAttribute('href', `coral://artifacts/${hex}`);
             a.setAttribute('rel', 'noopener noreferrer');
             a.className = 'mb-artifact-ref';
-            a.textContent = `artifact ${hex.slice(0, 8)}`;
-            // no aria-label: the name is the visible "artifact 81b837f8" (a screen reader reads 64 characters one by one, which helps nobody); the full reference is the tooltip
+            a.dataset.artifact = hex;
+            // The name it was stored under once known (#297), else "artifact 81b837f8"; as text only. No aria-label: the visible name is
+            // what a screen reader reads (not 64 characters one by one); the full reference is the tooltip.
+            a.textContent = artifactLabel(hex);
             a.title = `coral://artifacts/${hex}`;
+            seen.add(hex);
             frag.append(a);
             at = start + 'coral://artifacts/'.length + 64;
             changed = true;
@@ -230,6 +235,7 @@ export function linkArtifactRefsHtml(html) {
         if (at < text.length) frag.append(text.slice(at));
         n.replaceWith(frag);
     }
+    if (seen.size) learnArtifactNames(seen); // the links on the page are relabelled as each name arrives
     return changed ? t.innerHTML : html;
 }
 

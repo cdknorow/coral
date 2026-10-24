@@ -3,6 +3,7 @@ package hubproxy
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"mime"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/subgentic/coral/pkg/tunnel"
 )
@@ -66,13 +68,69 @@ const PreviewCSP = "sandbox; default-src 'none'; style-src 'unsafe-inline'; font
 func InlineSafe(mediaType string) bool { return safeMediaTypes[mediaType] }
 
 // Disposition builds a Content-Disposition of kind ("inline" or "attachment")
-// that keeps only a sanitised base name of filename.
+// that keeps only a sanitised base name of filename: filename= in ASCII for
+// every client, and, when the name has other letters, filename* in UTF-8
+// (RFC 6266/5987) so a browser saves "Lebenslauf-Müller.pdf" as such, not
+// "Lebenslauf-M_ller.pdf" (#297). The UTF-8 name keeps letters, digits and
+// combining marks of any script, '.', '_' and '-'; everything else (controls,
+// spaces, path separators, and the format characters that reorder or hide
+// text, such as an override that would show "exe.pdf" for "fdp.exe") becomes '_'.
 func Disposition(kind, filename string) string {
 	name := dispositionFilename(mime.FormatMediaType(kind, map[string]string{"filename": filename}))
 	if name == "" {
 		return kind
 	}
-	return kind + "; filename=" + name
+	out := kind + "; filename=" + name
+	if u := dispositionFilenameUTF8(filename); u != "" && u != name {
+		out += "; filename*=UTF-8''" + rfc5987Escape(u)
+	}
+	return out
+}
+
+// dispositionFilenameUTF8 is dispositionFilename for any script: the base name with
+// only letters, digits, marks, '.', '_' and '-' kept (others become '_'), at most
+// 100 runes, no leading dots, and "" when no letter or digit is left.
+func dispositionFilenameUTF8(filename string) string {
+	name := filename
+	if i := strings.LastIndexAny(name, "/\\"); i >= 0 {
+		name = name[i+1:]
+	}
+	var b strings.Builder
+	n, kept := 0, false
+	for _, r := range name {
+		if n >= 100 {
+			break
+		}
+		switch {
+		case unicode.IsLetter(r), unicode.IsDigit(r):
+			b.WriteRune(r)
+			kept = true
+		case unicode.Is(unicode.M, r), r == '.', r == '_', r == '-':
+			b.WriteRune(r)
+		default:
+			b.WriteByte('_')
+		}
+		n++
+	}
+	if !kept {
+		return ""
+	}
+	return strings.TrimLeft(b.String(), ".")
+}
+
+// rfc5987Escape percent-encodes s for an ext-value (RFC 5987 section 3.2.1): only
+// attr-char (ALPHA, DIGIT and !#$&+-.^_`|~) stays as it is.
+func rfc5987Escape(s string) string {
+	const attr = "!#$&+-.^_`|~"
+	var b strings.Builder
+	for _, c := range []byte(s) {
+		if c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || strings.IndexByte(attr, c) >= 0 {
+			b.WriteByte(c)
+		} else {
+			fmt.Fprintf(&b, "%%%02X", c)
+		}
+	}
+	return b.String()
 }
 
 // safeMediaTypes may be served inline from the hub origin. Everything the
@@ -119,6 +177,7 @@ func StrictResponseFilter(resp *http.Response) error {
 	}
 	resp.Header = h
 	filename := dispositionFilename(h.Get("Content-Disposition"))
+	utf8Name := dispositionFilenameUTF8(dispositionParam(h.Get("Content-Disposition"))) // its filename* too (#297), in the same letters-only rule
 	for _, k := range stripResponseHeaders {
 		h.Del(k)
 	}
@@ -140,13 +199,13 @@ func StrictResponseFilter(resp *http.Response) error {
 	mt = strings.ToLower(mt)
 	if err != nil || !safeMediaTypes[mt] {
 		h.Set("Content-Type", "application/octet-stream")
-		h.Set("Content-Disposition", attachment(filename))
+		h.Set("Content-Disposition", attachment(filename, utf8Name))
 	} else {
 		// Set (not Add) the single parsed type so a duplicate Content-Type header
 		// cannot survive, and keep only a sanitised attachment filename.
 		h.Set("Content-Type", mime.FormatMediaType(mt, params))
 		if filename != "" {
-			h.Set("Content-Disposition", attachment(filename))
+			h.Set("Content-Disposition", attachment(filename, utf8Name))
 		}
 	}
 	h.Set("X-Content-Type-Options", "nosniff")
@@ -283,11 +342,28 @@ func dispositionFilename(cd string) string {
 	return strings.TrimLeft(b.String(), ".")
 }
 
-func attachment(filename string) string {
+// attachment is "attachment" with filename (sanitised ASCII) and, when it differs, utf8Name as filename* (#297).
+func attachment(filename, utf8Name string) string {
 	if filename == "" {
 		return "attachment"
 	}
-	return "attachment; filename=" + filename
+	out := "attachment; filename=" + filename
+	if utf8Name != "" && utf8Name != filename {
+		out += "; filename*=UTF-8''" + rfc5987Escape(utf8Name)
+	}
+	return out
+}
+
+// dispositionParam is the filename a Content-Disposition names (its filename* decoded when it has one), or "".
+func dispositionParam(cd string) string {
+	if cd == "" {
+		return ""
+	}
+	_, params, err := mime.ParseMediaType(cd)
+	if err != nil {
+		return ""
+	}
+	return params["filename"]
 }
 
 // ValidateOptions rejects configurations that would weaken the origin check. The cloud

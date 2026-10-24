@@ -525,7 +525,11 @@ async function launchTeam() {
     if (!_validateTeamName()) {
         const problem = boardNameProblem(boardName) || "Team name must be unique";
         showToast(problem, true);
-        showTeamStep('team'); markFieldInvalid(document.getElementById("team-board-name"), problem);
+        showTeamStep('team');
+        // Said once, under the field (#297): the hint goes back to its plain text while the error line shows the problem.
+        const hint = document.getElementById("team-board-name-hint");
+        if (hint) { hint.textContent = "This will also be the message board name."; hint.classList.remove("error"); }
+        markFieldInvalid(document.getElementById("team-board-name"), problem);
         return;
     }
 

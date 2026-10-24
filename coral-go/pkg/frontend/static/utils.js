@@ -157,7 +157,7 @@ export function boardNameProblem(name) {
     const n = String(name || '');
     if (!n) return 'A board name is required.';
     if (n.length > 64) return 'A board name is at most 64 characters.';
-    if (!NEW_BOARD_NAME_RE.test(n)) return "Use only letters, digits, '-' and '_' (no spaces, dots, '@' or '/'), starting with a letter or digit.";
+    if (!NEW_BOARD_NAME_RE.test(n)) return "Use only English letters (A-Z), digits, '-' and '_', starting with a letter or digit: no accents, spaces, dots, '@' or '/'.";
     if (RESERVED_BOARD_NAMES.has(n.toLowerCase())) return `"${n}" is reserved; choose another name.`;
     return '';
 }

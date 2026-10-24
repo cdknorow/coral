@@ -364,6 +364,7 @@ body.popout-mode.popout-terminal-blocked .attach-image-btn { pointer-events: non
         flex-direction: column;
         gap: 6px;
         padding: 12px 16px 0;
+        min-height: 0; /* it may shrink when the window is short or zoomed (#297): the box below then scrolls inside it */
     }
     :is(#command-pane, #board-chat-input-pane) .image-attachments {
         border: none;
@@ -371,7 +372,9 @@ body.popout-mode.popout-terminal-blocked .attach-image-btn { pointer-events: non
         padding: 0;
     }
     :is(#command-pane, #board-chat-input-pane) textarea {
-        flex: none;
+        /* Shrinks with the composer (#297: in a short or 200% window the box kept its own height and its lines 3+ ran under the
+           Model and Default chips); it scrolls instead, never smaller than its first lines. */
+        flex: 0 1 auto;
         min-height: 2.75rem;   /* 44px; rem, so the box grows with the text size */
         max-height: 40vh;
         padding: 0;
@@ -384,6 +387,7 @@ body.popout-mode.popout-terminal-blocked .attach-image-btn { pointer-events: non
     }
     :is(#command-pane, #board-chat-input-pane) .command-pane-toolbar {
         order: 1;
+        flex-shrink: 0; /* the chips and buttons keep their row; the text box gives way */
         gap: 4px;
         border-bottom: none;
         padding: 6px 10px 10px;

@@ -5,6 +5,7 @@
 import { appendWork, lastContent } from './chat_content.js';
 import { deriveSessionState } from './render.js';
 import { escapeHtml, renderMarkdown } from './utils.js';
+import { CHAT_MARKDOWN } from './markdown.js';
 import { makeBubble } from './chat_bubbles.js';
 import { unwrapPastedContent } from './pasted_content.js';
 import { splitSharedImages } from './shared_images.js';
@@ -358,7 +359,7 @@ function syncPendingGroup(container, cls, items, label) {
         const summary = coralNoticeSummary(normalizeNudgeText(p.text));
         const el = coral
             ? makeBubble("chat-system chat-system-general pending", `<span class="material-icons" aria-hidden="true">notifications</span><span class="chat-system-label">Coral</span><span class="chat-system-text" title="${escapeHtml(summary)}">${escapeHtml(summary)}</span><span class="pending-label">${label}</span>`)
-            : makeBubble("chat-bubble human pending", `<div class="message-text">${renderMarkdown(lead.rest, undefined, 'chat')}</div><div class="pending-images"></div><div class="pending-label">${label}</div>`);
+            : makeBubble("chat-bubble human pending", `<div class="message-text">${renderMarkdown(lead.rest, CHAT_MARKDOWN, 'chat')}</div><div class="pending-images"></div><div class="pending-label">${label}</div>`);
         el.dataset.pendingId = String(p.id);
         // Images pasted in the dashboard lead the text as links and a download hint for the agent (#5284): the person sees the same thumbnail chips the sent message will have, never the links (#6199).
         if (!coral && lead.images.length) {

@@ -24,7 +24,7 @@ func NewNameProblem(name string) string {
 	case len(name) > 64:
 		return "a board name is at most 64 characters"
 	case !NewNamePattern.MatchString(name):
-		return "a board name may use only letters, digits, '-' and '_' (no spaces, dots, '@' or '/'), starting with a letter or digit"
+		return "a board name may use only English letters (A-Z), digits, '-' and '_', starting with a letter or digit: no accents, spaces, dots, '@' or '/'"
 	case reservedNames[strings.ToLower(name)]:
 		return "\"" + name + "\" is reserved; choose another board name"
 	}

@@ -20,7 +20,8 @@ export function renderSafe(text, opts) {
 /** Coral's link policy: it owns only fixed same-origin shapes, and only after a lookup that the id exists on this server; it never builds a path from the text. Anything else is undefined, which leaves
  *  the url to the renderer's default (http, https and mailto, with the host shown) or its refusal.
  *  An artifact: coral://artifacts/<64 hex>, owned only when exists(hex) answers true (the host's lookup), as /api/artifacts/<hex>.
- *  @param {{ artifactExists?: (hex: string) => boolean }} [lookups] */
+ *  Its text is the name the artifact was stored under when artifactName gives one (#297), else "artifact" and 8 hex digits.
+ *  @param {{ artifactExists?: (hex: string) => boolean, artifactName?: (hex: string) => string }} [lookups] */
 export function makeLinkPolicy(lookups = {}) {
     return function linkPolicy(url) {
         if (typeof url !== 'string') return undefined;
@@ -28,6 +29,7 @@ export function makeLinkPolicy(lookups = {}) {
         if (!m) return undefined;
         const exists = lookups.artifactExists;
         if (typeof exists !== 'function' || exists(m[1]) !== true) return undefined;
-        return { href: `/api/artifacts/${m[1]}`, shown: `artifact ${m[1].slice(0, 8)}`, internal: true };
+        const name = typeof lookups.artifactName === 'function' ? lookups.artifactName(m[1]) : '';
+        return { href: `/api/artifacts/${m[1]}`, shown: name || `artifact ${m[1].slice(0, 8)}`, internal: true };
     };
 }
