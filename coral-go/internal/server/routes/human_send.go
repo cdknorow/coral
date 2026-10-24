@@ -52,27 +52,41 @@ import (
 // empty gets it typed again, then "not confirmed", as a message does). A command still in the box after the Enters
 // is "not submitted", as a message is.
 
-var (
+// humanSendTimings are the waits and limits of a person's message to an agent. The defaults are below; a test gives its own handler's gate other ones (humanSendGate.set) and so touches no process-wide variable and can run in
+// parallel (#7010).
+type humanSendTimings struct {
 	// How long a message waits for a starting agent's input box.
-	humanSendReadyWait = 10 * time.Second // the dashboard waits 20 s for a composer send's answer: this, plus the typings below, stays under it
+	ReadyWait time.Duration
 	// How often the screen is read while waiting or confirming.
-	humanSendPollEvery = 150 * time.Millisecond
+	PollEvery time.Duration
 	// How long the text may sit in the box after an Enter before the Enter is pressed again.
-	humanSendEnterWait = 600 * time.Millisecond
+	EnterWait time.Duration
 	// Enters pressed again at most, after the send's own.
-	humanSendExtraEnters = 3
+	ExtraEnters int
 	// How long a message never seen in the box waits for the agent's event before it is typed again, or not confirmed.
-	humanSendConfirmWait = 2500 * time.Millisecond
-	// How much longer a slow CLI command (/compact: it runs for seconds before its screen or its transcript shows anything) is waited for after humanSendConfirmWait, looking for any sign it ran (#6258).
-	humanSendSlowCommandWait = 12 * time.Second // the confirm wait and this together stay under the 20 s the dashboard waits for a composer send's answer
+	ConfirmWait time.Duration
+	// How much longer a slow CLI command (/compact: it runs for seconds before its screen or its transcript shows anything) is waited for after ConfirmWait, looking for any sign it ran (#6258).
+	SlowCommandWait time.Duration
 	// The same for a message with attached images (#4794): the CLI reads the images before its UserPromptSubmit hook.
-	humanSendAttachConfirmWait = 6 * time.Second
+	AttachConfirmWait time.Duration
 	// Times a message lost while the agent started is typed again, at most.
-	humanSendRetypes = 1
+	Retypes int
 	// Messages waiting behind the one being delivered to an agent, at most; and messages being delivered or waiting, in all.
-	humanSendMaxWaiting  = 4
-	humanSendMaxInFlight = 32
-)
+	MaxWaiting, MaxInFlight int
+}
+
+var defaultHumanSendTimings = humanSendTimings{
+	ReadyWait:         10 * time.Second, // the dashboard waits 20 s for a composer send's answer: this, plus the typings below, stays under it
+	PollEvery:         150 * time.Millisecond,
+	EnterWait:         600 * time.Millisecond,
+	ExtraEnters:       3,
+	ConfirmWait:       2500 * time.Millisecond,
+	SlowCommandWait:   12 * time.Second, // the confirm wait and this together stay under the 20 s the dashboard waits for a composer send's answer
+	AttachConfirmWait: 6 * time.Second,
+	Retypes:           1,
+	MaxWaiting:        4,
+	MaxInFlight:       32,
+}
 
 // humanSendGate lets one message at a time through to each agent. Its zero value is ready.
 type humanSendGate struct {
@@ -80,6 +94,36 @@ type humanSendGate struct {
 	agents    map[string]*humanSendTurn
 	inFlight  int
 	leftovers map[string]ptymanager.BoxMark // agent -> a message of ours left in its box unsubmitted: its mark, never its text
+	custom    *humanSendTimings             // a test's own timings (set); nil: the defaults
+}
+
+// t is the timings this gate works to.
+func (g *humanSendGate) customOrDefault() humanSendTimings { // under g.mu
+	if g.custom != nil {
+		return *g.custom
+	}
+	return defaultHumanSendTimings
+}
+
+func (g *humanSendGate) t() humanSendTimings {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.custom != nil {
+		return *g.custom
+	}
+	return defaultHumanSendTimings
+}
+
+// set changes the gate's timings from the defaults by f (tests).
+func (g *humanSendGate) set(f func(*humanSendTimings)) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	t := defaultHumanSendTimings
+	if g.custom != nil {
+		t = *g.custom
+	}
+	f(&t)
+	g.custom = &t
 }
 
 // leftover is the mark of the message last left unsubmitted in the agent's box (zero for none); setLeftover records
@@ -123,7 +167,7 @@ func (g *humanSendGate) enter(ctx context.Context, key string) (leave func(), er
 		}
 		g.agents[key] = t
 	}
-	if t.count > humanSendMaxWaiting || g.inFlight >= humanSendMaxInFlight {
+	if tm := g.customOrDefault(); t.count > tm.MaxWaiting || g.inFlight >= tm.MaxInFlight {
 		if t.count == 0 {
 			delete(g.agents, key)
 		}
@@ -189,6 +233,7 @@ func (h *SessionsHandler) deliverHumanSend(ctx context.Context, name, agentType,
 	if key == "" {
 		key = name
 	}
+	tm := h.sendGate.t() // this gate's waits and limits (the defaults unless a test set its own, #7010)
 	leave, err := h.sendGate.enter(ctx, key)
 	if err != nil {
 		return err
@@ -219,7 +264,7 @@ func (h *SessionsHandler) deliverHumanSend(ctx context.Context, name, agentType,
 	}
 	// Before typing: a starting agent with neither a prompt nor its input box on screen yet is waited for.
 	starting := h.agentHasNoEvents(ctx, sessionID)
-	deadline := time.Now().Add(humanSendReadyWait)
+	deadline := time.Now().Add(tm.ReadyWait)
 	for starting {
 		if open, _ := ptymanager.PromptOnScreen(screen); open || ptymanager.InputBoxOnScreen(screen) {
 			break
@@ -227,7 +272,7 @@ func (h *SessionsHandler) deliverHumanSend(ctx context.Context, name, agentType,
 		if time.Now().After(deadline) {
 			return errSendNotReady
 		}
-		if err := sleepCtx(ctx, humanSendPollEvery); err != nil {
+		if err := sleepCtx(ctx, tm.PollEvery); err != nil {
 			return err
 		}
 		screen, _ = h.humanScreen(ctx, name, agentType, sessionID)
@@ -246,9 +291,9 @@ func (h *SessionsHandler) deliverHumanSend(ctx context.Context, name, agentType,
 	}
 	es, canEnter := h.terminal.(ptymanager.EnterSender)
 	base, busy := h.latestEvent(ctx, sessionID)
-	confirmWait := humanSendConfirmWait
+	confirmWait := tm.ConfirmWait
 	if attachesImages(text) {
-		confirmWait = humanSendAttachConfirmWait // its hook comes once the CLI has read the images (#4794)
+		confirmWait = tm.AttachConfirmWait // its hook comes once the CLI has read the images (#4794)
 	}
 	// The same text already in the box: an earlier send of it that wasn't submitted. It gets Enter; typing it again
 	// would put a second copy in the box.
@@ -267,7 +312,7 @@ func (h *SessionsHandler) deliverHumanSend(ctx context.Context, name, agentType,
 	extra, retyped := 0, 0
 	typedAt, enteredAt := time.Now(), time.Now()
 	for {
-		if err := sleepCtx(ctx, humanSendPollEvery); err != nil {
+		if err := sleepCtx(ctx, tm.PollEvery); err != nil {
 			return err
 		}
 		if h.promptSubmittedAfter(ctx, sessionID, base) {
@@ -298,7 +343,7 @@ func (h *SessionsHandler) deliverHumanSend(ctx context.Context, name, agentType,
 			}
 			// A slow command (/compact) leaves the box at once and shows nothing for seconds: Codex answered 409 "may not have been sent" 6 s before its compaction finished (#6258). Keep looking for a sign that it ran
 			// (the screen moved, an event, the transcript grew) for humanSendSlowCommandWait more; with no sign at all it is still not confirmed, and never typed again.
-			if command && slowCommandRe.MatchString(text) && time.Since(typedAt) < confirmWait+humanSendSlowCommandWait {
+			if command && slowCommandRe.MatchString(text) && time.Since(typedAt) < confirmWait+tm.SlowCommandWait {
 				if screen != before || h.eventAfter(ctx, sessionID, base, func(string) bool { return true }) || tx.grew(h, ctx, sessionID, agentType) {
 					return nil
 				}
@@ -319,7 +364,7 @@ func (h *SessionsHandler) deliverHumanSend(ctx context.Context, name, agentType,
 				if len(echoKey(text)) < echoMinChars && !command && screen != before {
 					return nil // too short to search for: a screen that moved is all there is to go on
 				}
-				if !command && retyped < humanSendRetypes {
+				if !command && retyped < tm.Retypes {
 					if err := send(); err != nil { // no trace of it: its keystrokes were lost while it started, and none of it is in the box
 						return err
 					}
@@ -338,10 +383,10 @@ func (h *SessionsHandler) deliverHumanSend(ctx context.Context, name, agentType,
 			return errSendNotConfirmed
 		}
 		seen = true
-		if time.Since(enteredAt) < humanSendEnterWait {
+		if time.Since(enteredAt) < tm.EnterWait {
 			continue
 		}
-		if !canEnter || extra >= humanSendExtraEnters {
+		if !canEnter || extra >= tm.ExtraEnters {
 			if h.promptSubmittedAfter(ctx, sessionID, base) {
 				return nil
 			}
