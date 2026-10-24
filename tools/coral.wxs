@@ -16,6 +16,10 @@
 <?ifndef ProductName ?>
 <?define ProductName = "Coral" ?>
 <?endif ?>
+<!-- The install folder's name under Program Files: the folder, and where the close-for-install action looks for a running Coral (#335). -->
+<?ifndef InstallFolderName ?>
+<?define InstallFolderName = "Coral" ?>
+<?endif ?>
 
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
      xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
@@ -33,7 +37,7 @@
 
     <!-- Install to Program Files\Coral -->
     <StandardDirectory Id="ProgramFiles64Folder">
-      <Directory Id="INSTALLFOLDER" Name="Coral">
+      <Directory Id="INSTALLFOLDER" Name="$(var.InstallFolderName)">
         <Component Id="CoralExe" Guid="A1B2C3D4-E5F6-7890-ABCD-EF1234567890">
           <File Id="coral.exe" Source="$(var.BinDir)\coral.exe" KeyPath="yes" />
 
@@ -161,8 +165,45 @@
       ExeCommand="cmd.exe /c &quot;if not exist &quot;%USERPROFILE%\.coral&quot; mkdir &quot;%USERPROFILE%\.coral&quot; &amp; echo accepted>&quot;%USERPROFILE%\.coral\.eula-accepted&quot;&quot;"
       Impersonate="yes"
       Return="ignore" />
+    <!-- Closing Coral for the install, and starting it again after (#335). Coral's processes keep its programs open (the tray and its server
+         child, the Coral window, an agent's coral-board or hook), and the tray and its server have no window of their own, so Restart Manager
+         can't ask them to close and Windows Installer said "unable to automatically close all requested applications" and went on with the
+         files in use. Before the installer looks for files in use, coral-msi-helper (built into BuildDir, carried in the Binary table, never
+         installed) closes the installing person's Coral the normal way (agents marked to wake) and waits for it to end
+         (cmd/coral-msi-helper). Both standard Program Files folders are given, so an x86 install (up to 1.4.156) is closed too; they are set
+         from the start, unlike INSTALLFOLDER. The actions are impersonated, so they run as the person installing, never as SYSTEM (measured
+         not elevated); the helper touches only that person's processes whose program is in those folders, and never ends a server or an
+         agent. Its exit code is ignored: Coral not closing leaves the installer's own files-in-use handling, as before.
+         Coral closes only after the person has allowed the install (UAC): a declined prompt leaves Coral running. Only the execute sequence
+         runs after consent, so there is no close in the UI sequence.
+           - An install or an upgrade asks for consent when the execute sequence starts, in every UI level: CloseCoralForInstall runs before
+             costing, so before InstallValidate's files-in-use check, and Restart Manager finds nothing to close.
+           - An uninstall (REMOVE=ALL: msiexec /x, Settings > Apps) asks only at InstallInitialize, which Windows Installer always runs after
+             InstallValidate: CloseCoralForUninstall is deferred (after InstallInitialize, before any file is removed), so on a UI that
+             shows it Restart Manager's "close these applications" box can come first, and Coral closes there only if the person chooses to.
+         CORALCLOSED (Secure) skips the helper, to rehearse Restart Manager alone. Neither runs in the old package's uninstall inside an
+         upgrade (UPGRADINGPRODUCTCODE): that one comes after the new package closed Coral and finds nothing running (#335 rehearsal, step c);
+         the helper never removes the mark that starts Coral again.
+         After the install, when the helper closed a running Coral, it starts Coral again through explorer.exe, which hands it to Windows'
+         unelevated Explorer factory: Coral then runs as the signed-in person with their own environment, not the installer's (#336). With the
+         full UI the Finish page's "Launch Coral" does it instead (UILevel 5), so it is never started twice; never after an uninstall. It
+         starts the product Windows Installer registered, never a folder given to it (INSTALLFOLDER is a public property). -->
+    <Binary Id="CoralMsiHelper" SourceFile="$(var.BuildDir)\coral-msi-helper.exe" />
+    <Property Id="CORALCLOSED" Secure="yes" />
+    <CustomAction Id="CloseCoralForInstall" BinaryRef="CoralMsiHelper"
+      ExeCommand="stop --folder &quot;[ProgramFiles64Folder]$(var.InstallFolderName)&quot; --folder &quot;[ProgramFilesFolder]$(var.InstallFolderName)&quot; --wait 60"
+      Execute="immediate" Return="ignore" />
+    <CustomAction Id="CloseCoralForUninstall" BinaryRef="CoralMsiHelper"
+      ExeCommand="stop --folder &quot;[ProgramFiles64Folder]$(var.InstallFolderName)&quot; --folder &quot;[ProgramFilesFolder]$(var.InstallFolderName)&quot; --wait 60"
+      Execute="deferred" Impersonate="yes" Return="ignore" />
+    <CustomAction Id="StartCoralAfterInstall" BinaryRef="CoralMsiHelper"
+      ExeCommand="start"
+      Execute="immediate" Return="ignore" />
     <InstallExecuteSequence>
       <Custom Action="WriteEULAMarker" After="InstallFiles" Condition="NOT Installed" />
+      <Custom Action="CloseCoralForInstall" Before="CostInitialize" Condition="NOT CORALCLOSED AND NOT UPGRADINGPRODUCTCODE AND NOT REMOVE~=&quot;ALL&quot;" />
+      <Custom Action="CloseCoralForUninstall" After="InstallInitialize" Condition="NOT CORALCLOSED AND NOT UPGRADINGPRODUCTCODE AND REMOVE~=&quot;ALL&quot;" />
+      <Custom Action="StartCoralAfterInstall" After="InstallFinalize" Condition="NOT REMOVE~=&quot;ALL&quot; AND UILevel &lt;&gt; 5" />
     </InstallExecuteSequence>
 
     <Feature Id="MainFeature" Title="$(var.ProductName)" Level="1">

@@ -19,6 +19,7 @@ import (
 
 	"golang.org/x/sys/windows"
 
+	"github.com/subgentic/coral/internal/msiproduct"
 	"github.com/subgentic/coral/internal/safego"
 	"github.com/subgentic/coral/internal/windowmark"
 )
@@ -26,26 +27,18 @@ import (
 // The Windows MSI apply's system side (#162, apply_msi.go): Windows Installer's registration of the Coral product, the processes of its
 // folder, the held package file, msiexec and the restart.
 
-// CoralUpgradeCode is tools/coral.wxs's UpgradeCode: the one Coral product, whatever its version.
-const CoralUpgradeCode = "{B8F2E3A1-7C4D-4E5F-9A1B-2C3D4E5F6A7B}"
-
-// coralExeComponent is tools/coral.wxs's CoralExe component: its key path is coral.exe in the install folder.
-const coralExeComponent = "{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}"
+// CoralUpgradeCode is tools/coral.wxs's UpgradeCode: the one Coral product, whatever its version (internal/msiproduct reads its registration).
+const CoralUpgradeCode = msiproduct.CoralUpgradeCode
 
 var (
-	modMsi                     = windows.NewLazySystemDLL("msi.dll")
-	procMsiEnumRelatedProducts = modMsi.NewProc("MsiEnumRelatedProductsW")
-	procMsiGetComponentPathEx  = modMsi.NewProc("MsiGetComponentPathExW")
-	procMsiGetProductInfoEx    = modMsi.NewProc("MsiGetProductInfoExW")
-	procMsiOpenPackageEx       = modMsi.NewProc("MsiOpenPackageExW")
-	procMsiGetProductProperty  = modMsi.NewProc("MsiGetProductPropertyW")
-	procMsiCloseHandle         = modMsi.NewProc("MsiCloseHandle")
+	modMsi                    = windows.NewLazySystemDLL("msi.dll")
+	procMsiOpenPackageEx      = modMsi.NewProc("MsiOpenPackageExW")
+	procMsiGetProductProperty = modMsi.NewProc("MsiGetProductPropertyW")
+	procMsiCloseHandle        = modMsi.NewProc("MsiCloseHandle")
 )
 
 const (
 	msiOpenPackageIgnoreMachineState = 1
-	msiInstallContextMachine         = 4   // MSIINSTALLCONTEXT_MACHINE
-	errorNoMoreItems                 = 259 // ERROR_NO_MORE_ITEMS
 )
 
 // WindowsMSI is the real MSI.
@@ -59,64 +52,17 @@ type WindowsMSI struct {
 
 var _ MSI = (*WindowsMSI)(nil)
 
-// relatedProducts lists every product registered with CoralUpgradeCode that this user can see, per machine and per user alike; a test
-// replaces it.
-var relatedProducts = func() ([]string, error) {
-	upgrade, err := windows.UTF16PtrFromString(CoralUpgradeCode)
-	if err != nil {
-		return nil, err
-	}
-	var codes []string
-	for i := uintptr(0); ; i++ {
-		buf := make([]uint16, 39)
-		r, _, _ := procMsiEnumRelatedProducts.Call(uintptr(unsafe.Pointer(upgrade)), 0, i, uintptr(unsafe.Pointer(&buf[0])))
-		if r == errorNoMoreItems {
-			return codes, nil
-		}
-		if r != 0 {
-			return nil, fmt.Errorf("MsiEnumRelatedProducts %d", r)
-		}
-		codes = append(codes, windows.UTF16ToString(buf))
-	}
-}
-
-// machineProperty is a product's property in the PER-MACHINE install context, and whether the product is installed there; a test replaces it.
-var machineProperty = func(code, property string) (string, bool) {
-	p, err1 := windows.UTF16PtrFromString(code)
-	prop, err2 := windows.UTF16PtrFromString(property)
-	if err1 != nil || err2 != nil {
-		return "", false
-	}
-	size := uint32(256)
-	buf := make([]uint16, size)
-	r, _, _ := procMsiGetProductInfoEx.Call(uintptr(unsafe.Pointer(p)), 0, msiInstallContextMachine, uintptr(unsafe.Pointer(prop)), uintptr(unsafe.Pointer(&buf[0])), uintptr(unsafe.Pointer(&size)))
-	if r != 0 {
-		return "", false
-	}
-	return windows.UTF16ToString(buf), true
-}
+// relatedProducts and machineProperty are internal/msiproduct's lookups; a test replaces them.
+var (
+	relatedProducts = msiproduct.RelatedProducts
+	machineProperty = msiproduct.MachineProperty
+)
 
 // RegisteredProduct is the ProductCode of the Coral product registered PER MACHINE for CoralUpgradeCode. The UpgradeCode is public, so a
 // same-user process could install a per-user product with it; such a product is never the one updated or removed (N1). None, or more than one
 // per machine, is an error (fail closed).
 func (w *WindowsMSI) RegisteredProduct() (string, error) {
-	codes, err := relatedProducts()
-	if err != nil {
-		return "", err
-	}
-	var machine []string
-	for _, c := range codes {
-		if _, ok := machineProperty(c, "VersionString"); ok {
-			machine = append(machine, c)
-		}
-	}
-	switch len(machine) {
-	case 1:
-		return machine[0], nil
-	case 0:
-		return "", errors.New("no Coral product is registered for this machine")
-	}
-	return "", fmt.Errorf("%d Coral products are registered for this machine", len(machine))
+	return msiproduct.Registered(relatedProducts, machineProperty)
 }
 
 // RegisteredVersion is the registered per-machine product's version (its ProductVersion).
@@ -138,37 +84,13 @@ func (w *WindowsMSI) Install() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	p, _ := windows.UTF16PtrFromString(product)
-	c, _ := windows.UTF16PtrFromString(coralExeComponent)
-	size := uint32(windows.MAX_LONG_PATH)
-	buf := make([]uint16, size)
-	// In the per-machine context only (N1), as RegisteredProduct.
-	r, _, _ := procMsiGetComponentPathEx.Call(uintptr(unsafe.Pointer(p)), uintptr(unsafe.Pointer(c)), 0, msiInstallContextMachine, uintptr(unsafe.Pointer(&buf[0])), uintptr(unsafe.Pointer(&size)))
-	const installStateLocal = 3
-	if int32(r) != installStateLocal {
-		return "", fmt.Errorf("coral.exe is not installed locally (state %d)", int32(r))
-	}
-	return filepath.Dir(windows.UTF16ToString(buf)), nil
+	return msiproduct.Folder(product)
 }
 
 // Unsupported refuses an install that isn't under Program Files (a portable copy beside a registered product, or one moved).
-func (w *WindowsMSI) Unsupported(install string) string {
-	pf, err := windows.KnownFolderPath(windows.FOLDERID_ProgramFiles, 0)
-	if err != nil {
-		return "unreadable_install"
-	}
-	if !underFold(install, pf) {
-		if pfx86, err := windows.KnownFolderPath(windows.FOLDERID_ProgramFilesX86, 0); err != nil || !underFold(install, pfx86) {
-			return "portable_install"
-		}
-	}
-	return ""
-}
+func (w *WindowsMSI) Unsupported(install string) string { return msiproduct.Unsupported(install) }
 
-func underFold(path, dir string) bool {
-	path, dir = strings.ToLower(filepath.Clean(path)), strings.ToLower(filepath.Clean(dir))
-	return path == dir || strings.HasPrefix(path, dir+`\`)
-}
+func underFold(path, dir string) bool { return msiproduct.UnderFold(path, dir) }
 
 // ApplyProcessRunning reports whether a process other than this one is a real updater: coral-update.exe in the install folder, or coral-update-*.exe in copies (the name
 // trigger.Launch gives its copy) whose bytes are the installed updater's, so a program a user dropped there under that name does not count.

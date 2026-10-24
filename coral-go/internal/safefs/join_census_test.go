@@ -169,6 +169,8 @@ var joinSites = map[string]joinEntry{
 	"internal/executil/editor.go\tEditor.macApp":                                             {1, joinOwn, "a fixed or program-made name in its own folder"},
 	"internal/executil/editor.go\teditorCommand":                                             {1, joinOwn, "a fixed or program-made name in its own folder"},
 	"internal/gitutil/gitutil.go\tResolveGitRoot":                                            {1, joinFixed, "names from a directory listing or numbers and hashes the program makes"},
+	"internal/installrestart/installrestart_windows.go\tMark":                                {1, joinOwn, "fileName: the constant restart-after-install"},
+	"internal/installrestart/installrestart_windows.go\tTake":                                {1, joinOwn, "fileName: the constant restart-after-install"},
 	"internal/hooks/cache.go\tTaskCacheWrite":                                                {1, joinOwn, "taskCacheName: a validated task id"},
 	"internal/hooks/cache.go\topenCacheFile":                                                 {1, joinOwn, "taskCacheName: a validated task id"},
 	"internal/hooks/cache.go\tpruneTaskCache":                                                {1, joinOwn, "taskCacheName: a validated task id"},
