@@ -746,6 +746,9 @@ func (s *JobScheduler) watch(runID int64, job store.ScheduledJob, rc runConfig) 
 // written (tests: a kill's own status must still stand once the watchdog is done, #3788).
 func (s *JobScheduler) waitWatchers() { s.watching.Wait() }
 
+// shuttingDown reports whether Coral is stopping: the scheduler's context is done. A run's own deadline and a user's kill cancel the run's context, not this one.
+func (s *JobScheduler) shuttingDown() bool { return s.parentCtx != nil && s.parentCtx.Err() != nil }
+
 // WaitWatchers is the shutdown's wait for the run goroutines to return, so the process does not exit while one is still running its end-of-run code. It waits at most d, and only once the scheduler's context is
 // done (while Coral runs on, runs go on and there is nothing to wait for). It reports false only when it gave up with a run goroutine still going.
 func (s *JobScheduler) WaitWatchers(d time.Duration) bool {
@@ -753,7 +756,7 @@ func (s *JobScheduler) WaitWatchers(d time.Duration) bool {
 		return true
 	}
 	done := make(chan struct{})
-	go func() { s.watching.Wait(); close(done) }()
+	safego.Go("background/scheduler:WaitWatchers", func() { s.watching.Wait(); close(done) })
 	select {
 	case <-done:
 		return true
@@ -813,7 +816,7 @@ func (s *JobScheduler) launchAndWatch(runID int64, job store.ScheduledJob, rc ru
 		jobCopy.RepoPath = wt.workingDir
 		launchErr = s.launchFn(watchCtx, jobCopy, runID)
 	}
-	if s.parentCtx != nil && s.parentCtx.Err() != nil { // Coral is shutting down, not the run ending (its own deadline and a user's kill cancel watchCtx, not this): the agent outlives Coral and is still working in its worktree, so nothing is finished, removed or written, and the next start settles or adopts the run (#6918, #6911)
+	if s.shuttingDown() { // Coral is shutting down, not the run ending (its own deadline and a user's kill cancel watchCtx, not this): the agent outlives Coral and is still working in its worktree, so nothing is finished, removed or written, and the next start settles or adopts the run (#6918, #6911)
 		return
 	}
 	if launchErr == nil {
@@ -937,12 +940,17 @@ func (s *JobScheduler) prepareRunWorktree(ctx, watchCtx context.Context, runID i
 		}
 	} else if err = gitutil.ValidRef(wt.baseBranch); err != nil {
 		errMsg = fmt.Sprintf("base_branch refused: %v", err)
+	} else if existing := s.runWorktreeExisting(watchCtx, rc.repoPath, wt.worktreeDir, wt.runBranch); existing != "" { // older leftovers of this id are never touched, nor rolled back over (#6927)
+		err = errors.New(existing)
+		errMsg = existing
 	} else if err = runGitCmd(watchCtx, rc.repoPath, "-c", "core.longpaths=true", "worktree", "add", "-b", wt.runBranch, "--", wt.worktreeDir, wt.baseBranch); err != nil {
 		errMsg = fmt.Sprintf("git worktree add failed: %v", err)
-		runGitCmd(watchCtx, rc.repoPath, "worktree", "prune") // a failed add leaves no registration or branch of the run behind (#6717)
-		runGitCmd(watchCtx, rc.repoPath, "branch", "-D", "--", wt.runBranch)
+		s.rollBackWorktreeAdd(rc.repoPath, wt.worktreeDir, wt.runBranch, runID)
 	}
 	if err != nil {
+		if s.shuttingDown() { // the shutdown ended the add, not a failure of the run's: not written as failed, the next start settles the row (#6927)
+			return wt, false
+		}
 		s.logger.Error(errMsg, "run_id", runID)
 		now := time.Now().UTC().Format(store.ISOFormat)
 		s.store.UpdateScheduledRun(ctx, runID, map[string]interface{}{
@@ -955,6 +963,36 @@ func (s *JobScheduler) prepareRunWorktree(ctx, watchCtx context.Context, runID i
 	}
 	wt.workingDir = wt.worktreeDir
 	return wt, true
+}
+
+// runWorktreeExisting says, in one plain sentence, whether the folder or the branch this run is about to make is already there ("" when neither is): a run id that repeats finds an older run's. The add is then not
+// attempted, so the rollback only ever removes what this run's add made.
+func (s *JobScheduler) runWorktreeExisting(ctx context.Context, repoPath, dir, branch string) string {
+	if _, err := os.Lstat(dir); err == nil {
+		return "the run's worktree folder already exists"
+	}
+	if runGitCmd(ctx, repoPath, "rev-parse", "--verify", "--quiet", "refs/heads/"+branch) == nil {
+		return "the run's branch already exists"
+	}
+	return ""
+}
+
+// rollBackWorktreeAdd leaves no folder, registration or branch of a worktree add that failed (#6717). It runs on a context of its own: a shutdown that ended the add (killing git halfway, folder and registration made)
+// cancels the run's context, and a rollback on it would do nothing (#6927). The folder is removed only when it is the one the scheduler makes for this run.
+func (s *JobScheduler) rollBackWorktreeAdd(repoPath, dir, branch string, runID int64) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	if IsRunWorktreeFolder(s.worktreeRoot, repoPath, runID, dir) {
+		err := os.RemoveAll(dir) // a half-made checkout git was killed in
+		if err != nil {          // on Windows a git killed halfway may hold files for a moment
+			time.Sleep(300 * time.Millisecond)
+			if err = os.RemoveAll(dir); err != nil {
+				s.logger.Warn("could not remove the half-made worktree folder", "path", logsafe.Dir(dir), "error", err)
+			}
+		}
+	}
+	runGitCmd(ctx, repoPath, "worktree", "prune")
+	runGitCmd(ctx, repoPath, "branch", "-D", "--", branch)
 }
 
 // afterLaunch tags the launched session (e.g. "scheduled" or "task") and registers it for auto-accept when the job
@@ -1074,6 +1112,9 @@ func runGitCmd(ctx context.Context, repoPath string, args ...string) error {
 // run that produced commits leaves its branch behind for the user to find.
 func (s *JobScheduler) cleanupWorktree(repoPath, worktreePath, runBranch, baseBranch string) {
 	if filepath.Clean(worktreePath) == filepath.Clean(repoPath) { // never the job's own repository, which may be a person's checkout (#6736)
+		return
+	}
+	if s.shuttingDown() { // its own context outlives a shutdown: a removal reached while Coral stops would take a folder a live agent works in (#6918, #6927)
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
