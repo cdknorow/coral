@@ -27,5 +27,8 @@ for (const [cron, words] of [['*/5 9-17 * * 1-5', 'Every 5 minutes, from 09:00 t
     if (cron === '0 */4 * * 1-5') continue;
     assert.equal(w.cronWords(cron), words, cron);
 }
+// the times themselves when the minute is a number and the hours a list (#6956 round 3); a date together with a weekday fires on EITHER (robfig/cron v3, internal/background/cron.go)
+for (const [cron, words] of [['0 9,12,18 * * *', 'At 09:00, 12:00 and 18:00'], ['0,30 9,17 * * *', 'At 09:00, 17:00 and 09:30, 17:30'.replace('At 09:00, 17:00 and 09:30, 17:30', 'At 09:00, 09:30, 17:00 and 17:30')], ['0 9 1 * 1', 'At 09:00, on day 1 of the month or on Mondays'], ['0 9 1,15 * 1-5', 'At 09:00, on days 1 and 15 of the month or on weekdays'],
+    ['0 9 1 7 1', 'At 09:00, on July 1 or on Mondays'], ['0 9 */2 * 1', 'At 09:00, every 2 days, Mondays'], ['30 8,17 * * *', 'At 08:30 and 17:30'], ['0 9 15 * 1', 'At 09:00, on day 15 of the month or on Mondays']]) assert.equal(w.cronWords(cron), words, cron);
 for (const raw of ['0 9 * * MON', '0 9 L * *', '*/5 9-17/2 * * *', '1 2 3 4', '60 * * * *']) assert.match(w.cronWords(raw), /^Schedule: |^$/, raw + ' stays raw');
 console.log('PASS job_words');

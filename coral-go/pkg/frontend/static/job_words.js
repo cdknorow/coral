@@ -51,24 +51,35 @@ function generalCronWords(f) {
     const single = x => x.items && x.items.length === 1 && x.items[0][1] === undefined;
     const parts = [];
     // the time of day
-    if (single(H) && M.items && M.items.every(([, b]) => b === undefined)) parts.push(`At ${listWords(M.items.map(([a]) => `${pad(H.items[0][0])}:${pad(a)}`))}`);
+    const nums = x => x.items && x.items.every(([, b]) => b === undefined) ? x.items.map(([a]) => a) : null; // plain numbers only (no ranges)
+    const times = M.items && H.items && nums(M) && nums(H) && nums(M).length * nums(H).length <= 8 ? nums(H).flatMap(h => nums(M).map(m => `${pad(h)}:${pad(m)}`)) : null;
+    if (times) parts.push(`At ${listWords(times)}`); // "At 09:00, 12:00 and 18:00"
     else {
         parts.push(M.any ? 'Every minute' : M.step ? `Every ${M.step} minutes` : `At minute${M.items.length > 1 || M.items[0][1] !== undefined ? 's' : ''} ${listWords(itemWords(M.items, a => String(a), (a, b) => `${a} to ${b}`))}`);
         if (H.step) parts.push(`every ${H.step} hours`);
         else if (H.items) parts.push(`from ${listWords(itemWords(H.items, a => `${pad(a)}:00 to ${pad(a)}:59`, (a, b) => `${pad(a)}:00 to ${pad(b)}:59`))}`.replace(/^from (.+ and .+)$/, 'during $1'));
     }
-    // the days
-    if (single(D) && single(O)) parts.push(`on ${MONTHS[O.items[0][0] - 1]} ${D.items[0][0]}`); // a date: "on January 1"
-    else {
-    if (!D.any) parts.push(D.step ? `every ${D.step} days` : `on day${D.items.length > 1 || D.items[0][1] !== undefined ? 's' : ''} ${listWords(itemWords(D.items, a => String(a), (a, b) => `${a} to ${b}`))} of the month`);
-    if (!O.any) parts.push(O.step ? `every ${O.step} months` : `in ${listWords(itemWords(O.items, a => MONTHS[a - 1], (a, b) => `${MONTHS[a - 1]} to ${MONTHS[b - 1]}`))}`);
-    }
-    if (!W.any) {
-        if (W.step) return '';
+    // the days. robfig/cron v3 (internal/background/cron.go): when BOTH the day of the month and the weekday are restricted (not "*" and not a "*/n" step) the schedule fires when EITHER matches, so the words say "or"
+    const restricted = x => !!x.items;
+    const dayText = D => D.step ? `every ${D.step} days` : `on day${D.items.length > 1 || D.items[0][1] !== undefined ? 's' : ''} ${listWords(itemWords(D.items, a => String(a), (a, b) => `${a} to ${b}`))} of the month`;
+    const dowText = W => {
         const days = W.items.map(([a, b]) => [a % 7, b === undefined ? undefined : b % 7]);
         const key = days.map(([a, b]) => b === undefined ? String(a) : `${a}-${b}`).join(',');
-        if (key === '1-5') parts.push('weekdays'); else if (key === '0,6' || key === '6,0') parts.push('weekends');
-        else parts.push(listWords(itemWords(days, a => DAYS[a], (a, b) => `${DAYS[a]} to ${DAYS[b]}`)));
+        if (key === '1-5') return 'weekdays'; if (key === '0,6' || key === '6,0') return 'weekends';
+        return listWords(itemWords(days, a => DAYS[a], (a, b) => `${DAYS[a]} to ${DAYS[b]}`));
+    };
+    const monthText = O => O.step ? `every ${O.step} months` : `in ${listWords(itemWords(O.items, a => MONTHS[a - 1], (a, b) => `${MONTHS[a - 1]} to ${MONTHS[b - 1]}`))}`;
+    if (W.step) return '';
+    if (restricted(D) && restricted(W)) { // either the date or the weekday
+        parts.push(`${single(D) && single(O) ? `on ${MONTHS[O.items[0][0] - 1]} ${D.items[0][0]}` : dayText(D)} or on ${dowText(W)}`);
+        if (!O.any && !(single(D) && single(O))) parts.push(monthText(O));
+    } else if (single(D) && single(O)) { // a date: "on January 1"
+        parts.push(`on ${MONTHS[O.items[0][0] - 1]} ${D.items[0][0]}`);
+        if (!W.any) parts.push(dowText(W));
+    } else {
+        if (!D.any) parts.push(dayText(D));
+        if (!O.any) parts.push(monthText(O));
+        if (!W.any) parts.push(dowText(W));
     }
     return parts.join(', ');
 }
