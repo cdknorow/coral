@@ -2,6 +2,7 @@ package coralnames
 
 import (
 	"os/exec"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -28,31 +29,33 @@ func TestTeamBranchIsAlwaysAValidBranchName(t *testing.T) {
 	assert.NotEqual(t, TeamBranch("a b"), TeamBranch("a_b"), "names that differ only where it was replaced get their own")
 }
 
-// The folder and branch names, in one place (#6891).
+// The folder and branch names, in one place (#6891). Paths are written with slashes and made the platform's with filepath.FromSlash: the functions join with filepath.Join, so Windows answers with backslashes.
 func TestNamesOfWorktreesAndBranches(t *testing.T) {
+	p := filepath.FromSlash
 	assert.Equal(t, "coral/job-run-42", JobRunBranch(42))
 	assert.True(t, IsCoralBranch("coral/job-run-42"))
 	assert.True(t, IsCoralBranch(TeamBranch("b-abc")))
 	assert.False(t, IsCoralBranch("main"))
 	assert.False(t, IsCoralBranch("feature/coral-team/x"), "only the prefix of a branch name")
-	assert.Equal(t, "/data/worktrees", WorktreesRoot("/data"))
-	assert.Equal(t, "/data/worktrees/b-1", TeamWorktree("/data", "b-1"))
-	assert.True(t, InWorktreesRoot("/data", "/data/worktrees/b-1"))
-	assert.False(t, InWorktreesRoot("/data", "/data/worktrees/b-1/sub"))
-	assert.False(t, InWorktreesRoot("/data", "/elsewhere/worktrees/b-1"))
-	assert.Equal(t, "/data/worktrees/job-run-7-proj", JobRunWorktree("/data/worktrees", "/home/u/proj", 7))
-	assert.Equal(t, "/home/u/proj_task_run_7", JobRunWorktree("", "/home/u/proj", 7), "the legacy folder beside the repository")
+	assert.Equal(t, p("/data/worktrees"), WorktreesRoot(p("/data")))
+	assert.Equal(t, p("/data/worktrees/b-1"), TeamWorktree(p("/data"), "b-1"))
+	assert.True(t, InWorktreesRoot(p("/data"), p("/data/worktrees/b-1")))
+	assert.False(t, InWorktreesRoot(p("/data"), p("/data/worktrees/b-1/sub")))
+	assert.False(t, InWorktreesRoot(p("/data"), p("/elsewhere/worktrees/b-1")))
+	assert.Equal(t, p("/data/worktrees/job-run-7-proj"), JobRunWorktree(p("/data/worktrees"), p("/home/u/proj"), 7))
+	assert.Equal(t, p("/home/u/proj_task_run_7"), JobRunWorktree("", p("/home/u/proj"), 7), "the legacy folder beside the repository")
 }
 
 // The exact folder of a run, never the repository, another run's or another repository's.
 func TestIsJobRunWorktree(t *testing.T) {
-	root, repo := "/data/worktrees", "/home/u/proj"
-	assert.True(t, IsJobRunWorktree(root, repo, 7, root+"/job-run-7-proj"))
+	p := filepath.FromSlash
+	root, repo := p("/data/worktrees"), p("/home/u/proj")
+	assert.True(t, IsJobRunWorktree(root, repo, 7, p(root+"/job-run-7-proj")))
 	assert.True(t, IsJobRunWorktree(root, repo, 7, repo+"_task_run_7"), "the legacy folder beside the repository")
 	assert.False(t, IsJobRunWorktree(root, repo, 7, repo), "never the repository itself")
-	assert.False(t, IsJobRunWorktree(root, repo, 7, root+"/job-run-8-proj"), "another run's")
-	assert.False(t, IsJobRunWorktree(root, repo, 7, root+"/job-run-7-other"), "another repository's name")
-	assert.False(t, IsJobRunWorktree(root, repo, 7, root+"/x/job-run-7-proj"), "not directly in the folder")
-	assert.False(t, IsJobRunWorktree("", repo, 7, root+"/job-run-7-proj"), "no root, no folder")
-	assert.False(t, IsJobRunWorktree(root, "", 7, root+"/job-run-7-"))
+	assert.False(t, IsJobRunWorktree(root, repo, 7, p(root+"/job-run-8-proj")), "another run's")
+	assert.False(t, IsJobRunWorktree(root, repo, 7, p(root+"/job-run-7-other")), "another repository's name")
+	assert.False(t, IsJobRunWorktree(root, repo, 7, p(root+"/x/job-run-7-proj")), "not directly in the folder")
+	assert.False(t, IsJobRunWorktree("", repo, 7, p(root+"/job-run-7-proj")), "no root, no folder")
+	assert.False(t, IsJobRunWorktree(root, "", 7, p(root+"/job-run-7-")))
 }
