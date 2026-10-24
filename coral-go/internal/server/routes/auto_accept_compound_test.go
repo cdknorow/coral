@@ -182,6 +182,14 @@ func TestParsedReadingKeepsTheWorkingDirectory(t *testing.T) {
 
 // QA's round 1 (#7086): a command nested n deep costs n passes over its own text, because each level is a command with the rest inside it. It is answered as risky once reading it would print more
 // than a few times its own length, in about the time of one pass, whatever the nesting.
+// raceSlowdown is how much longer a bound on the clock may be when the race detector is on (QA's round 3: the 2 s limits failed under -race at 3.8 s and 3.1 s).
+func raceSlowdown() time.Duration {
+	if raceEnabled {
+		return 8
+	}
+	return 1
+}
+
 func TestShellRiskDeepNestingIsAnsweredInOnePass(t *testing.T) {
 	wd := t.TempDir()
 	for _, n := range []int{50, 500, 4000, 20000} {
@@ -189,7 +197,7 @@ func TestShellRiskDeepNestingIsAnsweredInOnePass(t *testing.T) {
 		start := time.Now()
 		why := shellRisk(cmd, wd)
 		took := time.Since(start)
-		assert.Less(t, took, 2*time.Second, "%d nested $( ) took %s", n, took)
+		assert.Less(t, took, 2*time.Second*raceSlowdown(), "%d nested $( ) took %s", n, took)
 		if n >= 4000 {
 			assert.Equal(t, "it is nested too deeply to check", why, "%d deep is not read, and asks", n)
 		}
@@ -209,7 +217,7 @@ func TestShellRiskDeepNestingIsAnsweredInOnePass(t *testing.T) {
 	} {
 		start := time.Now()
 		_ = shellRisk(cmd, wd)
-		assert.Less(t, time.Since(start), 2*time.Second, name)
+		assert.Less(t, time.Since(start), 2*time.Second*raceSlowdown(), name)
 	}
 }
 
@@ -235,7 +243,7 @@ func TestShellRiskWrapperRecursionIsMemoizedPerRun(t *testing.T) {
 		}
 		start := time.Now()
 		why := shellRisk(cmd, wd)
-		assert.Less(t, time.Since(start), time.Second, "bash -c nested %d deep (%d bytes)", depth, len(cmd))
+		assert.Less(t, time.Since(start), time.Second*raceSlowdown(), "bash -c nested %d deep (%d bytes)", depth, len(cmd))
 		assert.Empty(t, why, "an ordinary command in wrappers is not risky")
 		// A risky command at the bottom of the same wrappers is still found.
 		deep := "rm -rf /etc"
