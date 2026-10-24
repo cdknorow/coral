@@ -295,9 +295,18 @@ async function loadStorageDetail(fileCount = null) {
         days.dataset.loaded = '1';
         kind.value = ['diffs', 'objects', 'all'].includes(ret.kinds) ? ret.kinds : 'diffs';
         showRetentionStatus(ret);
+        syncRetentionKind();
+        if (!days.dataset.wired) { days.dataset.wired = '1'; days.addEventListener('input', () => { syncRetentionKind(); const n = Number(days.value) > 0 ? Math.floor(Number(days.value)) : 0; if (!n) showRetentionStatus({ days: 0, last: ret.last }); else if (n !== (Number(ret.days) || 0)) _lines(document.getElementById('settings-retention-status'), [`Turns on at ${n} days when you save.`]); else showRetentionStatus(ret); }); }
     } catch {
         out.textContent = '';
     }
+}
+
+/** 0 days is off, and the select that says what it prunes is off with it (#7041): it looked live while it did nothing. */
+function syncRetentionKind() {
+    const days = document.getElementById('settings-retention-days');
+    const kind = document.getElementById('settings-retention-kind');
+    if (days && kind) kind.disabled = !(Number(days.value) > 0);
 }
 
 function showRetentionStatus(ret) {
@@ -310,7 +319,7 @@ function showRetentionStatus(ret) {
     const waiting = days > 0 && enabled && !(acked && acked >= enabled) && Date.now() - enabled < 24 * 3600e3;
     review.hidden = !waiting;
     const lines = [];
-    if (!days) { /* off: the field says 0 */ }
+    if (!days) lines.push('Off.');
     else if (waiting) lines.push(`On (${days} days), waiting: review what it would do to start now, or it starts on ${new Date(enabled.getTime() + 24 * 3600e3).toLocaleString()}.`);
     else if (days && !enabled) lines.push(`On (${days} days): its first check is within the hour; it then waits for your review.`);
     else lines.push(`On (${days} days).`);

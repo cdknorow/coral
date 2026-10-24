@@ -989,11 +989,12 @@
                 <dd>
                     <div class="settings-controls-row">
                     <label class="settings-inline">Older than <input type="number" id="settings-prune-days" min="1" max="3650" step="1" value="14" inputmode="numeric"> days</label>
-                    <select id="settings-prune-kind" aria-label="What to prune">
+                    <label class="settings-inline">What to prune
+                    <select id="settings-prune-kind">
                         <option value="diffs">Saved diffs</option>
                         <option value="objects">Unlinked artifacts</option>
                         <option value="all">Both</option>
-                    </select>
+                    </select></label>
                     <button class="btn btn-small" type="button" id="settings-storage-shrink">Shrink…</button>
                     <button class="btn btn-small" type="button" id="settings-storage-prune">Prune…</button>
                     </div>
@@ -1006,12 +1007,16 @@
                     <span class="toggle-desc">Prune what is older than this every hour. 0 means off (the default). After you turn it on, nothing is removed until you review what it would do, or 24 hours later; each run frees at most 2 GiB.</span>
                 </dt>
                 <dd>
+                    <div class="settings-controls-row">
+                    <label class="settings-inline" for="settings-retention-days">Older than</label>
                     <span class="settings-unit-field"><input type="number" id="settings-retention-days" min="0" max="3650" step="1" inputmode="numeric" aria-describedby="settings-retention-status settings-retention-days-unit"><span class="settings-field-unit" id="settings-retention-days-unit">days</span></span>
-                    <select id="settings-retention-kind" aria-label="What automatic cleanup prunes">
+                    <label class="settings-inline">What to prune
+                    <select id="settings-retention-kind">
                         <option value="diffs">Saved diffs</option>
                         <option value="objects">Unlinked artifacts</option>
                         <option value="all">Both</option>
-                    </select>
+                    </select></label>
+                    </div>
                     <div id="settings-retention-status" class="settings-hint" role="status"></div>
                     <button class="btn btn-small" type="button" id="settings-retention-review" hidden>Review and start…</button>
                 </dd>
