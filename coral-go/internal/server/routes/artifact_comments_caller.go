@@ -17,8 +17,8 @@ import (
 // The caller of a comments route is derived HERE and nowhere else, and fails closed (#5176, Security's conditions): the author of a comment, the key of its rate limit and every
 // ownership check come from this function and never from the request body or a header the client chose.
 //
-//   - A request carrying the tunnel's stamp is never the owner, whatever else it carries (the operator's own credential included): with the authentic stamp it is a Coral Hub viewer, with
-//     a forged one it is refused outright.
+//   - A request carrying the tunnel's stamp is never the owner, whatever else it carries (the operator's own credential included), unless the table's owner check passes on one of the three
+//     owner write routes (a comment or reply, a resolve, a reopen: ownerCommentWrite, #7052): with the authentic stamp it is otherwise a Coral Hub viewer, with a forged one it is refused outright.
 //   - X-Coral-Hub-User is read only on an authentic stamp, and only when it is exactly hub-user-<8 hex>; unstamped, the header is ignored. (The tunnel forwards it for these routes only
 //     once Coral Hub has settled a stable subject; until then a hub viewer is read-only and has no subject.)
 //   - An agent is the session its verified token names.
@@ -85,6 +85,12 @@ func (h *SessionsHandler) artifactCommentCaller(r *http.Request) (c commentCalle
 		if !cloud.TunneledAuthentic(r) {
 			return commentCaller{}, http.StatusForbidden, "forged_tunnel_stamp"
 		}
+		if ownerCommentWrite(r) && hubOwnerRequest(r).owner {
+			// The Hub's owner, by every check of hubOwnerRequest (the stamp, the owner marker, the enrolled label), on an owner write route: the owner's own identity, the server's (ownerIdentity), never the
+			// stamped hub user: that is used for the check only (#7052).
+			issuer, subject, name := h.ownerIdentity(r)
+			return commentCaller{Kind: commentCallerOwner, Issuer: issuer, Subject: subject, Name: cleanCommentName(name)}, 0, ""
+		}
 		c = commentCaller{Kind: commentCallerHub, Issuer: hubIssuer}
 		if u := r.Header.Get(tunnel.HubUserHeader); tunnel.ValidHubUser(u) {
 			c.Subject = u
@@ -118,4 +124,21 @@ func cleanCommentName(s string) string {
 		b.WriteRune(r)
 	}
 	return b.String()
+}
+
+// ownerCommentWrite reports whether the request is a POST to a route the tunnel table lists as an owner-only comment write (a comment or reply, a resolve, a reopen). The table decides: a route it does not list
+// as owner-only, a PATCH or DELETE, the lock and the agent's reply are never one.
+func ownerCommentWrite(r *http.Request) bool {
+	if r.Method != http.MethodPost {
+		return false
+	}
+	pattern, mode := tunnel.OwnerRoute(r.Method, r.URL.Path)
+	if mode == tunnel.OwnerNone || !mode.Refuses() {
+		return false
+	}
+	switch pattern {
+	case "/api/artifacts/{hex64}/comments", "/api/artifacts/{hex64}/comments/{id}/resolve", "/api/artifacts/{hex64}/comments/{id}/reopen":
+		return true
+	}
+	return false
 }

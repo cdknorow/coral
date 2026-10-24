@@ -76,6 +76,9 @@ var ownerRefusals = map[string]string{
 	tunnel.OwnerRouteKey("GET", "/api/board/{project}/artifacts"):                   textArtifactsOwnerOnly,
 	tunnel.OwnerRouteKey("GET", "/api/session-artifacts"):                           textArtifactsOwnerOnly,
 	tunnel.OwnerRouteKey("DELETE", "/api/artifacts/{hex64}"):                        "through Coral Hub only the account this computer is linked to can delete an artifact",
+	tunnel.OwnerRouteKey("POST", "/api/artifacts/{hex64}/comments"):                 textCommentsOwnerOnly,
+	tunnel.OwnerRouteKey("POST", "/api/artifacts/{hex64}/comments/{id}/resolve"):    textCommentsOwnerOnly,
+	tunnel.OwnerRouteKey("POST", "/api/artifacts/{hex64}/comments/{id}/reopen"):     textCommentsOwnerOnly,
 	tunnel.OwnerRouteKey("PUT", "/api/board/{project}/settings"):                    "only the account this computer is linked to can change board settings through Coral Hub",
 	tunnel.OwnerRouteKey("GET", tunnel.PromptInspectionPath):                        "only the account this computer is linked to can read the prompts through Coral Hub",
 	tunnel.OwnerRouteKey("GET", "/api/board/{project}/cross-team/settings"):         textHubSwitchOwnerOnly,
@@ -98,6 +101,8 @@ const textCustomModelsOwnerOnly = "through Coral Hub only the account this compu
 const textSavedOwnerOnly = "through Coral Hub the saved messages are for the account this computer is linked to only (#5753)"
 
 const textHubAutoAcceptOwnerOnly = "through Coral Hub only the account this computer is linked to can turn Coral Hub auto-accept on or off; on this computer use Settings > Network and Hub"
+
+const textCommentsOwnerOnly = "through Coral Hub only the account this computer is linked to can comment on artifacts (#7052)"
 
 const textArtifactsOwnerOnly = "through Coral Hub artifacts and pasted images are for the account this computer is linked to only"
 

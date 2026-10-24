@@ -98,6 +98,10 @@ func TestTheOwnerTableAgreesWithTheHandWrittenListItReplaced(t *testing.T) {
 			if p == "/api/saved" || strings.HasPrefix(p, "/api/saved/") && (m == http.MethodGet && strings.HasSuffix(p, "/message") || m == http.MethodPatch || m == http.MethodDelete) {
 				continue // every saved-for-later route (#5763): the list, the whole message, and the changes
 			}
+			// The owner's comment writes (a comment or reply, a resolve, a reopen) are new (#7052): the old list never had them.
+			if m == http.MethodPost && strings.HasPrefix(p, "/api/artifacts/") && (strings.HasSuffix(p, "/comments") || strings.HasSuffix(p, "/resolve") || strings.HasSuffix(p, "/reopen")) {
+				continue
+			}
 			// The one difference of #5610: the table's {id} is any one segment, so a task artifact-content path with a non-number id is stamped too (its handler refuses it).
 			if strings.HasPrefix(p, "/api/board/") && strings.HasSuffix(p, "/artifact-content") && m == http.MethodGet {
 				continue

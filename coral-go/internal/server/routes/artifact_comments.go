@@ -464,6 +464,9 @@ func redactComment(text string) (string, bool) {
 // commentCallerFor derives the caller and asks the policy whether this kind of caller may ever do the action, BEFORE the artifact is looked up: a caller who may not do it learns nothing about
 // which artifact ids exist (404 vs 415 vs ok). The artifact, the comment, the lock and the author come after.
 func (h *SessionsHandler) commentCallerFor(w http.ResponseWriter, r *http.Request, action string) (commentCaller, bool) {
+	if (action == commentCreate || action == commentResolve) && cloud.Tunneled(r) && refuseNonOwner(w, r) { // through Coral Hub the owner's alone, checked before anything else of the comment code (#7052)
+		return commentCaller{}, false
+	}
 	caller, status, code := h.artifactCommentCaller(r)
 	if status != 0 {
 		commentRefuse(w, status, code, "not allowed")

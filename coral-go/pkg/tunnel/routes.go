@@ -232,11 +232,19 @@ var routeTable = cat(
 		"/api/artifacts/{hex64}/meta",
 		// Who can read an artifact (#5577): the owners that hold it and the teams whose agents read it. No query.
 		"/api/artifacts/{hex64}/readers",
-		// The comments on an artifact (#5176): reads only. Writing, replying, resolving and the owner's lock are unlisted (never) from here.
+		// The comments on an artifact (#5176): reads here; the owner's writes are the block below. Editing, deleting, sending a thread to an agent, the lock and an agent's reply are unlisted (never) from here.
 		"/api/artifacts/{hex64}/comments",
 		"/api/board/{project}/tasks/{id}/artifact-content",
 		"/api/board/{project}/artifacts",
 		"/api/session-artifacts",
+	)),
+	// A comment, a reply (the same route with a parent_id) and a resolve or reopen, through the Hub (#7052, the Hub's #7039 request): the OWNER's alone, as the artifact reads are (#5575). A comment changes state on this
+	// computer and runs nothing, so Interact; the machine's own mode still caps it. Edit and delete (PATCH, DELETE), send (hands a thread to an agent), the lock and an agent's reply (POST .../{id}/reply, which is never a person's
+	// and refuses anything tunnelled) stay unlisted.
+	owner(OwnerRefuse, rules(http.MethodPost, TierInteract,
+		"/api/artifacts/{hex64}/comments",
+		"/api/artifacts/{hex64}/comments/{id}/resolve",
+		"/api/artifacts/{hex64}/comments/{id}/reopen",
 	)),
 	// Saved for later (#4510) is the OWNER's alone through the hub (#5753, Shared Inbox, Security's condition 3): the list holds the bookmarks of the owner's chats, and the whole
 	// message of a bookmark (the text of its source, redacted and cut to 64 KiB; the source is the stored bookmark's, never a ref from the request) is read from its own route. The
