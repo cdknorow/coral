@@ -131,6 +131,8 @@ type JobScheduler struct {
 	worktreeRoot   string // where run worktrees go (Coral's data dir); "" = beside the repo (legacy)
 	workflowRunner *WorkflowRunner
 	workflowStore  *store.WorkflowStore
+	sessionTurn    func(ctx context.Context, sessionID string) (store.RunTurn, error) // how a session's current turn stands (#7090); nil: no run is finished by its turn
+	turnEnded      sync.Map                                                           // run_id -> whether its agent was gone, for a run settled on its turn and not yet cleaned up
 }
 
 // NewJobScheduler creates a new JobScheduler.
@@ -287,6 +289,9 @@ func (s *JobScheduler) reapStaleRuns(ctx context.Context) {
 			finish("completed", reason, "")
 			s.cleanupSettledWorktree(ctx, run, *job)
 		default:
+			if s.settleAdoptedOnTurn(ctx, run, *job) { // its agent is alive but finished its turn while Coral was down (#7090)
+				continue
+			}
 			s.adoptRun(ctx, run, *job, started.Add(maxDur))
 		}
 	}
@@ -348,6 +353,9 @@ func (s *JobScheduler) adoptRun(ctx context.Context, run store.ScheduledRun, job
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
+				if s.settleAdoptedOnTurn(ctx, run, job) {
+					return
+				}
 				if !s.agentAlive(ctx, run, job.AgentType) {
 					s.finishRun(ctx, run.ID, job, "completed", "agent_done", false)
 					s.cleanupSettledWorktree(ctx, run, job)
@@ -666,11 +674,9 @@ func (s *JobScheduler) KillRun(ctx context.Context, runID int64) bool {
 	s.killRunSession(ctx, run, agentType)
 
 	now := time.Now().UTC().Format(store.ISOFormat)
-	s.store.UpdateScheduledRun(ctx, runID, map[string]interface{}{
-		"status":      "killed",
-		"exit_reason": "user_cancelled",
-		"finished_at": now,
-	})
+	if won, err := s.store.FinishScheduledRunIfActive(ctx, runID, "killed", "user_cancelled", "", now); err == nil && !won {
+		return false // the run was settled by something else while it was being killed (#7090)
+	}
 
 	// Cancel watchdog goroutine if tracked
 	s.runningMu.Lock()
@@ -783,6 +789,9 @@ func (s *JobScheduler) launchAndWatch(runID int64, job store.ScheduledJob, rc ru
 	// Launch the agent via the configured launch function
 	var launchErr error
 	var neverStarted atomic.Bool
+	if rc.tag == "scheduled" {
+		s.startTurnWatch(watchCtx, runID, job) // a scheduled prompt run finishes on its agent's accepted turn end (#7090)
+	}
 	if s.launchFn != nil {
 		safego.Go("background/scheduler:watchNeverStarted", func() { s.watchNeverStarted(watchCtx, cancel, runID, job, &neverStarted) })
 		// Pass the working dir via a modified job
@@ -797,6 +806,13 @@ func (s *JobScheduler) launchAndWatch(runID int64, job store.ScheduledJob, rc ru
 		s.afterLaunch(ctx, runID, job, rc)
 	}
 
+	if settled, gone := s.takeTurnEnded(runID); settled {
+		// The run was finished by its agent's turn end: the outcome is recorded, and the worktree goes only if the agent's process is.
+		if rc.cleanupWorktree && wt.worktreeDir != "" && gone {
+			s.cleanupWorktree(rc.repoPath, wt.worktreeDir, wt.runBranch, wt.baseBranch)
+		}
+		return
+	}
 	status, exitReason := runOutcome(launchErr, watchCtx.Err())
 	if neverStarted.Load() && status == "failed" { // the backstop ended the run: its own sentence and code, not "context canceled" (#6978)
 		exitReason = agentNeverStartedCode // the code in exit_reason, the sentence in error_msg, on every path (the startup settle's shape, #7016)
@@ -1083,11 +1099,8 @@ func (s *JobScheduler) finishRun(ctx context.Context, runID int64, job store.Sch
 		}
 	}
 	if !userKilled {
-		s.store.UpdateScheduledRun(ctx, runID, map[string]interface{}{
-			"status":      status,
-			"finished_at": now,
-			"exit_reason": exitReason,
-		})
+		// Only while the run is still active: a turn end, a kill or the deadline that settled it first is not overwritten (#7090).
+		s.store.FinishScheduledRunIfActive(ctx, runID, status, exitReason, "", now)
 	}
 }
 
