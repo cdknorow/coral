@@ -26,6 +26,9 @@ import (
 
 // session represents a single running PTY session.
 type session struct {
+	// procOnce closes the process handle (the PTY master) once, whichever of the natural exit and kill gets there first (#6821).
+	procOnce sync.Once
+
 	name       string
 	agentType  string
 	sessionID  string
@@ -125,6 +128,7 @@ func newSession(name, agentType, workDir, sessionID, command string, cols, rows 
 		<-s.proc.Done()
 		time.Sleep(exitDrain)
 		s.closeSubscribers()
+		s.closeProc() // a process left behind that holds the terminal open keeps readLoop from ever seeing the end: the master is closed here too (#6821)
 	}()
 
 	return s, nil
@@ -137,6 +141,7 @@ const exitDrain = 300 * time.Millisecond
 // When the PTY closes (EOF), the log file is closed here to prevent FD leaks
 // if the session exits naturally without kill() being called.
 func (s *session) readLoop() {
+	defer s.closeProc() // a natural exit leaves the PTY master open until something closes it (#6821): after the last output was read, it is this
 	defer s.closeLog()
 	// The process ended on its own (the shell's exit): the subscribers' channels close, so a viewer is told the terminal is closed (the stream sends
 	// terminal_closed) instead of staying open on a dead terminal. kill closes them too; closing is once per subscriber.
@@ -186,6 +191,10 @@ func (s *session) writeLog(data []byte) {
 		s.logFile.Write(data)
 	}
 }
+
+// closeProc closes the process handle once: on Unix the PTY master, one descriptor per session that ended on its own (a scheduled run's agent exiting) which nothing closed before (#6821); on Windows
+// the pseudo console, whose output pipe only ends when it is closed.
+func (s *session) closeProc() { s.procOnce.Do(func() { s.proc.Close() }) }
 
 // closeLog closes the log file once, whichever of readLoop and kill gets here first.
 func (s *session) closeLog() {
@@ -374,7 +383,7 @@ func (s *session) killWithin(grace time.Duration) error {
 	}
 
 	// Close PTY handle
-	s.proc.Close()
+	s.closeProc()
 
 	// Close log file (may already be closed if readLoop did it on natural exit)
 	s.closeLog()
