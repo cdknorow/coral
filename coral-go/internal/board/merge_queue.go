@@ -45,6 +45,10 @@ func stampArtifacts(rows []TaskArtifact, actor string, after int) {
 	}
 }
 
+// copyArtifacts is a copy of the caller's rows. The store stamps and clears its own fields on the rows it records (stampArtifacts, clearStamps) and must never do it on the caller's slice: two goroutines
+// submitting the same evidence rows, or a caller that reads them again, would see (and race with) the store's writes.
+func copyArtifacts(rows []TaskArtifact) []TaskArtifact { return append([]TaskArtifact(nil), rows...) }
+
 // clearStamps drops what a client sent in the server's fields.
 func clearStamps(rows []TaskArtifact) {
 	for i := range rows {
@@ -137,6 +141,7 @@ func (s *Store) AttachPatches(ctx context.Context, project string, id int64, act
 	if len(rows) == 0 {
 		return nil, nil, fmt.Errorf("nothing to attach")
 	}
+	rows = copyArtifacts(rows)
 	clearStamps(rows) // a client's Seq and AttachedBy are replaced, and checked as 0 below: two rows of one name in one attach are refused
 	if _, err := validateTaskArtifacts(rows); err != nil {
 		return nil, nil, err

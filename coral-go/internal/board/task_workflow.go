@@ -481,6 +481,7 @@ func (s *Store) CompleteTaskWithArtifacts(ctx context.Context, project string, t
 // revision and enforces all orchestrator-declared completion gates; a non-nil expectedRevision
 // rejects stale work after an amendment.
 func (s *Store) CompleteTaskWithArtifactsAtRevisionAndCandidate(ctx context.Context, project string, taskID int64, subscriberID string, message *string, outcome string, artifacts []TaskArtifact, expectedRevision *int, candidateRevision string) (*Task, error) {
+	artifacts = copyArtifacts(artifacts)
 	clearStamps(artifacts) // the server's fields (Seq, AttachedBy) are never a client's (#5689)
 	return s.completeTaskWithArtifacts(ctx, project, taskID, subscriberID, message, outcome, artifacts, expectedRevision, candidateRevision, false)
 }
