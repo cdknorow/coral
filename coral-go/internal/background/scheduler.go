@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/subgentic/coral/internal/agent"
@@ -768,7 +769,9 @@ func (s *JobScheduler) launchAndWatch(runID int64, job store.ScheduledJob, rc ru
 
 	// Launch the agent via the configured launch function
 	var launchErr error
+	var neverStarted atomic.Bool
 	if s.launchFn != nil {
+		safego.Go("background/scheduler:watchNeverStarted", func() { s.watchNeverStarted(watchCtx, cancel, runID, job, &neverStarted) })
 		// Pass the working dir via a modified job
 		jobCopy := job
 		jobCopy.RepoPath = wt.workingDir
@@ -782,6 +785,10 @@ func (s *JobScheduler) launchAndWatch(runID int64, job store.ScheduledJob, rc ru
 	}
 
 	status, exitReason := runOutcome(launchErr, watchCtx.Err())
+	if neverStarted.Load() && status == "failed" { // the backstop ended the run: its own sentence and code, not "context canceled" (#6978)
+		exitReason = agentNeverStartedMsg
+		s.store.UpdateScheduledRun(ctx, runID, map[string]interface{}{"error_msg": agentNeverStartedMsg, "error_code": agentNeverStartedCode})
+	}
 	if status == "failed" && errors.Is(launchErr, ptymanager.ErrStartCommand) { // one plain sentence and a fixed code, not "spawn agent failed: ..." (#6978)
 		exitReason = ptymanager.ErrStartCommand.Error()
 		s.store.UpdateScheduledRun(ctx, runID, map[string]interface{}{"error_msg": exitReason, "error_code": startCommandFailedCode})
@@ -810,6 +817,61 @@ func (s *JobScheduler) SetLastEventType(fn func(ctx context.Context, sessionID s
 
 // startCommandFailedCode is the run's fixed error_code when Coral could not hand the agent its start command (#6978).
 const startCommandFailedCode = "start_command_failed"
+
+const (
+	agentNeverStartedMsg  = "the agent never started: its terminal sat at an idle shell and reported nothing"
+	agentNeverStartedCode = "agent_never_started"
+)
+
+// neverStartedAfter is how long a run's terminal may sit at an idle shell with no event from the agent before the run is failed as never started, and neverStartedRecheck how often that is looked at (vars for the tests).
+// A backstop for any cause of an idle shell that nothing else caught: a start command that could not be handed over (#6978), a shell that ate it, a CLI that failed before its first hook.
+var (
+	neverStartedAfter   = 3 * time.Minute
+	neverStartedRecheck = 15 * time.Second
+)
+
+// watchNeverStarted fails a run whose agent never started: after neverStartedAfter, its pane is back at an idle shell (the CLI is not running) and the session has reported no event. It cancels the run's context (the launch
+// function returns, the run is failed and its session killed, as for any failed launch) and sets neverStarted. It ends with the run. Only for a CLI that reports events (claude, codex) and a runtime that can say the shell is idle;
+// anything it cannot tell leaves the run alone.
+func (s *JobScheduler) watchNeverStarted(ctx context.Context, cancel context.CancelFunc, runID int64, job store.ScheduledJob, neverStarted *atomic.Bool) {
+	if s.hasEvents == nil || (job.AgentType != "claude" && job.AgentType != "codex" && job.AgentType != "") {
+		return
+	}
+	checker, ok := s.runtime.(ptymanager.ShellIdleChecker)
+	if !ok {
+		return
+	}
+	select {
+	case <-ctx.Done():
+		return
+	case <-time.After(neverStartedAfter):
+	}
+	ticker := time.NewTicker(neverStartedRecheck)
+	defer ticker.Stop()
+	for {
+		run, err := s.store.GetScheduledRun(context.Background(), runID)
+		if err == nil && run != nil && run.SessionID != nil && *run.SessionID != "" && run.Status == "running" {
+			if s.hasEvents(ctx, *run.SessionID) {
+				return // the agent started
+			}
+			agentType := job.AgentType
+			if agentType == "" {
+				agentType = "claude"
+			}
+			if idle, _, known := checker.AgentShellIdle(ctx, agentType+"-"+*run.SessionID, agentType, *run.SessionID); known && idle {
+				s.logger.Warn("scheduled run: the agent never started", "run_id", runID, "job", job.Name)
+				neverStarted.Store(true)
+				cancel()
+				return
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
 
 // agentExitedEarlyWindow is how short a run must be, from its start to the agent's exit, to be judged by whether the agent ever reported anything.
 var agentExitedEarlyWindow = 15 * time.Second
