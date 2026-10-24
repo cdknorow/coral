@@ -1,0 +1,45 @@
+name: Windows home paths (trial)
+
+# #7070: TestBrowseThroughTheHubWalksDownAndUp and TestSensitivePathAgentCredentials on Windows, and the hub path and file bounds tests around them.
+on:
+  workflow_dispatch:
+  push:
+    branches: ["trial/win-7070-*"]
+
+permissions:
+  contents: read
+
+env:
+  CORAL_TELEMETRY_DISABLED: "1"
+
+jobs:
+  home:
+    name: home paths (windows-latest)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+        working-directory: coral-go
+    env:
+      CGO_ENABLED: "0"
+    steps:
+      - name: Check out LF line endings
+        shell: bash
+        working-directory: ${{ runner.temp }}
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: coral-go/go.mod
+          cache: false
+      - name: Sync agent docs
+        run: bash ../tools/sync-agent-docs.sh
+      - name: the two tests and the tests around them
+        run: |
+          set +e +o pipefail
+          go test -count=1 -tags fts5 -run '^(TestBrowseThroughTheHubWalksDownAndUp|TestSensitivePathAgentCredentials|TestHubHomeMatchFoldsCaseAndSeparators)$' -v ./internal/server/routes 2>&1 | grep -E "^(--- |ok|FAIL)|Error:|Messages|expected|actual" | cut -c1-240 | head -40
+          go test -count=1 -tags fts5 -run 'Hub|Browse|SensitivePath|HomeMatch|FileBounds|Bounds' ./internal/server/routes 2>&1 | grep -E "^(--- FAIL|ok|FAIL)" | head -20
+          go test -count=1 -tags fts5 ./pkg/tunnel -run 'Home|Route|Classify|Query' 2>&1 | tail -3
