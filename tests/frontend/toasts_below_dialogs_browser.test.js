@@ -13,6 +13,7 @@ const DATABASE = 'The sessions database is damaged (page 12 is corrupt). Stop Co
     const { client, Page, Emulation, ev, waitFor, PRELOAD, install } = await connect();
     try {
         await Page.enable(); await Page.addScriptToEvaluateOnNewDocument({ source: PRELOAD });
+        // The warnings are in #notices, the page's fixed column of notices (main's #6162): its z-index is what puts them above the page or below a dialog.
         for (const [w, h] of [[1200, 800], [1200, 600], [390, 844]]) {
             console.log(`${w}x${h}`);
             await Emulation.setDeviceMetricsOverride({ width: w, height: h, deviceScaleFactor: 1, mobile: false });
@@ -21,7 +22,7 @@ const DATABASE = 'The sessions database is damaged (page 12 is corrupt). Stop Co
             await ev(`document.getElementById('warning-toasts')?.remove(); document.querySelectorAll('.security-warning-toast').forEach(t => t.remove()); true`);
             await ev(`(async () => { const m = await import(${STATIC} + 'update_check.js'); m.showSecurityWarning(${JSON.stringify(SECURITY)}); m.showDatabaseWarning(${JSON.stringify(DATABASE)}); return true; })()`);
             await waitFor(`document.querySelectorAll('.security-warning-toast').length >= 2`, 'the warnings');
-            const before = await ev(`parseInt(getComputedStyle(document.getElementById('warning-toasts')).zIndex, 10)`);
+            const before = await ev(`parseInt(getComputedStyle(document.getElementById('notices')).zIndex, 10)`);
             assert.ok(before >= 300, 'with no dialog open the warnings are above the page: ' + before);
 
             // a dialog opens: Settings is wide enough to reach the right edge at 1200
@@ -30,7 +31,7 @@ const DATABASE = 'The sessions database is damaged (page 12 is corrupt). Stop Co
             const open = await ev(`(() => {
                 const modal = document.getElementById('settings-modal'), content = modal.querySelector('.modal-content') || modal;
                 const col = document.getElementById('warning-toasts');
-                const zCol = parseInt(getComputedStyle(col).zIndex, 10), zModal = parseInt(getComputedStyle(modal).zIndex, 10);
+                const zCol = parseInt(getComputedStyle(document.getElementById('notices')).zIndex, 10), zModal = parseInt(getComputedStyle(modal).zIndex, 10);
                 const a = col.getBoundingClientRect(), b = content.getBoundingClientRect();
                 const l = Math.max(a.left, b.left), r = Math.min(a.right, b.right), t = Math.max(a.top, b.top), bt = Math.min(a.bottom, b.bottom);
                 let hit = null;
@@ -45,7 +46,7 @@ const DATABASE = 'The sessions database is damaged (page 12 is corrupt). Stop Co
             // it closes: the warnings are above the page again
             await ev(`(async () => { window.hideSettingsModal && window.hideSettingsModal(); return true; })()`);
             await waitFor(`getComputedStyle(document.getElementById('settings-modal')).display === 'none'`, 'the dialog to close');
-            const after = await ev(`parseInt(getComputedStyle(document.getElementById('warning-toasts')).zIndex, 10)`);
+            const after = await ev(`parseInt(getComputedStyle(document.getElementById('notices')).zIndex, 10)`);
             assert.ok(after >= 300, 'the dialog is closed: the warnings are above the page again: ' + after);
         }
         console.log('   ✓');
