@@ -30,6 +30,8 @@ export function wireAgentSummary() {
 
 /** Open the section of New Agent's menu that has the field (by its name in the menu: "Agent", "Permissions"). */
 export function openAgentSection(name) {
+    const options = document.getElementById('launch-more-options');
+    if (options) options.open = true; // a phone keeps the sections under "More options": a tap on a summary row opens it with the section (#7066)
     for (const tab of document.querySelectorAll('#launch-agent-more .settings-tabs [role=tab]')) {
         if (tab.querySelector('.settings-tab-name')?.textContent.trim() === name) { tab.click(); return; }
     }

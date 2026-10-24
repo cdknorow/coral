@@ -2303,6 +2303,7 @@ button.subscriber-history-link {
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 12px;
     margin-bottom: 8px;
+    padding: 4px; /* room for a card's focus ring: the step scrolls (overflow), which clips what a card draws outside itself (#7066) */
 }
 
 /* The chooser's four choices in a row (#3630). */
@@ -4475,7 +4476,7 @@ a.ibx-open, a.ibx-open:visited { color: var(--link-text); }
 #launch-modal .modal-content:not(.sd-modal-content) { min-height: 0; } /* the chooser and the terminal form hold the hidden New Agent step's .settings-shell, which gave them the tabbed dialogs' 30rem floor: half the chooser was empty (#6316) */
 #launch-agent-more .settings-pane-title { display: none; } /* the section's name is on the tab (or the phone's select) beside it: said twice (#6316); the pane keeps its name from it */
 /* New Agent is two steps (#6333; the stage is data-stage on the step, set by launch_core.js setLaunchMore): the folder with Next, then everything else with Back and Launch; the folder shows as one line with Change in the second. */
-#launch-step-agent[data-stage="folder"] :is(#launch-agent-summary, #launch-agent-more, #launch-agent-back, #launch-agent-go, #launch-dir-summary) { display: none; }
+#launch-step-agent[data-stage="folder"] :is(#launch-agent-summary, .launch-agent-name, #launch-agent-more, #launch-agent-back, #launch-agent-go, #launch-dir-summary) { display: none; }
 #launch-step-agent[data-stage="details"] :is(.launch-dir-field, #launch-dir-note, #dir-browser, #launch-agent-cancel, #launch-agent-next, #launch-dir-recents, #launch-dir-hint) { display: none; }
 .launch-dir-recents { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
 .launch-dir-recents:empty { display: none; }
@@ -4814,3 +4815,25 @@ li:has(> .row-btn:focus-visible) { outline: 2px solid var(--accent); outline-off
 .inbox-needs-folder { color: var(--text-secondary); font-size: 0.8125rem; font-family: var(--font-mono); }
 .ibx-chip-high { display: inline-block; margin-right: 8px; padding: 0 8px; border: 1px solid var(--warning); border-radius: 999px; color: var(--warning); font-size: var(--fs-sm, 0.6875rem); font-weight: 600; vertical-align: middle; }
 body:has(#nav-tab-hub-inbox.active) #saved-btn .saved-count { display: none; }
+
+/* New Agent's second step (#7066, UI/UX's #7059): Name is one field above "More options" (the Persona and the sections); a wide window shows the sections open and without the summary, as it always did, a phone has them
+   closed. The summary's rows are whole targets on a phone, and their Change wraps under the value instead of leaving the screen at large text. */
+.launch-more-options { display: flex; flex: 1; min-height: 0; flex-direction: column; width: 100%; }
+.launch-more-options > .settings-shell { flex: 1; min-height: 0; }
+.launch-more-options > summary { display: none; }
+.launch-agent-name { padding-bottom: .6rem; }
+@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) and (max-width: 950px) {
+    .launch-more-options > summary { display: list-item; cursor: pointer; font-weight: 600; font-size: var(--fs-md); line-height: var(--control-touch-height, 44px); padding: 0 1rem; border-top: 1px solid var(--border); }
+    .launch-more-options:not([open]) { flex: none; }
+    #launch-agent-more:has(> .launch-more-options:not([open])) { flex: none; }
+    .launch-agent-summary, .launch-agent-summary tbody { display: block; }
+    .launch-agent-summary tr { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 0 .75rem; border-top: 1px solid var(--border); padding: 4px 0; }
+    .launch-agent-summary th, .launch-agent-summary td { border-top: 0; display: block; padding: 6px 0; width: auto; }
+    .launch-agent-summary th { flex: 0 0 5rem; white-space: normal; }
+    .launch-agent-summary .las-value { flex: 1 1 6rem; min-width: 0; overflow-wrap: anywhere; }
+    .launch-agent-summary [data-row="provider"] .las-value { flex-basis: 100%; }
+    .launch-agent-summary .las-act { flex: 0 0 auto; width: auto; margin-left: auto; text-align: right; }
+    .launch-agent-summary .las-change::after { content: ''; position: absolute; inset: 0; } /* the whole row is the button (#7066) */
+    .launch-agent-summary tr:has(.las-change:focus-visible) { outline: 2px solid var(--accent); outline-offset: -2px; }
+    .launch-agent-summary .las-change:focus-visible { outline: none; }
+}

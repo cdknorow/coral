@@ -27,6 +27,8 @@ export function setLaunchMore(open) {
     const more = document.getElementById("launch-agent-more");
     if (!more) return;
     more.hidden = !open;
+    const options = document.getElementById("launch-more-options");
+    if (options && open) options.open = !isPhoneLayout(); // the persona and the sections are one closed "More options" on a phone (#7066); a wide window shows them as it always did
     // New Agent is two steps (#6333): the folder, then everything else (the sections, always open there). CSS shows what belongs to the stage in data-stage.
     const step = document.getElementById("launch-step-agent");
     if (step) step.dataset.stage = open ? "details" : "folder";

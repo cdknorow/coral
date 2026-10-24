@@ -87,6 +87,7 @@ export function revealField(el) {
     const pane = el?.closest?.('.settings-pane[data-section]');
     const shell = pane?.closest('.settings-shell');
     if (pane && shell && pane.hidden) showSection(shell, pane.dataset.section);
+    const options = el?.closest?.('#launch-more-options:not([open])'); if (options) options.open = true; // a field in the closed "More options" of a phone's New Agent (#7066)
     el?.closest?.('[data-sd-more][hidden]')?.dispatchEvent(new CustomEvent('sd-more-open', { bubbles: true })); // the sections sit behind a "More options" button (New Agent, #5595): it opens
 }
 

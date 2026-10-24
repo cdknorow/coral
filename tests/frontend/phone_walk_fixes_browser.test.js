@@ -17,7 +17,7 @@ const BASE = require('./test_base').BASE;
         await ev(`(() => { const i = document.getElementById('launch-dir'); if (!i.value) i.value = '/tmp'; document.getElementById('launch-agent-next').click(); return true; })()`);
         await waitFor(`!document.getElementById('launch-agent-pick').hidden && getComputedStyle(document.getElementById('launch-agent-pick')).display !== 'none'`, 'the agent choice', 8000);
     };
-    const section = name => ev(`import(${S} + 'section_dialog.js').then(m => { const shell = document.querySelector('#launch-step-agent .settings-shell'); m.showSection(shell, ${JSON.stringify(name)}); return true; })`);
+    const section = name => ev(`import(${S} + 'section_dialog.js').then(m => { const shell = document.querySelector('#launch-step-agent .settings-shell'); document.getElementById('launch-more-options').open = true; /* a phone keeps the sections under More options (#7066) */ m.showSection(shell, ${JSON.stringify(name)}); return true; })`);
     try {
         await Page.enable(); await Page.addScriptToEvaluateOnNewDocument({ source: PRELOAD });
         for (const [w, h, mobile] of [[1280, 800, false], [390, 844, true]]) {

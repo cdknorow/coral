@@ -116,17 +116,20 @@
                     </div>
                     <div id="launch-cli-slot" class="launch-cli-slot"></div>
                     <div id="launch-tmux-slot" class="launch-cli-slot"></div>
+                    <div class="sd-essentials launch-agent-name">
+                <label>Name / Role <span class="text-muted-sm">(optional)</span>:
+                    <input type="text" id="launch-agent-name-input" placeholder="e.g. QA Engineer, Frontend Dev">
+                </label>
+                    </div>
                     <div id="launch-agent-more" class="sd-more" data-sd-more hidden>
+                    <details id="launch-more-options" class="launch-more-options" open><summary>More options</summary>
                     <div class="settings-shell">
                         <nav class="settings-nav" aria-label="New agent sections">
                             <div class="settings-group-pick"><select class="settings-select" aria-label="New agent section"></select></div>
                             <div class="settings-tabs" role="tablist" aria-orientation="vertical" aria-label="New agent sections"></div>
                         </nav>
                         <div class="settings-panes">
-                        <section class="settings-pane" data-section="workspace" data-title="Name and persona" data-icon="badge" hidden>
-                <label>Name / Role <span class="text-muted-sm">(optional)</span>:
-                    <input type="text" id="launch-agent-name-input" placeholder="e.g. QA Engineer, Frontend Dev">
-                </label>
+                        <section class="settings-pane" data-section="workspace" data-title="Persona" data-icon="badge" hidden>
                 <label>Persona <span class="text-muted-sm">(optional)</span>:
                     <div id="agent-preset-selector" class="agent-preset-selector"></div>
                 </label>
@@ -168,6 +171,7 @@
                         </div>
                         </div>
                     </div>
+                    </details>
                     </div>
                 </div>
                 <div class="modal-actions">
