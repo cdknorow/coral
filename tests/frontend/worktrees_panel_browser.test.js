@@ -34,6 +34,7 @@ const S = `(window.__coralStatic || '/static/')`;
                 return true; })()`);
             await ev(`window.showSettingsModal('cleanup'); true`);
             await waitFor(`document.querySelectorAll('#wt-list .wt-item').length === 3`, 'the kept worktrees', 8000);
+            await waitFor(`!document.getElementById('settings-pane-cleanup').hidden && !document.getElementById('wt-status').closest('[hidden]')`, 'the Storage and cleanup page to be shown (the rows are drawn into it before it is', 8000); // (the status check below reads the page as the person sees it: a slow runner drew the rows before the group was shown)
 
             console.log(`${tag}: the list`);
             const rows = await ev(`[...document.querySelectorAll('#wt-list .wt-item')].map(li => ({ name: li.querySelector('.wt-name').textContent, kind: li.querySelector('.wt-kind').textContent, branch: (li.querySelector('code') || {}).textContent, path: li.querySelector('.wt-path').textContent,
