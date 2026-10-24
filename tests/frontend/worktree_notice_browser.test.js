@@ -27,12 +27,13 @@ const BASE = require('./test_base').BASE;
                 window.__m.add('team-agent', 'K', 3, { sleeping: false, session_id: 't1', board_project: 'team-k' });
                 T.state.liveSessions.forEach(s => { s.branch = 'coral-team/team-k'; s.git_state = { is_worktree: true, base_branch: 'master' }; });
                 T.render.renderLiveSessions(T.state.liveSessions); true`);
-            const stop = async answer => {
+            const stop = async (answer, keep = false) => {
                 await seed();
-                await ev(`document.querySelectorAll('.toast').forEach(t => t.remove()); ['notice-live', 'notice-alert'].forEach(id => { const r = document.getElementById(id); if (r) r.textContent = ''; }); window.__answer = ${JSON.stringify(answer)}; true`);
+                const before = 0;
+                await ev(`${keep ? '' : "document.querySelectorAll('.toast').forEach(t => t.remove());"} ['notice-live', 'notice-alert'].forEach(id => { const r = document.getElementById(id); if (r) r.textContent = ''; }); window.__answer = ${JSON.stringify(answer)}; true`);
                 await ev(`T.render.killBoard('team-k'); true`); await waitFor(open, 'the Kill Team confirmation', 8000);
                 await ev(`document.getElementById('confirm-modal-yes').click(); true`);
-                await waitFor(`!![...document.querySelectorAll('.toast')].find(x => /worktree/.test(x.textContent))`, 'the notice', 6000);
+                await waitFor(keep ? `[...document.querySelectorAll('.toast')].some(x => x.textContent.includes(${JSON.stringify(answer.worktree.path)}))` : `[...document.querySelectorAll('.toast')].filter(x => /worktree/.test(x.textContent)).length > ${before}`, 'the notice', 6000);
                 await waitFor(`!!((document.getElementById('notice-live') || {}).textContent || '').trim() || !!((document.getElementById('notice-alert') || {}).textContent || '').trim()`, 'the notice to be announced', 6000);
             };
             const toast = () => ev(`(() => { const t = [...document.querySelectorAll('.toast')].find(x => /worktree/.test(x.textContent)) || document.querySelector('.toast'); if (!t) return null; const b = t.querySelector('.toast-action'); return { text: t.querySelector('.toast-message').textContent, button: b ? b.textContent : null, error: t.classList.contains('error'), close: !!t.querySelector('.toast-close'),
@@ -48,6 +49,7 @@ const BASE = require('./test_base').BASE;
             t = await toast();
             check(`${tag}: it is still on screen after the time a toast of its length stayed`, !!t && t.button === 'Copy path', JSON.stringify(t));
             await shot(`worktree-notice-${w}`);
+            check(`${tag}: the focus went to its Copy path button when the answer came to the person's own Kill (the column is last in Tab order)`, await ev(`document.activeElement && document.activeElement.classList.contains('toast-action') && document.activeElement.textContent === 'Copy path'`), await ev(`document.activeElement && (document.activeElement.id || document.activeElement.className || document.activeElement.tagName)`));
             await ev(`document.querySelector('.toast-action').click(); true`);
             await waitFor(`window.__copied !== null`, 'the path to be copied', 4000);
             t = await toast();
@@ -70,6 +72,11 @@ const BASE = require('./test_base').BASE;
             await waitFor(`!!document.querySelector('.toast .toast-action')`, 'the single kill\'s notice', 6000);
             t = await toast();
             check(`${tag}: a single agent's kept worktree stays with its own path`, t && /The agent was killed\. Its worktree was kept/.test(t.text) && t.text.includes('/tmp/wt/solo') && t.button === 'Copy path', JSON.stringify(t));
+            await ev(`document.querySelectorAll('.toast').forEach(x => x.remove()); true`);
+            console.log(`${tag}: several kept worktrees`);
+            for (const n of [1, 2, 3]) await stop({ ok: true, sessions_killed: 1, worktree: { state: 'kept', path: `/tmp/wt/team-${n}`, branch: `coral-team/team-${n}`, reason: 'it has uncommitted changes' } }, true);
+            const stacked = await ev(`[...document.querySelectorAll('.toast.worktree-notice')].map(x => x.querySelector('.toast-message').textContent.match(/\\/tmp\\/wt\\/team-\\d/)[0])`);
+            check(`${tag}: ${mobile ? 'a phone keeps the newest two kept-worktree notices (the oldest goes)' : 'a desktop keeps all three'}`, mobile ? stacked.join() === '/tmp/wt/team-2,/tmp/wt/team-3' : stacked.join() === '/tmp/wt/team-1,/tmp/wt/team-2,/tmp/wt/team-3', JSON.stringify(stacked));
             await ev(`document.querySelectorAll('.toast').forEach(x => x.remove()); true`);
         }
     } finally { await client.close(); }

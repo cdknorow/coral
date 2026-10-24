@@ -4,13 +4,21 @@
 import { showToast, copyText } from './utils.js';
 import { announceNotice } from './notifications.js';
 import { worktreeAnswerWords } from './worktree_words.js';
+import { isPhoneLayout } from './phone_layout.js';
+
+const MAX_ON_PHONE = 2; // a phone has room for two of these notices at once: the oldest goes when a third comes (#6830)
 
 /** Say the kill answer's `worktree` on screen. `subject` is 'team' or 'agent' (the words differ). Returns the toast, or null when there is nothing to say. */
 export function showWorktreeNotice(w, subject = 'team') {
     const words = worktreeAnswerWords(w, subject);
     if (!words) return null;
     if (!(w.path && (w.state === 'kept' || w.state === 'failed'))) return showToast(words.text, words.error);
-    return showToast(words.text, words.error, Infinity, { action: {
+    // a phone's column is short: keep at most MAX_ON_PHONE of these notices (the oldest is dismissed, as its × would)
+    if (isPhoneLayout()) {
+        const mine = [...document.querySelectorAll('#toast-host .toast.worktree-notice')];
+        for (const old of mine.slice(0, Math.max(0, mine.length - (MAX_ON_PHONE - 1)))) old.remove();
+    }
+    const toast = showToast(words.text, words.error, Infinity, { action: {
         label: 'Copy path', keepOpen: true,
         onClick: async button => {
             const ok = await copyText(String(w.path));
@@ -18,4 +26,10 @@ export function showWorktreeNotice(w, subject = 'team') {
             if (button) { const was = button.textContent; button.textContent = ok ? 'Copied' : 'Not copied'; setTimeout(() => { if (button.isConnected) button.textContent = was; }, 2000); }
         },
     }, expanded: true });
+    toast.classList.add('worktree-notice');
+    // the answer to the person's own Kill: the Notifications column is last in Tab order, so focus goes to its Copy path button, unless the person has already gone on to something else
+    // (focus on the page itself, or still on the closed confirmation, is not "something else")
+    const a = document.activeElement;
+    if (!a || a === document.body || a.closest('#confirm-modal') || !a.isConnected) { const b = toast.querySelector('.toast-action'); if (b) b.focus(); }
+    return toast;
 }
