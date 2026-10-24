@@ -4,8 +4,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/subgentic/coral/internal/clitext"
+	"github.com/subgentic/coral/internal/sessionstate"
 )
 
 // What an agent is waiting for is the agent's own text (Security's rule for the Inbox row, #6581): "Claude needs your permission to use Bash: <command>" can hold a command, paths, a
@@ -129,4 +131,13 @@ func maskHome(text string) string {
 // isPathWordByte reports whether c continues a folder name (so "/Users/ann" is not the start of "/Users/annabel").
 func isPathWordByte(c byte) bool {
 	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_' || c == '-' || c == '.'
+}
+
+// waitingSince is when the agent's request to the user began (the state's Since, from the event that raised it), as a UTC time; null when it waits for nothing or the start is not known. The Inbox says how long an agent
+// has waited from it (#6981). A plain time, not the agent's words: it is not in the fields a viewer who can only look is denied.
+func waitingSince(s sessionstate.State) any {
+	if !s.NeedsInput || s.Since.IsZero() {
+		return nil
+	}
+	return s.Since.UTC().Format(time.RFC3339)
 }

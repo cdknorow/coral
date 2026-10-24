@@ -644,6 +644,7 @@ func (h *SessionsHandler) SessionStatus(w http.ResponseWriter, r *http.Request) 
 		"awaiting_user":     done,
 		"waiting_reason":    ptr.NullIfEmpty(liveState.WaitingReason),
 		"waiting_summary":   waitingLine(waitingSource(liveState.WaitingWants, liveState.WaitingSummary)),
+		"waiting_since":     waitingSince(liveState),
 		"waiting_kind":      ptr.NullIfEmpty(liveState.WaitingKind),
 		"done":              done,
 		"sleeping":          sleeping,

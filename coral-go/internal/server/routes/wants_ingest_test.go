@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
@@ -81,6 +82,12 @@ func TestWhatARequestWantsIsStoredAndShownAsTheSanitizedLine(t *testing.T) {
 		assert.NotContains(t, s, "/Users/ann", name)
 	}
 	assert.Equal(t, "permission", row["waiting_kind"], "the kind is unchanged")
+	since, ok := row["waiting_since"].(string)
+	require.True(t, ok, "a waiting agent's row says since when (#6981)")
+	at, err := time.Parse(time.RFC3339, since)
+	require.NoError(t, err)
+	assert.WithinDuration(t, time.Now(), at, time.Minute, "the time its request began")
+	assert.Equal(t, since, jsonField(t, get("/api/sessions/"+r.sid+"/resolve"), "waiting_since"), "the same on resolve")
 
 	// Never logged raw.
 	noFragment(t, logs.String(), tok, 8, "the logs")
