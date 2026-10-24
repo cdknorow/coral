@@ -76,7 +76,7 @@ const { setTheme, installAudit, auditRegion } = require('./helpers/contrast');
                 const noteEmpty = await ax('#model-chip-note');
                 assert.ok(!noteEmpty.ignored, 'the live region is in the accessibility tree while empty, so a note that appears is announced');
                 assert.equal(await ev(`getComputedStyle(document.getElementById('model-chip-note')).display`) !== 'none', true);
-                for (const [kind, nameHas, itemsMin, choose] of [['model', ['Model', 'Opus 5.5'], 1, null], ['thinking', ['Thinking level', 'High'], 4, 'low']]) {
+                for (const [kind, nameHas, itemsMin, choose] of [['model', ['Model', 'Opus 5.5'], 1, null], ['thinking', ['Thinking', 'High'], 4, 'low']]) {
                     const chip = `#${kind}-chip`, menuSel = `#${kind}-chip-menu`, id = `${kind}-chip`;
                     let c = await ax(chip);
                     assert.equal(c.role, 'button');

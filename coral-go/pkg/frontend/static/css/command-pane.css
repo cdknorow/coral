@@ -511,6 +511,7 @@ body.popout-mode.popout-terminal-blocked .attach-image-btn { pointer-events: non
 /* Mobile and the popout force the toolbar and send buttons visible. */
 #command-pane.agent-sleeping .command-pane-toolbar,
 #command-pane.agent-sleeping .mobile-send-btn,
+#command-pane.agent-sleeping .mobile-send-more,
 #command-pane.agent-sleeping .image-attachments {
     display: none !important;
 }
@@ -573,6 +574,8 @@ body.popout-mode.popout-terminal-blocked .attach-image-btn { pointer-events: non
     background: var(--bg-tertiary); color: var(--text-secondary); font: inherit; font-size: 0.75rem; cursor: pointer; }
 .model-chip:hover { color: var(--text-primary); border-color: var(--text-muted); }
 .model-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.model-chip-key { display: none; color: var(--text-muted); white-space: nowrap; flex: none; }
+.model-chip.chip-keyed .model-chip-key { display: inline; } /* only a chip showing a default says what it is for (#7063): a model's name or a level says it itself, and the row stays one line */
 .model-chip-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .model-chip[data-state="requested"] .model-chip-text { font-style: italic; }
 .model-chip[data-state="pending"] { color: var(--text-primary); border-color: var(--accent); } /* the accent is the border: as text it is 4.1:1 on the chip in the light theme (#5042) */

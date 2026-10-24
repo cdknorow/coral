@@ -2001,7 +2001,8 @@
    clickable, so a click still says why. (Until #3645 the Send rule here named an inline onclick; it matched nothing after.) */
 .hub-blocked { opacity: 0.45; cursor: not-allowed; }
 /* The phone's Send button is dimmed and inert for any View-only agent, whether the hub said so on the terminal socket or the Servers list did. */
-.command-pane.hub-view-only .mobile-send-btn { opacity: 0.4; pointer-events: none; }
+.command-pane.hub-view-only .mobile-send-btn,
+.command-pane.hub-view-only .mobile-send-more { opacity: 0.4; pointer-events: none; }
 .xterm-container.hub-view-only ~ .terminal-statusbar .xterm-focus-hint,
 .xterm-container.agent-sleeping ~ .terminal-statusbar .xterm-focus-hint { display: none; }
 

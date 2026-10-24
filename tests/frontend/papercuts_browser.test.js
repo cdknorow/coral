@@ -209,12 +209,15 @@ const BASE = require('./test_base').BASE;
 
         // ── (10)(11) Phone: team-send button. (The nav strip and its edge fade are gone: the phone has a bottom tab bar, nav_tabs_browser, #3785.)
         await open(390, 844, true);
-        const team = await ev(`(() => { const b = document.querySelector('.mobile-send-team-btn'); return b && { label: b.getAttribute('aria-label'), title: b.title, icon: !!b.querySelector('.material-icons'), text: b.textContent.trim() }; })()`);
-        assert.ok(team, 'the team-send button exists');
-        assert.equal(team.label, 'Send with team reminder');
+        // (#7063) the team reminder is behind Send options, as on a desktop: a caret with a name, and the item inside it says what it sends
+        const team = await ev(`(() => { const b = document.querySelector('.mobile-send-options-btn'); const i = document.querySelector('.mobile-send-menu .send-menu-item'); return b && { label: b.getAttribute('aria-label'), title: b.title, icon: !!b.querySelector('.material-icons'), text: b.textContent.replace('expand_more', '').trim(), item: i && i.textContent.trim(), action: i && i.getAttribute('data-on-click') }; })()`);
+        assert.ok(team, 'the Send options button exists');
+        assert.equal(team.label, 'Send options');
         assert.ok(team.icon, 'an icon, not "+T"');
-        assert.ok(!/\\+T/.test(team.text), 'no cryptic +T text');
-        console.log(`PASS (10)(11) phone: labelled team-send icon`);
+        assert.equal(team.text, '', 'no cryptic text on it');
+        assert.equal(team.item, 'Send with team reminder');
+        assert.equal(team.action, 'send-menu-team');
+        console.log(`PASS (10)(11) phone: Send options holds the team reminder`);
     } finally {
         await Fetch.disable().catch(() => {});
         await client.close();

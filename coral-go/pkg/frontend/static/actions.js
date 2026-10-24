@@ -48,7 +48,7 @@ export const DESTRUCTIVE_ACTIONS = new Set(['session-restart', 'mb-delete-board'
     'm-confirm-restart',
     // Slice 8: End them (the agents left in Coral's old tmux server).
     'm-end-leftover-tmux']);
-export const SEND_ACTIONS = new Set(['cmd-send', 'cmd-send-team', 'cmd-mode-toggle', 'cmd-quick', 'cmd-raw-keys', 'cmd-macro',
+export const SEND_ACTIONS = new Set(['cmd-send', 'cmd-mode-toggle', 'cmd-quick', 'cmd-raw-keys', 'cmd-macro',
     'cmd-send-menu', 'send-menu-send', 'send-menu-team', 'send-menu-resend', 'send-menu-protocol', 'attach-image', 'cmd-stop']);
 
 /** actionSelector: a CSS selector matching any element whose data-on-click names one of names. */

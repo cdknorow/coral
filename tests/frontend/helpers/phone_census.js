@@ -86,14 +86,14 @@ module.exports = part => (async () => {
             await sc('terminal view: Copy screen', async () => { await waitFor(`!!document.getElementById('terminal-copy-screen-btn') && document.getElementById('terminal-copy-screen-btn').getClientRects().length > 0`, 'the Copy screen button', 10000); }, { min: 8, expect: `document.getElementById('terminal-copy-screen-btn').getAttribute('aria-label') === 'Copy screen'` });
             await sc('terminal view: header and composer controls', async () => { await waitFor(`document.getElementById('popout-panel-toggle-btn').getClientRects().length > 0`, 'the header buttons', 10000); }, { min: 5, expect: `document.querySelector('.attach-image-btn').getClientRects().length > 0 && document.querySelector('.mobile-send-btn').getClientRects().length > 0` });
             await tap('#live-view-btn-chat');
-            await tap('#panel-toggle-btn'); await waitFor(`document.querySelector('.agentic-state-tabs').getClientRects().length > 0`, 'side panel', 8000);
+            await tap('#popout-panel-toggle-btn'); await waitFor(`document.querySelector('.agentic-state-tabs').getClientRects().length > 0`, 'side panel', 8000);
             for (const tab of await ev(`[...document.querySelectorAll('.agentic-state-tabs .agentic-tab[data-tab]')].filter(e => e.getClientRects().length).map(e => e.dataset.tab)`)) await sc(`side panel: ${tab}`, async () => { await tap(`.agentic-state-tabs [data-tab="${tab}"]`); }, { min: 12, expect: `document.querySelector('.agentic-state-tabs [data-tab="${tab}"]').classList.contains('active')` });
             await sc('side panel: customize tabs', async () => { await tap('[aria-label="Customize tabs"]'); }, { min: 12, expect: `!!document.getElementById('tab-customize-title') && document.getElementById('tab-customize-title').getClientRects().length > 0` });
             await ev(`document.body.click(); true`);
             await sc('side panel: board composer', async () => {
                 await ev(`window.__m.add('board-agent', 'B', 3, { sleeping: false, board_project: ${JSON.stringify(TEAM)} }); window.selectLiveSession('board-agent', 'claude', 'board-agent-id', 'local'); true`);
                 await new Promise(r => setTimeout(r, 600)); // sleep-ok: the phone closes its side panel when another agent is picked
-                if (!(await ev(`!!document.querySelector('.agentic-state-tabs') && document.querySelector('.agentic-state-tabs').getClientRects().length > 0`))) await tap('#panel-toggle-btn');
+                if (!(await ev(`!!document.querySelector('.agentic-state-tabs') && document.querySelector('.agentic-state-tabs').getClientRects().length > 0`))) await tap('#popout-panel-toggle-btn');
                 await openBoardComposer(ev, waitFor, TEAM, false);
             }, { min: 5, expect: BOARD_COMPOSER_UP }); // the team's message box (#6239)
             await ev(`window.selectLiveSession(${JSON.stringify(standIn.name)}, 'claude', ${JSON.stringify(standIn.sid)}, 'local'); true`);

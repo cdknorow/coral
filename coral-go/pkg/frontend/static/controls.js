@@ -1189,7 +1189,6 @@ registerActions({
     'macro-delete': el => { const i = indexOf(el.dataset.index); if (i !== null) deleteMacro(i); },
     'macro-show': () => showMacroModal(),
     'cmd-send': () => sendCommand({ nudge: true }),
-    'cmd-send-team': () => sendCommandWithTeam(),
     'attach-image': () => openImagePicker(),
     'cmd-send-menu': el => window.toggleSendMenu(el),
     'send-menu-send': () => { sendCommand({ nudge: true }); window.closeSendMenu(); },

@@ -37,7 +37,7 @@ function parts() {
 
 /** What the chips say for a row: { model: {text, state}, thinking: {text, state, shown}, note } (state: '', 'pending', 'failed', 'requested'; note is plain text). */
 export function chipView(s, server) {
-    const base = modelLabel(s.agent_type, s.model, server) || 'Model';
+    const base = modelLabel(s.agent_type, s.model, server) || 'CLI default'; // no model set: the chip reads "Model: CLI default", never "Model: Model" (#7063)
     const sw = s.model_switch;
     const lvl = s.thinking_actual ? levelName(s.thinking_actual) : (s.thinking ? levelName(s.thinking) : '');
     const view = { model: { text: base, state: '' }, thinking: { text: lvl || 'Default', state: !s.thinking_actual && s.thinking ? 'requested' : '' }, note: '' };
@@ -98,10 +98,11 @@ export function updateModelChip(session, server) {
     if (!hasLevels) _ensureLevels(s, server);
     setHidden(p.thinking.wrap, !hasLevels);
     if (!hasLevels && _open === 'thinking') _closeMenu();
-    const labels = { model: `Model: ${v.model.text}`, thinking: `Thinking level: ${v.thinking.text}` };
+    const labels = { model: `Model: ${v.model.text}`, thinking: `Thinking: ${v.thinking.text}` };
     for (const k of KINDS) {
         const { chip, text } = p[k];
         setText(text, v[k].text);                  // plain text, never markup (a failure message is the CLI's own output)
+        chip.classList.toggle('chip-keyed', /default|^model$/i.test(v[k].text)); // "Model: CLI default", "Thinking: Default": the word alone does not say what it is for (#7063)
         setData(chip, 'state', v[k].state);
         setTitle(chip, v[k].state === 'requested' ? v.note : '');
         setAttr(chip, 'aria-label', labels[k]);    // the name holds what the chip shows (label in name), not a fixed phrase that hides it

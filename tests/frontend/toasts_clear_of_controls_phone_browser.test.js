@@ -64,8 +64,8 @@ async function httpJson(method, p, body) { const r = await fetch(BASE + p, { met
         const lng = await ev(`(() => { const t = [...document.querySelectorAll('.toast')].find(e => e.textContent.startsWith('Could not save')); const m = t.querySelector('.toast-message'); const r = () => Math.round(t.getBoundingClientRect().height); const h0 = r(); const full0 = m.textContent; t.click(); const h1 = r(); const ex = t.classList.contains('expanded'); t.click(); return { h0, h1, ex, back: r(), same: m.textContent === full0 && full0.length > 150 }; })()`);
         check('phone: a long error toast is four lines, a tap shows the rest, another tap folds it, the text is whole either way', lng.h0 <= 130 && lng.h1 > lng.h0 + 20 && lng.ex && lng.back === lng.h0 && lng.same, JSON.stringify(lng));
         await ev(`[...document.querySelectorAll('.toast')].filter(e => e.textContent.startsWith('Could not save')).forEach(e => e.remove()); true`);
-        const awake = await hits({ composer: '#command-input', send: '.mobile-send-btn[data-on-click="cmd-send"]', sendTeam: '.mobile-send-team-btn' });
-        check('phone, an awake agent: the message box and both Send buttons are not covered', Object.values(awake).every(v => v === 'ok'), JSON.stringify(awake));
+        const awake = await hits({ composer: '#command-input', send: '.mobile-send-btn[data-on-click="cmd-send"]', sendOptions: '.mobile-send-options-btn' });
+        check('phone, an awake agent: the message box, Send and Send options are not covered', Object.values(awake).every(v => v === 'ok'), JSON.stringify(awake));
         // a sleeping agent: Wake and Restart
         await ev(`document.querySelectorAll('.toast, .update-toast').forEach(e => e.remove()); window.__m.add('qa-sleep-toast', 'S', 30, { sleeping: true }); true`);
         await select('qa-sleep-toast'); await firstPage();

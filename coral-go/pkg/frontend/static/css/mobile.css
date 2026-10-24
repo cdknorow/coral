@@ -99,13 +99,15 @@
 }
 
 /* Send with a team reminder (#3152: was a cryptic "+T"). */
-.mobile-send-team-btn {
-    margin-right: 4px;
-    opacity: 0.75;
+.mobile-send-more { display: none; position: relative; align-items: center; flex-shrink: 0; margin-right: 2px; }
+.mobile-send-options-btn {
+    display: flex; align-items: center; justify-content: center;
+    width: 28px; height: 36px; padding: 0; border: none; border-radius: var(--radius-md);
+    background: transparent; color: var(--text-secondary); cursor: pointer; -webkit-tap-highlight-color: transparent;
 }
-.mobile-send-team-btn .material-icons {
-    font-size: 1.125rem;
-}
+.mobile-send-options-btn .material-icons { font-size: 1.25rem; }
+.mobile-send-menu { right: 0; left: auto; width: max-content; min-width: 0; max-width: calc(100vw - 72px); } /* anchored to the caret's right edge; at 200% text it wraps instead of running off the left of the screen (UI Accessibility, #7063) */
+.mobile-send-menu .send-menu-item { white-space: normal; text-align: left; }
 
 /* ── Mobile Agent List (full screen) ──────────────────────── */
 
@@ -439,8 +441,14 @@
     }
 
     /* Send buttons: ensure they show on mobile */
-    .command-pane .mobile-send-btn {
+    .command-pane .mobile-send-btn,
+    .command-pane .mobile-send-more {
         display: flex !important;
+    }
+
+    /* One side-panel toggle on a phone, the agent bar's, while an agent is on screen (#7063); every other page keeps the top bar's */
+    body:has(#live-session-view:not([style*="display:none"]):not([style*="display: none"])) #panel-toggle-btn {
+        display: none !important;
     }
 
     .board-chat-messages {
@@ -1065,6 +1073,9 @@
         cursor: pointer;
     }
 
+    /* The open tab says its name beside its icon (#7063): the row of icons alone left a person guessing which panel is open */
+    .agentic-state.mobile-panel-overlay .agentic-tab.active:not(:focus-visible)::after { content: attr(aria-label) / ''; margin-left: 6px; font-size: var(--fs-md); white-space: nowrap; }
+
     .agentic-state.mobile-panel-overlay .agentic-tab.active {
         color: var(--text-on-accent); /* was var(--accent) on var(--accent-dim): 1.8:1 in the dark theme, 1.5:1 in the light one, so the open tab's icon was all but invisible on a phone (#4851) */
         background: var(--accent-dim);
@@ -1424,6 +1435,7 @@
     .attach-image-btn { width: var(--control-touch-height, 44px); height: var(--control-touch-height, 44px); right: 2px; top: 0; }
     .command-editor:has(> .attach-image-btn) textarea { padding-right: 50px !important; }
     .mobile-send-btn { width: var(--control-touch-height, 44px); height: var(--control-touch-height, 44px); min-width: var(--control-touch-height, 44px); }
+    .mobile-send-options-btn { width: var(--control-touch-height, 44px); height: var(--control-touch-height, 44px); }
 }
 
 /* The on-screen keyboard is open in the Terminal view (#6694): the terminal needs the rows more than the banner, the chips and the status bar; the key bar and a one-line message box stay. keyboard_open.js sets kb-open. */

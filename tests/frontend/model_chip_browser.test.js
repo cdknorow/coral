@@ -106,7 +106,7 @@ const { connect } = require('./agent_view_harness');
             assert.equal(c.state, '');
             let th = await chip('thinking');
             assert.equal(th.text, 'High', 'the actual level wins over the requested one: ' + JSON.stringify(th));
-            assert.equal(th.label, 'Thinking level: High');
+            assert.equal(th.label, 'Thinking: High');
             assert.equal(th.state, '');
             await feed('ch-a-id', { agent_type: 'claude', model: OPUS.value, thinking_actual: null, thinking: 'low', model_switch: null });
             await waitFor(`document.getElementById('thinking-chip-text').textContent === 'Low'`, 'the requested level', 4000);

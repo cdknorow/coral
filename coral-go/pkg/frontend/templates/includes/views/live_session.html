@@ -195,7 +195,8 @@
                                     <button type="button" class="attach-image-btn" data-on-click="attach-image" aria-label="Add image" title="Add image"><span class="material-icons" aria-hidden="true">image</span></button>
                                     <input type="file" id="attach-image-input" accept="image/png,image/jpeg,image/gif,image/webp,image/bmp,image/tiff" multiple hidden tabindex="-1" aria-hidden="true">
                                 </div>
-                                <button class="mobile-send-btn mobile-send-team-btn" data-on-click="cmd-send-team" aria-label="Send with team reminder" title="Send with a team reminder"><span class="material-icons" aria-hidden="true">groups</span></button>
+                                <!-- Send with a team reminder is behind Send options on a phone, as on a desktop (#7063): one round Send, and a small caret beside it -->
+                                <span class="mobile-send-more"><button type="button" class="mobile-send-options-btn" data-on-click="cmd-send-menu" aria-haspopup="menu" aria-label="Send options" title="Send options"><span class="material-icons" aria-hidden="true">expand_more</span></button><span class="send-btn-menu mobile-send-menu" role="menu" style="display:none"><button type="button" role="menuitem" class="send-menu-item" data-on-click="send-menu-team">Send with team reminder</button></span></span>
                                 <button class="mobile-send-btn" id="mobile-send-btn" data-on-click="cmd-send" aria-label="Send">
                                     <svg class="send-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
                                     <svg class="stop-icon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
@@ -207,13 +208,13 @@
                                 <div class="model-chip-bar" id="model-chip-bar" hidden>
                                     <span class="model-chip-wrap" id="model-chip-wrap">
                                         <button type="button" class="model-chip" id="model-chip" aria-haspopup="menu" aria-expanded="false" aria-controls="model-chip-menu" aria-label="Model">
-                                            <span id="model-chip-text" class="model-chip-text"></span><span class="material-icons model-chip-caret" aria-hidden="true">expand_more</span>
+                                            <span class="model-chip-key" aria-hidden="true">Model: </span><span id="model-chip-text" class="model-chip-text"></span><span class="material-icons model-chip-caret" aria-hidden="true">expand_more</span>
                                         </button>
                                         <div id="model-chip-menu" class="model-chip-menu" role="menu" aria-label="Model" hidden></div>
                                     </span>
                                     <span class="model-chip-wrap" id="thinking-chip-wrap" hidden>
                                         <button type="button" class="model-chip" id="thinking-chip" aria-haspopup="menu" aria-expanded="false" aria-controls="thinking-chip-menu" aria-label="Thinking level">
-                                            <span id="thinking-chip-text" class="model-chip-text"></span><span class="material-icons model-chip-caret" aria-hidden="true">expand_more</span>
+                                            <span class="model-chip-key" aria-hidden="true">Thinking: </span><span id="thinking-chip-text" class="model-chip-text"></span><span class="material-icons model-chip-caret" aria-hidden="true">expand_more</span>
                                         </button>
                                         <div id="thinking-chip-menu" class="model-chip-menu" role="menu" aria-label="Thinking level" hidden></div>
                                     </span>

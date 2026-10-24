@@ -83,7 +83,8 @@ body.popout-mode.popout-ended #command-input { opacity: 0.6; }
 /* Terminal actions are gated with the input: blocked while loading/reconnecting,
    sleeping, ended or not-found. Header navigation/panel/retry stay usable. */
 body.popout-mode.popout-terminal-blocked .command-pane-toolbar button,
-body.popout-mode.popout-terminal-blocked .mobile-send-btn {
+body.popout-mode.popout-terminal-blocked .mobile-send-btn,
+body.popout-mode.popout-terminal-blocked .mobile-send-more {
     pointer-events: none;
     opacity: 0.5;
 }
