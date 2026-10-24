@@ -101,6 +101,8 @@ type RunningServer struct {
 	lockPath   string
 	// workflows runs workflow steps; Shutdown stops what is in progress (#3997).
 	workflows *background.WorkflowRunner
+	// scheduler's run goroutines are waited for at Shutdown, so none is still running its end-of-run code as the process exits (#6918).
+	scheduler *background.JobScheduler
 	// stopFirewall ends the firewall re-checks (#97): Shutdown and Close call it.
 	stopFirewall context.CancelFunc
 }
@@ -137,6 +139,11 @@ func (rs *RunningServer) Shutdown(timeout time.Duration) {
 	// server by themselves: end them here (#3997).
 	if rs.workflows != nil {
 		rs.workflows.Shutdown(ctx)
+	}
+	// The run goroutines of the job scheduler end with their context: wait for them (briefly), so a run's end-of-run code is not racing the exit.
+	// A run is left running at a shutdown (its agent outlives Coral), and the next start settles or adopts it.
+	if rs.scheduler != nil && !rs.scheduler.WaitWatchers(3*time.Second) {
+		log.Printf("[shutdown] a job run's goroutine was still running after 3s")
 	}
 	// The input gate's retry loop sleeps between tries: wake it and wait for it to end, so it doesn't
 	// outlive the server (held sends are not delivered after Coral exits either way).
@@ -340,7 +347,7 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 	httpServer := newHTTPServer(handler)
 
 	// Start all background services
-	workflows := startBackgroundServices(ctx, db, cfg, srv, agentRT)
+	workflows, scheduler := startBackgroundServices(ctx, db, cfg, srv, agentRT)
 	startPprof(ctx)
 	wd := startStallWatch(ctx, cfg.CoralDir(), srv.Router(), db, srv.BoardStore())
 	srv.StartMachineHealth(ctx, wd)
@@ -351,6 +358,7 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 	return &RunningServer{
 		stopFirewall: fwCancel,
 		workflows:    workflows,
+		scheduler:    scheduler,
 		HTTPServer:   httpServer,
 		Server:       srv,
 		LoginToken:   loginToken,

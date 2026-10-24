@@ -746,6 +746,22 @@ func (s *JobScheduler) watch(runID int64, job store.ScheduledJob, rc runConfig) 
 // written (tests: a kill's own status must still stand once the watchdog is done, #3788).
 func (s *JobScheduler) waitWatchers() { s.watching.Wait() }
 
+// WaitWatchers is the shutdown's wait for the run goroutines to return, so the process does not exit while one is still running its end-of-run code. It waits at most d, and only once the scheduler's context is
+// done (while Coral runs on, runs go on and there is nothing to wait for). It reports false only when it gave up with a run goroutine still going.
+func (s *JobScheduler) WaitWatchers(d time.Duration) bool {
+	if s.parentCtx == nil || s.parentCtx.Err() == nil {
+		return true
+	}
+	done := make(chan struct{})
+	go func() { s.watching.Wait(); close(done) }()
+	select {
+	case <-done:
+		return true
+	case <-time.After(d):
+		return false
+	}
+}
+
 func (s *JobScheduler) launchAndWatch(runID int64, job store.ScheduledJob, rc runConfig) {
 	// Use the scheduler's parent context so goroutines cancel on shutdown.
 	// Falls back to Background if Run() hasn't been called (e.g., FireOneshot).
@@ -796,6 +812,9 @@ func (s *JobScheduler) launchAndWatch(runID int64, job store.ScheduledJob, rc ru
 		jobCopy := job
 		jobCopy.RepoPath = wt.workingDir
 		launchErr = s.launchFn(watchCtx, jobCopy, runID)
+	}
+	if s.parentCtx != nil && s.parentCtx.Err() != nil { // Coral is shutting down, not the run ending (its own deadline and a user's kill cancel watchCtx, not this): the agent outlives Coral and is still working in its worktree, so nothing is finished, removed or written, and the next start settles or adopts the run (#6918, #6911)
+		return
 	}
 	if launchErr == nil {
 		s.afterLaunch(ctx, runID, job, rc)
