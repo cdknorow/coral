@@ -815,6 +815,9 @@ jobs:
   # ── Create GitHub Release with all assets ──────────────────────
   release:
     if: always() && !failure() && !cancelled()
+    # The job that signs SHA256SUMS.txt (the second leg of every promotion) and publishes the release: in the release environment like the
+    # builds, so its OIDC identity and its write token need the tag and the owner's approval too (Security's #337)
+    environment: release
     permissions:
       contents: write
       id-token: write      # Sigstore keyless signing: this job's GitHub OIDC identity

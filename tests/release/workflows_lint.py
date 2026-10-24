@@ -9,6 +9,8 @@
 4. No pull_request_target and no workflow_run trigger (a fork's code would run with the repository's token or secrets).
 5. The relaunch test seam's build tag (relaunchfixture, #5452) is named nowhere that builds or ships anything: not in .github/, installers/, tools/, a Makefile or the
    Homebrew cask, except the files listed in SEAM_ALLOWED (none today: a trial workflow that builds it for coral-hub is added there by a reviewed edit).
+6. In the workflows that sign or publish a release (SIGNING_WORKFLOWS), every job granted id-token: write or contents: write runs in the environment named
+   there: its OIDC identity and its write token then need what that environment requires (Security's #337).
 Exits 1 and prints every violation.
 """
 import glob
@@ -68,12 +70,45 @@ def seam_violations():
     return bad
 
 
+# workflow -> the environment its signing or publishing jobs run in
+SIGNING_WORKFLOWS = {"release.yml": "release", "promote.yml": "release-promote"}
+
+
+def job_blocks(text):
+    """Yield (job name, first line number, text) for each job under the top-level jobs:."""
+    m = re.search(r"(?m)^jobs:\n", text)
+    if not m:
+        return
+    body, first = text[m.end():], text[:m.end()].count("\n") + 1
+    starts = [(j.group(1), j.start()) for j in re.finditer(r"(?m)^  ([A-Za-z0-9_-]+):\s*$", body)]
+    for i, (name, at) in enumerate(starts):
+        end = starts[i + 1][1] if i + 1 < len(starts) else len(body)
+        yield name, first + body[:at].count("\n"), body[at:end]
+
+
+def environment_violations(name, text):
+    """Jobs of a signing workflow that can sign or write and don't run in its environment."""
+    want = SIGNING_WORKFLOWS.get(name)
+    if not want:
+        return []
+    bad = []
+    for job, no, block in job_blocks(text):
+        code = "\n".join(re.sub(r"\s+#.*$", "", l) for l in block.split("\n") if not l.lstrip().startswith("#"))
+        if not re.search(r"(?m)^\s+(id-token|contents):\s*write\s*$", code):
+            continue
+        env = re.search(r"(?m)^    environment:\s*(\S+)\s*$", code) or re.search(r"(?m)^    environment:\s*\n      name:\s*(\S+)\s*$", code)
+        if not env or env.group(1).strip("'\"") != want:
+            bad.append(f"{name}:{no}: job {job} can sign or write (id-token or contents: write) and does not run in the {want} environment")
+    return bad
+
+
 def main():
     bad = []
     for path in sorted(glob.glob(os.path.join(ROOT, ".github", "workflows", "*.yml"))):
         name = os.path.basename(path)
         text = open(path).read()
         lines = text.split("\n")
+        bad += environment_violations(name, text)
         if re.search(r"^\s*(pull_request_target|workflow_run)\s*:", text, re.M):
             bad.append(f"{name}: uses a pull_request_target or workflow_run trigger")
         for no, block in step_blocks(lines):
