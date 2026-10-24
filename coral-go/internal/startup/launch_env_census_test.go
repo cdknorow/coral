@@ -26,6 +26,8 @@ var launchSites = map[string]struct {
 	"server/routes/sessions_lifecycle.go.resumeCommand":      {"a resume", launchEnvFields},
 	"server/routes/sessions_sleep.go.wakeExistingSession":    {"a wake after sleep", launchEnvFields},
 	"background/launcher.go.LaunchAgent":                     {"a scheduled or one-shot run", launchEnvFields},
+	// launch-coral (a shipped entry point, #6799): its agents have no live row when they start, so no run tag can be looked up at Kill; the other four it passes.
+	"cmd/launch-coral/main.go.launchParamsFor": {"launch-coral's agents", []string{"SessionName", "CoralHost", "CoralPort", "CoralDir"}},
 	// A workflow step does not start an agent session: this literal only builds the step's settings file (PrintArgs); its process environment is buildStepEnv's, checked below.
 	"background/workflow_steps.go.executeAgentPrint": {"a workflow step's settings (PrintArgs), not a launch", nil},
 }
@@ -33,55 +35,60 @@ var launchSites = map[string]struct {
 func TestEveryLaunchPathPassesCoralsAddress(t *testing.T) {
 	fset := token.NewFileSet()
 	seen := map[string]bool{}
-	err := filepath.WalkDir("..", func(path string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-			return err
-		}
-		f, perr := parser.ParseFile(fset, path, nil, 0)
-		if perr != nil {
-			return nil
-		}
-		rel := filepath.ToSlash(strings.TrimPrefix(filepath.ToSlash(path), "../"))
-		for _, decl := range f.Decls {
-			fn, ok := decl.(*ast.FuncDecl)
-			if !ok || fn.Body == nil {
-				continue
+	// internal/ and cmd/ (the shipped entry points, #6799): keys are relative to the module's coral-go folder for cmd/ and to internal/ for the rest.
+	walk := func(root, prefix string) error {
+		return filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+			if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+				return err
 			}
-			ast.Inspect(fn.Body, func(n ast.Node) bool {
-				cl, ok := n.(*ast.CompositeLit)
-				if !ok {
-					return true
+			f, perr := parser.ParseFile(fset, path, nil, 0)
+			if perr != nil {
+				return nil
+			}
+			rel := prefix + strings.TrimPrefix(filepath.ToSlash(path), filepath.ToSlash(root)+"/")
+			for _, decl := range f.Decls {
+				fn, ok := decl.(*ast.FuncDecl)
+				if !ok || fn.Body == nil {
+					continue
 				}
-				if se, ok := cl.Type.(*ast.SelectorExpr); !ok || se.Sel.Name != "LaunchParams" {
-					return true
-				}
-				key := rel + "." + fn.Name.Name
-				site, known := launchSites[key]
-				if !known {
-					t.Errorf("%s builds agent.LaunchParams and is not in the launch census: if it starts an agent it must pass %v; add it to launchSites with what it passes", key, launchEnvFields)
-					return true
-				}
-				seen[key] = true
-				set := map[string]bool{}
-				for _, el := range cl.Elts {
-					if kv, ok := el.(*ast.KeyValueExpr); ok {
-						if id, ok := kv.Key.(*ast.Ident); ok {
-							set[id.Name] = true
+				ast.Inspect(fn.Body, func(n ast.Node) bool {
+					cl, ok := n.(*ast.CompositeLit)
+					if !ok {
+						return true
+					}
+					if se, ok := cl.Type.(*ast.SelectorExpr); !ok || se.Sel.Name != "LaunchParams" {
+						return true
+					}
+					key := rel + "." + fn.Name.Name
+					site, known := launchSites[key]
+					if !known {
+						t.Errorf("%s builds agent.LaunchParams and is not in the launch census: if it starts an agent it must pass %v; add it to launchSites with what it passes", key, launchEnvFields)
+						return true
+					}
+					seen[key] = true
+					set := map[string]bool{}
+					for _, el := range cl.Elts {
+						if kv, ok := el.(*ast.KeyValueExpr); ok {
+							if id, ok := kv.Key.(*ast.Ident); ok {
+								set[id.Name] = true
+							}
 						}
 					}
-				}
-				for _, want := range site.fields {
-					if !set[want] {
-						t.Errorf("%s (%s) does not set %s: its agents would not know this server's %s", key, site.why, want, want)
+					for _, want := range site.fields {
+						if !set[want] {
+							t.Errorf("%s (%s) does not set %s: its agents would not know this server's %s", key, site.why, want, want)
+						}
 					}
-				}
-				return true
-			})
+					return true
+				})
+			}
+			return nil
+		})
+	}
+	for _, r := range [][2]string{{"..", ""}, {"../../cmd", "cmd/"}} {
+		if err := walk(r[0], r[1]); err != nil {
+			t.Fatal(err)
 		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
 	}
 	var stale []string
 	for key := range launchSites {

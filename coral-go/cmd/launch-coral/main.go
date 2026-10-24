@@ -107,7 +107,7 @@ func main() {
 	var sessionNames []string
 
 	if launchAgents {
-		sessionNames, err = launchAgentSessions(ctx, tc, targetDir, agentType, logDir)
+		sessionNames, err = launchAgentSessions(ctx, tc, cfg, targetDir, agentType, logDir)
 		if err != nil {
 			log.Fatalf("Error launching agents: %v", err)
 		}
@@ -176,7 +176,7 @@ func cleanOldLogs(logDir string) {
 	}
 }
 
-func launchAgentSessions(ctx context.Context, tc *tmux.Client, targetDir, agentType, logDir string) ([]string, error) {
+func launchAgentSessions(ctx context.Context, tc *tmux.Client, cfg *config.Config, targetDir, agentType, logDir string) ([]string, error) {
 	// Collect valid subdirectories (up to maxAgents)
 	entries, err := os.ReadDir(targetDir)
 	if err != nil {
@@ -219,11 +219,7 @@ func launchAgentSessions(ctx context.Context, tc *tmux.Client, targetDir, agentT
 
 		// Build the launch command first: its prompt and settings files must be written
 		// before a session is made for it (#3601 W12).
-		cmd, err := ag.LaunchCommand(agent.LaunchParams{
-			SessionID:    sessionID,
-			ProtocolPath: protocolPath,
-			WorkingDir:   dir,
-		})
+		cmd, err := ag.LaunchCommand(launchParamsFor(cfg, sessionID, sessionName, protocolPath, dir))
 		if err != nil {
 			log.Printf("Warning: not launching %s: %v", sessionName, err)
 			continue
@@ -263,6 +259,21 @@ func launchAgentSessions(ctx context.Context, tc *tmux.Client, targetDir, agentT
 	}
 
 	return sessionNames, nil
+}
+
+// launchParamsFor is what an agent started here is launched with. Besides its session it carries the address of the server this launcher starts (its host, port and data folder) and its own session name:
+// without them its hooks and coral-board dial the default :8420 (#6767's class, #6799). The run tag is not passed: no live row exists for the agent until the server it starts finds its pane, so a tag
+// could not be looked up at Kill.
+func launchParamsFor(cfg *config.Config, sessionID, sessionName, protocolPath, dir string) agent.LaunchParams {
+	return agent.LaunchParams{
+		SessionID:    sessionID,
+		SessionName:  sessionName,
+		ProtocolPath: protocolPath,
+		WorkingDir:   dir,
+		CoralHost:    cfg.AgentHost(),
+		CoralPort:    cfg.Port,
+		CoralDir:     cfg.CoralDir(),
+	}
 }
 
 func startWebServer(ctx context.Context, cfg *config.Config, instance *startup.Instance) *startup.RunningServer {
