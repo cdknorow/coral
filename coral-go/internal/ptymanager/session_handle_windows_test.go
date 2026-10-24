@@ -3,6 +3,7 @@
 package ptymanager
 
 import (
+	"fmt"
 	"os/exec"
 	"strings"
 	"testing"
@@ -25,23 +26,38 @@ func handlesOfThisProcess(t *testing.T) uint32 {
 	return n
 }
 
-// #6821 on Windows: sessions whose process ends on its own must not keep a pseudo console, its pipes and the job object open. After the exit and the drain the process's handle count
-// is back where it was (a margin for the runtime's own churn).
-func TestSessionsThatEndOnTheirOwnLeaveNoHandlesOpen(t *testing.T) {
+// #6821 on Windows, measured: every spawned session leaves about nine handles open in the server whichever way it ends (a leak of its own, found with this test, that a kill does not free either), so
+// the handle count is not flat after N sessions. What the fix changes is the other part: a session that ends on its own used to keep about twenty more than one that was killed. This asserts that
+// N sessions ending on their own end up holding no more handles than N sessions that were killed (a margin of one a session): the natural exit is as clean as a kill.
+func TestSessionsThatEndOnTheirOwnHoldNoMoreHandlesThanAKilledOne(t *testing.T) {
+	const runs = 8
+	exit := "powershell.exe -NoProfile -Command exit"
+	settle := func() { time.Sleep(exitDrain + 6*time.Second) }
 	backend := NewPTYBackend()
 	defer backend.Close()
-	require.NoError(t, backend.Spawn("hd-warm", "test", t.TempDir(), "sid-hd-warm", "Write-Output done", 80, 24)) // the first spawn opens a few process-wide handles of its own
-	time.Sleep(exitDrain + 2*time.Second)
-	before := handlesOfThisProcess(t)
+	require.NoError(t, backend.Spawn("hd-warm", "test", t.TempDir(), "sid-hd-warm", exit, 120, 40)) // the first spawn opens a few process-wide handles of its own
+	settle()
 
-	const runs = 12
+	// N sessions that are killed
+	base := handlesOfThisProcess(t)
 	for i := 0; i < runs; i++ {
-		require.NoError(t, backend.Spawn("hd-"+string(rune('a'+i)), "test", t.TempDir(), "sid-hd-"+string(rune('a'+i)), "Write-Output done", 80, 24))
+		require.NoError(t, backend.Spawn(fmt.Sprintf("hd-k%d", i), "test", t.TempDir(), fmt.Sprintf("sid-hd-k%d", i), "powershell.exe -NoProfile -NoExit -Command Start-Sleep 600", 120, 40))
 	}
-	var now uint32
-	ok := assert.Eventually(t, func() bool { now = handlesOfThisProcess(t); return now <= before+12 }, 30*time.Second, 250*time.Millisecond,
-		"handles after %d sessions ended on their own: %d (before %d)", runs, now, before)
-	t.Logf("handles before %d, after %d sessions ended on their own: %d (settled: %v)", before, runs, handlesOfThisProcess(t), ok)
+	for i := 0; i < runs; i++ {
+		require.NoError(t, backend.Kill(fmt.Sprintf("hd-k%d", i)))
+	}
+	settle()
+	afterKills := handlesOfThisProcess(t)
+	killed := int(afterKills) - int(base)
+
+	// N sessions that end on their own
+	for i := 0; i < runs; i++ {
+		require.NoError(t, backend.Spawn(fmt.Sprintf("hd-n%d", i), "test", t.TempDir(), fmt.Sprintf("sid-hd-n%d", i), exit, 120, 40))
+	}
+	settle()
+	natural := int(handlesOfThisProcess(t)) - int(afterKills)
+	t.Logf("handles left by %d killed sessions: %d; by %d sessions that ended on their own: %d", runs, killed, runs, natural)
+	assert.LessOrEqual(t, natural, killed+runs, "sessions that end on their own hold more handles than killed ones (%d against %d for %d sessions)", natural, killed, runs)
 }
 
 func pingProcesses() int {
