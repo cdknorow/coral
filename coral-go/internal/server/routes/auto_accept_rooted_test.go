@@ -184,14 +184,27 @@ func TestInputRedirectionsAreNotWriteTargets(t *testing.T) {
 // #7069: a ~ is a shell's text only where it starts a word or follows a ":" or "=" (~, ~user, a path list, an assignment); inside a name it is an ordinary character, as in a folder's
 // 8.3 short name (C:\Users\RUNNER~1\...), which used to count as "outside the working folder" and made every in-folder command a risk on a runner whose temp folder is in that form.
 func TestUnreadablePathTildeOnlyWhereAShellExpandsIt(t *testing.T) {
-	for _, p := range []string{"~", "~/x", "~user/x", `~\x`, "a:~/x", "x=~/y", "$HOME/x", "`pwd`/x", "a/$B", "./~"} {
+	for _, p := range []string{"~", "~/x", "~user/x", `~\x`, "a:~/x", "x=~/y", "{x,~/y}", "{~/y,x}", "{x,~root/y}", "x,~/y", "$HOME/x", "`pwd`/x", "a/$B", "./~"} {
 		if p == "./~" { // a ~ after a separator is a name, not an expansion
 			assert.False(t, unreadablePath(p), p)
 			continue
 		}
 		assert.True(t, unreadablePath(p), p)
 	}
+	// A shell expands braces first, so a ~ after { or , is a word of its own and goes to the home folder.
+	for _, p := range []string{"{x,~/y}", "{~/y,x}", "{x,~root/y}", "{a,b,~/c}"} {
+		assert.True(t, unreadablePath(p), p)
+	}
 	for _, p := range []string{`C:\Users\RUNNER~1\AppData\Local\Temp\001\notes.txt`, "/tmp/RUNNER~1/x", "report~.txt", "dir/~backup", "a~b", "build"} {
 		assert.False(t, unreadablePath(p), p)
 	}
+}
+
+// A ~ the shell reaches through brace expansion still sends the command to the user (#7069 round 2).
+func TestShellRiskBraceExpandedTildeIsRisky(t *testing.T) {
+	dir := t.TempDir()
+	for _, c := range []string{"rm -rf {x,~/y}", "rm -rf {~/y,x}", "rm -rf {x,~root/y}", "cp x {y,~/z}", "echo hi > {a,~/b}", "rm -rf x,~/y"} {
+		assert.NotEmpty(t, shellRisk(c, dir), c)
+	}
+	assert.Empty(t, shellRisk("echo hi > report~.txt", dir))
 }

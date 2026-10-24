@@ -62,7 +62,7 @@ func unreadablePath(p string) bool {
 		return true
 	}
 	for i := 0; i < len(p); i++ {
-		if p[i] == '~' && (i == 0 || p[i-1] == ':' || p[i-1] == '=') {
+		if p[i] == '~' && (i == 0 || p[i-1] == ':' || p[i-1] == '=' || p[i-1] == '{' || p[i-1] == ',') {
 			return true
 		}
 	}
