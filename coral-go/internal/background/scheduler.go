@@ -975,7 +975,7 @@ func (s *JobScheduler) runWorktreeExisting(ctx context.Context, repoPath, dir, b
 func (s *JobScheduler) rollBackWorktreeAdd(repoPath, dir, branch string, runID int64) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	if IsRunWorktreeFolder(s.worktreeRoot, repoPath, runID, dir) {
+	if coralnames.IsJobRunWorktree(s.worktreeRoot, repoPath, runID, dir) {
 		err := os.RemoveAll(dir) // a half-made checkout git was killed in
 		if err != nil {          // on Windows a git killed halfway may hold files for a moment
 			time.Sleep(300 * time.Millisecond)
