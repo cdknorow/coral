@@ -10,10 +10,10 @@
             <button class="btn btn-sm" id="wf-back-btn" style="display:none" data-on-click="wf-back">
                 <span class="material-icons" style="font-size:1rem" aria-hidden="true">arrow_back</span> Back
             </button>
-            <button class="btn btn-sm" id="wf-build-agent-btn" data-on-click="wf-build-agent">
+            <button class="btn btn-sm" id="wf-build-agent-btn" data-on-click="wf-build-agent" aria-describedby="wf-hint-build">
                 <span class="material-icons" style="font-size:1rem" aria-hidden="true">smart_toy</span> Build with Agent
             </button>
-            <button class="btn btn-sm btn-primary" id="wf-create-btn" data-on-click="wf-create">
+            <button class="btn btn-sm btn-primary" id="wf-create-btn" data-on-click="wf-create" aria-describedby="wf-hint-new">
                 <span class="material-icons" style="font-size:1rem" aria-hidden="true">add</span> New Workflow
             </button>
         </div>
@@ -21,6 +21,12 @@
 
     <!-- Workflow List -->
     <div id="wf-list-container" class="wf-list-container">
+        <!-- One short line each (#6988): how the two ways to make a workflow differ, and what starts one. Text, not hover; the two buttons name theirs with aria-describedby. -->
+        <div class="wf-hints">
+            <p id="wf-hint-build"><strong>Build with Agent</strong> starts an agent that builds the workflow with you.</p>
+            <p id="wf-hint-new"><strong>New Workflow</strong> opens an empty form to write the steps yourself.</p>
+            <p id="wf-hint-start">A workflow runs when you run it, when a job schedules it, or through the API.</p>
+        </div>
         <div class="wf-empty" id="wf-list-empty">
             <span class="material-icons wf-empty-icon" aria-hidden="true">account_tree</span>
             <p>No workflows yet</p>
