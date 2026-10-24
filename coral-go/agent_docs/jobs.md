@@ -200,8 +200,7 @@ POST /api/tasks/run
        └── POST /kill called → killed (exit_reason: user_cancelled)
        |
        v
-  [cleanup] ──── auto-accept state removed
-                 worktree removed (if cleanup_worktree: true)
+  [cleanup] ──── worktree removed (if cleanup_worktree: true)
 ```
 
 ---
