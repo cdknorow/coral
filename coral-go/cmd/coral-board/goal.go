@@ -218,9 +218,12 @@ func cmdGoalShow(st *boardState, args []string) {
 		fmt.Fprintln(os.Stderr, err)
 		clierr.Exit1()
 	}
-	tasks := fetchTasks(st, id)
+	tasks, truncated := fetchTasksPage(st, id)
 	if asJSON {
 		g["tasks"] = tasks
+		if truncated {
+			g["tasks_truncated"] = true
+		}
 		b, _ := json.MarshalIndent(g, "", "  ")
 		fmt.Println(string(b))
 		return
@@ -250,6 +253,9 @@ func cmdGoalShow(st *boardState, args []string) {
 			assignee = a
 		}
 		fmt.Printf("    #%-4.0f %-12s %-15s %s\n", tid, str(t["status"]), assignee, str(t["title"]))
+	}
+	if truncated {
+		fmt.Printf("    (only the first %d tasks are listed; the goal has more: coral-board task list --goal %d reads the same)\n", len(tasks), id)
 	}
 }
 

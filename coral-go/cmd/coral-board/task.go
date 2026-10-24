@@ -329,7 +329,14 @@ func fetchAllTasks(st *boardState) []map[string]any { return fetchTasks(st, 0) }
 
 // fetchTasks is fetchAllTasks for one goal's tasks when goal is not 0.
 func fetchTasks(st *boardState, goal int64) []map[string]any {
+	tasks, _ := fetchTasksPage(st, goal)
+	return tasks
+}
+
+// fetchTasksPage is fetchTasks that also says whether a goal's tasks were cut: the goal's task answer holds at most 500 and says truncated when there were more (#7087).
+func fetchTasksPage(st *boardState, goal int64) ([]map[string]any, bool) {
 	var tasks []map[string]any
+	truncated := false
 	cursor := ""
 	for {
 		path := "/" + url.PathEscape(st.Project) + "/tasks?status=all&limit=200"
@@ -351,9 +358,11 @@ func fetchTasks(st *boardState, goal int64) []map[string]any {
 		var page struct {
 			Tasks      []map[string]any `json:"tasks"`
 			NextCursor string           `json:"next_cursor"`
+			Truncated  bool             `json:"truncated"`
 		}
 		json.Unmarshal(data, &page)
 		tasks = append(tasks, page.Tasks...)
+		truncated = truncated || page.Truncated
 		if page.NextCursor == "" || page.NextCursor == cursor {
 			break
 		}
@@ -369,7 +378,7 @@ func fetchTasks(st *boardState, goal int64) []map[string]any {
 		ij, _ := tasks[j]["id"].(float64)
 		return ii < ij
 	})
-	return tasks
+	return tasks, truncated
 }
 
 // taskReviewRequested: a list item says review_requested; a full task (an older
