@@ -266,3 +266,36 @@ func TestWorktreeEntryIsNotCheckedWhenTheUnmergedReadStalls(t *testing.T) {
 	assert.Equal(t, true, list[0]["dirty"], "the status read answered")
 	assert.Equal(t, false, list[0]["checked"], "the unmerged read did not: not checked")
 }
+
+// UI Accessibility's #6938 HIGH (#6942): the dashboard's Kill Team kills agent by agent, and only the team route marks the team stopped, so a worktree kept after the single kills (unsaved work) was "in use" for good and had
+// no Remove. A team's worktree is in use while a live session is in it, whichever way its agents were stopped.
+func TestKeptTeamWorktreeIsNotInUseOnceItsAgentsWereKilledOneByOne(t *testing.T) {
+	url, cfg, h := teamServerH(t)
+	repo, _ := repoOn(t, "master", true)
+	status, out := postTeam(t, url, map[string]any{"board_name": "singlekills", "working_dir": repo, "worktree": true, "agent_type": "claude", "agents": []map[string]any{{"name": "A", "prompt": "x"}, {"name": "B", "prompt": "x"}}})
+	require.Equal(t, http.StatusOK, status, "%v", out)
+	wt := filepath.Join(cfg.CoralDir(), "worktrees", out["board_id"].(string))
+	require.NoError(t, os.WriteFile(filepath.Join(wt, "unsaved.txt"), []byte("mine"), 0o644)) // unsaved work keeps the worktree after the last kill
+
+	inUse := func() bool {
+		list := listWorktrees(t, url)
+		require.Len(t, list, 1)
+		return list[0]["in_use"].(bool)
+	}
+	ss := store.NewSessionStore(h.db)
+	live, err := ss.GetAllLiveSessions(t.Context())
+	require.NoError(t, err)
+	require.Len(t, live, 2)
+	assert.True(t, inUse(), "two agents are in it")
+	for i, ls := range live {
+		resp, err := http.Post(url+"/api/sessions/live/"+ls.AgentType+"-"+ls.SessionID+"/kill", "application/json", strings.NewReader(`{"agent_type":"`+ls.AgentType+`","session_id":"`+ls.SessionID+`"}`))
+		require.NoError(t, err)
+		resp.Body.Close()
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		if i == 0 {
+			assert.True(t, inUse(), "one agent is still in it")
+		}
+	}
+	assert.False(t, inUse(), "every agent was killed: nothing is in it, so Remove is offered")
+	assert.FileExists(t, filepath.Join(wt, "unsaved.txt"), "kept: it has unsaved work")
+}
