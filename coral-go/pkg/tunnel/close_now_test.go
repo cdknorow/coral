@@ -122,3 +122,17 @@ func TestCloseAndCloseNowReturnWithAFullSendBuffer(t *testing.T) {
 		}
 	}
 }
+
+// Security's #6819 LOW: "every stream ends" is pinned: a stream open on the session returns an error once CloseNow has returned, and the session accepts no new one.
+func TestCloseNowEndsOpenStreams(t *testing.T) {
+	s, _ := blackholedSession(t)
+	st, err := s.ys.OpenStream()
+	require.NoError(t, err)
+	require.NoError(t, s.CloseNow())
+	_, werr := st.Write([]byte("after"))
+	assert.Error(t, werr, "a write on an open stream fails once the session is closed")
+	_, rerr := st.Read(make([]byte, 1))
+	assert.Error(t, rerr, "so does a read")
+	_, oerr := s.ys.OpenStream()
+	assert.Error(t, oerr, "and a new stream cannot be opened")
+}
