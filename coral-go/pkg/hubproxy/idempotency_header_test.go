@@ -2,6 +2,7 @@ package hubproxy
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -20,6 +21,9 @@ func TestAllowlistHeadersIdempotencyKey(t *testing.T) {
 		{http.MethodPost, "/api/sessions/live/claude-abc/resume", true},
 		{http.MethodPost, "/api/sessions/live/claude-abc/wake", true},
 		{http.MethodPost, "/api/tasks/run", true},
+		{http.MethodPost, "/api/board/team/goals", true},
+		{http.MethodPost, "/api/board/team/tasks", true},
+		{http.MethodPost, "/api/board/team/goals/3/close", false},
 		{http.MethodGet, "/api/sessions/launch", false},
 		{http.MethodPost, "/api/sessions/live/team/b-1/wake", false},
 		{http.MethodPost, "/api/sessions/live/x/send", false},
@@ -32,7 +36,7 @@ func TestAllowlistHeadersIdempotencyKey(t *testing.T) {
 		_, user := h["x-coral-hub-user"]
 		assert.Equal(t, c.kept, lower, "%s %s", c.method, c.path)
 		assert.Equal(t, c.kept, canon, "%s %s", c.method, c.path)
-		if c.path != "/api/board/team/messages" {
+		if !strings.HasPrefix(c.path, "/api/board/") { // a board write keeps the hub user whether or not it takes the key
 			assert.Equal(t, c.kept, user, "%s %s: the hub user goes with the key", c.method, c.path)
 		}
 		assert.Contains(t, h, "Accept")

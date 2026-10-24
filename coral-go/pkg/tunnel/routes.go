@@ -190,6 +190,9 @@ var routeTable = cat(
 		"/api/board/{project}/tasks",
 		"/api/board/{project}/tasks/{id}",
 		"/api/board/{project}/tasks/{id}/cost",
+		// A board's goals and each one's rollup (#7087): read like its tasks, redacted like them.
+		"/api/board/{project}/goals",
+		"/api/board/{project}/goals/{id}",
 		"/api/board/{project}/status",
 		"/api/board/{project}/working-mode",
 		"/api/board/{project}/working-mode/presets",
@@ -310,6 +313,9 @@ var routeTable = cat(
 		"/api/board/{project}/tasks/{id}/reminder",
 		"/api/board/{project}/tasks/{id}/publish",
 		"/api/board/{project}/working-mode/presets",
+		// Goals (#7087): board text, written as the Operator by the Hub like a task or a message. A write here starts, wakes and messages nothing (a test pins it).
+		"/api/board/{project}/goals",
+		"/api/board/{project}/goals/{id}/close",
 	),
 	rules(http.MethodPut, TierInteract,
 		// Only the changed-files comparison base (validated to three values); PUT /api/settings itself stays never.
@@ -318,12 +324,14 @@ var routeTable = cat(
 		"/api/sessions/live/{name}/icon",
 		"/api/sessions/live/{name}/name-color",
 		"/api/board/{project}/working-mode",
+		"/api/board/{project}/tasks/{id}/goal", // link a task to a goal of its board, or unlink it (#7087)
 	),
 	rules(http.MethodPatch, TierInteract,
 		"/api/sessions/live/{name}/notes/{id}",
 		"/api/sessions/live/{name}/tasks/{id}",
 		"/api/board/{project}/tasks/{id}",
 		"/api/board/{project}/tasks/{id}/amend",
+		"/api/board/{project}/goals/{id}", // a goal's text and state (#7087)
 	),
 	rules(http.MethodDelete, TierInteract,
 		"/api/sessions/live/{name}/notes/{id}",

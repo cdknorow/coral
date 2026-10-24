@@ -39,6 +39,8 @@ GET /api/board/{project}/artifacts | board-claims +token-session
 GET /api/board/{project}/cross-team-candidates | board-claims +token-session | operator-only
 GET /api/board/{project}/cross-team-state | board-claims +token-session | operator-only
 GET /api/board/{project}/cross-team/settings | board-claims | operator-only
+GET /api/board/{project}/goals | board-claims
+GET /api/board/{project}/goals/{goalID} | board-claims
 GET /api/board/{project}/groups | board-claims
 GET /api/board/{project}/groups/{groupID}/members | board-claims
 GET /api/board/{project}/messages | board-claims
@@ -108,6 +110,7 @@ GET /api/token-usage/summary | token-session
 PATCH /api/agent/tasks/{taskID} | token-bound
 PATCH /api/artifacts/{id}/comments/{cid} | token-session | operator-only
 PATCH /api/board/{project} | board-claims | operator-only
+PATCH /api/board/{project}/goals/{goalID} | board-claims
 PATCH /api/board/{project}/tasks/{taskID} | board-claims
 PATCH /api/board/{project}/tasks/{taskID}/amend | board-claims
 PATCH /api/sessions/live/{name}/notes/{noteID} | token-bound
@@ -131,6 +134,8 @@ POST /api/board/{project}/cross-team/files/disable | board-claims | operator-onl
 POST /api/board/{project}/cross-team/files/enable | board-claims | operator-only
 POST /api/board/{project}/external-artifacts | board-claims
 POST /api/board/{project}/external-messages | board-claims +token-session
+POST /api/board/{project}/goals | board-claims
+POST /api/board/{project}/goals/{goalID}/close | board-claims
 POST /api/board/{project}/groups/{groupID}/members | board-claims | operator-only
 POST /api/board/{project}/health/ack | board-claims +token-session
 POST /api/board/{project}/hub-notice | board-claims
@@ -204,6 +209,7 @@ POST /api/sessions/live/{sessionID}/unarchive | unbound | operator-only
 POST /api/sessions/live/{sessionID}/wake | unbound | operator-only
 PUT /api/agent/ui/{id} | token-bound
 PUT /api/board/{project}/settings | board-claims +token-session | operator-only
+PUT /api/board/{project}/tasks/{taskID}/goal | board-claims
 PUT /api/board/{project}/working-mode | board-claims | operator-only
 PUT /api/board/{project}/working-mode/presets/{presetID} | board-claims | operator-only
 PUT /api/sessions/history/{sessionID}/notes | unbound | operator-only

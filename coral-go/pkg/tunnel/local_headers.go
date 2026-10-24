@@ -73,10 +73,12 @@ func ForwardsHubUser(method, decodedPath string) bool {
 // body) with the first answer instead of starting a second agent or team.
 const IdempotencyKeyHeader = "Idempotency-Key"
 
-// idempotentRoute is the six routes that take an Idempotency-Key: launch, launch-team, one agent's resume and wake (not a team's), a one-shot task run, and an artifact comment (a replayed key answers with the first comment, not a second).
-var idempotentRoute = regexp.MustCompile(`^/api/(sessions/(launch|launch-team)|sessions/live/[^/]+/(resume|wake)|tasks/run|artifacts/[0-9a-f]{64}/comments)$`)
+// idempotentRoute is the eight routes that take an Idempotency-Key: launch, launch-team, one agent's resume and wake (not a team's), a one-shot task run, an artifact comment (a replayed key answers
+// with the first comment, not a second) and, from #7087, a board's goal create and task add: coral-hub derives the key of those two from a preview token that lives about five minutes, so a replay
+// inside it must not make a second goal or task.
+var idempotentRoute = regexp.MustCompile(`^/api/(sessions/(launch|launch-team)|sessions/live/[^/]+/(resume|wake)|tasks/run|artifacts/[0-9a-f]{64}/comments|board/[^/]+/(goals|tasks))$`)
 
-// ForwardsIdempotencyKey reports whether Idempotency-Key is forwarded for a request: a POST to one of those six routes, and nothing else. The hub (pkg/hubproxy) and the connector apply
+// ForwardsIdempotencyKey reports whether Idempotency-Key is forwarded for a request: a POST to one of those eight routes, and nothing else. The hub (pkg/hubproxy) and the connector apply
 // the same rule.
 func ForwardsIdempotencyKey(method, decodedPath string) bool {
 	return method == http.MethodPost && idempotentRoute.MatchString(decodedPath)

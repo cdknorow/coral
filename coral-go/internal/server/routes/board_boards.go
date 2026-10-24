@@ -119,7 +119,7 @@ func (h *BoardHandler) GetBoardInfo(w http.ResponseWriter, r *http.Request) {
 		errInternalServer(w, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"board_id": b.ID, "board_label": b.Label, "created_at": b.CreatedAt,
+	writeJSON(w, http.StatusOK, map[string]any{"board_id": b.ID, "board_uid": b.UID, "board_label": b.Label, "created_at": b.CreatedAt,
 		"created_by": b.CreatedBy, "members": h.bs.BoardMembers(r.Context(), b.ID)})
 }
 

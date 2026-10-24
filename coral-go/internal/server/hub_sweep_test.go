@@ -82,6 +82,12 @@ func TestHubSweepNoHomeInAnyViewRoute(t *testing.T) {
 	rec = call(h, "POST", "/api/board/team/tasks/"+strconv.FormatInt(task.ID, 10)+"/complete",
 		`{"subscriber_id":"Operator","artifacts":[{"name":"notes.txt","content":"done"}]}`, js)
 	require.Equal(t, 200, rec.Code, "task result: %s", rec.Body.String())
+	rec = call(h, "POST", "/api/board/team/goals", `{"title":"a goal","subscriber_id":"Operator"}`, js)
+	require.Equal(t, 201, rec.Code, "goal: %s", rec.Body.String())
+	var goal struct {
+		ID int64 `json:"id"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &goal))
 	diff := []byte("diff --git a/README.md b/README.md\n--- a/README.md\n+++ b/README.md\n@@ -1 +1,2 @@\n hi\n+changed\n")
 	for _, p := range []string{
 		filepath.Join(r.dir, "artifacts", "tasks", routes.TaskBoardKey(task.BoardID), strconv.FormatInt(task.ID, 10), "changes.diff"),
@@ -140,7 +146,7 @@ func TestHubSweepNoHomeInAnyViewRoute(t *testing.T) {
 	require.NoError(t, err)
 	homes := homeForms(r.dir) // as given, resolved, and JSON-escaped (#3914)
 	repl := strings.NewReplacer("{name}", name, "{sessionID}", sid, "{project}", "team", "{boardName}", "team",
-		"{taskID}", strconv.FormatInt(task.ID, 10), "{runID}", "1", "{jobID}", "1", "{workflowID}", "1", "{groupID}", "g", "{id}", "1",
+		"{taskID}", strconv.FormatInt(task.ID, 10), "{goalID}", strconv.FormatInt(goal.ID, 10), "{runID}", "1", "{jobID}", "1", "{workflowID}", "1", "{groupID}", "g", "{id}", "1",
 		"{category}", "x", "{agentName}", "x", "{subagentID}", "x", "{folderName}", "x", "{name}", name)
 	var leaks, tried []string
 	answered := 0

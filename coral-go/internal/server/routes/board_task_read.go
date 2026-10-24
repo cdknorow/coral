@@ -41,6 +41,10 @@ func (h *BoardHandler) ListTasks(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, reply)
 		return
 	}
+	if g := q.Get("goal"); g != "" {
+		h.listGoalTasks(w, r, project, g)
+		return
+	}
 	query := board.TaskListQuery{Status: q.Get("status"), Cursor: q.Get("cursor")}
 	if l := q.Get("limit"); l != "" {
 		n, err := strconv.Atoi(l)
