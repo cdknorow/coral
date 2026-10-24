@@ -101,11 +101,17 @@ func shellRiskFrom(command, workDir, dir string) string {
 // shellRiskSimple is the rule per command over the command cut at the shell's separators, and the command inside a shell wrapper read the same way: what shellRiskFrom was before
 // #7086, kept as the floor the compound reading is never below (and as the function #4599's equivalence test compares).
 func shellRiskSimple(command, workDir, dir string) string {
-	return shellRiskCore(command, workDir, dir, shellRiskSimple)
+	return shellRiskCoreMode(command, workDir, dir, shellRiskSimple, false)
 }
 
-// shellRiskCore is the rules per command; inner judges the command inside a bash -c '...'.
+// shellRiskCore is the rules per command, with the rules for the commands that run other commands (#7106); inner judges the command inside a bash -c '...'.
 func shellRiskCore(command, workDir, dir string, inner func(command, workDir, dir string) string) string {
+	return shellRiskCoreMode(command, workDir, dir, inner, true)
+}
+
+// shellRiskCoreMode is shellRiskCore; launch false leaves out what #7106 added (eval, trap, xargs, find -exec, aliases, a shell reading its input, source <( ), the writes of curl, wget, mkfifo,
+// shred and truncate, a leading !), which is the reading shellRiskSimple keeps as the floor the #4599 equivalence test compares.
+func shellRiskCoreMode(command, workDir, dir string, inner func(command, workDir, dir string) string, launch bool) string {
 	if curlPipeRe.MatchString(command) || curlSubstRe.MatchString(command) {
 		return "it pipes a download into a shell"
 	}
@@ -113,8 +119,10 @@ func shellRiskCore(command, workDir, dir string, inner func(command, workDir, di
 	// ("" = somewhere that cannot be read literally, e.g. cd ~ or cd $X).
 	cwd := dir
 	at := func(args []string) []string { return fromDir(args, cwd) }
+	aliases := map[string]string{} // aliases the command defines, name to command (#7106)
 	// ">|" (overwrite despite noclobber) is a redirection, not a pipe.
 	for _, seg := range shellSplitRe.Split(strings.ReplaceAll(command, ">|", "> "), -1) {
+		raw := seg // with its redirections: a here-string is read from it
 		seg, targets := redirections(seg)
 		if p := firstGitHookPath(at(notDevices(targets))); p != "" {
 			return gitHookWhy(p) // a redirect into a hook or git's config (#186)
@@ -124,7 +132,14 @@ func shellRiskCore(command, workDir, dir string, inner func(command, workDir, di
 		}
 		words := shellWords(seg)
 		// Skip env assignments and shell wrappers (bash -lc '…' is split by the caller).
-		words = unwrapCommand(words)
+		if launch {
+			words = dropNegation(unwrapCommand(dropNegation(words)))
+			for n, v := range aliasesIn(raw) {
+				aliases[n] = v
+			}
+		} else {
+			words = unwrapCommand(words)
+		}
 		if len(words) == 0 {
 			continue
 		}
@@ -133,6 +148,16 @@ func shellRiskCore(command, workDir, dir string, inner func(command, workDir, di
 		}
 		cmd := filepath.Base(bareCommand(words[0]))
 		args := words[1:]
+		if launch {
+			if v, ok := aliases[cmd]; ok { // an alias defined earlier in the command runs its text
+				if why := inner(v+" "+strings.Join(args, " "), workDir, cwd); why != "" {
+					return why
+				}
+			}
+			if why := launchedRisk(cmd, args, raw, workDir, cwd, inner); why != "" {
+				return why
+			}
+		}
 		if cmd == "git" || shellWrapperRe.MatchString(words[0]) {
 			why, decoded := gitQuotedConfigRisk(seg)
 			if why != "" {
@@ -159,14 +184,31 @@ func shellRiskCore(command, workDir, dir string, inner func(command, workDir, di
 			}
 			continue
 		}
+		if check, ok := launchCommandRisks[cmd]; ok && launch {
+			if why := check(cmd, args, at, workDir); why != "" {
+				return why
+			}
+			continue
+		}
 		// bash -c '…' / zsh -lc '…': inspect the inner command.
 		if shellWrapperRe.MatchString(words[0]) {
+			ranC := false
 			for i, a := range args {
 				if strings.HasPrefix(a, "-") && strings.Contains(a, "c") && i+1 < len(args) {
+					ranC = true
 					if why := inner(strings.Join(args[i+1:], " "), workDir, cwd); why != "" {
 						return why
 					}
 					break
+				}
+			}
+			if !ranC && launch { // a shell reading its commands from its input: a here-string is read, anything else is not in the command (#7106)
+				if text, ok := hereString(raw); ok {
+					if why := inner(text, workDir, cwd); why != "" {
+						return why
+					}
+				} else if stdinShell(args) {
+					return whyInputCommand
 				}
 			}
 		}
@@ -208,6 +250,23 @@ var shellCommandRisks = map[string]commandRisk{
 	"chmod":   chmodRisk,
 	"chown":   chmodRisk,
 	"git":     gitRisk,
+}
+
+// launchCommandRisks: the commands whose writes #7106 reads (not part of the floor shellRiskSimple keeps).
+var launchCommandRisks = map[string]commandRisk{
+	"curl":     curlRisk,
+	"wget":     wgetRisk,
+	"mkfifo":   operandRisk(map[string]bool{"-m": true, "--mode": true}),
+	"shred":    operandRisk(map[string]bool{"-n": true, "-s": true, "--iterations": true, "--size": true, "--random-source": true}),
+	"truncate": operandRisk(map[string]bool{"-s": true, "-r": true, "--size": true, "--reference": true}),
+}
+
+// dropNegation drops the leading ! words of a command (! rm, ! ! rm): the command after them is what runs.
+func dropNegation(words []string) []string {
+	for len(words) > 0 && words[0] == "!" {
+		words = words[1:]
+	}
+	return words
 }
 
 func rmRisk(_ string, args []string, at func([]string) []string, workDir string) string {

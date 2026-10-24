@@ -34,9 +34,15 @@ func (r *riskRun) from(command, workDir, dir string) string {
 	if why, ok := r.memo[k]; ok {
 		return why
 	}
-	why := shellRiskCore(command, workDir, dir, r.from)
+	why := r.plain(command, workDir, dir)
 	if why == "" {
-		why = r.compound(command, workDir, dir)
+		// The command again with every spelled-out word written plainly (r''m, \rm, "rm", $'\x72m' are rm), and a command whose name is built at run time ($X, $(echo rm)) is a risk (#7106).
+		text, dynamic, ok := normalizedCommand(command)
+		if dynamic {
+			why = whyRunTimeCommand
+		} else if ok && text != command {
+			why = r.plain(text, workDir, dir)
+		}
 	}
 	r.memo[k] = why
 	return why
@@ -165,4 +171,12 @@ func separatedCompound(command string) string {
 		out = compoundWordRe.ReplaceAllString(out, "$1;$3")
 	}
 	return out
+}
+
+// plain is the readings of a command as it is written: the rules per command, then the compound reading.
+func (r *riskRun) plain(command, workDir, dir string) string {
+	if why := shellRiskCore(command, workDir, dir, r.from); why != "" {
+		return why
+	}
+	return r.compound(command, workDir, dir)
 }
