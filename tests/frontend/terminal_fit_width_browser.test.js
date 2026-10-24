@@ -42,7 +42,7 @@ function paneSize(name) {
 // Size the pane and wait until tmux says it has that size (a window that a browser tab was following can be sized back by that tab's last resize message: ask again until it holds, and fail if it never does).
 function setPane(name, cols, rows) {
     let last = null;
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0; i < 150; i++) { // up to about 15 s: a fresh session or a busy runner (CPU x6, the strict job) did not hold the size within 3 s (the 164 and 161 gates' first attempts failed at 4 s)
         tmux('resize-window', '-t', `=${name}:`, '-x', String(cols), '-y', String(rows));
         last = paneSize(name);
         if (last.cols === cols && last.rows === rows) return;
@@ -163,11 +163,16 @@ async function openTab({ contextId, width, height, mobile, fakeHubView = false, 
 async function show(tab, a, pane) {
     await tab.ev(`(() => { setLiveViewMode('terminal'); selectLiveSession(${JSON.stringify(a.name)}, 'terminal', ${JSON.stringify(a.sid)}); return true; })()`);
     if (!pane) return tab.waitFor(`(async () => { const v = await ${VIEW}; return v && v.wsOpen && v.cols > 0 && v.screenW > 0 ? v : null; })()`, 'the xterm'); // a window that owns the pane sizes it to itself
-    return tab.waitFor(`(async () => { const v = await ${VIEW}; return v && v.wsOpen && v.cols === ${pane.cols} && v.rows === ${pane.rows} && v.screenW > 0 ? v : null; })()`, `the xterm at ${pane.cols}x${pane.rows}`);
+    // A window an earlier step opened (a desktop one sizes the shared pane to itself, 69x42) can size the pane back while this one waits: when the pane is not the size asked for after a few seconds, ask for it again, then wait again.
+    const want = `(async () => { const v = await ${VIEW}; return v && v.wsOpen && v.cols === ${pane.cols} && v.rows === ${pane.rows} && v.screenW > 0 ? v : null; })()`;
+    for (let i = 1; ; i++) {
+        try { return await tab.waitFor(want, `the xterm at ${pane.cols}x${pane.rows}`, 4000); }
+        catch (e) { if (i >= 4) throw e; setPane(a.name, pane.cols, pane.rows); }
+    }
 }
 const click = tab => tab.ev(`(() => { document.getElementById('terminal-fit-width-btn').click(); return true; })()`);
 // Waits for the font to settle at a value `ok` accepts.
-const settled = (tab, what, ok) => tab.waitFor(`(async () => { const v = await ${VIEW}; return v && (${ok}) ? v : null; })()`, what);
+const settled = (tab, what, ok, ms) => tab.waitFor(`(async () => { const v = await ${VIEW}; return v && (${ok}) ? v : null; })()`, what, ms);
 
 function assertFits(v, what) {
     assert.ok(v.font >= MIN_FONT && v.font < PHONE_BASE, `${what}: the font shrank from the phone's ${PHONE_BASE}, not below ${MIN_FONT} (${JSON.stringify(v)})`);
@@ -265,7 +270,7 @@ function assertFits(v, what) {
         await chat(true);
         v = await settled(phone, 'the toggle hidden in chat', 'v.btn && !v.btn.shown');
         await chat(false);
-        await settled(phone, 'the toggle back in the terminal', 'v.btn && v.btn.shown');
+        await settled(phone, 'the toggle back in the terminal', 'v.btn && v.btn.shown', 25000); // the class change redraws nothing by itself: the next pane update does, and at CPU x6 that took over 10 s once
         console.log('   ✓ hidden in chat, back in the terminal');
         await phone.close(); tabs.pop();
 
@@ -369,10 +374,14 @@ function assertFits(v, what) {
         const sizes = {};
         for (const [label, w, h, mobile, dpr] of [['phone DPR 2', 390, 844, true, 2], ['phone DPR 3', 390, 844, true, 3], ['desktop DPR 2', 1280, 800, false, 2], ['phone DPR 1', 390, 844, true, 1]]) {
             if (mobile) setPane(A.name, eighty.cols, eighty.rows); // a phone follows the pane at its size: set it, since the desktop window before it (and the earlier steps) sized the pane to themselves
-            const ctx = await newContext(); contexts.push(ctx);
-            const tab = await openTab({ contextId: ctx, width: w, height: h, mobile, dpr });
-            tabs.push(tab);
-            await show(tab, A, mobile ? eighty : null); // the desktop window sizes the pane to itself (69 columns in a small window): any size will do for the canvas
+            let tab = null;
+            for (let attempt = 1; ; attempt++) { // a tab whose own CDP socket closes under load (1 run in 20 at CPU x6: "WebSocket is not open: readyState 3") is opened again, once: it is the browser's tab that died, not what is measured
+                const ctx = await newContext(); contexts.push(ctx);
+                tab = await openTab({ contextId: ctx, width: w, height: h, mobile, dpr });
+                tabs.push(tab);
+                try { await show(tab, A, mobile ? eighty : null); break; } // the desktop window sizes the pane to itself (69 columns in a small window): any size will do for the canvas
+                catch (e) { if (attempt >= 2 || !/WebSocket is not open/.test(String(e && e.message))) throw e; await tab.close().catch(() => {}); tabs.pop(); }
+            }
             sizes[label] = (await scaled(tab, label)).backing[0];
             if (mobile) { // a font change redraws the canvas: the fit button shrinks the font, and the canvas stays at its device size
                 await click(tab);
