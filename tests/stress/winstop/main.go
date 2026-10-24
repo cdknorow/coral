@@ -57,6 +57,9 @@ func main() {
 		fmt.Fprintln(os.Stderr, "AllocConsole:", err)
 	}
 
+	// Ctrl-C handling is inherited and the runner may start this program with it switched off (a process made in a new process group has it off): switch it on, so the program started here gets it on.
+	procSetCtrl.Call(0, 0)
+
 	lf, err := os.Create(*logFile)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
