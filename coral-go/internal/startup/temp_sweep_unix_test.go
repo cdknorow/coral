@@ -11,6 +11,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/subgentic/coral/internal/cmdhandoff"
 	"github.com/subgentic/coral/internal/store"
 )
 
@@ -71,4 +72,25 @@ func TestStartupSweepsOnlyItsOwnEndedSessionsFromTheSharedTempFolder(t *testing.
 	info, err := os.Stat(private)
 	require.NoError(t, err)
 	assert.Equal(t, os.FileMode(0o700), info.Mode().Perm(), "<data dir>/tmp is private")
+}
+
+// #6978: after startup, a start command's script goes to <data dir>/tmp when the system temp folder (TMPDIR) names a folder that is gone, so the launch is not lost to it.
+func TestStartupMakesTheLaunchFolderTheStartCommandScriptsFallback(t *testing.T) {
+	t.Setenv("TMPDIR", t.TempDir())
+	dataDir := t.TempDir()
+	db, err := store.OpenWithKey(context.Background(), filepath.Join(dataDir, "sessions.db"), "")
+	require.NoError(t, err)
+	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { cmdhandoff.SetFallbackDir(func() string { return "" }) })
+	select {
+	case <-setupLaunchTempDir(db, dataDir):
+	case <-time.After(30 * time.Second):
+		t.Fatal("the sweep did not finish")
+	}
+
+	t.Setenv("TMPDIR", filepath.Join(t.TempDir(), "deleted"))
+	inv, cleanup, err := cmdhandoff.ShellScript("true")
+	require.NoError(t, err, "the script is written to Coral's own folder")
+	t.Cleanup(cleanup)
+	assert.Contains(t, inv, filepath.Join(dataDir, "tmp"))
 }
