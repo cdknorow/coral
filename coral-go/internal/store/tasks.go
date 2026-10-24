@@ -868,42 +868,43 @@ type RunTurn struct {
 	At    string
 }
 
-// SessionTurn reads a session's stored events in order and says how its current turn stands: a prompt (prompt_submit) starts one, a stop after it ends it, and anything the agent does after that stop (a
-// tool call, a request, another prompt) puts it back to working; a session_reset starts over. A stop with no prompt before it (a startup, a reset, a stop of something else) ends nothing. Events are
-// kept to the newest few hundred per session: a turn whose prompt was pruned reads as none, never as ended. An unreadable store is an error, never a state.
+// SessionTurn says how a session's current turn stands, from two bounded reads of its stored events (#7090): the newest prompt_submit or session_reset, which opens or resets the turn, and the newest tool call,
+// request or stop after it. A prompt starts a turn; the newest of what the agent did since is the state: a stop ends it (normally, or in an error when its detail says failed), a tool call or a request is
+// the turn going on (also when it came after an earlier stop: the agent went on). A reset, or no prompt at all, is none: a stop with no prompt before it (a startup, a stop of something else) ends nothing.
+// Only rows after the prompt are read, and only the newest of them: a run with thousands of tool calls costs the same as one with none. Events are kept to the newest few hundred per session: a turn whose
+// prompt was pruned reads as none, never as ended. An unreadable store is an error, never a state.
 func (s *TaskStore) SessionTurn(ctx context.Context, sessionID string) (RunTurn, error) {
-	var rows []struct {
+	var open struct {
+		ID   int64  `db:"id"`
+		Type string `db:"event_type"`
+	}
+	err := s.reader().GetContext(ctx, &open,
+		`SELECT id, event_type FROM agent_events WHERE session_id = ? AND event_type IN ('prompt_submit', 'session_reset') ORDER BY id DESC LIMIT 1`, sessionID)
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && open.Type != "prompt_submit") {
+		return RunTurn{}, nil
+	}
+	if err != nil {
+		return RunTurn{}, err
+	}
+	var last struct {
 		Type   string         `db:"event_type"`
 		Detail sql.NullString `db:"detail_json"`
 		At     string         `db:"created_at"`
 	}
-	if err := s.reader().SelectContext(ctx, &rows,
-		`SELECT event_type, detail_json, created_at FROM agent_events WHERE session_id = ? AND event_type IN ('prompt_submit', 'stop', 'session_reset', 'tool_use', 'permission_request') ORDER BY id`, sessionID); err != nil {
+	err = s.reader().GetContext(ctx, &last,
+		`SELECT event_type, detail_json, created_at FROM agent_events WHERE session_id = ? AND id > ? AND event_type IN ('stop', 'tool_use', 'permission_request') ORDER BY id DESC LIMIT 1`, sessionID, open.ID)
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && last.Type != "stop") {
+		return RunTurn{State: TurnWorking}, nil
+	}
+	if err != nil {
 		return RunTurn{}, err
 	}
-	turn := RunTurn{}
-	for _, e := range rows {
-		switch e.Type {
-		case "prompt_submit":
-			turn = RunTurn{State: TurnWorking}
-		case "session_reset":
-			turn = RunTurn{}
-		case "tool_use", "permission_request":
-			if turn.State != TurnNone {
-				turn = RunTurn{State: TurnWorking}
-			}
-		case "stop":
-			if turn.State == TurnNone {
-				continue
-			}
-			turn = RunTurn{State: TurnDone, At: e.At}
-			var d struct {
-				Failed bool `json:"failed"`
-			}
-			if e.Detail.Valid && json.Unmarshal([]byte(e.Detail.String), &d) == nil && d.Failed {
-				turn.State = TurnFailed
-			}
-		}
+	turn := RunTurn{State: TurnDone, At: last.At}
+	var d struct {
+		Failed bool `json:"failed"`
+	}
+	if last.Detail.Valid && json.Unmarshal([]byte(last.Detail.String), &d) == nil && d.Failed {
+		turn.State = TurnFailed
 	}
 	return turn, nil
 }

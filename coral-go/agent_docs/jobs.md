@@ -194,7 +194,7 @@ POST /api/tasks/run
        |         prompt sent to agent after 2s init delay
        |         watchdog starts polling tmux every 30s
        |
-       ├── agent (Claude, Codex) ends its turn on the job's prompt → completed (exit_reason: turn_complete), or failed (exit_reason: turn_failed) when the turn ended in an error; the agent is ended
+       ├── agent (Claude, Codex) ends its turn on the job's prompt → completed (exit_reason: turn_complete), or failed (exit_reason: turn_failed, error_code: agent_turn_failed) when the turn ended in an error; the agent is ended
        ├── agent exits normally → completed (exit_reason: agent_done)
        ├── timeout reached → killed (exit_reason: timeout)
        └── POST /kill called → killed (exit_reason: user_cancelled)

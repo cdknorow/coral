@@ -664,7 +664,7 @@ func (s *JobScheduler) KillRun(ctx context.Context, runID int64) bool {
 	s.killRunSession(ctx, run, agentType)
 
 	now := time.Now().UTC().Format(store.ISOFormat)
-	if won, err := s.store.FinishScheduledRunIfActive(ctx, runID, "killed", "user_cancelled", "", now); err == nil && !won {
+	if won, err := s.store.FinishScheduledRunIfActive(ctx, runID, "killed", "user_cancelled", "", "", now); err == nil && !won {
 		return false // the run was settled by something else while it was being killed (#7090)
 	}
 
@@ -1011,7 +1011,7 @@ func (s *JobScheduler) finishRun(ctx context.Context, runID int64, job store.Sch
 	}
 	if !userKilled {
 		// Only while the run is still active: a turn end, a kill or the deadline that settled it first is not overwritten (#7090).
-		s.store.FinishScheduledRunIfActive(ctx, runID, status, exitReason, "", now)
+		s.store.FinishScheduledRunIfActive(ctx, runID, status, exitReason, "", "", now)
 	}
 }
 
