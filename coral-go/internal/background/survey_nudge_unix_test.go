@@ -4,6 +4,7 @@ package background
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -54,16 +55,22 @@ func TestABoardNudgeBehindClaudesSessionSurveyDismissesItAndIsDelivered(t *testi
 	t.Setenv("OUT", out)
 
 	rt := newTestPTYRuntime()
-	const sid = "11111111-2222-3333-4444-555555555555"
+	// A session of its own on every run: the gate remembers when it last sent a 0 to a session NAME (once per 30 s, surveyRetryGap), process-wide, so a test run again in the same process (-count, shuffled reruns) with a fixed
+	// name would find the 0 refused for up to 30 s (the flake of #6974's first test: 9 of 10 runs under -count=10).
+	sid := fmt.Sprintf("11111111-2222-3333-4444-%012d", time.Now().UnixNano()%1_000_000_000_000)
 	name := "claude-" + sid
 	require.NoError(t, rt.SpawnAgent(context.Background(), name, dir, "", script))
 	t.Cleanup(func() { rt.KillAgent(context.Background(), name) })
-	time.Sleep(500 * time.Millisecond) // sleep-ok: the fake draws its screen
+	// The nudge is delivered once the survey is on the rendered screen, as the gate would find it for a real agent that has drawn it: delivered before that, with an empty screen, the text goes to the fake as keys.
+	require.Eventually(t, func() bool {
+		screen, err := rt.AgentScreen(context.Background(), name, "claude", sid)
+		return err == nil && strings.Contains(screen, "How is Claude doing this session?")
+	}, 20*time.Second, 50*time.Millisecond, "the fake drew the survey")
 
 	const text = "You have 1 unread message on the message board. Run 'coral-board read' to see them."
 	done := make(chan error, 1)
 	go func() {
-		_, err := deliverAutomatedIfWanted(context.Background(), rt, slog.Default(), name, "claude", sid, "nudge-1", text, "board nudge", false, true, nil)
+		_, err := deliverAutomatedIfWanted(context.Background(), rt, slog.Default(), name, "claude", sid, "nudge-1", text, "board nudge", true, true, nil)
 		done <- err
 	}()
 	require.Eventually(t, func() bool {
