@@ -650,6 +650,32 @@ Drafts remain unclaimable until publication. There is no automatic router or
 exclusive router lease in this change. Multiple routing agents would need an
 atomic routing claim/assignment contract before safely sharing that inbox.
 
+## Goals
+
+A board's **goals** say what the team is working toward, and tasks serve them. They are not the one-line **goal** an agent's status shows (`POST /api/sessions/live/{name}/goal`): these are `coral-board goal ...` and a task's `--goal`, and they live on the board.
+
+A goal has a `title`, an optional `outcome` (what is true when it is done) and `done_when` (a one-line check a person can make), a `state` (`proposed`, `active`, `blocked`, `done`, `dropped`), a `driver` (the agent driving it), and, when it is blocked, `blocked_on` (who or what it waits for) with the `decision` that is needed, your `recommendation` and what happens `if_silent`. Each goal reads with a `rollup` of its tasks: `done`, `active`, `blocked`, `queued` and `total`. A task belongs to one goal of its own board.
+
+```
+coral-board goal add "title" [--outcome "..."] [--done-when "..."] [--state active|proposed] [--driver "Agent Name"]
+coral-board goal list [--state open|all|proposed,active,blocked,done,dropped] [--json]    # open goals by default
+coral-board goal show <id> [--json]                  # the goal, how its tasks stand, and the tasks
+coral-board goal update <id> [--title T] [--outcome T] [--done-when T] [--state proposed|active|blocked] [--driver NAME | --driver ""]
+            [--blocked-on T] [--decision T] [--recommendation T] [--if-silent T]    # a blocked goal needs --blocked-on
+coral-board goal close <id> --reason "why" [--state done|dropped]    # its open tasks are left as they are and counted
+coral-board task add "title" --goal <id>             # a task joins a goal when it is added...
+coral-board task goal <task-id> <goal-id|none>       # ...or later; none takes it off
+coral-board task list --goal <id>                    # one goal's tasks
+```
+
+`goal update` is how a goal's state is kept true (blocked, active again); close it with `goal close`, never by deleting (there is no delete). The Operator, an active registered Orchestrator or, for the link of its own task, the task's creator may write a goal; a worker agent cannot change a goal's state.
+
+**HTTP.** `POST /api/board/{project}/goals` (`title`, `outcome`, `done_when`, `state`, `driver`, `subscriber_id`; 201 with the goal), `GET .../goals?state=a,b` (`{"goals": [...]}`), `GET .../goals/{id}`, `PATCH .../goals/{id}`, `POST .../goals/{id}/close` (`{"goal": {...}, "open_tasks": n}`), `PUT .../tasks/{id}/goal` (`{"goal_id": n | null}`), `POST .../tasks` with `goal_id`, and `GET .../tasks?goal=<id>`. A refusal is `{"error": sentence, "code": word}`: `goal_not_found` and `task_not_found` (404; another board's goal looks like no goal), `goal_closed` and `goal_already_closed` (409), `goal_title_required`, `goal_text_too_long`, `goal_bad_state`, `goal_blocked_on_required`, `goal_reason_required`, `goal_driver_unknown` and `goal_required` (400). Writing a goal or linking a task never starts, wakes or launches an agent. Goal text is cleaned on write and redacted on read like a task's.
+
+**Require a goal.** A board setting `require_goal` (off by default; `PUT /api/board/{project}/settings {"subscriber_id": "Operator", "require_goal": true}`). When it is on, a task with no goal is refused with `400 goal_required` ("this board requires a goal for every task: create or pick one with coral-board goal") and nothing is stored, drafts and workflow tasks included, and `task goal <id> none` is refused the same way. A retry of a task that has an open goal continues under it (a retry of a task whose goal was closed has none to inherit, so it is refused too: reopen the goal or make a new task); Coral's own review tasks are exempt; tasks made before are left as they are. Only the Operator on this computer changes it, on or off: through Coral Hub the request is `403 local_only`. Each change is written to the board's settings log.
+
+**The feed.** `GET /api/board/projects` rows and the `/ws/coral` frames carry each board's goals as `goals_brief: {open, seq}` (and the totals `goals_open`, `goals_seq` in the frames; the key is not `goals`, which is the goals list's own answer): the number of open goals and a change counter that moves on every goal write and every task change that touches a goal. No text. A viewer who can only look gets them as `null`. A Coral that keeps goals says the capability `goals/1` in its tunnel handshake.
+
 ## Tasks
 
 See [Task queue flow](task-workflows.md) for the lifecycle diagram, dependencies,
@@ -818,6 +844,7 @@ POST /api/board/{project}/tasks
 | `blocked_by` | array | No | Prerequisite IDs or rules with `task_id`, optional `board_id`, `condition`, and `required_artifacts` |
 | `draft` | boolean | No | Keep unpublished until explicitly published |
 | `workflow` | object | No | `name`, `stage`, `instructions`, `required_outputs`, `parent_task_id`, `retry_of` |
+| `goal_id` | integer | No | A goal of this board the task serves (see [Goals](#goals)); required when the board's `require_goal` is on |
 | `remind_at` | string | No | RFC 3339 time, at most 90 days ahead: a one-time reminder then (`coral-board task add ... --remind-at "2026-10-19 21:58"`, or `21:58`, `2h`, `3d`). Coral types it to the assignee, or to the orchestrator when nobody is assigned, through the gate, with the task number and time only, and posts a board line; a parked task is reminded when it comes back. Reminders count against the board's limits (3 an hour per agent, 20 per board): one past them waits for a later pass, none is lost |
 
 **Response:** `201 Created` with task object. **409**

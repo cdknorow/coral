@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/subgentic/coral/internal/background"
+	"github.com/subgentic/coral/internal/board"
 )
 
 // Every /ws/coral connection used to rebuild the session list on its own tick
@@ -54,6 +55,11 @@ type wsTick struct {
 	serversJSON string
 	activeRuns  []map[string]any
 	runsJSON    string
+	// The boards' goals briefs (#7116): the boards that have goals, with how many are open and their change counter, and the totals; empty when no board has any (nothing is added to a frame then).
+	goals     map[string]board.GoalsBrief
+	goalsJSON string
+	goalsOpen int
+	goalsSeq  int64
 }
 
 // wsLocalPart is this server's sessions and job runs, serialized.
@@ -67,6 +73,8 @@ type wsLocalPart struct {
 	serialized []string
 	activeRuns []map[string]any
 	runsJSON   string
+	goals      map[string]board.GoalsBrief
+	goalsJSON  string
 	reused     int // rows whose serialized form came from the previous tick (#4308)
 }
 
@@ -230,6 +238,13 @@ func (h *SessionsHandler) buildWSLocalPart(r *http.Request, hasRemotes bool, pre
 	p.activeRuns = h.getActiveRuns(ctx)
 	runs, _ := json.Marshal(p.activeRuns)
 	p.runsJSON = string(runs)
+	if h.bs != nil { // the goals brief: one indexed read of the boards that have goals, shared by every connection with the tick
+		if briefs, err := h.bs.GoalBriefs(ctx); err == nil && len(briefs) > 0 {
+			p.goals = briefs
+			b, _ := json.Marshal(briefs)
+			p.goalsJSON = string(b)
+		}
+	}
 	p.builtAt = time.Now()
 	return p
 }
@@ -266,6 +281,14 @@ func assembleWSTick(local *wsLocalPart, remote *wsRemotePart) *wsTick {
 		activeRuns:  local.activeRuns,
 		runsJSON:    local.runsJSON,
 		serversJSON: remote.serversJSON,
+		goals:       local.goals,
+		goalsJSON:   local.goalsJSON,
+	}
+	for _, g := range local.goals {
+		t.goalsOpen += g.Open
+		if g.Seq > t.goalsSeq {
+			t.goalsSeq = g.Seq
+		}
 	}
 	if t.hasRemotes {
 		t.servers = remote.snap.Servers

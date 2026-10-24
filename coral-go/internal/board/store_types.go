@@ -122,6 +122,16 @@ type ProjectInfo struct {
 	BoardLabel      string `db:"-" json:"board_label"`         // the board's display name (#3536)
 	SubscriberCount int    `db:"subscriber_count" json:"subscriber_count"`
 	MessageCount    int    `db:"message_count" json:"message_count"`
+	// GoalsBrief is what the feed carries of the board's goals, with no text (#7116): how many are open and the board's change counter. A Coral Hub viewer who can only look gets it as null (viewdrop.go).
+	Goals     *GoalsBrief `db:"-" json:"goals_brief"`
+	GoalsOpen int         `db:"goals_open" json:"-"`
+	GoalsSeq  int64       `db:"goals_seq" json:"-"`
+}
+
+// GoalsBrief is a board's goals as the feed counts them: open (proposed, active or blocked) and the change counter, which moves on every goal write and every task change touching a goal.
+type GoalsBrief struct {
+	Open int   `json:"open"`
+	Seq  int64 `json:"seq"`
 }
 
 type SubscriberReminder struct {

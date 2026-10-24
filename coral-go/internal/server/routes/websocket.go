@@ -284,6 +284,7 @@ type coralFeed struct {
 	prevSessions    map[string]string         // session key -> json string
 	prevByKey       map[string]map[string]any // session key -> the row last sent (read-only tick data)
 	prevRunsJSON    string
+	prevGoalsJSON   string            // the goals brief as last sent (#7116)
 	prevHealth      map[string]string // machine_health: each top-level field as last sent (#3444)
 	prevServersJSON string
 	firstMessage    bool
@@ -319,6 +320,9 @@ func (f *coralFeed) frame(tick *wsTick, pending []Notification, healthDelta map[
 		if tick.hasRemotes {
 			msg["servers"] = tick.servers
 		}
+		if len(tick.goals) > 0 { // each board's open goals and change counter, and the totals: no text (#7116)
+			msg["goals_brief"], msg["goals_open"], msg["goals_seq"] = tick.goals, tick.goalsOpen, tick.goalsSeq
+		}
 		return msg, coralUpdate
 	}
 
@@ -347,9 +351,10 @@ func (f *coralFeed) frame(tick *wsTick, pending []Notification, healthDelta map[
 	}
 	serversChanged := tick.serversJSON != f.prevServersJSON
 	runsChanged := tick.runsJSON != f.prevRunsJSON
+	goalsChanged := tick.goalsJSON != f.prevGoalsJSON
 	hasNotifications := len(pending) > 0
 	healthChanged := len(healthDelta) > 0
-	if len(changed) > 0 || len(removed) > 0 || len(removedRemote) > 0 || serversChanged || runsChanged || hasNotifications || healthChanged {
+	if len(changed) > 0 || len(removed) > 0 || len(removedRemote) > 0 || serversChanged || runsChanged || goalsChanged || hasNotifications || healthChanged {
 		payload := map[string]any{"type": "coral_diff"}
 		if healthChanged {
 			payload["machine_health"] = healthDelta
@@ -368,6 +373,9 @@ func (f *coralFeed) frame(tick *wsTick, pending []Notification, healthDelta map[
 		}
 		if runsChanged {
 			payload["active_runs"] = tick.activeRuns
+		}
+		if goalsChanged { // a goal write or a task change touching a goal moves a board's seq: the diff carries the brief only then (#7116)
+			payload["goals_brief"], payload["goals_open"], payload["goals_seq"] = tick.goals, tick.goalsOpen, tick.goalsSeq
 		}
 		if hasNotifications {
 			payload["notifications"] = pending
@@ -401,6 +409,7 @@ func (f *coralFeed) sent(kind coralFrame, tick *wsTick, healthDelta map[string]a
 	f.prevSessions = tick.current
 	f.prevByKey = tick.byKey
 	f.prevRunsJSON = tick.runsJSON
+	f.prevGoalsJSON = tick.goalsJSON
 	f.firstMessage = false
 }
 
