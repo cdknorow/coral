@@ -42,13 +42,13 @@ func TestFakeSurveyClaudeHelper(t *testing.T) {
 	getMode.Call(uintptr(outH), uintptr(unsafePtr(&m)))
 	setMode.Call(uintptr(outH), uintptr(m|0x4|0x1)) // virtual-terminal output
 	draw := func(survey bool, box string) {
-		rule := strings.Repeat("-", 80)
+		rule := strings.Repeat("\u2500", 80) // the characters Claude Code draws: the gate finds the input box by them
 		fmt.Print("\x1b[2J\x1b[H")
 		fmt.Print("Nothing for me here. I have no open tasks.\r\n\r\nWorked for 3s\r\n\r\n")
 		if survey {
 			fmt.Print("● How is Claude doing this session? (optional)\r\n  1: Bad    2: Fine   3: Good   0: Dismiss\r\n\r\n")
 		}
-		fmt.Printf("%s\r\n> %s\r\n%s\r\n  bypass permissions on (shift+tab to cycle)\r\n", rule, box, rule)
+		fmt.Printf("%s\r\n\u276f %s\r\n%s\r\n  \u23f5\u23f5 bypass permissions on (shift+tab to cycle)\r\n", rule, box, rule)
 	}
 	fmt.Print("\x1b[?2004h")
 	draw(true, "")
