@@ -579,6 +579,10 @@ func (s *Store) SetTaskGoal(ctx context.Context, board string, taskID int64, goa
 		if err := s.checkGoalForTask(ctx, tx, board, *goalID); err != nil {
 			return err
 		}
+	} else if on, err := s.requiresGoal(ctx, board); err != nil {
+		return err
+	} else if on {
+		return ErrGoalRequired // a board that requires a goal never moves a task to none (#7116)
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE board_tasks SET goal_id = ? WHERE id = ? AND board_id = ?`, goalID, taskID, board); err != nil {
 		return err
