@@ -273,7 +273,7 @@ func (s *JobScheduler) reapStaleRuns(ctx context.Context) {
 			reason := "agent_done"
 			if s.lastEventType != nil {
 				last, stopFailed := s.lastEventType(ctx, *run.SessionID)
-				if last == "" && !stopFailed { // no event from the agent at all (a read that failed is not this: it comes back as a failed stop): it never started, which is not "completed" (#6978, Codex Test's 07:10 run)
+				if last == "" && !stopFailed && reportsEvents(s.runAgentType(ctx, run, job.AgentType)) { // no event from the agent at all (a read that failed is not this: it comes back as a failed stop): it never started, which is not "completed" (#6978, Codex Test's 07:10 run)
 					s.logger.Warn("a run's agent ended without ever reporting", "run_id", run.ID)
 					finish("failed", agentNeverStartedCode, agentNeverStartedMsg)
 					s.store.UpdateScheduledRun(ctx, run.ID, map[string]interface{}{"error_code": agentNeverStartedCode})
@@ -823,6 +823,12 @@ func (s *JobScheduler) SetLastEventType(fn func(ctx context.Context, sessionID s
 	s.lastEventType = fn
 }
 
+// reportsEvents says whether an agent type's CLI reports hook events, the signal that it started: Claude and Codex do (and an empty type is Claude). Pi and Gemini install no hooks, so a run of theirs with no event is the
+// normal case, never "the agent never started" (#6978, Security Windows's and QA's round 4): the backstop, the early-exit check and the startup settle all ask here.
+func reportsEvents(agentType string) bool {
+	return agentType == "claude" || agentType == "codex" || agentType == ""
+}
+
 // startCommandFailedCode is the run's fixed error_code when Coral could not hand the agent its start command (#6978).
 const startCommandFailedCode = "start_command_failed"
 
@@ -842,7 +848,7 @@ var (
 // function returns, the run is failed and its session killed, as for any failed launch) and sets neverStarted. It ends with the run. Only for a CLI that reports events (claude, codex) and a runtime that can say the shell is idle;
 // anything it cannot tell leaves the run alone.
 func (s *JobScheduler) watchNeverStarted(ctx context.Context, cancel context.CancelFunc, runID int64, job store.ScheduledJob, neverStarted *atomic.Bool) {
-	if s.hasEvents == nil || (job.AgentType != "claude" && job.AgentType != "codex" && job.AgentType != "") {
+	if s.hasEvents == nil || !reportsEvents(job.AgentType) {
 		return
 	}
 	checker, ok := s.runtime.(ptymanager.ShellIdleChecker)
@@ -893,7 +899,7 @@ const (
 // report through hooks from their first moment; a one-shot that ends fast on purpose has reported events by then). It records the plain reason and the fixed error_code on the run when it says yes. The runtime
 // gives no exit code, so none is recorded. A scheduler with no event check, a CLI that reports no events (any other agent type), a run with no session, or a read that fails is never judged: it stays completed.
 func (s *JobScheduler) exitedBeforeStarting(ctx context.Context, runID int64, job store.ScheduledJob, nowISO, startedISO string) bool {
-	if s.hasEvents == nil || (job.AgentType != "claude" && job.AgentType != "codex" && job.AgentType != "") {
+	if s.hasEvents == nil || !reportsEvents(job.AgentType) {
 		return false
 	}
 	started, err1 := time.Parse(store.ISOFormat, startedISO)

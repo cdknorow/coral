@@ -274,3 +274,22 @@ func TestALiveAgentIsNotReadAsGoneWhenTheJobsAgentTypeWasEdited(t *testing.T) {
 	cancel() // the adopted run's watcher ends with the context
 	e.s.waitWatchers()
 }
+
+// QA #6993: a run of an agent that installs no hooks (pi, gemini) stores no events by design, so one that ended while Coral was down is not "never started".
+func TestARunOfAnAgentWithoutHooksThatEndedWhileCoralWasDownIsNotNeverStarted(t *testing.T) {
+	ctx := context.Background()
+	for _, agentType := range []string{"pi", "gemini"} {
+		t.Run(agentType, func(t *testing.T) {
+			e, _ := restartEnv(t, "left-nohooks-"+agentType)
+			e.s.SetLastEventType(func(context.Context, string) (string, bool) { return "", false }) // no event at all
+			id := e.leftRun(t, time.Minute, "sid-nohooks")
+			_, err := e.ss.UpdateScheduledJob(ctx, e.runOf(t, id).JobID, map[string]interface{}{"agent_type": agentType})
+			require.NoError(t, err)
+			e.s.reapStaleRuns(ctx)
+			r := e.runOf(t, id)
+			assert.Equal(t, "completed", r.Status)
+			require.NotNil(t, r.ExitReason)
+			assert.Equal(t, "ended_while_coral_was_down", *r.ExitReason)
+		})
+	}
+}
