@@ -979,7 +979,8 @@ const where = `results: ${path.join(tmp, 'results.json')}  coral logs: ${allLogs
 let exitCode;
 if (stress) {
   const counts = new Map(tests.map(t => [t, 0]));
-  for (const r of results) if (r.status === 'pass') counts.set(r.test, counts.get(r.test) + 1);
+  // a suite that ran in the tmux or strict phase is recorded as 'tmux: name' / 'strict: name': count it under its own name, or its passes were lost and a clean run read '0/N (failing)' (#6913)
+  for (const r of results) { const name = r.test.replace(/^(tmux|strict): /, ''); if (r.status === 'pass' && counts.has(name)) counts.set(name, counts.get(name) + 1); }
   const unstable = [...counts].filter(([, c]) => c < runs).sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0]));
   console.log(`\nSTRESS: ${tests.length} suites x ${runs} runs on ${shards} shard(s), CPU x${throttle}, no retries, in ${elapsed}s`);
   console.log(`${tests.length - unstable.length}/${tests.length} suites passed every run`);
