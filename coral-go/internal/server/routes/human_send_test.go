@@ -879,3 +879,34 @@ func TestHumanSendGateBoundsAndCancel(t *testing.T) {
 	_, err = g.enter(ctx, "one-more")
 	assert.NoError(t, err)
 }
+
+// A gate works to its own limits, not the defaults (#7029, QA's note on #7010): with set(), one agent's waiters are bounded by this gate's MaxWaiting and all agents' by its MaxInFlight.
+func TestHumanSendGateKeepsToItsOwnLimits(t *testing.T) {
+	var g humanSendGate
+	g.set(func(tm *humanSendTimings) { tm.MaxWaiting, tm.MaxInFlight = 1, 2 })
+	ctx := context.Background()
+	leaveA, err := g.enter(ctx, "a")
+	require.NoError(t, err)
+	waiting := make(chan error, 1)
+	go func() {
+		l, err := g.enter(ctx, "a")
+		waiting <- err
+		if l != nil {
+			defer l()
+		}
+	}() // the one waiter this gate allows an agent beyond the one in turn
+	require.Eventually(t, func() bool {
+		g.mu.Lock()
+		defer g.mu.Unlock()
+		return g.agents["a"] != nil && g.agents["a"].count == 2
+	}, time.Second, time.Millisecond)
+	short, cancelShort := context.WithTimeout(ctx, 500*time.Millisecond) // a gate that ignored its limits would make this waiter wait for the turn: it times out here instead of hanging the test
+	defer cancelShort()
+	_, err = g.enter(short, "a")
+	assert.ErrorIs(t, err, errSendBusy, "this gate's MaxWaiting is 1 (the default is higher): the second waiter is refused")
+	// In all: two under way (the one in turn and the waiter) fill MaxInFlight 2, so another agent is refused too, though the default allows 32.
+	_, err = g.enter(short, "b")
+	assert.ErrorIs(t, err, errSendBusy, "this gate's MaxInFlight is 2")
+	leaveA()
+	require.NoError(t, <-waiting)
+}
