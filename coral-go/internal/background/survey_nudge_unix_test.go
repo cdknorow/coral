@@ -70,7 +70,7 @@ func TestABoardNudgeBehindClaudesSessionSurveyDismissesItAndIsDelivered(t *testi
 	const text = "You have 1 unread message on the message board. Run 'coral-board read' to see them."
 	done := make(chan error, 1)
 	go func() {
-		_, err := deliverAutomatedIfWanted(context.Background(), rt, slog.Default(), name, "claude", sid, "nudge-1", text, "board nudge", true, true, nil)
+		_, err := deliverAutomatedIfWanted(context.Background(), rt, slog.Default(), name, "claude", sid, "nudge-1", text, "board nudge", false, true, nil)
 		done <- err
 	}()
 	require.Eventually(t, func() bool {
