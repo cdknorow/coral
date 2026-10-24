@@ -2,6 +2,7 @@ package routes
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"strconv"
 	"strings"
@@ -47,6 +48,9 @@ func (h *TasksHandler) SetProxyStore(ps *proxy.Store) {
 	h.proxy = ps
 }
 
+// errAutoAcceptHasNoCount is the 400 for a request that names max_auto_accepts: auto-accept is the agent's CLI permission flag, which cannot count.
+const errAutoAcceptHasNoCount = "not supported: auto-accept has no count"
+
 // taskRunFlags is the CLI flags of a task run: the ones the caller gave, and for an auto-accepting run the permission flag of its agent type (#5836): Claude's Auto mode, not a
 // bypass of every prompt; Codex's --full-auto (Coral's own alias: the Codex CLI removed it, and the launch translates it to --sandbox workspace-write -a never) and Antigravity's skip-permissions as before. A permission flag the run names itself (a mode, or a bypass) is the person's choice and
 // stays: the default is added only when there is none.
@@ -88,6 +92,8 @@ func (h *TasksHandler) SubmitTask(w http.ResponseWriter, r *http.Request) {
 		DisplayName     string `json:"display_name"`
 		WebhookURL      string `json:"webhook_url"`
 		AutoAccept      bool   `json:"auto_accept"`
+		// MaxAutoAccepts is only looked for: auto-accept has no count, and a caller who sends one is told so (#6937).
+		MaxAutoAccepts json.RawMessage `json:"max_auto_accepts"`
 	}
 	if err := decodeJSON(r, &body); err != nil {
 		errBadRequest(w, "invalid JSON")
@@ -99,6 +105,10 @@ func (h *TasksHandler) SubmitTask(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.WebhookURL != "" { // webhooks were removed (#3646)
 		errBadRequest(w, errWebhooksNotSupported)
+		return
+	}
+	if len(body.MaxAutoAccepts) > 0 { // the key, whatever its value: a cap that does not exist must not look accepted (#6937)
+		errBadRequest(w, errAutoAcceptHasNoCount)
 		return
 	}
 	if strings.TrimSpace(body.RepoPath) == "" {
