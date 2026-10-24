@@ -69,7 +69,10 @@ func RefuseRemote(p string) error {
 }
 
 // ErrReservedName is a file name Windows maps to a device or alters (#3669 finding 4).
-var ErrReservedName = errors.New("safefs: a reserved file name (a Windows device name, or a trailing dot or space)")
+var ErrReservedName = errors.New("safefs: a reserved file name (a Windows device name, a trailing dot or space, or one of < > \" | ? *)")
+
+// windowsNameCharsRefused: on Windows CheckName also refuses the characters its file systems do not allow in a name (< > \" | ? *); on every other system a name with them is an ordinary one (a variable so the tests run the rule everywhere).
+var windowsNameCharsRefused = runtime.GOOS == "windows"
 
 // CheckName refuses a name that becomes one path element of a file Coral writes, when Windows
 // would not store it as given: a reserved device name (CON, PRN, AUX, NUL, COM0-9, LPT0-9, the
@@ -81,6 +84,9 @@ func CheckName(name string) error {
 		return ErrReservedName
 	}
 	if last := name[len(name)-1]; last == '.' || last == ' ' {
+		return ErrReservedName
+	}
+	if windowsNameCharsRefused && strings.ContainsAny(name, "<>\"|?*") { // Windows cannot make a file or folder of such a name: refuse it in one plain line, not as a failure from the file system or git
 		return ErrReservedName
 	}
 	stem := name

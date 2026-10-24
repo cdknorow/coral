@@ -55,6 +55,16 @@ func rooted(p string) bool {
 
 // unreadablePath: text a shell expands (a variable, a command, ~ or ~user; on Windows also %VAR% for %USERPROFILE%,
 // %SystemRoot% and the like) is not a path Coral can read literally, so it counts as outside the working folder.
+// A ~ expands only where it starts a word, or follows a ":" or "=" (a path list, an assignment); inside a name it is a character
+// like any other, as in the 8.3 short name of a folder (C:\Users\RUNNER~1\...), which is a literal path (#7069).
 func unreadablePath(p string) bool {
-	return strings.ContainsAny(p, "$`~") || (runtime.GOOS == "windows" && strings.Contains(p, "%"))
+	if strings.ContainsAny(p, "$`") || (runtime.GOOS == "windows" && strings.Contains(p, "%")) {
+		return true
+	}
+	for i := 0; i < len(p); i++ {
+		if p[i] == '~' && (i == 0 || p[i-1] == ':' || p[i-1] == '=') {
+			return true
+		}
+	}
+	return false
 }
