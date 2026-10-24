@@ -14,7 +14,13 @@ const DISMISS_KEY = 'coral-signin-line-dismissed'; // when the note was dismisse
 const DISMISS_MS = 24 * 60 * 60 * 1000;
 const dismissed = () => { const at = Number(browserLocal.get(DISMISS_KEY)); return Number.isFinite(at) && at > 0 && Date.now() - at < DISMISS_MS; };
 
-let _known; // the last status's claude_signed_in: true, false, or undefined (not known: no background check or first launch yet)
+// What is known about Claude's sign-in: true, false, or undefined (nothing known: no background check or first launch yet, and the CLI
+// not asked), and whether the CLI said it (_fromCli) or the server's status did. A status that does not say (no claude_signed_in)
+// clears what an earlier status said, but leaves the CLI's own answer alone: on a fresh install the status says nothing until the
+// server's first check, and replacing the CLI's "not signed in" with "not known" at each status read sent the card back to the
+// generic words until the next ask, 30 s later (#6070's race, the Orchestrator on #307). A CLI ask that could not tell changes nothing.
+let _known;
+let _fromCli = false;
 let _askedAt = 0;
 
 /** What the last status said about Claude's sign-in: true, false, or undefined when it did not say (#5852). */
@@ -30,10 +36,11 @@ export function isLocalAgent(row) {
     return !!row && !isCloud() && normServer(sessionServer(row)) === LOCAL_SERVER;
 }
 
-/** A fresh answer for Claude (Check again asked the CLI itself): the card and the line follow it at once instead of at the next status read (#6048). */
+/** A fresh answer for Claude (the CLI itself was asked): the card and the line follow it at once instead of at the next status read (#6048).
+ *  An ask that could not tell (not a boolean) keeps what was known before. */
 export function setClaudeSignedIn(v) {
-    _known = typeof v === 'boolean' ? v : undefined;
-    applySigninStatus({ claude_signed_in: _known });
+    if (typeof v === 'boolean') { _known = v; _fromCli = true; }
+    showSigninState();
 }
 
 /** A new Claude agent that has not started, on a computer where Claude is not signed in: the card says so (#5852), so the generic "hasn't done anything yet" pill is not shown beside it (one message, not two). */
@@ -51,16 +58,22 @@ export function askSigninSoon() {
 const hasLocalClaude = () => (state.liveSessions || []).some(isLocalClaude);
 
 /** Puts the line right for the agents the page has now (the list changed); the last status answer is kept. */
-export function syncSigninLine() { applySigninStatus(_known === undefined ? undefined : { claude_signed_in: _known }); }
+export function syncSigninLine() { showSigninState(); }
 
-/** Shows the line for a status with claude_signed_in === false, hides it otherwise (absent is "not known": nothing to say). */
+/** Takes a status's claude_signed_in: what it says, or, when it does not say, "not known" unless the CLI's own answer is what is known.
+ *  Shows the line while the answer is false, hides it otherwise. */
 export function applySigninStatus(data) {
-    _known = data && typeof data.claude_signed_in === 'boolean' ? data.claude_signed_in : undefined;
+    if (data && typeof data.claude_signed_in === 'boolean') { _known = data.claude_signed_in; _fromCli = false; }
+    else if (!_fromCli) _known = undefined;
+    showSigninState();
+}
+
+function showSigninState() {
     if (_known === false && startupSignedOut(state.currentSession)) { const pill = document.getElementById('waiting-banner'); if (pill && pill.classList.contains('waiting-banner-not-started')) setPill(pill, false, ''); } // the card now says it (only for the agent that is open and whose Claude it is)
     const line = document.getElementById('claude-signin-line');
     if (!line) return;
-    const off = !!data && data.claude_signed_in === false;
-    if (data && data.claude_signed_in === true) browserLocal.remove(DISMISS_KEY); // signed in: a later sign-out says so again
+    const off = _known === false;
+    if (_known === true) browserLocal.remove(DISMISS_KEY); // signed in: a later sign-out says so again
     // Written only when it differs: the line follows the agent list, which a feed message re-reads (syncSigninLine), and a write of the value already there is still a write to the page (#5010's budget).
     const hide = !off || dismissed() || !hasLocalClaude();
     if (line.hidden !== hide) line.hidden = hide;
