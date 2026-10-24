@@ -3,6 +3,7 @@ import { syncHeldNotice } from './held_inputs.js';
 import { syncQueuedFromRow, paint as paintQueued } from './held_sends.js';
 import { _shortPath, _gitStateSummary, _repoBranch, deriveSessionState } from './session_state.js';
 import { startupSignedOut } from './signin_line.js';
+import { syncAgentKeys } from './agent_keys.js';
 import { setText, setHidden, setTitle, setHtml, setDisplay, setClassName, setPill } from './dom_write.js';
 
 export function updateSessionStatus(status) {
@@ -70,6 +71,7 @@ export function updateSessionBranch(branch, repoName, gitState) {
 }
 
 export function updateWaitingIndicator(s) {
+    syncAgentKeys(s); // Stop in place of Send, and the strip that a question opens (#6802)
     syncHeldNotice(s); // automated messages held for over a minute: the agent view says so (#6473)
     syncQueuedFromRow(s); paintQueued(); // the person's own messages held behind a question (#6611)
     const dot = document.getElementById("session-status-dot");

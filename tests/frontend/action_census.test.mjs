@@ -94,6 +94,7 @@ for (const f of HTML) {
 const NOT_POPOUT_RELEVANT = new Map(Object.entries({
     // Security's named list (review of the final step)
     'agent-sleep': 'sidebar agent menu (a popout has no sidebar); sleep is reversible (Wake)',
+    'cmd-stop': 'Stop on a phone\'s chat (#6802): sends Escape to interrupt the agent, a send gated by SEND_ACTIONS in a popout; the interrupt loses nothing (the agent can be asked again)',
     'agent-archive': 'sidebar agent menu; archive is reversible (Unarchive)',
     'team-sleep': 'sidebar team menu; reversible (Wake)',
     'agent-move': 'sidebar order only',

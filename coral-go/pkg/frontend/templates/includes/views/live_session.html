@@ -172,6 +172,17 @@
                                     <button class="btn btn-secondary btn-small" id="sleeping-restart-btn" type="button" data-action="restart" title="Start a fresh session with new settings instead of resuming">Restart…</button>
                                 </span>
                             </div>
+                            <!-- The agent's keys on a phone (#6802, design #6795): a row above the message box that the Keys chip opens (and a question opens by itself), Interact and above only (css hides it from a viewer). Seven plain buttons, seven Tab stops, above the box in the page as on the screen. -->
+                            <div id="agent-key-strip" class="terminal-key-bar agent-key-strip" role="group" aria-label="Keys for the agent" hidden>
+                                <button type="button" class="tkb-key" data-on-click="cmd-raw-keys" data-keys="Escape" aria-label="Escape">Esc</button>
+                                <button type="button" class="tkb-key" data-on-click="cmd-raw-keys" data-keys="Left" aria-label="Left arrow">←</button>
+                                <button type="button" class="tkb-key" data-on-click="cmd-raw-keys" data-keys="Up" aria-label="Up arrow">↑</button>
+                                <button type="button" class="tkb-key" data-on-click="cmd-raw-keys" data-keys="Down" aria-label="Down arrow">↓</button>
+                                <button type="button" class="tkb-key" data-on-click="cmd-raw-keys" data-keys="Right" aria-label="Right arrow">→</button>
+                                <button type="button" class="tkb-key" data-on-click="cmd-raw-keys" data-keys="Enter" aria-label="Enter">Enter</button>
+                                <button type="button" class="tkb-key" data-on-click="cmd-raw-keys" data-keys="C-c" aria-label="Ctrl-C, interrupt">Ctrl-C</button>
+                            </div>
+                            <div id="agent-keys-status" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
                             <div class="command-pane-body">
                                 <p id="composer-held-notice" class="composer-hint composer-held"><span id="composer-held-text" role="status"></span> <button type="button" class="cni-link" data-on-click="terminal-view-open" hidden>Show terminal</button></p><!-- #6473: automated messages held for over a minute -->
                                 <div id="composer-queued" class="composer-hint composer-queued" role="status"></div><!-- #6611: the person's messages held behind the agent's question, each with Cancel (held_sends.js) -->
@@ -185,8 +196,9 @@
                                     <input type="file" id="attach-image-input" accept="image/png,image/jpeg,image/gif,image/webp,image/bmp,image/tiff" multiple hidden tabindex="-1" aria-hidden="true">
                                 </div>
                                 <button class="mobile-send-btn mobile-send-team-btn" data-on-click="cmd-send-team" aria-label="Send with team reminder" title="Send with a team reminder"><span class="material-icons" aria-hidden="true">groups</span></button>
-                                <button class="mobile-send-btn" data-on-click="cmd-send" aria-label="Send">
-                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                                <button class="mobile-send-btn" id="mobile-send-btn" data-on-click="cmd-send" aria-label="Send">
+                                    <svg class="send-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                                    <svg class="stop-icon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
                                 </button>
                             </div>
                             <!-- After the text box in the DOM so Tab reaches the box first, then the model chip, Stop, Send and Send options; CSS order keeps the toolbar where it was drawn -->
@@ -205,6 +217,7 @@
                                         </button>
                                         <div id="thinking-chip-menu" class="model-chip-menu" role="menu" aria-label="Thinking level" hidden></div>
                                     </span>
+                                    <button type="button" class="model-chip keys-chip" id="keys-chip" data-on-click="agent-keys-toggle" aria-pressed="false" aria-controls="agent-key-strip" aria-label="Keys"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></svg><span class="model-chip-text">Keys</span></button>
                                 </div>
                                 <!-- All other buttons populated dynamically -->
                             </div>

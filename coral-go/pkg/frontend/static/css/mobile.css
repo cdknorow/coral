@@ -1459,3 +1459,18 @@
     .pending-messages.pending-queued .chat-bubble.human.pending .message-text > * { margin: 0; }
     .pending-messages.pending-queued .chat-bubble.human.pending .pending-label { flex: none; margin: 0; }
 }
+
+/* The agent's keys and Stop on a phone's chat (#6802, design #6795): the Keys chip and the strip it opens exist on a phone's layout only and not for a viewer (Interact and above); Stop is Send turned into a red rounded square while the agent works and the box is empty. */
+.keys-chip, .agent-key-strip { display: none; }
+.mobile-send-btn .stop-icon { display: none; }
+@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) and (max-width: 950px) {
+    .keys-chip { display: inline-flex; align-items: center; gap: 6px; min-height: var(--control-touch-height, 44px); padding: 0 14px; }
+    .keys-chip[aria-pressed="true"] { background: var(--accent-dim); border-color: var(--accent-dim); color: var(--text-on-accent); } /* pressed = the Send button's own pair (5:1 or better), not accent text on the chip (4.08:1 on the light theme) */
+    .agent-key-strip:not([hidden]) { padding: 4px 6px; font-size: .8125rem; } /* the grid's column minimum is 3.4 em of this size, the key label's: seven keys fit one row at 360 px */ /* 6 px at each side: the last key is not against the screen edge (an OS edge swipe wins there) */
+    .agent-key-strip .tkb-key[data-keys="C-c"] { border-color: var(--danger); } /* the interrupt: a red edge (text red on the key was 4.24:1 on the dark theme, under 4.5) */
+    .mobile-send-btn.is-stop { background: var(--danger); color: var(--text-on-accent); border-radius: var(--radius-xl); margin-left: 4px; } /* a rounded square, 10 px from the team button: not the same round blue as its neighbour */
+    .mobile-send-btn.is-stop .send-icon { display: none; }
+    .mobile-send-btn.is-stop .stop-icon { display: block; }
+    .mobile-send-btn.is-stop[aria-disabled="true"] { opacity: .6; }
+    .command-pane.hub-view-only :is(.keys-chip, .agent-key-strip) { display: none !important; }
+}
