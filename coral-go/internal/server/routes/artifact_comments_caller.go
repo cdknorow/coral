@@ -85,11 +85,11 @@ func (h *SessionsHandler) artifactCommentCaller(r *http.Request) (c commentCalle
 		if !cloud.TunneledAuthentic(r) {
 			return commentCaller{}, http.StatusForbidden, "forged_tunnel_stamp"
 		}
-		if ownerCommentWrite(r) && hubOwnerRequest(r).owner {
+		if ownerCommentRequest(r) && hubOwnerRequest(r).owner {
 			// The Hub's owner, by every check of hubOwnerRequest (the stamp, the owner marker, the enrolled label), on an owner write route: the owner's own identity, the server's (ownerIdentity), never the
 			// stamped hub user: that is used for the check only (#7052).
 			issuer, subject, name := h.ownerIdentity(r)
-			return commentCaller{Kind: commentCallerOwner, Issuer: issuer, Subject: subject, Name: cleanCommentName(name)}, 0, ""
+			return commentCaller{Kind: commentCallerOwner, Issuer: issuer, Subject: subject, Name: cleanCommentName(name), ViaHub: true}, 0, ""
 		}
 		c = commentCaller{Kind: commentCallerHub, Issuer: hubIssuer}
 		if u := r.Header.Get(tunnel.HubUserHeader); tunnel.ValidHubUser(u) {
@@ -124,6 +124,17 @@ func cleanCommentName(s string) string {
 		b.WriteRune(r)
 	}
 	return b.String()
+}
+
+// ownerCommentRequest is ownerCommentWrite or the owner's read of an artifact's comments (GET /api/artifacts/{hex64}/comments, the table's owner-only read): the requests on which the stamped owner is
+// the owner kind, so the answer says what the owner may do (comment, reply, resolve) and which comments are theirs. It adds nothing the table does not list: the owner's edit, delete and lock stay
+// the computer's (commentCaller.ViaHub keeps them off the answer).
+func ownerCommentRequest(r *http.Request) bool {
+	if r.Method == http.MethodGet {
+		pattern, mode := tunnel.OwnerRoute(r.Method, r.URL.Path)
+		return mode != tunnel.OwnerNone && mode.Refuses() && pattern == "/api/artifacts/{hex64}/comments"
+	}
+	return ownerCommentWrite(r)
 }
 
 // ownerCommentWrite reports whether the request is a POST to a route the tunnel table lists as an owner-only comment write (a comment or reply, a resolve, a reopen). The table decides: a route it does not list

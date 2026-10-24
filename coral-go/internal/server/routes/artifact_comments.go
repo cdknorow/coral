@@ -199,6 +199,9 @@ func (h *SessionsHandler) commentView(c commentCaller, t store.ArtifactComment, 
 		v.Can.Reply, _ = commentPolicy(c, commentCreate, nil, locked, hubWrite)
 		v.Can.Edit, _ = commentPolicy(c, commentEdit, &t, locked, hubWrite)
 		v.Can.Delete, _ = commentPolicy(c, commentDelete, &t, locked, hubWrite)
+		if c.ViaHub { // through Coral Hub the owner's edit and delete are not routes of the table: not offered
+			v.Can.Edit, v.Can.Delete = false, false
+		}
 		v.Can.Resolve, _ = commentPolicy(c, commentResolve, nil, locked, hubWrite)
 	}
 	return v
@@ -385,7 +388,7 @@ func (h *SessionsHandler) listArtifactComments(w http.ResponseWriter, r *http.Re
 		h.attachAsks(r.Context(), out)
 	}
 	canCreate, why := commentPolicy(caller, commentCreate, nil, locked, hubWrite)
-	writeJSON(w, http.StatusOK, map[string]any{"comments": out, "locked": locked, "you": map[string]any{"kind": caller.Kind, "name": viewerName(caller), "can_comment": canCreate, "reason": why, "can_lock": caller.Kind == commentCallerOwner},
+	writeJSON(w, http.StatusOK, map[string]any{"comments": out, "locked": locked, "you": map[string]any{"kind": caller.Kind, "name": viewerName(caller), "can_comment": canCreate, "reason": why, "can_lock": caller.Kind == commentCallerOwner && !caller.ViaHub},
 		"limits": map[string]int{"body": store.MaxArtifactCommentBody, "quote": maxCommentQuote, "comments": store.MaxArtifactComments}})
 }
 

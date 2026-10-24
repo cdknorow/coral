@@ -30,6 +30,9 @@ type commentCaller struct {
 	Subject string
 	Name    string
 	Session string // an agent's session name
+	// ViaHub is the Coral Hub's owner (#7052): the owner kind and the owner's own identity, on the requests the tunnel table lists for the owner. What the table does not list (edit, delete, lock) is
+	// not offered in the answer to such a caller.
+	ViaHub bool
 }
 
 // sameAuthor reports whether the caller is the author of c: the kind of identity matches and so do issuer and subject (an empty subject is nobody).
