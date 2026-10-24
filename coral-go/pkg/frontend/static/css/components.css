@@ -1887,6 +1887,7 @@ button.subscriber-history-link {
 
 .flag-shortcuts {
     display: flex;
+    flex-wrap: wrap; /* a chip never passes the dialog's edge (#7121) */
     gap: 6px;
     margin-top: -8px;
     margin-bottom: 12px;

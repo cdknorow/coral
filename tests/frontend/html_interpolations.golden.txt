@@ -391,7 +391,7 @@
 1	scheduler.js	failBadge
 1	scheduler.js	failBanner
 1	scheduler.js	fails
-1	scheduler.js	fails === 1 ? 'The last run failed' : `The last ${fails} runs all failed`
+1	scheduler.js	fails === 1 ? 'The last run failed' : `The last ${fails} runs failed`
 1	scheduler.js	k
 1	scheduler.js	paused
 2	scheduler.js	resultCell(r)

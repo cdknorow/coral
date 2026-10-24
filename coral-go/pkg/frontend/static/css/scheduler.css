@@ -317,3 +317,12 @@ div.job-field#sched-label { margin-bottom: 6px; }
 .sched-status.status-none { color: var(--text-secondary); }
 .sched-status-note { display: block; font-size: var(--fs-sm); color: var(--text-secondary); font-weight: 400; }
 .sched-empty-hint { margin: 24px 16px; color: var(--text-secondary); }
+
+/* The Jobs fixes of #7121: a run's When is the link into the run; the checkbox of an agent job sits beside its label (a phone rule had made the label a block); a phone's job has a back row to the list. */
+.sched-runs-table .row-open-btn { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+#job-modal .flag-shortcut-btn { margin: 0; }
+#job-modal label.job-cleanup-option { display: flex; flex-direction: row; align-items: center; gap: 8px; }
+.sched-back { display: none; }
+@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) and (max-width: 950px) {
+    .sched-back { display: flex; align-items: center; min-height: var(--control-touch-height, 44px); padding: 0; margin: 0 0 4px; background: none; border: 0; color: var(--accent); font: inherit; font-weight: 600; cursor: pointer; text-align: left; }
+}

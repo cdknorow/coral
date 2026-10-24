@@ -72,7 +72,7 @@ const S = `(window.__coralStatic || '/static/')`;
             console.log(`${at}: the job page, failure first`);
             await ev(`document.querySelector('#scheduled-jobs-list .sched-row').click(); true`);
             await waitFor(vis('#scheduler-detail .sched-fail-banner'), `${at}: the job page`, 8000);
-            const order = await ev(`[...document.querySelectorAll('#scheduler-detail > *')].map(e => e.className.split(' ')[0])`);
+            const order = await ev(`[...document.querySelectorAll('#scheduler-detail > *:not(.sched-back)')].map(e => e.className.split(' ')[0])`); // the phone's back row (#7121) is not content
             assert.equal(order[0], 'sched-fail-banner', `${at}: the failure is the first thing on the page: ${JSON.stringify(order)}`);
             assert.match(await text('#scheduler-detail .sched-fail-banner'), /The last run failed.*step 2 \(Test\) exited with 3/s);
             assert.equal(await ev(`/\\benabled\\b/i.test(document.querySelector('#scheduler-detail .sched-header').textContent)`), false, `${at}: no "enabled" pill`);

@@ -87,7 +87,7 @@ function renderJobsSidebar() {
         // A job whose scheduling works but whose every run fails otherwise looks identical to a healthy one here.
         const fails = job.consecutive_failures || 0;
         const failBadge = fails >= 2
-            ? `<span class="sched-fail-badge" title="The last ${escapeAttr(fails)} runs all failed">${fails} failed</span>`
+            ? `<span class="sched-fail-badge" title="The last ${escapeAttr(fails)} runs failed">${fails} failed</span>`
             : '';
         const meta = [cronWords(job.cron_expr) + (job.timezone ? ` (${job.timezone})` : ''), lastWords(job.last_run), job.enabled && job.next_fire_at ? `next ${awayWords(job.next_fire_at)}` : ''].filter(Boolean).join(' · ');
         // A run that failed for its folder or branch says so on the row, in the server's plain sentence (error_code names those), not "never run" with the cause out of sight (#6707).
@@ -172,7 +172,7 @@ function renderJobDetail(job, runs) {
            </div>`
         : fails >= 1
         ? `<div class="sched-fail-banner" role="status">
-             <strong>${fails === 1 ? 'The last run failed' : `The last ${fails} runs all failed`}</strong>${escapeHtml(when)}${why ? `: ${escapeHtml(why)}` : ''}. It is still scheduled.
+             <strong>${fails === 1 ? 'The last run failed' : `The last ${fails} runs failed`}</strong>${escapeHtml(when)}${why ? `: ${escapeHtml(why)}` : ''}. It is still scheduled.
            </div>`
         : '';
 
@@ -186,6 +186,7 @@ function renderJobDetail(job, runs) {
 
     const moreId = `sched-more-${Number(job.id)}`;
     container.innerHTML = `
+        <button type="button" class="sched-back" data-on-click="job-back">&lsaquo; Jobs</button>
         ${failBanner}
         <div class="sched-header">
             <h2>${escapeHtml(job.name)}</h2>
@@ -311,6 +312,13 @@ export function pickSchedulePreset(btn) {
     validateCronPreview();
 }
 
+/** The Repository path shows its end while it is not being edited: a path's last part is the folder's name (#7121). */
+function showPathEnd() {
+    const i = document.getElementById('job-modal-repo');
+    if (i && document.activeElement !== i) i.scrollLeft = i.scrollWidth;
+}
+document.addEventListener('focusout', e => { if (e.target && e.target.id === 'job-modal-repo') showPathEnd(); });
+
 export function switchJobType(type) {
     currentJobType = type;
     document.querySelectorAll('.job-type-btn').forEach(btn => {
@@ -322,6 +330,7 @@ export function switchJobType(type) {
     if (promptFields) promptFields.style.display = type === 'prompt' ? '' : 'none';
     const promptMore = document.getElementById('job-modal-prompt-more'); // branch, flags and cleanup: an agent job's, behind More options
     if (promptMore) promptMore.hidden = type !== 'prompt';
+    requestAnimationFrame(showPathEnd); // the path field has a width once its tab is shown
 }
 
 // ── The time limit and the zone, in words ────────────────────────────────
@@ -629,6 +638,7 @@ registerActions({
     'job-new': () => showJobModal(),
     'job-limit-check': () => checkLimit(),
     'job-select': el => withId(el.dataset.jobId, selectScheduledJob),
+    'job-back': () => { const list = document.getElementById('scheduled-jobs-list'); const open = list && (list.querySelector('[aria-current="true"] .row-btn') || list.querySelector('.row-btn')); if (list) list.scrollIntoView({ block: 'start' }); if (open) open.focus({ preventScroll: true }); }, // a phone: the job's page is under the list; back to the list with the open job focused (#7121)
     'job-edit': el => withId(el.dataset.jobId, editScheduledJob),
     'job-toggle': el => withId(el.dataset.jobId, toggleScheduledJob),
     'job-delete': el => withId(el.dataset.jobId, deleteScheduledJob),

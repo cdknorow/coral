@@ -55,18 +55,13 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
         await ev(`(() => { const b = document.createElement('button'); b.setAttribute('data-on-click', 'flag-toggle'); b.dataset.flagInput = 'job-modal-flags'; b.dataset.flag = '--x; rm -rf'; document.body.appendChild(b); b.click(); b.remove(); return true; })()`);
         check('a flag outside the pattern does nothing', (await flags()) === '');
 
-        const perm = `document.querySelector('#job-modal .flag-shortcut-btn:not([data-flag="--chrome"])')`;
-        const expectFlag = { codex: '--dangerously-bypass-approvals-and-sandbox', agy: '--dangerously-skip-permissions', claude: '--permission-mode bypassPermissions' };
-        const seen = {};
+        // no one-tap permission-bypass chip in the job dialog since #7121 (a person who wants one types the flag): --chrome is the only shortcut, for every agent
+        const chips = {};
         for (const agent of ['codex', 'agy', 'claude']) {
             await ev(`(() => { const s = document.getElementById('job-modal-agent'); s.value = ${JSON.stringify(agent)}; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
-            const b = await ev(`(() => { const b = ${perm}; return { action: b.getAttribute('data-on-click'), text: b.textContent.trim(), type: b.dataset.agentType, mode: b.dataset.mode, onclick: b.hasAttribute('onclick') }; })()`);
-            await ev(`${perm}.click(); true`);
-            seen[agent] = { ...b, flags: await flags() };
+            chips[agent] = await ev(`[...document.querySelectorAll('#job-modal .flag-shortcut-btn')].map(b => b.dataset.flag)`);
         }
-        const permOk = Object.entries(expectFlag).every(([a, f]) => seen[a].action === 'flag-perm' && seen[a].text === f && seen[a].type === a && seen[a].mode === 'bypassPermissions' && !seen[a].onclick
-            && seen[a].flags.includes(f) && Object.entries(expectFlag).every(([b, g]) => b === a || !seen[a].flags.includes(g)));
-        check('the permission shortcut shows each agent\'s own flag and sets exactly that flag (no other agent\'s)', permOk, JSON.stringify(seen));
+        check('the job dialog offers no permission-bypass shortcut for any agent: --chrome is the only chip', Object.values(chips).every(c => c.length === 1 && c[0] === '--chrome'), JSON.stringify(chips));
         const badPerm = await ev(`(() => { const before = document.getElementById('job-modal-flags').value; const b = document.createElement('button'); b.setAttribute('data-on-click', 'flag-perm');
             b.dataset.flagInput = 'job-modal-flags'; b.dataset.agentType = 'codex x'; b.dataset.mode = 'bypassPermissions'; document.body.appendChild(b); b.click(); b.remove();
             return before === document.getElementById('job-modal-flags').value; })()`);
