@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sys/windows"
 )
 
 func inTemp(t *testing.T) string {
@@ -43,12 +44,13 @@ func TestARecentMarkStartsCoralOnceAndNothingElseDoes(t *testing.T) {
 	assert.False(t, Take(now), "a mark that is not a time")
 }
 
-// The real folder is this user's %LOCALAPPDATA%\Coral.
+// The real folder is this user's Local AppData known folder, then Coral (a scratch USERPROFILE moves the known folder with it, QA on #335).
 func TestTheMarkLivesInThisUsersLocalAppData(t *testing.T) {
 	dir, err := folder()
 	require.NoError(t, err)
-	assert.Equal(t, "Coral", filepath.Base(dir))
-	assert.Contains(t, dir, "AppData")
+	local, err := windows.KnownFolderPath(windows.FOLDERID_LocalAppData, windows.KF_FLAG_DEFAULT)
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Join(local, "Coral"), dir)
 }
 
 // The mark is created new, never written through what already has its name (Security on #335: the helper may run elevated): a hard link

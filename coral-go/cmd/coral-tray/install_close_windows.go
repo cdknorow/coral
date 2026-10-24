@@ -23,11 +23,22 @@ func onQuitForInstallSignal(quit func()) {
 	onTrayEvent(trayevent.Quit, "quit-for-install", quit)
 }
 
-// onSystemClose is the tray closing because Windows asked (Restart Manager for an installer, or the end of the session), not the person:
-// it marks Coral to be started again after the install (installrestart; a mark from a logoff is too old by the next install).
+// onSystemClose is the tray closing because Windows asked, not the person. Only when Restart Manager closed it for an installer
+// (ENDSESSION_CLOSEAPP, on a sent WM_ENDSESSION) does it mark Coral to be started again after the install (installrestart): a logoff or a
+// shutdown never marks, so a reboot's mark can't start Coral beside the updater's own start (QA on #335).
 func onSystemClose() {
+	if !endsession.InstallerAsked() {
+		return
+	}
 	if err := installrestart.Mark(time.Now()); err != nil {
 		log.Printf("[TRAY] Coral won't be started again after the install: %v", err)
+	}
+}
+
+// guardTrayWindow keeps a posted WM_ENDSESSION from the tray icon's window, whose library would end the tray on any (internal/endsession).
+func guardTrayWindow() {
+	if err := endsession.Guard("SystrayClass"); err != nil {
+		log.Printf("[ENDSESSION] the tray window is not guarded: %v", err)
 	}
 }
 

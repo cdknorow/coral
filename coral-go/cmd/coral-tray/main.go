@@ -390,6 +390,7 @@ func runForeground(host string, port int, noBrowser, debugMode bool, backendType
 	// Run systray (blocks until quit)
 	var exitOnce sync.Once
 	systray.Run(func() {
+		guardTrayWindow() // the icon's window exists now (#335)
 		systray.SetTemplateIcon(iconData, iconData)
 		systray.SetTitle("")
 		systray.SetTooltip("Coral Dashboard")

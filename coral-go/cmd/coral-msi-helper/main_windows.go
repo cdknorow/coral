@@ -6,8 +6,8 @@
 //	coral-msi-helper stop  --folder DIR [--folder DIR] [--wait SECONDS]
 //	coral-msi-helper start
 //
-// stop, before the installer looks for files in use: closes this user's Coral the normal way. The processes it considers are this user's, in
-// this session, whose program is in one of the Coral folders, each checked on its own handle. Each tray among them (a coral-tray that is not
+// stop, once the person has allowed the install (for an install before its files-in-use check, for an uninstall after it): closes this
+// user's Coral the normal way. The processes it considers are this user's, in this session, whose program is in one of the Coral folders, each checked on its own handle. Each tray among them (a coral-tray that is not
 // a server child: no --server-child on its command line) is asked to quit with its quit event (internal/trayevent): it then quits as its
 // menu's Quit does, agents marked to wake. A tray that has no quit event (older than #335), or hasn't ended a while after being asked, is
 // ended as coral-tray --stop always ended it on Windows: that process alone, through the same handle it was checked on, after which its
@@ -40,12 +40,9 @@ import (
 	"golang.org/x/sys/windows"
 
 	"github.com/subgentic/coral/internal/installrestart"
+	"github.com/subgentic/coral/internal/msiproduct"
 	"github.com/subgentic/coral/internal/trayevent"
-	"github.com/subgentic/coral/internal/updater/apply"
 )
-
-// quitGrace is how long a tray that was asked to quit has before it is ended the old way.
-const quitGrace = 20 * time.Second
 
 func main() {
 	closeLog := openLog()
@@ -298,7 +295,7 @@ func stop(me identity, folders []string, wait time.Duration) {
 		log.Printf("stop: Coral won't be started again after the install: %v", err)
 	}
 	for _, t := range trays {
-		quitTray(me, folders, t)
+		quitTray(me, folders, t, wait)
 	}
 	// A Coral window still open (its tray ended the old way): close it as its close button would.
 	apps, _ := list(0, func(p proc) bool { return coralOf(me, folders)(p) && p.name() == "coral-app.exe" })
@@ -310,9 +307,9 @@ func stop(me identity, folders []string, wait time.Duration) {
 	waitGone(me, folders, wait)
 }
 
-// quitTray asks the tray t to quit with its quit event and gives it quitGrace to end; a tray with no event, or still running then, is ended
+// quitTray asks the tray t to quit with its quit event and gives it quitGrace (the whole --wait, so agents get marked to wake) to end; a tray with no event, or still running then, is ended
 // as coral-tray --stop always ended it, through its handle, after checking again on that handle that it is still this user's tray.
-func quitTray(me identity, folders []string, t held) {
+func quitTray(me identity, folders []string, t held, quitGrace time.Duration) {
 	err := trayevent.Signal(trayevent.Name(trayevent.Quit, me.user, int(t.pid)), me.user)
 	if err == nil {
 		log.Printf("stop: asked tray %d to quit", t.pid)
@@ -380,12 +377,15 @@ func waitGone(me identity, folders []string, wait time.Duration) {
 // installedFolder is the folder of the product Windows Installer registered per machine, under Program Files, as the updater finds it
 // (#147); a variable so a test can replace it.
 var installedFolder = func() (string, error) {
-	msi := &apply.WindowsMSI{}
-	dir, err := msi.Install()
+	product, err := msiproduct.Registered(msiproduct.RelatedProducts, msiproduct.MachineProperty)
 	if err != nil {
 		return "", err
 	}
-	if why := msi.Unsupported(dir); why != "" {
+	dir, err := msiproduct.Folder(product)
+	if err != nil {
+		return "", err
+	}
+	if why := msiproduct.Unsupported(dir); why != "" {
 		return "", errors.New(why)
 	}
 	return dir, nil
@@ -404,6 +404,13 @@ func start(me identity) {
 	tray := filepath.Join(folder, "coral-tray.exe")
 	if fi, err := os.Lstat(tray); err != nil || !fi.Mode().IsRegular() {
 		log.Printf("start: no coral-tray.exe in the install folder")
+		return
+	}
+	// A Coral already running (started some other way meanwhile, as the updater's own start does) is not started twice.
+	running, _ := list(0, func(p proc) bool { return coralOf(me, []string{folder})(p) && p.isTray() })
+	closeAll(running)
+	if len(running) > 0 {
+		log.Printf("start: Coral is already running: nothing to start")
 		return
 	}
 	win, err := windows.GetWindowsDirectory()
