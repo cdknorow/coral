@@ -87,13 +87,109 @@ async function authStatus() {
 }
 
 /** Ask a signed-in browser to set a password when none is set. "Not now" is final on this computer (the server's own
- *  `local` check says which), and asks again on each visit from another computer. */
+ *  `local` check says which), and asks again on each visit from another computer. It never opens over another dialog and
+ *  never takes the keyboard from an agent's terminal (#294: it covered the New Agent dialog's error, took the Esc a terminal
+ *  was sent, and later the words a person typed after a pause). It waits until no dialog is on screen and asks the server
+ *  again. Then, with the keyboard in a terminal, it shows a card instead (passwordCard): it never takes the focus, Tab or F6
+ *  reach its button, and the button opens the dialog. Otherwise the dialog opens at once, as on a fresh install's first
+ *  load. The card stays until a password is set or the dialog is answered, so neither way can be missed. The promise
+ *  settles once the card or the dialog is up (or nothing is needed), so the next question (Coral Hub sign-in) stays behind. */
 export async function maybePromptSetPassword() {
-    if (document.getElementById('set-password-modal')) return;
-    const st = await authStatus();
+    if (document.getElementById('set-password-modal') || document.getElementById('set-password-card')) return;
+    let st = await authStatus();
     if (!st || st.authenticated === false || st.password_set !== false) return;
     if (st.local === true && _notNowGet()) return;
-    showSetPasswordModal({ local: st.local === true });
+    if (dialogOpen()) {
+        await untilNoDialog();
+        if (document.getElementById('set-password-modal') || document.getElementById('set-password-card')) return;
+        st = await authStatus(); // a password may have been set meanwhile (in Settings, or from another browser)
+        if (!st || st.authenticated === false || st.password_set !== false) return;
+        if (st.local === true && _notNowGet()) return;
+    }
+    if (terminalHasKeyboard()) passwordCard({ local: st.local === true });
+    else showSetPasswordModal({ local: st.local === true });
+}
+
+/** The keyboard is in an agent's terminal. */
+function terminalHasKeyboard() {
+    const a = document.activeElement;
+    return !!(a && a.closest && a.closest('.xterm'));
+}
+
+/** Another dialog is on screen. */
+function dialogOpen() {
+    return [...document.querySelectorAll('.modal, dialog[open], [role="dialog"][aria-modal="true"]')]
+        .some(m => m.id !== 'set-password-modal' && m.style.display !== 'none' && m.getClientRects().length > 0);
+}
+
+// How long the page must have no dialog before the prompt opens: one dialog closing as the next opens (Launch, then its
+// error) is not a gap to open into.
+const FREE_SETTLE_MS = 400;
+
+/** Resolves once no dialog has been on screen for FREE_SETTLE_MS, looking again on any change to the page's dialogs and
+ *  every second. */
+function untilNoDialog() {
+    return new Promise(resolve => {
+        let settle = null;
+        const look = () => {
+            if (dialogOpen()) { clearTimeout(settle); settle = null; return; }
+            if (settle) return;
+            settle = setTimeout(() => {
+                settle = null;
+                if (dialogOpen()) return;
+                observer.disconnect(); clearInterval(tick);
+                resolve();
+            }, FREE_SETTLE_MS);
+        };
+        const observer = new MutationObserver(look);
+        observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class', 'open', 'hidden'] });
+        const tick = setInterval(look, 1000); // interval-ok: a look at this page's own dialogs, no request
+        look();
+    });
+}
+
+/** The card that asks while the keyboard is in a terminal (#294): role="status", placed right after the terminal's area in the
+ *  page (so F6 from the terminal lands on its button, and Tab reaches it), never focused by itself. It goes in empty and gets its
+ *  words a moment later, so screen readers (NVDA, JAWS) announce them: a live region filled as it is added is often not read. "Set password" opens the dialog with the focus in its field; the card
+ *  goes once the dialog is answered, or once a password is set (looked for when the page is focused or shown, and every few
+ *  seconds, as the dialog does). */
+function passwordCard({ local }) {
+    const card = el('div', 'update-toast password-card'); card.id = 'set-password-card';
+    card.setAttribute('role', 'status');
+    const body = el('div', 'update-toast-body');
+    const header = el('div', 'update-toast-header');
+    header.append(el('span', 'update-toast-title', 'Set a password for Coral'));
+    const text = el('p', 'security-warning-text', 'Browsers on other computers sign in to Coral with it.');
+    const open = el('button', 'btn btn-primary', 'Set password'); open.type = 'button'; open.id = 'set-password-card-open';
+    body.append(header, text, open);
+    let timer = null;
+    const remove = () => {
+        clearInterval(timer);
+        document.removeEventListener('visibilitychange', onVisible);
+        window.removeEventListener('focus', recheck);
+        card.remove();
+    };
+    const recheck = async () => {
+        const st = await authStatus();
+        if (card.isConnected && st && st.password_set === true) remove();
+    };
+    const onVisible = () => { if (document.visibilityState === 'visible') recheck(); };
+    open.addEventListener('click', () => {
+        remove();
+        showSetPasswordModal({ local });
+    });
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', recheck);
+    timer = pollEvery(recheck, 5000);
+    // Right after the terminal's area (its status bar, else the terminal itself): the next control there in the page's order, so F6
+    // (#121) and Tab from the terminal reach it. It is drawn at the corner (position: fixed) wherever it sits in the page.
+    const term = document.activeElement && document.activeElement.closest ? document.activeElement.closest('.xterm') : null;
+    let after = term ? (term.closest('#xterm-container') || term) : null;
+    const bar = document.getElementById('terminal-statusbar');
+    if (after && bar && bar.previousElementSibling === after) after = bar; // the dashboard's terminal: its bar comes next, then the card
+    if (after) after.insertAdjacentElement('afterend', card);
+    else document.body.appendChild(card);
+    setTimeout(() => { if (card.isConnected) card.append(body); }, 100); // the words a tick after the empty region (see above)
 }
 
 export function showSetPasswordModal({ local = false } = {}) {
