@@ -11,3 +11,5 @@ func onSystemClose() {}
 func watchEndSession(title string, end func(closeApp bool)) {}
 
 func guardTrayWindow() {}
+
+func allowTrayWindowClose() {}
