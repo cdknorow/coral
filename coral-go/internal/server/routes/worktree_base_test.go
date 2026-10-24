@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -53,7 +54,7 @@ func TestTeamLaunchWithAWorktreeInARepositoryNotOnMain(t *testing.T) {
 			status, out := postTeam(t, server.URL, body)
 			require.Equal(t, http.StatusOK, status, "base %q on %s: %v", base, branch, out)
 			id := out["board_id"].(string)
-			assert.Contains(t, git("worktree", "list"), filepath.Join("worktrees", id), "the worktree is made")
+			assert.Contains(t, git("worktree", "list"), "worktrees/"+id, "the worktree is made") // git prints forward slashes on every system
 			assert.Contains(t, git("branch", "--list", "coral-team/"+id), "coral-team/"+id, "on the team's branch, started from "+branch)
 		}
 	}
@@ -263,6 +264,9 @@ func TestTeamWorktreeForABoardNameGitRefusesInABranch(t *testing.T) {
 		wd, path, created, failure := h.createTeamWorktree(t.Context(), launchTeamRequest{BoardName: name, WorkingDir: repo, Worktree: true})
 		if failure != nil && strings.Contains(failure.Error(), "cannot name a worktree folder") {
 			continue // a name the folder check refuses first (#5305) is not this case
+		}
+		if runtime.GOOS == "windows" && strings.ContainsAny(name, `<>:"/\|?*`) {
+			continue // Windows cannot name a folder so: a name the system refuses is not this case either (#7048)
 		}
 		require.NoError(t, failure, "%q", name)
 		assert.Equal(t, filepath.Join(h.cfg.CoralDir(), "worktrees", name), wd)
