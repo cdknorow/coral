@@ -126,7 +126,7 @@ stop_case() {
     if ! wait_for_server; then row "$name" "$mode ($prog)" "the server did not start: $(tail -c 300 "$lg" 2>/dev/null | clean x 300)"; kill "$wpid" 2>/dev/null; return; fi
     api PUT "/api/settings" -d "{\"cli_path_claude\": \"$MOCK_AGENT_NATIVE\"}" >/dev/null
     printf '{"name": "stop-%s", "cron_expr": "* * * * *", "timezone": "UTC", "agent_type": "claude", "repo_path": "%s", "prompt": "x", "enabled": 1, "max_duration_s": 600, "cleanup_worktree": 1}' "$name" "$(native "$rp")" >"$TMPROOT/job-$name.json"
-    local jid; jid=$(api POST "/api/scheduled/jobs" --data-binary "@$(native "$TMPROOT/job-$name.json")" | jget id)
+    local jresp jid; jresp=$(api POST "/api/scheduled/jobs" --data-binary "@$(native "$TMPROOT/job-$name.json")"); jid=$(printf '%s' "$jresp" | jget id)
     local n=0 wt="" st=""
     while [[ $n -lt 55 ]]; do
         sleep 2; n=$((n + 1))
@@ -139,7 +139,7 @@ try:
 except Exception: print('')" | tr -d '\r')
         [[ -n "$wt" ]] && break
     done
-    if [[ -z "$wt" ]]; then row "$name" "$mode ($prog)" "no run came alive in 110 s"; kill "$wpid" 2>/dev/null; return; fi
+    if [[ -z "$wt" ]]; then row "$name" "$mode ($prog)" "no run came alive in 110 s; job create answered: $(printf '%s' "$jresp" | clean x 160); runs: $(api GET "/api/scheduled/jobs/${jid}/runs" | clean x 240)"; kill "$wpid" 2>/dev/null; return; fi
     sleep 3
     local before_wt before_ag; before_wt=$([[ -d "$(upath "$wt")" ]] && echo present || echo gone); before_ag=$(agents_alive)
     touch "$go"
