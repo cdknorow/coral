@@ -756,7 +756,7 @@ func (s *JobScheduler) WaitWatchers(d time.Duration) bool {
 		return true
 	}
 	done := make(chan struct{})
-	go func() { s.watching.Wait(); close(done) }()
+	safego.Go("background/scheduler:WaitWatchers", func() { s.watching.Wait(); close(done) })
 	select {
 	case <-done:
 		return true
