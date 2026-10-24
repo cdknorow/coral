@@ -1,0 +1,56 @@
+name: Windows survey proof (trial)
+
+# #7007 (#6974): a board nudge behind Claude's session survey, on a Windows ConPTY with a fake Claude: dismissed with one 0 and delivered; nothing typed over a draft; then the same with the runtime's key typing removed (it must fail).
+# A trial run on a push to a trial/win-survey-* branch or by hand.
+on:
+  workflow_dispatch:
+  push:
+    branches: ["trial/win-survey-*"]
+
+permissions:
+  contents: read
+
+env:
+  CORAL_TELEMETRY_DISABLED: "1"
+
+jobs:
+  survey:
+    name: survey (windows-latest)
+    runs-on: windows-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out LF line endings
+        working-directory: ${{ runner.temp }}
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: coral-go/go.mod
+          cache: false
+      - name: A C compiler for the dev build
+        shell: pwsh
+        run: |
+          if (-not (Get-Command gcc -ErrorAction SilentlyContinue)) { choco install mingw --version=16.1.0 -y --no-progress; if ($LASTEXITCODE -ne 0) { throw "choco install mingw failed" } }
+      - name: the survey tests, then without the 0
+        working-directory: coral-go
+        run: |
+          set +e +o pipefail
+          git --version
+          go test -count=1 -tags "dev fts5" -run 'TestWindows(ABoardNudge|NothingIsTyped)' -v ./internal/background 2>&1 | tee "$RUNNER_TEMP/real.log" | grep -E "^(=== RUN|--- |ok|FAIL|PASS)|received|Error|panic"
+          real=${PIPESTATUS[0]}
+          python3 - <<'PY'
+          p = "internal/background/runtime_pty.go"
+          s = open(p, newline="").read()
+          a = "return ptymanager.NewPTYSessionTerminal(r.backend).SendRawInput(ctx, o, name, keys, agentType, sessionID)"
+          assert s.count(a) == 1, "the line is not there exactly once"
+          open(p, "w", newline="").write(s.replace(a, "return nil // MUTANT: no key is typed"))
+          PY
+          go test -count=1 -tags "dev fts5" -run 'TestWindowsABoardNudge' -v ./internal/background 2>&1 | tee "$RUNNER_TEMP/mutant.log" | grep -E "^(=== RUN|--- |ok|FAIL|PASS)|received|Error|Messages"
+          mutant=${PIPESTATUS[0]}
+          echo "RESULT real=$real (want 0) mutant-without-the-0=$mutant (want non-zero)"
+          [[ $real -eq 0 && $mutant -ne 0 ]]
