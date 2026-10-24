@@ -1,0 +1,38 @@
+name: PTY handles on Windows (throwaway)
+
+# A trial branch's own workflow (#6827): runs the ptymanager package tests on a Windows runner, and a handle-count test for sessions that end on their own. Never merged.
+on:
+  push:
+    branches: ["trial/ptyhandle-*"]
+
+permissions:
+  contents: read
+
+env:
+  CORAL_TELEMETRY_DISABLED: "1"
+
+jobs:
+  pty:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out LF line endings
+        shell: bash
+        working-directory: ${{ runner.temp }}
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: coral-go/go.mod
+          cache: false
+      - name: the handle tests
+        working-directory: coral-go
+        run: go test ./internal/ptymanager/ -count=1 -v -run 'LeaveNoHandlesOpen|HandlesAreFreed' 2>&1 | tail -80 
+      - name: the whole ptymanager package
+        working-directory: coral-go
+        run: go test ./internal/ptymanager/ -count=1 2>&1 | tail -20
