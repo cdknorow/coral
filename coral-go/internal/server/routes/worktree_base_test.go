@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/go-chi/chi/v5"
+	"github.com/subgentic/coral/internal/coralnames"
 	"github.com/subgentic/coral/internal/store"
 	"io"
 	"net/http"
@@ -19,7 +20,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/subgentic/coral/internal/config"
-	"github.com/subgentic/coral/internal/gitutil"
 )
 
 func repoOn(t *testing.T, branch string, commit bool) (string, func(args ...string) string) {
@@ -267,7 +267,7 @@ func TestTeamWorktreeForABoardNameGitRefusesInABranch(t *testing.T) {
 		assert.Equal(t, filepath.Join(h.cfg.CoralDir(), "worktrees", name), wd)
 		assert.Equal(t, wd, path)
 		assert.True(t, created)
-		assert.Contains(t, git("branch", "--list", gitutil.TeamBranch(name)), "coral-team/", "%q", name)
+		assert.Contains(t, git("branch", "--list", coralnames.TeamBranch(name)), "coral-team/", "%q", name)
 	}
 }
 

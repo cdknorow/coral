@@ -362,19 +362,6 @@ func TestRunWithoutAWorktreeNeverRemovesTheJobsOwnCheckout(t *testing.T) {
 	assert.DirExists(t, own)
 }
 
-func TestIsRunWorktreeFolder(t *testing.T) {
-	root := filepath.Join(t.TempDir(), "worktrees")
-	repo := filepath.Join(t.TempDir(), "proj")
-	assert.True(t, IsRunWorktreeFolder(root, repo, 7, filepath.Join(root, "job-run-7-proj")))
-	assert.True(t, IsRunWorktreeFolder(root, repo, 7, repo+"_task_run_7"), "the legacy folder beside the repository")
-	assert.False(t, IsRunWorktreeFolder(root, repo, 7, repo), "never the repository itself")
-	assert.False(t, IsRunWorktreeFolder(root, repo, 7, filepath.Join(root, "job-run-8-proj")), "another run's")
-	assert.False(t, IsRunWorktreeFolder(root, repo, 7, filepath.Join(root, "job-run-7-other")), "another repository's name")
-	assert.False(t, IsRunWorktreeFolder(root, repo, 7, filepath.Join(root, "x", "job-run-7-proj")), "not directly in the folder")
-	assert.False(t, IsRunWorktreeFolder("", repo, 7, filepath.Join(root, "job-run-7-proj")), "no root, no folder")
-	assert.False(t, IsRunWorktreeFolder(root, "", 7, filepath.Join(root, "job-run-7-")))
-}
-
 // #6842 (#6839 finding 2): a run whose agent exits within seconds without ever reporting an event is failed with a plain reason and a fixed code, not completed/agent_done. One that reported events (a
 // one-shot that ends fast on purpose), one that ran longer than the window, and an agent type that reports no events are left as they were.
 func TestRunWhoseAgentExitedBeforeItStartedIsFailed(t *testing.T) {

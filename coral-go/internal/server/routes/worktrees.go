@@ -3,6 +3,7 @@ package routes
 import (
 	"context"
 	"encoding/json"
+	"github.com/subgentic/coral/internal/coralnames"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -11,7 +12,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/subgentic/coral/internal/background"
 	"github.com/subgentic/coral/internal/config"
 	"github.com/subgentic/coral/internal/gitutil"
 	"github.com/subgentic/coral/internal/safego"
@@ -47,10 +47,10 @@ type worktreeEntry struct {
 // entries are the worktrees on disk that Coral made, newest first: a team's (its record says it has one) and a job run's (its run recorded one), each still in a repository's worktree list.
 func (h *WorktreesHandler) entries(ctx context.Context, probe bool) []worktreeEntry {
 	out := []worktreeEntry{}
-	root := filepath.Join(h.cfg.CoralDir(), "worktrees")
+	root := coralnames.WorktreesRoot(h.cfg.CoralDir())
 	if teams, err := h.teams.ListTeams(ctx, ""); err == nil {
 		for _, t := range teams {
-			if t.IsWorktree != 1 || t.WorkingDir == "" || filepath.Clean(filepath.Dir(t.WorkingDir)) != root {
+			if t.IsWorktree != 1 || t.WorkingDir == "" || !coralnames.InWorktreesRoot(h.cfg.CoralDir(), t.WorkingDir) {
 				continue // a team's folder outside Coral's worktrees folder is not Coral's to remove
 			}
 			var cfg struct {
@@ -58,18 +58,18 @@ func (h *WorktreesHandler) entries(ctx context.Context, probe bool) []worktreeEn
 			}
 			json.Unmarshal([]byte(t.ConfigJSON), &cfg)
 			out = append(out, worktreeEntry{ID: "team-" + strconv.FormatInt(t.ID, 10), Kind: "team", Name: t.Name, Path: t.WorkingDir,
-				RepoPath: cfg.WorkingDir, Branch: gitutil.TeamBranch(filepath.Base(t.WorkingDir)), InUse: t.Status != "stopped"})
+				RepoPath: cfg.WorkingDir, Branch: coralnames.TeamBranch(filepath.Base(t.WorkingDir)), InUse: t.Status != "stopped"})
 		}
 	}
 	if runs, err := h.sched.ListRunsWithWorktree(ctx); err == nil {
 		for _, r := range runs {
 			job, _ := h.sched.GetScheduledJob(ctx, r.JobID)
-			if job == nil || r.WorktreePath == nil || job.RepoPath == "" || !background.IsRunWorktreeFolder(root, job.RepoPath, r.ID, *r.WorktreePath) {
+			if job == nil || r.WorktreePath == nil || job.RepoPath == "" || !coralnames.IsJobRunWorktree(root, job.RepoPath, r.ID, *r.WorktreePath) {
 				continue // a run that made no worktree records the job's repository itself: not Coral's to list or remove
 			}
 			name := job.Name
 			out = append(out, worktreeEntry{ID: "run-" + strconv.FormatInt(r.ID, 10), Kind: "job", Name: name, Path: *r.WorktreePath,
-				RepoPath: job.RepoPath, Branch: "coral/job-run-" + strconv.FormatInt(r.ID, 10), InUse: r.Status == "pending" || r.Status == "running"})
+				RepoPath: job.RepoPath, Branch: coralnames.JobRunBranch(r.ID), InUse: r.Status == "pending" || r.Status == "running"})
 		}
 	}
 	kept := out[:0]
@@ -171,7 +171,7 @@ func (h *WorktreesHandler) Remove(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 30*time.Second)
 		defer cancel()
 		// Containment, failing closed: Coral's own worktrees folder, or a registered worktree of the repository this id's job names; anything else is not removed.
-		if filepath.Clean(filepath.Dir(e.Path)) != filepath.Join(h.cfg.CoralDir(), "worktrees") && !gitutil.IsRegisteredWorktree(ctx, e.RepoPath, e.Path) {
+		if !coralnames.InWorktreesRoot(h.cfg.CoralDir(), e.Path) && !gitutil.IsRegisteredWorktree(ctx, e.RepoPath, e.Path) {
 			writeJSON(w, http.StatusOK, gitutil.WorktreeOutcome{State: "kept", Path: e.Path, Branch: e.Branch, Reason: "it is not a worktree Coral knows"})
 			return
 		}

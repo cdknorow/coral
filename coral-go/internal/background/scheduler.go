@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/subgentic/coral/internal/coralnames"
 	"github.com/subgentic/coral/internal/logsafe"
 	"log/slog"
 	"os"
@@ -190,26 +191,10 @@ func (s *JobScheduler) SetWorktreeRoot(dir string) {
 // <worktreeRoot>/job-run-<id>-<repo name>, or beside the repository when no
 // root is set.
 func (s *JobScheduler) runWorktreeDir(repoPath string, runID int64) string {
-	if s.worktreeRoot == "" {
-		return fmt.Sprintf("%s_task_run_%d", repoPath, runID)
+	if s.worktreeRoot != "" {
+		_ = os.MkdirAll(s.worktreeRoot, 0o755)
 	}
-	_ = os.MkdirAll(s.worktreeRoot, 0o755)
-	return filepath.Join(s.worktreeRoot, fmt.Sprintf("job-run-%d-%s", runID, filepath.Base(filepath.Clean(repoPath))))
-}
-
-// IsRunWorktreeFolder reports whether path is exactly the folder the scheduler makes for run runID of a job on repo: job-run-<id>-<repo name> under root (Coral's worktrees folder), or the legacy
-// <repo>_task_run_<id> beside the repository, and never the repository itself. A run that made no worktree records the job's repository as its worktree path, which may be a person's own checkout:
-// only a folder that passes this is ever listed or removed as a run's worktree (#6736, Security's #6741).
-func IsRunWorktreeFolder(root, repo string, runID int64, path string) bool {
-	repo, path = filepath.Clean(repo), filepath.Clean(path)
-	if repo == "" || repo == "." || path == repo {
-		return false
-	}
-	name := filepath.Base(repo)
-	if root != "" && filepath.Clean(filepath.Dir(path)) == filepath.Clean(root) && filepath.Base(path) == fmt.Sprintf("job-run-%d-%s", runID, name) {
-		return true
-	}
-	return filepath.Dir(path) == filepath.Dir(repo) && filepath.Base(path) == fmt.Sprintf("%s_task_run_%d", name, runID)
+	return coralnames.JobRunWorktree(s.worktreeRoot, repoPath, runID)
 }
 
 // SetNextFireTimeFn sets the cron evaluation function.
@@ -317,14 +302,14 @@ func (s *JobScheduler) cleanupSettledWorktree(ctx context.Context, run store.Sch
 		return
 	}
 	path := *fresh.WorktreePath
-	if !IsRunWorktreeFolder(s.worktreeRoot, job.RepoPath, run.ID, path) {
+	if !coralnames.IsJobRunWorktree(s.worktreeRoot, job.RepoPath, run.ID, path) {
 		return
 	}
 	base, err := gitutil.ResolveBase(ctx, job.RepoPath, job.BaseBranch)
 	if err != nil {
 		base = "" // the run's branch is then kept: it cannot be compared with a base
 	}
-	s.cleanupWorktree(job.RepoPath, path, fmt.Sprintf("coral/job-run-%d", run.ID), base)
+	s.cleanupWorktree(job.RepoPath, path, coralnames.JobRunBranch(run.ID), base)
 }
 
 // agentAlive reports whether the run's agent session still exists; with no runtime to ask it is taken as alive (the run is then watched, not finished on a guess).
@@ -927,7 +912,7 @@ func (s *JobScheduler) prepareRunWorktree(ctx, watchCtx context.Context, runID i
 	}
 	wt.worktreeDir = s.runWorktreeDir(rc.repoPath, runID)
 	wt.baseBranch = rc.baseBranch
-	wt.runBranch = fmt.Sprintf("coral/job-run-%d", runID)
+	wt.runBranch = coralnames.JobRunBranch(runID)
 	// The base branch the job names, else the repository's current branch: a job stored with the old default "main" runs in a repository on master too (#6701).
 	var err error
 	errMsg := ""

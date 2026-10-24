@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/subgentic/coral/internal/clitext"
+	"github.com/subgentic/coral/internal/coralnames"
 )
 
 // ErrNoCommits: a repository with no commit has no branch to start a worktree from.
@@ -94,7 +95,7 @@ func branchMissing(ctx context.Context, repoDir, name string) error {
 	var all []string
 	for _, b := range strings.Fields(out) {
 		// Coral's own branches (a team's coral-team/<board>, a job run's coral/job-run-<id>) are not bases to offer: kept worktrees would crowd the list (#6817, UI Accessibility's #6806).
-		if strings.HasPrefix(b, "coral-team/") || strings.HasPrefix(b, "coral/job-run-") {
+		if coralnames.IsCoralBranch(b) {
 			continue
 		}
 		all = append(all, b)

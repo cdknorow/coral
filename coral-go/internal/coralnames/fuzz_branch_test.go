@@ -1,6 +1,8 @@
-package gitutil
+package coralnames_test
 
 import (
+	"github.com/subgentic/coral/internal/coralnames"
+	"github.com/subgentic/coral/internal/gitutil"
 	"os/exec"
 	"strings"
 	"testing"
@@ -42,32 +44,32 @@ func FuzzTeamBranch(f *testing.F) {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, board string) {
-		br := TeamBranch(board)
+		br := coralnames.TeamBranch(board)
 		if !strings.HasPrefix(br, "coral-team/") {
-			t.Fatalf("TeamBranch(%q) = %q has no coral-team/ prefix", board, br)
+			t.Fatalf("coralnames.TeamBranch(%q) = %q has no coral-team/ prefix", board, br)
 		}
 		slug := strings.TrimPrefix(br, "coral-team/")
 		if slug == "" {
-			t.Fatalf("TeamBranch(%q) = %q has an empty slug", board, br)
+			t.Fatalf("coralnames.TeamBranch(%q) = %q has an empty slug", board, br)
 		}
 		if !utf8.ValidString(br) {
-			t.Fatalf("TeamBranch(%q) = %q is not valid UTF-8", board, br)
+			t.Fatalf("coralnames.TeamBranch(%q) = %q is not valid UTF-8", board, br)
 		}
 		if !gitRefOK(br) {
-			t.Fatalf("TeamBranch(%q) = %q breaks git's branch-name rules", board, br)
+			t.Fatalf("coralnames.TeamBranch(%q) = %q breaks git's branch-name rules", board, br)
 		}
-		if err := ValidRef(br); err != nil {
-			t.Fatalf("TeamBranch(%q) = %q is refused by ValidRef: %v", board, br, err)
+		if err := gitutil.ValidRef(br); err != nil {
+			t.Fatalf("coralnames.TeamBranch(%q) = %q is refused by ValidRef: %v", board, br, err)
 		}
 		// each rune of the name becomes at most itself (or "-"); at most "-xxxxxx" is added; "team" stands in for a name with nothing left
 		if limit := len(board)*utf8.UTFMax + len("team") + len("-xxxxxx"); len(slug) > limit {
-			t.Fatalf("TeamBranch(%q) = %q is far longer than its name", board, br)
+			t.Fatalf("coralnames.TeamBranch(%q) = %q is far longer than its name", board, br)
 		}
-		if TeamBranch(board) != br {
-			t.Fatalf("TeamBranch(%q) is not the same twice", board)
+		if coralnames.TeamBranch(board) != br {
+			t.Fatalf("coralnames.TeamBranch(%q) is not the same twice", board)
 		}
-		if len(board) <= maxTeamSlug && gitRefOK("coral-team/"+board) && utf8.ValidString(board) && !strings.ContainsAny(board, "\u0080\u00a0") && onlySlugRunes(board) && TeamBranch(board) != "coral-team/"+board {
-			t.Fatalf("TeamBranch(%q) = %q changed a name that was already a valid slug", board, br)
+		if len(board) <= coralnames.MaxTeamSlug && gitRefOK("coral-team/"+board) && utf8.ValidString(board) && !strings.ContainsAny(board, "\u0080\u00a0") && onlySlugRunes(board) && coralnames.TeamBranch(board) != "coral-team/"+board {
+			t.Fatalf("coralnames.TeamBranch(%q) = %q changed a name that was already a valid slug", board, br)
 		}
 	})
 }
@@ -91,9 +93,9 @@ func TestTeamBranchSeedsAreBranchNamesToRealGit(t *testing.T) {
 		t.Skip("no git")
 	}
 	for _, board := range teamBranchSeeds {
-		br := TeamBranch(board)
+		br := coralnames.TeamBranch(board)
 		if out, err := exec.Command("git", "check-ref-format", "--branch", br).CombinedOutput(); err != nil {
-			t.Errorf("git refuses TeamBranch(%q) = %q: %s", board, br, strings.TrimSpace(string(out)))
+			t.Errorf("git refuses coralnames.TeamBranch(%q) = %q: %s", board, br, strings.TrimSpace(string(out)))
 		}
 	}
 }
@@ -101,8 +103,8 @@ func TestTeamBranchSeedsAreBranchNamesToRealGit(t *testing.T) {
 // A long board name (#6878, found by FuzzTeamBranch): the branch stays under what git and ValidRef take (255), and two long names that differ only past the cut still get two branches.
 func TestTeamBranchOfALongNameIsShortAndDistinct(t *testing.T) {
 	a, b := strings.Repeat("a", 300)+"1", strings.Repeat("a", 300)+"2"
-	ba, bb := TeamBranch(a), TeamBranch(b)
-	if err := ValidRef(ba); err != nil {
+	ba, bb := coralnames.TeamBranch(a), coralnames.TeamBranch(b)
+	if err := gitutil.ValidRef(ba); err != nil {
 		t.Fatalf("TeamBranch of a long name = %q: %v", ba, err)
 	}
 	if len(ba) > 255 || len(bb) > 255 {
@@ -115,14 +117,14 @@ func TestTeamBranchOfALongNameIsShortAndDistinct(t *testing.T) {
 
 // A team whose name works today keeps its branch across the update (#6878): a name at the cut (200 bytes) is used as it is, and one byte more is slugged with a hash.
 func TestTeamBranchKeepsEveryNameThatCouldLaunch(t *testing.T) {
-	for _, n := range []int{1, 50, 100, 101, 150, 199, maxTeamSlug} {
+	for _, n := range []int{1, 50, 100, 101, 150, 199, coralnames.MaxTeamSlug} {
 		name := strings.Repeat("a", n)
-		if got := TeamBranch(name); got != "coral-team/"+name {
+		if got := coralnames.TeamBranch(name); got != "coral-team/"+name {
 			t.Errorf("a %d-character name changed its branch: %q", n, got)
 		}
 	}
-	over := strings.Repeat("a", maxTeamSlug+1)
-	if got := TeamBranch(over); got == "coral-team/"+over || len(got) > 255 {
+	over := strings.Repeat("a", coralnames.MaxTeamSlug+1)
+	if got := coralnames.TeamBranch(over); got == "coral-team/"+over || len(got) > 255 {
 		t.Errorf("a name over the cut kept its whole length or broke the limit: %d characters", len(got))
 	}
 }
