@@ -4410,6 +4410,7 @@ a.ibx-open, a.ibx-open:visited { color: var(--link-text); }
 .net-groups > .net-group { width: 100%; box-sizing: border-box; grid-template-columns: minmax(0, 1fr); } /* a group is its head (title, (i), the switch at the far end) and its body under it, at every width */
 #settings-cloud .settings-cloud-connect-row .btn { margin-left: 0; }
 .settings-row > .net-group-head { flex-wrap: nowrap; }
+.net-group-head > .settings-info-btn, .tb-head > .settings-info-btn { align-self: center; margin-top: 0; } /* the head is one centred row (title, (i), switch): the (i) centres with the title (a wrapped title: centred on it as a block), not at the top of the row with a margin worked out for a body label's line height (the icon census, #6879) */
 .settings-row > .net-group-head .net-group-title { min-width: 0; }
 @media (max-width: 767px), (pointer: coarse) and (max-height: 500px) and (max-width: 950px) { #net-group-hub { order: -1; } }
 .settings-info-btn { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 1.5rem; height: 1.5rem; padding: 0; flex: none; border: 1px solid var(--control-border); border-radius: 50%; background: none; color: var(--text-secondary); cursor: pointer; }
