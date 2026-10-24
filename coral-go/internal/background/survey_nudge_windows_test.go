@@ -148,7 +148,8 @@ func TestWindowsABoardNudgeBehindTheSurveyDismissesItWithOneZeroAndIsDelivered(t
 	got := string(b)
 	t.Logf("what the fake Claude received (after its marker): %q", strings.ReplaceAll(got, "\x1b", "<ESC>"))
 	require.True(t, strings.HasPrefix(got, "DISMISSED\n"), "the first key typed was one 0 (not a rating): %q", got)
-	require.Zero(t, strings.Count(strings.TrimPrefix(got, "DISMISSED\n"), "0"), "no second 0 and no other digit key reached the agent: %q", got)
+	rest := strings.NewReplacer("\x1b[200~", "", "\x1b[201~", "").Replace(strings.TrimPrefix(got, "DISMISSED\n")) // the bracketed-paste markers hold a 0 of their own
+	require.Zero(t, strings.Count(rest, "0"), "no second 0 and no other digit key reached the agent: %q", got)
 	select {
 	case err := <-done:
 		require.NoError(t, err)
