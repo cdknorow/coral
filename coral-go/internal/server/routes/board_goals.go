@@ -284,6 +284,12 @@ func (h *BoardHandler) SetTaskGoal(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, task)
 }
 
+// goalTaskPage is the task page of one goal: the usual page, and truncated when the goal has more tasks than one answer holds (board.MaxGoalTasks).
+type goalTaskPage struct {
+	board.TaskListPage
+	Truncated bool `json:"truncated,omitempty"`
+}
+
 // listGoalTasks answers GET .../tasks?goal=<id> with a goal's tasks in the shape of the task page, whole in one answer (a goal's tasks are bounded).
 func (h *BoardHandler) listGoalTasks(w http.ResponseWriter, r *http.Request, project, raw string) {
 	id, err := strconv.ParseInt(raw, 10, 64)
@@ -291,14 +297,14 @@ func (h *BoardHandler) listGoalTasks(w http.ResponseWriter, r *http.Request, pro
 		errBadRequest(w, "goal must be a goal's number")
 		return
 	}
-	rows, err := h.bs.GoalTasks(r.Context(), project, id)
+	rows, truncated, err := h.bs.GoalTasks(r.Context(), project, id)
 	if err != nil {
 		if !goalError(w, err) {
 			errInternalServer(w, err.Error())
 		}
 		return
 	}
-	page := board.TaskListPage{Tasks: rows}
+	page := goalTaskPage{TaskListPage: board.TaskListPage{Tasks: rows}, Truncated: truncated}
 	for _, t := range rows {
 		switch t.Status {
 		case "completed", "skipped":

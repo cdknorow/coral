@@ -4,6 +4,7 @@ import (
 	"context"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -92,7 +93,7 @@ func TestGoalsAreBoardScoped(t *testing.T) {
 	assert.ErrorIs(t, err, ErrGoalNotFound)
 	_, _, err = s.CloseGoal(ctx, "beta", g.ID, "because", "")
 	assert.ErrorIs(t, err, ErrGoalNotFound)
-	_, err = s.GoalTasks(ctx, "beta", g.ID)
+	_, _, err = s.GoalTasks(ctx, "beta", g.ID)
 	assert.ErrorIs(t, err, ErrGoalNotFound)
 	got, err := s.GetGoal(ctx, "alpha", g.ID)
 	require.NoError(t, err)
@@ -170,7 +171,7 @@ func TestGoalRollupCountsTheGoalsTasksByState(t *testing.T) {
 
 func mustTaskIDs(t *testing.T, s *Store, goalID int64) []int64 {
 	t.Helper()
-	rows, err := s.GoalTasks(context.Background(), "team", goalID)
+	rows, _, err := s.GoalTasks(context.Background(), "team", goalID)
 	require.NoError(t, err)
 	ids := make([]int64, len(rows))
 	for i, r := range rows {
@@ -568,4 +569,94 @@ func TestGoalSummaryCountsOpenGoalsAndCarriesTheCounter(t *testing.T) {
 	require.NoError(t, err)
 	open, _, _ = s.GoalSummary(ctx, "team")
 	assert.Equal(t, 1, open, "proposed counts as open")
+}
+
+// Backend's review probe (#7087): two writers changing different fields of one goal at the same moment both keep their change; of two concurrent closes one wins and the other is told so.
+func TestConcurrentGoalUpdatesKeepBothFields(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	for i := 0; i < 200; i++ {
+		g := newGoal(t, s, "team", "base")
+		title, outcome := "T", "O"
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() { defer wg.Done(); _, _ = s.UpdateGoal(ctx, "team", g.ID, GoalUpdate{Title: &title}) }()
+		go func() { defer wg.Done(); _, _ = s.UpdateGoal(ctx, "team", g.ID, GoalUpdate{Outcome: &outcome}) }()
+		wg.Wait()
+		got, err := s.GetGoal(ctx, "team", g.ID)
+		require.NoError(t, err)
+		require.Equal(t, "T", got.Title, "round %d lost the title", i)
+		require.Equal(t, "O", got.Outcome, "round %d lost the outcome", i)
+	}
+}
+
+func TestConcurrentGoalClosesAreOnce(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	for i := 0; i < 200; i++ {
+		g := newGoal(t, s, "team", "base")
+		var wg sync.WaitGroup
+		errs := make([]error, 2)
+		for j := 0; j < 2; j++ {
+			wg.Add(1)
+			go func(j int) {
+				defer wg.Done()
+				_, _, errs[j] = s.CloseGoal(ctx, "team", g.ID, []string{"first", "second"}[j], "done")
+			}(j)
+		}
+		wg.Wait()
+		wins := 0
+		for _, err := range errs {
+			if err == nil {
+				wins++
+			} else {
+				require.ErrorIs(t, err, ErrGoalAlreadyClosed, "round %d", i)
+			}
+		}
+		require.Equal(t, 1, wins, "round %d: exactly one close wins", i)
+		got, err := s.GetGoal(ctx, "team", g.ID)
+		require.NoError(t, err)
+		require.Contains(t, []string{"first", "second"}, got.ClosedReason)
+	}
+}
+
+// A state change racing a text edit and a close racing an edit: nothing is lost, and a closed goal is not reopened by a write that read it open.
+func TestGoalStateAndTextWritesRaceWithoutLoss(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	for i := 0; i < 100; i++ {
+		g := newGoal(t, s, "team", "base")
+		title := "Edited"
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() { defer wg.Done(); _, _ = s.UpdateGoal(ctx, "team", g.ID, GoalUpdate{Title: &title}) }()
+		go func() { defer wg.Done(); _, _, _ = s.CloseGoal(ctx, "team", g.ID, "closed", "done") }()
+		wg.Wait()
+		got, err := s.GetGoal(ctx, "team", g.ID)
+		require.NoError(t, err)
+		require.Equal(t, "Edited", got.Title, "round %d: the edit survived the close", i)
+		require.Equal(t, GoalDone, got.State, "round %d: the close survived the edit", i)
+		require.NotNil(t, got.ClosedAt)
+	}
+}
+
+// A goal's task read says when it is cut: past MaxGoalTasks the rest is not sent and truncated is true; at the cap it is not.
+func TestGoalTasksSaysWhenItIsTruncated(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	g := newGoal(t, s, "team", "many")
+	for i := 0; i < MaxGoalTasks+1; i++ {
+		_, err := s.CreateTaskWithOpts(ctx, "team", "t", "", "medium", "Lead", &CreateTaskOpts{GoalID: &g.ID})
+		require.NoError(t, err)
+	}
+	rows, truncated, err := s.GoalTasks(ctx, "team", g.ID)
+	require.NoError(t, err)
+	assert.Len(t, rows, MaxGoalTasks)
+	assert.True(t, truncated, "one more than the cap is a truncation")
+	_, err = s.db.Exec(`DELETE FROM board_tasks WHERE id = (SELECT MAX(id) FROM board_tasks WHERE goal_id = ?)`, g.ID)
+	require.NoError(t, err)
+	rows, truncated, err = s.GoalTasks(ctx, "team", g.ID)
+	require.NoError(t, err)
+	assert.Len(t, rows, MaxGoalTasks)
+	assert.False(t, truncated, "exactly the cap is not")
 }
