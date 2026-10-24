@@ -163,6 +163,8 @@ async function freshServer() {
         await waitFor(visible('#launch-step-chooser .launch-type-card[data-arg="team"]'), `${tag}: the choice of what to launch, again`, { timeout: 8000, diag: `document.body.innerText.slice(0, 300)` });
         await ev(`document.querySelector('#launch-step-chooser .launch-type-card[data-arg="team"]').click(); true`);
         await waitFor(`(() => { const e = document.getElementById('launch-step-team'); return !!e && getComputedStyle(e).display !== 'none' && !!document.getElementById('team-board-name'); })()`, `${tag}: the team form`, { timeout: 8000, diag: `document.body.innerText.slice(0, 300)` });
+        // the templates are listed by their own request after the form shows: wait for them (a condition), then read; an empty list after the wait is the failure the assertion is for (it read [] on a slow run, 11 of 20 at CPU x6)
+        await waitFor(`document.querySelectorAll('#team-template-list [role=option]').length >= 1`, `${tag}: the team templates to be listed`, { timeout: 15000, diag: `document.getElementById('team-template-list') ? document.getElementById('team-template-list').outerHTML.slice(0, 300) : 'no list'` }).catch(() => {});
         const templates = await ev(`[...document.querySelectorAll('#team-template-list [role=option]')].map(o => o.dataset.name)`);
         assert.ok(templates.length >= 1, `${tag}: a new install offers at least one team template to start from (${JSON.stringify(templates)})`);
         await ev(`document.querySelector('#team-template-list [role=option]').click(); true`); // the first template in the list
