@@ -192,6 +192,9 @@ function renderWorkflowList() {
     if (!list) return;
 
     if (badge) badge.textContent = workflows.length ? `${workflows.length}` : '';
+    // the lines that say how Build with Agent and New Workflow differ and what starts a workflow are on the page while there are no workflows to look at; once there are, they are one closed disclosure (#7001)
+    const hints = document.getElementById('wf-hints');
+    if (hints) { const emptyNow = workflows.length === 0; if (hints.dataset.empty !== String(emptyNow)) { hints.dataset.empty = String(emptyNow); hints.open = emptyNow; } }
 
     if (!workflows.length) {
         empty.style.display = '';

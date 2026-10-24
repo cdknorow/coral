@@ -775,6 +775,8 @@
 .wf-status-badge.pending { background: rgba(var(--fx-slate-rgb), 0.15); color: var(--text-secondary); }
 
 /* One short line each about the two ways to make a workflow and what starts one (#6988): muted text above the list, never hover-only */
-.wf-hints { margin: 0 0 12px; display: flex; flex-direction: column; gap: 2px; }
+.wf-hints { margin: 0 0 12px; }
+.wf-hints > summary { color: var(--text-secondary); }
+.wf-hints[open] { display: flex; flex-direction: column; gap: 2px; }
 .wf-hints p { margin: 0; font-size: var(--fs-md); line-height: 1.45; color: var(--text-secondary); }
 .wf-hints strong { color: var(--text-primary); font-weight: 600; }

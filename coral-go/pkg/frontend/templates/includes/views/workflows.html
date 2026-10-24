@@ -22,11 +22,13 @@
     <!-- Workflow List -->
     <div id="wf-list-container" class="wf-list-container">
         <!-- One short line each (#6988): how the two ways to make a workflow differ, and what starts one. Text, not hover; the two buttons name theirs with aria-describedby. -->
-        <div class="wf-hints">
+        <!-- #7001: shown while the list is empty; once there are workflows it is a closed "How workflows start" disclosure (workflows.js renderWorkflowList) -->
+        <details class="disclosure wf-hints" id="wf-hints" open>
+            <summary>How workflows start</summary>
             <p id="wf-hint-build"><strong>Build with Agent</strong> starts an agent that builds the workflow with you.</p>
             <p id="wf-hint-new"><strong>New Workflow</strong> opens an empty form to write the steps yourself.</p>
-            <p id="wf-hint-start">A workflow runs when you run it, when a job schedules it, or through the API.</p>
-        </div>
+            <p id="wf-hint-start">A workflow runs when you press Run, when a job schedules it, or through the API.</p>
+        </details>
         <div class="wf-empty" id="wf-list-empty">
             <span class="material-icons wf-empty-icon" aria-hidden="true">account_tree</span>
             <p>No workflows yet</p>
