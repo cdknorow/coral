@@ -329,6 +329,9 @@ func (h *SessionsHandler) persistSessionChanges(ctx context.Context, sessionID, 
 	if sessionID == "" {
 		return "", fmt.Errorf("session_id required")
 	}
+	if !safefs.IsSafeID(sessionID) { // one path element, as the read paths check it: never ".", ".." or a separator (CodeQL #399-407, #435-436, #7046)
+		return "", fmt.Errorf("invalid session id")
+	}
 	if workdir == "" {
 		workdir = h.resolveGitRoot(ctx, "", "", sessionID)
 	} else {
