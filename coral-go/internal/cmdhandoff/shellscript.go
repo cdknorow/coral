@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync/atomic"
 )
 
 // InlineLimit stays below the small canonical input buffer a shell has while it is still starting:
@@ -37,8 +38,30 @@ func QuietShellScript(command string) (invocation string, cleanup func(), err er
 	return shellScript(ClearScreen+"\n"+command, KeepScripts())
 }
 
-func shellScript(command string, keep bool) (invocation string, cleanup func(), err error) {
+// fallbackDir, when set, names the folder a script goes to if the system temp folder cannot be written to (TMPDIR naming a folder that is gone, a full or read-only one): Coral's own private launch folder (#6978).
+var fallbackDir atomic.Pointer[func() string]
+
+// SetFallbackDir tells ShellScript where to write when the system temp folder is not usable; the startup passes the launch temp folder inside the data folder.
+func SetFallbackDir(fn func() string) { fallbackDir.Store(&fn) }
+
+// createScriptFile makes the script's file in the system temp folder, else in the fallback folder.
+func createScriptFile() (*os.File, error) {
 	file, err := os.CreateTemp("", "coral-command-*.sh")
+	if err == nil {
+		return file, nil
+	}
+	if fn := fallbackDir.Load(); fn != nil {
+		if dir := (*fn)(); dir != "" && dir != os.TempDir() {
+			if f, ferr := os.CreateTemp(dir, "coral-command-*.sh"); ferr == nil {
+				return f, nil
+			}
+		}
+	}
+	return nil, err
+}
+
+func shellScript(command string, keep bool) (invocation string, cleanup func(), err error) {
+	file, err := createScriptFile()
 	if err != nil {
 		return "", func() {}, fmt.Errorf("create command handoff: %w", err)
 	}

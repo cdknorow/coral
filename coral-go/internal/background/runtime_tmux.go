@@ -56,7 +56,9 @@ func (r *TmuxRuntime) SpawnAgent(ctx context.Context, name, workDir, logFile, co
 	if command != "" {
 		log.Printf("[launch] session=%s agent=%s cmd=%s", name, agentType, command)
 		if err := r.client.SendKeysToTarget(ctx, terminalinput.Internal, target, command); err != nil {
-			log.Printf("[launch] session=%s: the start command could not be typed into its terminal: %v", name, err) // the terminal stays at its shell (#5171)
+			log.Printf("[launch] session=%s: the start command could not be typed into its terminal: %v", name, err)
+			_ = r.client.KillSessionOnly(ctx, name, agentType, "") // not left at an idle shell, "running" until its deadline (#6978)
+			return ptymanager.ErrStartCommand
 		}
 	}
 
