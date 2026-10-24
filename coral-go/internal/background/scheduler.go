@@ -123,6 +123,7 @@ func (e *ConcurrencyLimitError) Error() string {
 type JobScheduler struct {
 	store          *store.ScheduleStore
 	sessionStore   *store.SessionStore
+	hasEvents      func(ctx context.Context, sessionID string) bool // whether the agent's CLI reported anything (its hook events); nil: a run is never judged by it (#6842)
 	runtime        AgentRuntime
 	maxConcurrent  int
 	interval       time.Duration
@@ -697,6 +698,9 @@ func (s *JobScheduler) launchAndWatch(runID int64, job store.ScheduledJob, rc ru
 	}
 
 	status, exitReason := runOutcome(launchErr, watchCtx.Err())
+	if status == "completed" && s.exitedBeforeStarting(ctx, runID, job, time.Now().UTC().Format(store.ISOFormat), startedAt) {
+		status, exitReason = "failed", agentExitedEarlyMsg
+	}
 	s.finishRun(ctx, runID, job, status, exitReason, launchErr != nil)
 
 	// Cleanup worktree if configured
@@ -706,6 +710,43 @@ func (s *JobScheduler) launchAndWatch(runID int64, job store.ScheduledJob, rc ru
 	if rc.autoAccept {
 		s.unregisterAutoAccept(ctx, runID)
 	}
+}
+
+// SetEventCheck tells the scheduler how to ask whether an agent's CLI reported anything (a stored hook event), the signal that it started (the startup passes the task store's read).
+func (s *JobScheduler) SetEventCheck(fn func(ctx context.Context, sessionID string) bool) {
+	s.hasEvents = fn
+}
+
+// agentExitedEarlyWindow is how short a run must be, from its start to the agent's exit, to be judged by whether the agent ever reported anything.
+var agentExitedEarlyWindow = 15 * time.Second
+
+const (
+	agentExitedEarlyMsg  = "the agent exited before it started: it ended within seconds without reporting anything"
+	agentExitedEarlyCode = "agent_exited_before_start"
+)
+
+// exitedBeforeStarting reports whether a run that ended on its own did so before its agent started: within agentExitedEarlyWindow of the run's start, and its session never reported an event (Claude and Codex
+// report through hooks from their first moment; a one-shot that ends fast on purpose has reported events by then). It records the plain reason and the fixed error_code on the run when it says yes. The runtime
+// gives no exit code, so none is recorded. A scheduler with no event check, a CLI that reports no events (any other agent type), a run with no session, or a read that fails is never judged: it stays completed.
+func (s *JobScheduler) exitedBeforeStarting(ctx context.Context, runID int64, job store.ScheduledJob, nowISO, startedISO string) bool {
+	if s.hasEvents == nil || (job.AgentType != "claude" && job.AgentType != "codex" && job.AgentType != "") {
+		return false
+	}
+	started, err1 := time.Parse(store.ISOFormat, startedISO)
+	now, err2 := time.Parse(store.ISOFormat, nowISO)
+	if err1 != nil || err2 != nil || now.Sub(started) > agentExitedEarlyWindow {
+		return false
+	}
+	run, err := s.store.GetScheduledRun(ctx, runID)
+	if err != nil || run == nil || run.SessionID == nil || *run.SessionID == "" || run.Status == "killed" {
+		return false
+	}
+	if s.hasEvents(ctx, *run.SessionID) {
+		return false
+	}
+	s.logger.Warn("scheduled run: the agent exited before it started", "run_id", runID, "job", job.Name)
+	s.store.UpdateScheduledRun(ctx, runID, map[string]interface{}{"error_msg": agentExitedEarlyMsg, "error_code": agentExitedEarlyCode})
+	return true
 }
 
 // refuseIfNotSignedIn fails the scheduled run at once, with the sentence, the fixed error_code and the CLI named, when the job's agent CLI has a status command and is signed out. It

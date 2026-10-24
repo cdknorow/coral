@@ -324,3 +324,44 @@ func TestIsRunWorktreeFolder(t *testing.T) {
 	assert.False(t, IsRunWorktreeFolder("", repo, 7, filepath.Join(root, "job-run-7-proj")), "no root, no folder")
 	assert.False(t, IsRunWorktreeFolder(root, "", 7, filepath.Join(root, "job-run-7-")))
 }
+
+// #6842 (#6839 finding 2): a run whose agent exits within seconds without ever reporting an event is failed with a plain reason and a fixed code, not completed/agent_done. One that reported events (a
+// one-shot that ends fast on purpose), one that ran longer than the window, and an agent type that reports no events are left as they were.
+func TestRunWhoseAgentExitedBeforeItStartedIsFailed(t *testing.T) {
+	cases := []struct {
+		name      string
+		agentType string
+		events    bool
+		window    time.Duration
+		wantFail  bool
+	}{
+		{"exits at once, no event", "claude", false, 15 * time.Second, true},
+		{"exits at once, codex, no event", "codex", false, 15 * time.Second, true},
+		{"exits at once but reported events", "claude", true, 15 * time.Second, false},
+		{"ran longer than the window", "claude", false, 0, false},
+		{"an agent that reports no events", "agy", false, 15 * time.Second, false},
+	}
+	for i, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			e := newExitEnv(t, fmt.Sprintf("exit-early-%d", i))
+			defer func(w time.Duration) { agentExitedEarlyWindow = w }(agentExitedEarlyWindow)
+			agentExitedEarlyWindow = c.window
+			e.s.SetEventCheck(func(context.Context, string) bool { return c.events })
+			e.launch(t, func(context.Context) error { time.Sleep(20 * time.Millisecond); return nil })
+			e.s.launchAndWatch(e.runID, store.ScheduledJob{AgentType: c.agentType}, runConfig{repoPath: t.TempDir()})
+			r := e.run(t)
+			if !c.wantFail {
+				assert.Equal(t, "completed", r.Status)
+				assert.Nil(t, r.ErrorCode)
+				return
+			}
+			assert.Equal(t, "failed", r.Status)
+			require.NotNil(t, r.ExitReason)
+			assert.Equal(t, "the agent exited before it started: it ended within seconds without reporting anything", *r.ExitReason)
+			require.NotNil(t, r.ErrorCode)
+			assert.Equal(t, "agent_exited_before_start", *r.ErrorCode)
+			require.NotNil(t, r.ErrorMsg)
+			assert.Contains(t, *r.ErrorMsg, "exited before it started")
+		})
+	}
+}

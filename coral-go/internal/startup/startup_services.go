@@ -164,6 +164,10 @@ func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Conf
 	launcher.SetServer(cfg.AgentHost(), cfg.CoralDir()) // the agents it starts dial this server and use this data folder (#6767)
 	scheduler.SetLaunchFn(launcher.BuildSchedulerLaunchFn(schedStore))
 	scheduler.SetSessionStore(sessStore)
+	scheduler.SetEventCheck(func(ctx context.Context, sessionID string) bool { // a run whose agent ended within seconds without a single event is recorded failed (#6842)
+		got, err := taskStore.SessionsWithAnyEvent(ctx, []string{sessionID})
+		return err != nil || got[sessionID] // a read that fails never judges a run
+	})
 	scheduler.SetRuntime(agentRT)
 	scheduler.SetNextFireTimeFn(background.NextFireTime)
 	scheduler.SetWorktreeRoot(filepath.Join(cfg.CoralDir(), "worktrees"))
