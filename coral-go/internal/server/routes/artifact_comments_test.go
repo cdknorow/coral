@@ -136,6 +136,15 @@ func (rig *cmtRig) ownerCommentOn(id, body string) int64 {
 	return int64(out["id"].(float64))
 }
 
+// hubComment stores a comment by a Coral Hub viewer directly: through the routes a Hub viewer who is not the owner can no longer write (#7052), but comments made while that was allowed (the flag on), and the rules about another
+// author's comment, remain.
+func (rig *cmtRig) hubComment(subject, body, board string) int64 {
+	c, err := rig.ss.CreateArtifactComment(context.Background(), store.ArtifactComment{ArtifactID: cmtDoc, Board: board, AnchorJSON: `{"quote":"x"}`, Body: body,
+		AuthorIssuer: hubIssuer, AuthorSubject: subject, AuthorKind: commentCallerHub})
+	require.NoError(rig.t, err)
+	return c.ID
+}
+
 func (rig *cmtRig) hubOn() {
 	require.NoError(rig.t, rig.ss.SetSetting(context.Background(), ArtifactCommentsHubWriteSetting, "true"))
 }
@@ -194,11 +203,8 @@ func TestArtifactCommentsOwnerLifecycle(t *testing.T) {
 func TestArtifactCommentsOwnerNeverDeletesOrEditsAnotherAuthors(t *testing.T) {
 	rig := newCmtRig(t)
 	rig.hubOn()
-	code, out := rig.do("POST", cp(cmtDoc), cmtAsHub, map[string]any{"body": "from the hub", "anchor": anchorOf("x")})
-	require.Equal(t, 201, code, fmt.Sprint(out))
-	hubID := int64(out["id"].(float64))
-	assert.Equal(t, map[string]any{"kind": "hub", "issuer": "coral-hub", "subject": cmtHubUser}, out["author"])
-	code, out = rig.do("DELETE", fmt.Sprintf("%s/%d", cp(cmtDoc), hubID), cmtAsOwner, nil)
+	hubID := rig.hubComment(cmtHubUser, "from the hub", "")
+	code, out := rig.do("DELETE", fmt.Sprintf("%s/%d", cp(cmtDoc), hubID), cmtAsOwner, nil)
 	assert.Equal(t, 403, code, "the owner cannot delete a hub viewer's comment")
 	assert.Equal(t, "comments_forbidden", out["code"])
 	code, _ = rig.do("PATCH", fmt.Sprintf("%s/%d", cp(cmtDoc), hubID), cmtAsOwner, map[string]any{"body": "rewritten"})
@@ -210,9 +216,10 @@ func TestArtifactCommentsOwnerNeverDeletesOrEditsAnotherAuthors(t *testing.T) {
 	assert.Equal(t, 403, code, "a hub viewer cannot delete another hub viewer's")
 	code, _ = rig.do("DELETE", fmt.Sprintf("%s/%d", cp(cmtDoc), hubID), cmtAsHub, nil)
 	assert.Equal(t, 200, code, "the author deletes their own")
-	// Anyone who may write resolves any thread.
-	code, _ = rig.do("POST", fmt.Sprintf("%s/%d/resolve", cp(cmtDoc), mine), cmtAsHubTwo, nil)
-	assert.Equal(t, 200, code)
+	// Through the Hub a resolve is the owner's alone now (#7052): another hub viewer cannot resolve a thread either.
+	code, out = rig.do("POST", fmt.Sprintf("%s/%d/resolve", cp(cmtDoc), mine), cmtAsHubTwo, nil)
+	assert.Equal(t, 403, code)
+	assert.Equal(t, "owner_only", out["code"])
 }
 
 func TestArtifactCommentsAStampedRequestIsNeverTheOwner(t *testing.T) {
@@ -235,12 +242,11 @@ func TestArtifactCommentsAStampedRequestIsNeverTheOwner(t *testing.T) {
 		code, _ := rig.do(c.method, c.path, cmtAsOwnerThroughTunnel, map[string]any{"body": "x", "anchor": anchorOf("y")})
 		assert.Equal(t, 403, code, c.method+" "+c.path+" with the tunnel stamp and the operator's credential")
 	}
-	// With the hub flag on, it writes as the hub viewer, never as the owner, and still cannot delete the owner's comment or lock.
+	// With the hub flag on, a write through the Hub is still the owner's alone (#7052): without the owner marker it is refused before the comment code runs, and the owner's comment cannot be deleted or the lock set.
 	rig.hubOn()
 	code, out = rig.do("POST", cp(cmtDoc), cmtAsOwnerThroughTunnel, map[string]any{"body": "through the hub", "anchor": anchorOf("y")})
-	require.Equal(t, 201, code, fmt.Sprint(out))
-	assert.Equal(t, cmtHubUser, out["author"].(map[string]any)["subject"])
-	assert.Equal(t, "hub", out["author"].(map[string]any)["kind"])
+	require.Equal(t, 403, code, fmt.Sprint(out))
+	assert.Equal(t, "owner_only", out["code"])
 	code, _ = rig.do("DELETE", fmt.Sprintf("%s/%d", cp(cmtDoc), id), cmtAsOwnerThroughTunnel, nil)
 	assert.Equal(t, 403, code)
 	code, _ = rig.do("PUT", cp(cmtDoc)+"/lock", cmtAsOwnerThroughTunnel, nil)
@@ -287,10 +293,11 @@ func TestArtifactCommentsHubViewersReadOnlyUntilTheFlagIsOn(t *testing.T) {
 	assert.Contains(t, out["you"].(map[string]any)["reason"], "not turned on")
 	code, out = rig.do("POST", cp(cmtDoc), cmtAsHub, map[string]any{"body": "x", "anchor": anchorOf("y")})
 	assert.Equal(t, 403, code)
-	assert.Contains(t, out["error"], "Coral Hub")
+	assert.Equal(t, "owner_only", out["code"], "through the Hub a write is the owner's alone (#7052): not a viewer's, whatever the flag says")
 	rig.hubOn()
-	code, _ = rig.do("POST", cp(cmtDoc), cmtAsHub, map[string]any{"body": "x", "anchor": anchorOf("y")})
-	assert.Equal(t, 201, code)
+	code, out = rig.do("POST", cp(cmtDoc), cmtAsHub, map[string]any{"body": "x", "anchor": anchorOf("y")})
+	assert.Equal(t, 403, code, "the flag no longer lets a non-owner hub viewer write: the routes are owner-only")
+	assert.Equal(t, "owner_only", out["code"])
 }
 
 func TestArtifactCommentsAgentsReadTheirBoardsAndNeverWrite(t *testing.T) {
@@ -421,8 +428,6 @@ func TestArtifactCommentsRateLimitPerAuthor(t *testing.T) {
 	code, out := rig.do("POST", cp(cmtDoc), cmtAsOwner, map[string]any{"body": "too many", "anchor": anchorOf("q")})
 	assert.Equal(t, 429, code)
 	assert.Equal(t, "rate_limited", out["code"])
-	code, _ = rig.do("POST", cp(cmtDoc), cmtAsHub, map[string]any{"body": "another author is not limited", "anchor": anchorOf("q")})
-	assert.Equal(t, 201, code, "the limit is per author")
 	code, _ = rig.do("GET", cp(cmtDoc), cmtAsOwner, nil)
 	assert.Equal(t, 200, code, "reads are not limited")
 }
@@ -635,9 +640,8 @@ func TestArtifactCommentsLockedOwnerDeleteAndBoardlessComments(t *testing.T) {
 	rig := newCmtRig(t)
 	rig.hubOn()
 	mine := rig.ownerComment("mine")
-	code, out := rig.do("POST", cp(cmtDoc), cmtAsHub, map[string]any{"body": "hub's", "anchor": anchorOf("x"), "board": "team-a"})
-	require.Equal(t, 201, code, fmt.Sprint(out))
-	hubID := int64(out["id"].(float64))
+	hubID := rig.hubComment(cmtHubUser, "hub's", "team-a")
+	var code int
 	require.Equal(t, 200, func() int { c, _ := rig.do("PUT", cp(cmtDoc)+"/lock", cmtAsOwner, nil); return c }())
 	code, _ = rig.do("PATCH", fmt.Sprintf("%s/%d", cp(cmtDoc), mine), cmtAsOwner, map[string]any{"body": "edit while locked"})
 	assert.Equal(t, 403, code, "no edit while locked")
@@ -657,4 +661,109 @@ func TestArtifactCommentsLockedOwnerDeleteAndBoardlessComments(t *testing.T) {
 	assert.Equal(t, 403, code, "a comment on the locked board is refused")
 	code, _ = rig.do("POST", cp(cmtDoc), cmtAsOwner, map[string]any{"body": "no board at all", "anchor": anchorOf("x")})
 	assert.Equal(t, 201, code, "a board-less comment is not covered by a board lock, on purpose (phase 1; revisit with hub writes)")
+}
+
+// #7052: a comment, a reply, a resolve and a reopen through the Hub are the owner's: the stamp, the owner marker, the hub user the enrolment recorded; the author is the server's own owner identity, never the stamped hub user.
+func TestArtifactCommentsThroughTheHubTheOwnerWrites(t *testing.T) {
+	rig := newCmtRig(t)
+	withLabel(t, cmtHubUser, nil)
+	code, out := rig.do("POST", cp(cmtDoc), cmtAsHubOwner, map[string]any{"body": "from the Hub", "anchor": anchorOf("the lock"), "board": "team-a"})
+	require.Equal(t, http.StatusCreated, code, fmt.Sprint(out))
+	author := out["author"].(map[string]any)
+	assert.Equal(t, "owner", author["kind"])
+	assert.NotContains(t, fmt.Sprint(out), cmtHubUser, "never the stamped hub user")
+	assert.NotContains(t, fmt.Sprint(out), "install-owner-id", "the owner's install id is never in an answer")
+	id := int64(out["id"].(float64))
+
+	code, out = rig.do("POST", cp(cmtDoc), cmtAsHubOwner, map[string]any{"body": "a reply", "parent_id": id})
+	require.Equal(t, http.StatusCreated, code, fmt.Sprint(out))
+	code, _ = rig.do("POST", fmt.Sprintf("%s/%d/resolve", cp(cmtDoc), id), cmtAsHubOwner, nil)
+	assert.Equal(t, 200, code)
+	code, _ = rig.do("POST", fmt.Sprintf("%s/%d/reopen", cp(cmtDoc), id), cmtAsHubOwner, nil)
+	assert.Equal(t, 200, code)
+
+	// At the dashboard it is the owner's own comment: mine, and the owner can edit it there.
+	code, out = rig.do("GET", cp(cmtDoc), cmtAsOwner, nil)
+	require.Equal(t, 200, code)
+	var first map[string]any
+	for _, c := range out["comments"].([]any) {
+		if int64(c.(map[string]any)["id"].(float64)) == id {
+			first = c.(map[string]any)
+		}
+	}
+	require.NotNil(t, first)
+	assert.Equal(t, true, first["mine"], "a comment typed through the Hub is the owner's at the dashboard")
+	code, _ = rig.do("PATCH", fmt.Sprintf("%s/%d", cp(cmtDoc), id), cmtAsOwner, map[string]any{"body": "edited here"})
+	assert.Equal(t, 200, code)
+
+	// A secret typed through the Hub is redacted when kept, as at the dashboard.
+	secret := "ghp_" + strings.Repeat("a1B2c3D4", 5)
+	code, out = rig.do("POST", cp(cmtDoc), cmtAsHubOwner, map[string]any{"body": "my token is " + secret, "anchor": anchorOf("q " + secret)})
+	require.Equal(t, http.StatusCreated, code, fmt.Sprint(out))
+	assert.NotContains(t, fmt.Sprint(out), secret)
+}
+
+// Everything but the owner is refused on those routes, and nothing is stored: no owner marker, another hub user than the enrolled one, an enrolment with no owner label, a forged stamp, with the hub flag on too.
+func TestArtifactCommentsThroughTheHubOnlyTheOwnerMayWrite(t *testing.T) {
+	rig := newCmtRig(t)
+	id := rig.ownerComment("the owner's own")
+	count := func() int {
+		code, out := rig.do("GET", cp(cmtDoc), cmtAsOwner, nil)
+		require.Equal(t, 200, code)
+		return len(out["comments"].([]any))
+	}
+	before := count()
+	otherUser := map[string]string{testDashboardHeader: "1", tunnel.ViaHeader: cloud.ViaSecret(), tunnel.HubUserHeader: cmtHubTwo, tunnel.HubRoleHeader: "owner"}
+	for _, c := range []struct {
+		name  string
+		label string
+		hdr   map[string]string
+		code  string
+	}{
+		{"stamped, no owner marker", cmtHubUser, cmtAsHub, "owner_only"},
+		{"the marker, but another hub user than the enrolled one", cmtHubUser, otherUser, "owner_only"},
+		{"the marker with no owner label recorded at enrolment", "", cmtAsHubOwner, ""},
+		{"a forged stamp", cmtHubUser, cmtAsForged, ""},
+	} {
+		for _, on := range []bool{false, true} {
+			if on {
+				rig.hubOn()
+			}
+			withLabel(t, c.label, nil)
+			for _, w := range []struct{ method, path string }{{"POST", cp(cmtDoc)}, {"POST", fmt.Sprintf("%s/%d/resolve", cp(cmtDoc), id)}, {"POST", fmt.Sprintf("%s/%d/reopen", cp(cmtDoc), id)}} {
+				code, out := rig.do(w.method, w.path, c.hdr, map[string]any{"body": "x", "anchor": anchorOf("y")})
+				assert.Equal(t, 403, code, "%s (hub flag %v): %s %s %v", c.name, on, w.method, w.path, out)
+				if c.code != "" {
+					assert.Equal(t, c.code, out["code"], c.name)
+				}
+			}
+		}
+	}
+	assert.Equal(t, before, count(), "nothing was stored by any of them")
+	// The routes the Hub does not list: an edit, a delete and the lock stay refused even for the owner's marker.
+	withLabel(t, cmtHubUser, nil)
+	code, _ := rig.do("PATCH", fmt.Sprintf("%s/%d", cp(cmtDoc), id), cmtAsHubOwner, map[string]any{"body": "x"})
+	assert.Equal(t, 403, code)
+	code, _ = rig.do("DELETE", fmt.Sprintf("%s/%d", cp(cmtDoc), id), cmtAsHubOwner, nil)
+	assert.Equal(t, 403, code)
+	code, _ = rig.do("PUT", cp(cmtDoc)+"/lock", cmtAsHubOwner, nil)
+	assert.Equal(t, 403, code)
+}
+
+// The hub owner and the person at this computer are one identity, so they spend one budget of writes a minute.
+func TestArtifactCommentsTheHubOwnerAndTheDashboardShareOneRateLimit(t *testing.T) {
+	rig := newCmtRig(t)
+	withLabel(t, cmtHubUser, nil)
+	var last int
+	for i := 0; i < maxCommentWrites+1; i++ {
+		hdr := cmtAsOwner
+		if i%2 == 1 {
+			hdr = cmtAsHubOwner
+		}
+		last, _ = rig.do("POST", cp(cmtDoc), hdr, map[string]any{"body": fmt.Sprintf("c%d", i), "anchor": anchorOf("q")})
+		if i < maxCommentWrites {
+			require.Equal(t, http.StatusCreated, last, "write %d", i)
+		}
+	}
+	assert.Equal(t, http.StatusTooManyRequests, last, "the %dth write, from either side, is limited", maxCommentWrites+1)
 }

@@ -100,13 +100,17 @@ func TestTheOwnerRoutesOfTheTableAreTheReviewedSet(t *testing.T) {
 		"POST /api/board/{project}/cross-team/files/enable": "owner-only-hub", "POST /api/board/{project}/cross-team/files/disable": "owner-only-hub",
 		"GET /api/board/{project}/cross-team/settings": "owner-only-hub",
 		"GET /api/custom-models":                       "owner-only", "PUT /api/custom-models": "owner-only", // #5996
-		"GET /api/saved":                    "owner-only",
-		"GET /api/saved/{id}/message":       "owner-only",
-		"POST /api/saved":                   "owner-only",
-		"PATCH /api/saved/{id}":             "owner-only",
-		"DELETE /api/saved/{id}":            "owner-only",
-		"POST /api/hub-auto-accept":         "owner-only-hub",
-		"GET /api/board/{project}/settings": "owner-sees", "GET /api/system/update": "owner-update", "POST /api/system/update/relaunch": "owner-update",
+		"GET /api/saved":              "owner-only",
+		"GET /api/saved/{id}/message": "owner-only",
+		"POST /api/saved":             "owner-only",
+		"PATCH /api/saved/{id}":       "owner-only",
+		"DELETE /api/saved/{id}":      "owner-only",
+		"POST /api/hub-auto-accept":   "owner-only-hub",
+		// A comment (or reply), a resolve and a reopen through the Hub are the owner's alone (#7052).
+		"POST /api/artifacts/{hex64}/comments":              "owner-only",
+		"POST /api/artifacts/{hex64}/comments/{id}/resolve": "owner-only",
+		"POST /api/artifacts/{hex64}/comments/{id}/reopen":  "owner-only",
+		"GET /api/board/{project}/settings":                 "owner-sees", "GET /api/system/update": "owner-update", "POST /api/system/update/relaunch": "owner-update",
 	}
 	got := map[string]string{}
 	for _, r := range tunnel.OwnerRoutes() {

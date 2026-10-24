@@ -237,10 +237,10 @@ POST /api/agents/models/refresh never
 POST /api/artifacts/prune never
 POST /api/artifacts/received/unlisted/delete never
 POST /api/artifacts/retention/ack never
-POST /api/artifacts/{id}/comments never
-POST /api/artifacts/{id}/comments/{cid}/reopen never
+POST /api/artifacts/{id}/comments interact
+POST /api/artifacts/{id}/comments/{cid}/reopen interact
 POST /api/artifacts/{id}/comments/{cid}/reply never
-POST /api/artifacts/{id}/comments/{cid}/resolve never
+POST /api/artifacts/{id}/comments/{cid}/resolve interact
 POST /api/artifacts/{id}/comments/{cid}/send never
 POST /api/auth/hub-signin/dismiss never
 POST /api/auth/password/change never
