@@ -34,7 +34,8 @@ const BASE = require('./test_base').BASE;
         await ev(`window.__m.add('oat-b', 'B', 4, { sleeping: false, session_id: 'oat-sid2' }); true`); await select('oat-b');
         await waitFor(`!!document.getElementById('terminal-header-label') && document.getElementById('terminal-header-label').textContent.length > 0`, 'the header', 8000);
         await new Promise(r => setTimeout(r, 500)); // sleep-ok: the header lays out after the selection
-        const edge = await ev(`(() => { const b = document.getElementById('popout-panel-toggle-btn').getBoundingClientRect(); return { gap: Math.round(innerWidth - b.right) }; })()`);
+        const edge = await ev(`(() => { const b = document.getElementById('popout-panel-toggle-btn').getBoundingClientRect(); return { gap: Math.round(innerWidth - b.right), left: Math.round(document.querySelector('.live-view-toggle').getBoundingClientRect().left) }; })()`);
+        assert.ok(edge.left >= 6, `320px: the view toggle is at least 6 px from the left screen edge (${edge.left}px), where an iOS back swipe starts`);
         assert.ok(edge.gap >= 6, `320px: the side-panel button is at least 6 px from the screen edge (${edge.gap}px)`);
         console.log('PASS open agent tab on the phone layout, header edge');
     } finally { await client.close(); }

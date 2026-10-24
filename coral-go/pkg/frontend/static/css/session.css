@@ -1537,7 +1537,7 @@
 /* The branch is dropped where the header is narrow for its text: under 22.25 rem of header content, which is 356 px at normal text: a phone up to 368 px wide, since the header has 6 px of padding each side and the
    container is its content box (UX measured two rows from 350 to 365 px with it at 21 rem; 370 px and up keep the branch on one row) and any phone once the text is large (390 px at 200% is 12 rem). A container query: rem here is the root font size, which
    follows the text size (a media query's em would not follow a root font override, and this way a test can) (#4327, #4360 follow-up). */
-@container agent-header (max-width: 22.7rem) { .terminal-header-actions > .terminal-branch { display: none; } } /* the header's content box is 6 px under the viewport up to 400 px (#6756, #6777): the branch shows from 370 px as before */
+@container agent-header (max-width: 22.25rem) { .terminal-header-actions > .terminal-branch { display: none; } } /* the header's padding is 6 px each side again (#6790): its content box is 12 px under the viewport, and the branch shows from 370 px as before */
 /* 200 percent zoom on a phone is a page under 260 px wide: the header's buttons wrap to a second row instead of leaving the screen. */
 @media (max-width: 260px) {
     .terminal-header { flex-wrap: wrap; height: auto; }
@@ -2208,7 +2208,9 @@
 /* A small phone (up to 400 px): the header's 44 px targets (the view toggle, Find, Open Agent Tab, the side panel) left the agent name 46 px at 320 and 35 px at 370 beside the branch (#6756). The header's side padding is 2 px and the branch is cut to 3 em
    (a hint; the name is what the header is for): the name has 54 px at 320 and more where the branch shows, and the buttons keep their gaps. The targets stay 44 px. */
 @media (max-width: 400px) {
-    html body .terminal-header { padding-left: 0; padding-right: 6px; } /* the side-panel button is 6 px from the screen edge, where an OS edge swipe would win at 2 px (#6777): the largest end padding that keeps the name at 100 px at 320 px */
+    html body .terminal-header { padding-left: 6px; padding-right: 6px; } /* both ends 6 px from the screen edge, where an OS edge swipe (the side panel's on the right, iOS back on the left) wins at 0 to 2 px (#6777, #6790) */
+    html body .terminal-header > .live-view-toggle { margin-right: 6px; } /* 10 px in output.css: the 6 px of start padding is made up here and in the gap below, so the name keeps 100 px at 320 px */
+    html body .terminal-header-left { gap: 8px; }
     html body .terminal-header-actions > .terminal-branch { max-width: 3em; }
 }
 
