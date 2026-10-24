@@ -883,3 +883,75 @@ func TestArtifactCommentCallerNeedsTheOwnerChecksAndTheListedRoutes(t *testing.T
 		assert.Equal(t, commentCallerHub, call(r.method, r.path, owner).Kind, "not a comments owner route: "+r.method+" "+r.path)
 	}
 }
+
+func cmtAsTeam(org, role, uid, user string) map[string]string {
+	return map[string]string{testDashboardHeader: "1", tunnel.ViaHeader: cloud.ViaSecret(), tunnel.HubOrgHeader: org, tunnel.HubTeamRoleHeader: role, tunnel.HubUserIDHeader: uid, tunnel.HubUserHeader: user}
+}
+
+// #7061: on a team's machine the author of a comment is the stamped person in the recorded organisation (the stable id is the identity, the label is the name shown), not the machine's one owner
+// identity. The same id in another organisation is another author, a member is refused, and neither the organisation's id nor a person's id is in anything a viewer reads.
+func TestArtifactCommentsOnATeamMachineAreByThePersonAndTheOrganisation(t *testing.T) {
+	rig := newCmtRig(t)
+	withLabel(t, "", nil)
+	withRecord(t, "team", teamOrgA, nil)
+	const userB = "hub-user-0000ffff"
+
+	code, out := rig.do("POST", cp(cmtDoc), cmtAsTeam(teamOrgA, "admin", teamUIDA, cmtHubUser), map[string]any{"body": "from admin A", "anchor": anchorOf("the lock")})
+	require.Equal(t, http.StatusCreated, code, fmt.Sprint(out))
+	firstID := int64(out["id"].(float64))
+	author := out["author"].(map[string]any)
+	assert.Equal(t, "owner", author["kind"])
+	assert.Equal(t, "You", author["name"], "to themselves")
+	assert.Equal(t, "coral-hub-team", author["issuer"], "not the organisation's id")
+	assert.Equal(t, "owner", author["subject"], "not the person's stable id")
+	code, out = rig.do("POST", cp(cmtDoc), cmtAsTeam(teamOrgA, "owner", teamUIDB, userB), map[string]any{"body": "from owner B", "anchor": anchorOf("the lock")})
+	require.Equal(t, http.StatusCreated, code, fmt.Sprint(out))
+	assert.Equal(t, "You", out["author"].(map[string]any)["name"])
+
+	// A member is refused, and nothing is stored for them.
+	code, out = rig.do("POST", cp(cmtDoc), cmtAsTeam(teamOrgA, "member", "hub-uid-11111111111111111111111111111111", "hub-user-1111aaaa"), map[string]any{"body": "from a member", "anchor": anchorOf("the lock")})
+	assert.Equal(t, http.StatusForbidden, code, fmt.Sprint(out))
+	assert.Equal(t, "owner_only", out["code"])
+
+	// The same person's id in another organisation is another author.
+	withRecord(t, "team", teamOrgB, nil)
+	code, out = rig.do("POST", cp(cmtDoc), cmtAsTeam(teamOrgB, "admin", teamUIDA, cmtHubUser), map[string]any{"body": "same id, other organisation", "anchor": anchorOf("the lock")})
+	require.Equal(t, http.StatusCreated, code, fmt.Sprint(out))
+
+	stored, err := rig.ss.ListArtifactComments(context.Background(), cmtDoc, "", nil)
+	require.NoError(t, err)
+	require.Len(t, stored, 3)
+	type ident struct{ issuer, subject string }
+	seen := map[ident]bool{}
+	for _, c := range stored {
+		seen[ident{c.AuthorIssuer, c.AuthorSubject}] = true
+		assert.Equal(t, "owner", c.AuthorKind)
+	}
+	assert.Equal(t, map[ident]bool{
+		{"coral-hub-team:" + teamOrgA, teamUIDA}: true,
+		{"coral-hub-team:" + teamOrgA, teamUIDB}: true,
+		{"coral-hub-team:" + teamOrgB, teamUIDA}: true,
+	}, seen, "the identity is (organisation, stable id); the label is only the display name")
+
+	// A resolve is attributed the same way, and what the organisation's admins read has neither id.
+	withRecord(t, "team", teamOrgA, nil)
+	code, _ = rig.do("POST", fmt.Sprintf("%s/%d/resolve", cp(cmtDoc), firstID), cmtAsTeam(teamOrgA, "admin", teamUIDB, userB), nil)
+	require.Equal(t, 200, code)
+	req, _ := http.NewRequest("GET", rig.srv.URL+cp(cmtDoc), nil)
+	for k, v := range cmtAsTeam(teamOrgA, "admin", teamUIDB, userB) {
+		req.Header.Set(k, v)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	var raw bytes.Buffer
+	_, _ = raw.ReadFrom(resp.Body)
+	resp.Body.Close()
+	require.Equal(t, 200, resp.StatusCode, raw.String())
+	for _, secret := range []string{teamOrgA, teamOrgB, teamUIDA, teamUIDB} {
+		assert.NotContains(t, raw.String(), secret, "a reader never gets an organisation's id or a person's stable id")
+	}
+	assert.Contains(t, raw.String(), `"resolved_by":{"issuer":"coral-hub-team","subject":"owner"}`)
+	assert.Contains(t, raw.String(), `"name":"`+cmtHubUser+`"`, "to everyone else, the label they are shown by")
+	assert.Contains(t, raw.String(), `"name":"You"`, "and to the reader, their own comment (since #7052's owner read) is 'You', not their label")
+	assert.NotContains(t, raw.String(), `"name":"`+userB+`"`)
+}

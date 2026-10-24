@@ -87,3 +87,42 @@ func TestHubOperatorActionsAreBounded(t *testing.T) {
 	assert.Greater(t, recent[0].ID, recent[1].ID, "newest first")
 	assert.NotEmpty(t, recent[0].At)
 }
+
+// #7061: an action records the person's stable id next to the label when the machine is a team's; an older table gets the column once, and an old row reads with none.
+func TestHubOperatorActionsKeepTheStableUserID(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	const uid = "hub-uid-0123456789abcdef0123456789abcdef"
+	require.NoError(t, s.RecordHubOperatorAction(ctx, HubOperatorAction{HubUser: "hub-user-1234abcd", HubUserID: uid, Method: "DELETE", Path: "/api/artifacts/x", Status: 200}))
+	require.NoError(t, s.RecordHubOperatorAction(ctx, HubOperatorAction{HubUser: "hub-user-1234abcd", Method: "DELETE", Path: "/api/artifacts/y", Status: 200}))
+	recent, err := s.RecentHubOperatorActions(ctx, 2)
+	require.NoError(t, err)
+	require.Len(t, recent, 2)
+	assert.Empty(t, recent[0].HubUserID, "a personal machine's action has none")
+	assert.Equal(t, uid, recent[1].HubUserID)
+	assert.Equal(t, "hub-user-1234abcd", recent[1].HubUser, "and the label is kept beside it")
+}
+
+func TestHubOperatorActionsTableGainsTheColumnOnUpgrade(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "old.db")
+	raw, err := sqlx.Open("sqlite", path)
+	require.NoError(t, err)
+	_, err = raw.Exec(`CREATE TABLE hub_operator_actions (id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, hub_user TEXT NOT NULL, method TEXT NOT NULL, path TEXT NOT NULL, project TEXT NOT NULL, status INTEGER NOT NULL);
+		INSERT INTO hub_operator_actions (at, hub_user, method, path, project, status) VALUES ('2026-01-01T00:00:00Z', 'hub-user-1234abcd', 'POST', '/x', 'p', 200)`)
+	require.NoError(t, err)
+	raw.Close()
+	for i := 0; i < 2; i++ { // a second open is the "duplicate column" case
+		s, err := NewStoreWithKey(path, "")
+		require.NoError(t, err)
+		recent, err := s.RecentHubOperatorActions(context.Background(), 5)
+		require.NoError(t, err)
+		require.Len(t, recent, 1)
+		assert.Empty(t, recent[0].HubUserID)
+		require.NoError(t, s.RecordHubOperatorAction(context.Background(), HubOperatorAction{HubUser: "hub-user-1234abcd", HubUserID: "hub-uid-0123456789abcdef0123456789abcdef", Method: "POST", Path: "/y", Project: "p", Status: 200}))
+		s.Close()
+		raw2 := sqlx.MustOpen("sqlite", path)
+		_, err = raw2.Exec(`DELETE FROM hub_operator_actions WHERE id > 1`)
+		require.NoError(t, err)
+		raw2.Close()
+	}
+}

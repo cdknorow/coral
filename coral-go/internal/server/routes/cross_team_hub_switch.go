@@ -139,7 +139,7 @@ func (h *BoardHandler) setSwitchForHub(w http.ResponseWriter, r *http.Request, k
 		writeError(w, http.StatusNotFound, "not_found", "no such team")
 		return
 	}
-	change, changed, err := h.bs.SetSwitchByHub(context.WithoutCancel(ctx), project, key, on, id.pseudo, r.Method, r.URL.Path)
+	change, changed, err := h.bs.SetSwitchByHub(context.WithoutCancel(ctx), project, key, on, id.pseudo, id.hubUserID, r.Method, r.URL.Path)
 	if err != nil {
 		slog.Warn("[cloud] Coral Hub's change of a cross-team switch was not recorded and not applied", "board", project, "key", key, "error", err)
 		writeError(w, http.StatusInternalServerError, "record_failed", textHubSwitchNotRecorded)

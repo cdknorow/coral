@@ -286,6 +286,10 @@ func (m *Manager) CheckSignin(ctx context.Context, grant string) error {
 // owner is the pinned owner: ErrSigninNoOwner when none is, ErrSigninRefused once blocked
 // (the hub named another account; until re-linking).
 func (m *Manager) owner(ctx context.Context) (string, error) {
+	// A team's machine has no person owner to sign in as (#7061), and a record that cannot be read is not a person's: both refuse.
+	if kind, _, rerr := m.o.Store.OwnerRecord(ctx); rerr != nil || kind != store.OwnerKindPersonal {
+		return "", ErrSigninNoOwner
+	}
 	o, err := m.o.Store.Owner(ctx)
 	switch {
 	case err != nil || o == "":

@@ -168,6 +168,18 @@ const (
 
 // viewAuthor is an author as a given viewer may see it. The owner's real subject (the install id) never leaves the server: it is only compared, for mine.
 func viewAuthor(viewer commentCaller, kind, issuer, subject, name string) commentAuthor {
+	if kind == commentCallerOwner && isCommentTeamIssuer(issuer) {
+		// A person on a team's machine (#7061): the label they were shown by when they wrote it ("You" to themselves), under an issuer that does not name the organisation, and a subject that is not their
+		// stable id (that is only compared).
+		label := name
+		if label == "" {
+			label = commentOwnerLabel
+		}
+		if viewer.Kind == commentCallerOwner && viewer.Issuer == issuer && viewer.Subject == subject && subject != "" {
+			label = commentYouLabel
+		}
+		return commentAuthor{Kind: kind, Issuer: commentTeamIssuerShown, Subject: "owner", Name: label}
+	}
 	if kind == commentCallerOwner {
 		label := commentOwnerLabel
 		if viewer.Kind == commentCallerOwner && viewer.Issuer == issuer && viewer.Subject == subject && subject != "" {
@@ -191,6 +203,9 @@ func (h *SessionsHandler) commentView(c commentCaller, t store.ArtifactComment, 
 		who := commentAuthor{Issuer: *t.ResolvedIssuer, Subject: *t.ResolvedSubject}
 		if who.Issuer == "local" { // the owner: only ever by the fixed word
 			who.Subject = "owner"
+		}
+		if isCommentTeamIssuer(who.Issuer) { // a person on a team's machine: neither the organisation's id nor the person's stable id leaves the server
+			who.Issuer, who.Subject = commentTeamIssuerShown, "owner"
 		}
 		v.ResolvedBy = &who
 	}

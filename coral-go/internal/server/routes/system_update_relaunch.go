@@ -199,6 +199,8 @@ type UpdateRelaunchHandler struct {
 	Settings func(ctx context.Context) (map[string]string, error)
 	// OwnerUser is the owner's hub-user label recorded at enrolment; "" when none was.
 	OwnerUser func(ctx context.Context) (string, error)
+	// OwnerRecord is what the machine is enrolled as (#7061): the kind and, for a team's machine, the organisation. Nil: personal.
+	OwnerRecord func(ctx context.Context) (kind, org string, err error)
 	// Agents lists the pty agents a relaunch would restart.
 	Agents func(ctx context.Context) ([]RestartAgent, error)
 	// CanRestart says whether Coral can be started again once it has ended (the server's own record of how it was started, or a service manager that restarts it);
@@ -245,7 +247,7 @@ func (h *UpdateRelaunchHandler) on() bool {
 
 // identify runs the stamp and owner checks (identifyOwner with this handler's own label source).
 func (h *UpdateRelaunchHandler) identify(r *http.Request) callerIdentity {
-	return ownerIdentityWith(r, h.OwnerUser, &h.noLabelLogged)
+	return ownerIdentityWith(r, h.OwnerUser, h.OwnerRecord, &h.noLabelLogged)
 }
 
 // gate is the status of the checks that don't depend on the update's state, as the reason the relaunch is unavailable ("" = pass).

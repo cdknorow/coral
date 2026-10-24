@@ -442,7 +442,8 @@ func (s *Server) registerCloud(r *chi.Mux) {
 	// Where the owner routes read the owner's label recorded at enrolment (#5307).
 	ownerCloud := store.NewCloudStore(s.db, store.NewRemoteServerStore(s.db, s.cfg.CoralDir()))
 	routes.SetHubOwnerLabel(ownerCloud.OwnerUser)
-	s.cloudHandler.SetOwnerLabelStore(ownerCloud) // and where the person at this computer records it when it is missing (#6108)
+	routes.SetHubOwnerRecord(ownerCloud.OwnerRecord) // and what it is enrolled as: a person's or an organisation's (#7061)
+	s.cloudHandler.SetOwnerLabelStore(ownerCloud)    // and where the person at this computer records it when it is missing (#6108)
 	upd := routes.NewUpdateRelaunchHandler(store.NewSessionStore(s.db), s.cfg.CoralDir(), func() string { return routes.TerminalKind(s.terminal) }, routes.BuildRelaunchUpdater(s.cfg.CoralDir(), endThisServer))
 	r.Get("/api/system/update", upd.Status)
 	r.Post("/api/system/update/relaunch", upd.Relaunch)

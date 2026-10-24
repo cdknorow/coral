@@ -105,3 +105,35 @@ func TestPersonalEnrollmentsHelloSaysPersonal(t *testing.T) {
 	waitState(t, m, StateConnected)
 	assert.Equal(t, "personal", e.hub.session(t).PeerOwnerKind())
 }
+
+// #7061: Hub sign-in has no owner on a team's machine, whatever was pinned: the record decides, and a record that cannot be understood refuses too.
+func TestSigninHasNoOwnerOnATeamMachine(t *testing.T) {
+	const org = "0b9f1c2e-3d4a-4b5c-8d6e-7f8091a2b3c4"
+	const acct = "11111111-2222-4333-8444-555555555555"
+	e := newEnv(t)
+	m := e.manager(e.hub.srv.URL)
+	ctx := context.Background()
+
+	require.NoError(t, e.cs.Save(ctx, e.hub.srv.URL, "srv_1", "L", fakeToken))
+	_, err := e.cs.PinOwner(ctx, "srv_1", acct)
+	require.NoError(t, err)
+	got, err := m.owner(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, acct, got, "a personal machine: the pinned account")
+
+	require.NoError(t, e.cs.SaveTeam(ctx, e.hub.srv.URL, "srv_2", "L", fakeToken, org))
+	_, err = e.cs.PinOwner(ctx, "srv_2", acct) // even if one were pinned
+	require.NoError(t, err)
+	_, err = m.owner(ctx)
+	assert.ErrorIs(t, err, ErrSigninNoOwner)
+	assert.False(t, m.SigninReady(ctx, "http://localhost:8420"))
+
+	// A record that cannot be understood is no owner either.
+	require.NoError(t, e.cs.Save(ctx, e.hub.srv.URL, "srv_3", "L", fakeToken))
+	_, err = e.cs.PinOwner(ctx, "srv_3", acct)
+	require.NoError(t, err)
+	_, err = e.db.ExecContext(ctx, "UPDATE cloud_connection SET hub_owner_kind = 'organisation'")
+	require.NoError(t, err)
+	_, err = m.owner(ctx)
+	assert.ErrorIs(t, err, ErrSigninNoOwner)
+}

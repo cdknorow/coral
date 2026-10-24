@@ -179,6 +179,11 @@ func (s *Server) newHubSignin(ar *auth.Routes) *auth.HubSignin {
 			st, err := ss.GetSettings(context.Background())
 			return err == nil && !routes.HubOperatorDisabled(st)
 		},
+		// A Coral Hub organisation's machine refuses Hub sign-in (#7061); a record that cannot be read refuses too.
+		TeamMachine: func() bool {
+			kind, _, err := store.NewCloudStore(s.db, store.NewRemoteServerStore(s.db, s.cfg.CoralDir())).OwnerRecord(context.Background())
+			return err != nil || kind != store.OwnerKindPersonal
+		},
 		LoopbackOrigins: s.loopbackOrigins,
 		OriginsChanged: func() {
 			if m := s.cloudMgr.Load(); m != nil {

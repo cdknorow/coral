@@ -82,12 +82,24 @@ type fakeOwnerLabels struct {
 	adopted []string
 	at      string
 	err     error
+	// kind, org and recErr are what the record says it is enrolled as (#7061): "" is personal.
+	kind, org string
+	recErr    error
 }
 
 func (f *fakeOwnerLabels) OwnerUser(context.Context) (string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.label, f.err
+}
+
+func (f *fakeOwnerLabels) OwnerRecord(context.Context) (string, string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.kind == "" {
+		return "personal", "", f.recErr
+	}
+	return f.kind, f.org, f.recErr
 }
 
 func (f *fakeOwnerLabels) ServerID(context.Context) (string, error) { return f.server, nil }

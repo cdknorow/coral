@@ -33,13 +33,27 @@ func hubOperatorUser(r *http.Request) string {
 // Coral Hub, attributed to the validated Hub user. (It takes the request's method and
 // path, not the request: tools/gen_route_queries.py follows calls that pass r.)
 func recordHubOperatorAction(ctx context.Context, bs *board.Store, hubUser, method, path, project string, status int) {
+	recordHubOperatorActionAs(ctx, bs, hubUser, "", method, path, project, status)
+}
+
+// recordHubOwnerAction is recordHubOperatorAction for an owner route: the person is the one the stamp named, with their stable id when the machine is a team's (#7061), so a renamed or removed
+// member never re-attributes the record.
+func recordHubOwnerAction(ctx context.Context, bs *board.Store, id callerIdentity, method, path, project string, status int) {
+	recordHubOperatorActionAs(ctx, bs, id.pseudo, id.hubUserID, method, path, project, status)
+}
+
+func recordHubOperatorActionAs(ctx context.Context, bs *board.Store, hubUser, hubUserID, method, path, project string, status int) {
 	// logsafe-ok: a request's URL path, not a place on this computer
-	slog.Info("[cloud] Coral Hub acted as the Operator", "hub_user", hubUser, "method", method, "path", path, "status", status)
+	if hubUserID != "" {
+		slog.Info("[cloud] Coral Hub acted as the Operator", "hub_user", hubUser, "hub_user_id", hubUserID, "method", method, "path", path, "status", status)
+	} else {
+		slog.Info("[cloud] Coral Hub acted as the Operator", "hub_user", hubUser, "method", method, "path", path, "status", status)
+	}
 	if bs == nil {
 		return
 	}
 	if err := bs.RecordHubOperatorAction(context.WithoutCancel(ctx), board.HubOperatorAction{
-		HubUser: hubUser, Method: method, Path: path, Project: project, Status: status,
+		HubUser: hubUser, HubUserID: hubUserID, Method: method, Path: path, Project: project, Status: status,
 	}); err != nil {
 		slog.Warn("[cloud] could not record a Coral Hub Operator action", "error", err)
 	}

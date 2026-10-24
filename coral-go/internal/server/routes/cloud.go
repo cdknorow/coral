@@ -299,6 +299,8 @@ type cloudStatus struct {
 	// OwnerLabelMissing: this computer is linked to Coral Hub but its enrolment recorded no owner (linked before Coral recorded one), so the owner-only routes refuse the owner through the Hub until it is
 	// recorded (Settings > Network and Hub offers to, #6108).
 	OwnerLabelMissing bool `json:"owner_label_missing,omitempty"`
+	// OwnerKind is what this computer is enrolled as: "personal" (a person's, and every enrolment made before teams) or "team" (a Coral Hub organisation's, #7061). Never the organisation's id.
+	OwnerKind string `json:"owner_kind"`
 	// OwnerAdoptedAt is when the person at this computer confirmed the owner (RFC 3339); empty when the label came with the enrolment (#6108).
 	OwnerAdoptedAt string `json:"owner_adopted_at,omitempty"`
 	// SecretKey is present only when the key that seals the Hub token and the remote servers'
@@ -327,6 +329,10 @@ func (h *CloudHandler) status() cloudStatus {
 	out := cloudStatus{Status: st, AllowHubAutoAccept: allow, MaxModeSaved: modeSaved, RedactTokens: redact, HubRelaunchUpdates: relaunch, HubCrossTeamSettings: crossTeam, AllowHubAutoAcceptChanged: changed, Bootstrap: boot, OfferAtLaunch: h.OfferAtLaunch}
 	if missing, known := h.ownerLabelState(context.Background()); known && missing {
 		out.OwnerLabelMissing = true
+	}
+	out.OwnerKind = tunnel.OwnerKindPersonal
+	if h.ownerIsTeam(context.Background()) {
+		out.OwnerKind = tunnel.OwnerKindTeam
 	}
 	if h.ownerLabels != nil {
 		if at, err := h.ownerLabels.OwnerAdoptedAt(context.Background()); err == nil {
@@ -1066,7 +1072,7 @@ func (h *CloudHandler) HubOwnerSetAutoAccept(w http.ResponseWriter, r *http.Requ
 		ended = n
 	}
 	change := h.recordAutoAcceptChange(r.Context(), "hub", id.pseudo)
-	recordHubOperatorAction(r.Context(), h.bs, id.pseudo, r.Method, r.URL.Path+" allow="+v, "", http.StatusOK)
+	recordHubOwnerAction(r.Context(), h.bs, id, r.Method, r.URL.Path+" allow="+v, "", http.StatusOK)
 	slog.Info("[cloud] Coral Hub's owner set the Coral Hub auto-accept switch", "allow", allow, "auto_accepts_ended", ended, "hub_user", id.pseudo)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "allow_hub_auto_accept": allow, "auto_accepts_ended": ended, "changed_by": change})
 }
