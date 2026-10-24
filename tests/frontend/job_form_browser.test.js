@@ -82,7 +82,7 @@ const STUB = `(() => {
             await waitFor(`/not a schedule Coral can read/.test(document.getElementById('cron-preview').textContent)`, 'a bad schedule in words', 8000);
             await shot(`job-form-custom-${w}`);
             await type('#job-modal-cron', '0 5 * * 1,3');
-            await waitFor(`/Runs on the schedule 0 5 \\* \\* 1,3 \\(UTC\\)\\./.test(document.getElementById('cron-preview').textContent)`, 'an unknown shape is shown as it is', 8000);
+            await waitFor(`/Runs at 05:00, Mondays and Wednesdays \\(UTC\\)\\./.test(document.getElementById('cron-preview').textContent)`, 'a less common shape is said in words (#6956)', 8000);
 
             // 5. More options: time limit and zone in words
             await ev(`document.querySelector('#job-modal-more > summary').click(); true`);

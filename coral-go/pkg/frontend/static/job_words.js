@@ -25,7 +25,52 @@ export function cronWords(expr) {
         if (num(dow) && +dow <= 7) return `${DAYS[+dow % 7]} at ${at}`;
     }
     if (num(min) && num(hour) && num(dom) && mon === '*' && dow === '*') return `Monthly on day ${dom} at ${pad(hour)}:${pad(min)}`;
-    return `Schedule: ${e}`;
+    return generalCronWords(f) || `Schedule: ${e}`;
+}
+
+// Any other five-field schedule, in words (#6956: "Schedule: */5 9-17 * * 1-5" stayed raw in the list): numbers, lists, ranges and steps of each field. Names (MON, JAN), ?, L, W and # stay raw.
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const field = (s, lo, hi) => { // { step } | { items: [[a, b?]] } | { any: true } | null
+    if (s === '*') return { any: true };
+    let m = /^\*\/(\d+)$/.exec(s); if (m && +m[1] > 0) return { step: +m[1] };
+    const items = [];
+    for (const part of s.split(',')) {
+        m = /^(\d+)(?:-(\d+))?(?:\/(\d+))?$/.exec(part); if (!m) return null;
+        const a = +m[1], b = m[2] === undefined ? undefined : +m[2];
+        if (a < lo || a > hi || (b !== undefined && (b < lo || b > hi || b < a)) || m[3]) return null; // a step on a range is left raw
+        items.push([a, b]);
+    }
+    return { items };
+};
+const listWords = parts => parts.length <= 1 ? parts.join('') : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
+const itemWords = (items, one, two) => items.map(([a, b]) => b === undefined ? one(a) : two(a, b));
+function generalCronWords(f) {
+    const [min, hour, dom, mon, dow] = f;
+    const M = field(min, 0, 59), H = field(hour, 0, 23), D = field(dom, 1, 31), O = field(mon, 1, 12), W = field(dow, 0, 7);
+    if (!M || !H || !D || !O || !W) return '';
+    const single = x => x.items && x.items.length === 1 && x.items[0][1] === undefined;
+    const parts = [];
+    // the time of day
+    if (single(H) && M.items && M.items.every(([, b]) => b === undefined)) parts.push(`At ${listWords(M.items.map(([a]) => `${pad(H.items[0][0])}:${pad(a)}`))}`);
+    else {
+        parts.push(M.any ? 'Every minute' : M.step ? `Every ${M.step} minutes` : `At minute${M.items.length > 1 || M.items[0][1] !== undefined ? 's' : ''} ${listWords(itemWords(M.items, a => String(a), (a, b) => `${a} to ${b}`))}`);
+        if (H.step) parts.push(`every ${H.step} hours`);
+        else if (H.items) parts.push(`from ${listWords(itemWords(H.items, a => `${pad(a)}:00 to ${pad(a)}:59`, (a, b) => `${pad(a)}:00 to ${pad(b)}:59`))}`.replace(/^from (.+ and .+)$/, 'during $1'));
+    }
+    // the days
+    if (single(D) && single(O)) parts.push(`on ${MONTHS[O.items[0][0] - 1]} ${D.items[0][0]}`); // a date: "on January 1"
+    else {
+    if (!D.any) parts.push(D.step ? `every ${D.step} days` : `on day${D.items.length > 1 || D.items[0][1] !== undefined ? 's' : ''} ${listWords(itemWords(D.items, a => String(a), (a, b) => `${a} to ${b}`))} of the month`);
+    if (!O.any) parts.push(O.step ? `every ${O.step} months` : `in ${listWords(itemWords(O.items, a => MONTHS[a - 1], (a, b) => `${MONTHS[a - 1]} to ${MONTHS[b - 1]}`))}`);
+    }
+    if (!W.any) {
+        if (W.step) return '';
+        const days = W.items.map(([a, b]) => [a % 7, b === undefined ? undefined : b % 7]);
+        const key = days.map(([a, b]) => b === undefined ? String(a) : `${a}-${b}`).join(',');
+        if (key === '1-5') parts.push('weekdays'); else if (key === '0,6' || key === '6,0') parts.push('weekends');
+        else parts.push(listWords(itemWords(days, a => DAYS[a], (a, b) => `${DAYS[a]} to ${DAYS[b]}`)));
+    }
+    return parts.join(', ');
 }
 
 /** A coming time as "today 19:00", "tomorrow 02:00", "Oct 25 02:00": in the viewer's own time. `now` is for tests. */

@@ -309,3 +309,11 @@ div.job-field#sched-label { margin-bottom: 6px; }
 .sched-dot-ok { background: var(--success); }
 .sched-dot-bad { background: var(--danger); }
 .sched-dot-run { background: var(--working); }
+
+/* Jobs is titled once on screen (#6956): the desktop's sidebar already says "Jobs 9" above the list, so the page's own heading is for assistive technology only there (a phone's page has no sidebar). */
+@media (min-width: 768px) and (min-height: 501px), (min-width: 951px) {
+    .sched-view-header h2 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+}
+.sched-status.status-none { color: var(--text-secondary); }
+.sched-status-note { display: block; font-size: var(--fs-sm); color: var(--text-secondary); font-weight: 400; }
+.sched-empty-hint { margin: 24px 16px; color: var(--text-secondary); }
