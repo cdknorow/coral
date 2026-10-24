@@ -400,7 +400,8 @@ func TestTheUpdaterProgramIsRunWithAFixedArgvAndOnlyTheAllowlistedEnvironment(t 
 	dir := t.TempDir()
 	argsFile, envFile := filepath.Join(dir, "args"), filepath.Join(dir, "env")
 	prog := filepath.Join(dir, "coral-update")
-	script := "#!/bin/sh\necho \"$@\" >> " + argsFile + "\nenv > " + envFile + "\nif [ \"$1\" = status ]; then echo '{\"feature\":\"on\"}'; fi\n"
+	// The env is written AFTER the args line, and after a pause: a test that reads the env as soon as the args line shows would read a file not written yet (this is what failed under load).
+	script := "#!/bin/sh\necho \"$@\" >> " + argsFile + "\nsleep 0.3\nenv > " + envFile + "\nif [ \"$1\" = status ]; then echo '{\"feature\":\"on\"}'; fi\n"
 	require.NoError(t, os.WriteFile(prog, []byte(script), 0o755))
 	t.Setenv("CORAL_DATA_DIR", "/tmp/somewhere")
 	t.Setenv("ANTHROPIC_API_KEY", "sk-should-not-reach-it")
@@ -410,18 +411,39 @@ func TestTheUpdaterProgramIsRunWithAFixedArgvAndOnlyTheAllowlistedEnvironment(t 
 	out, err := e.Status(t.Context())
 	require.NoError(t, err)
 	assert.JSONEq(t, `{"feature":"on"}`, string(out))
-	_, err = e.StartApply()
+	run, err := e.StartApply()
 	require.NoError(t, err)
-	require.Eventually(t, func() bool {
-		b, _ := os.ReadFile(argsFile)
-		return strings.Count(string(b), "\n") == 2
-	}, 5*time.Second, 20*time.Millisecond)
+	// Wait for the program to be over, not for a line it wrote on the way: Done closes when the process has exited, whatever the machine's load.
+	select {
+	case <-run.Done:
+	case <-time.After(60 * time.Second):
+		t.Fatal("the updater program did not finish")
+	}
 	b, _ := os.ReadFile(argsFile)
 	assert.Equal(t, "status --json\napply\n", string(b), "the argv is fixed")
 	env, _ := os.ReadFile(envFile)
 	assert.Contains(t, string(env), "CORAL_DATA_DIR=/tmp/somewhere")
 	assert.NotContains(t, string(env), "sk-should-not-reach-it", "an agent's key is not the updater's")
 	assert.NotContains(t, string(env), "ghp_should_not_reach_it")
+}
+
+// StartApply's Done closes when the program has exited, however late it writes: a program that is slow to start (a loaded machine) is waited for, not raced. The test waits on Done and reads what the program
+// wrote, with no time window in it (the argv test used to wait up to 5 s for a line and failed under load).
+func TestTheApplyRunsDoneMeansTheProgramHasExited(t *testing.T) {
+	dir := t.TempDir()
+	out := filepath.Join(dir, "out")
+	prog := filepath.Join(dir, "coral-update")
+	require.NoError(t, os.WriteFile(prog, []byte("#!/bin/sh\nsleep 0.6\necho \"$@\" > "+out+"\n"), 0o755))
+	run, err := execProgram{path: prog}.StartApply()
+	require.NoError(t, err)
+	select {
+	case <-run.Done:
+	case <-time.After(60 * time.Second):
+		t.Fatal("the program did not finish")
+	}
+	b, err := os.ReadFile(out)
+	require.NoError(t, err, "the program had written when Done closed")
+	assert.Equal(t, "apply\n", string(b))
 }
 
 func TestTheUpdaterProgramsAnswerIsBoundedAndItsFailureIsAnError(t *testing.T) {
