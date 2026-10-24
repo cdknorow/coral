@@ -5,6 +5,7 @@ package ptymanager
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -23,6 +24,29 @@ func openFDs(t *testing.T) int {
 	return 0
 }
 
+// settledFDs is the open descriptor count once it has stopped changing: the same value on five reads in a row, 100 ms apart. After a session ended and was drained its descriptors go in the order the
+// exit watcher and the reader run them, which on a loaded machine takes longer than a fixed sleep (#7163); a count that has held still is what "the earlier session is gone" means. The ceiling only
+// ends a count that never settles.
+func settledFDs(t *testing.T) int {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Minute)
+	last, same := -1, 0
+	for time.Now().Before(deadline) {
+		n := openFDs(t)
+		if n == last {
+			same++
+		} else {
+			last, same = n, 0
+		}
+		if same >= 5 {
+			return n
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatalf("the open descriptor count never settled (last %d)", last)
+	return last
+}
+
 // #6821 (Codex Test #6796): a session whose process ends on its own left its PTY master open until something killed it, one descriptor per scheduled run that ended naturally (about 144 a day for a 10-minute
 // cron). After the exit and the drain the descriptor count is back where it was.
 func TestSessionsThatEndOnTheirOwnLeaveNoDescriptorsOpen(t *testing.T) {
@@ -31,14 +55,13 @@ func TestSessionsThatEndOnTheirOwnLeaveNoDescriptorsOpen(t *testing.T) {
 	defer backend.Close()
 	// one throwaway run first: the first spawn opens a few process-wide descriptors of its own (the guardian, /dev/ptmx's first use)
 	require.NoError(t, backend.Spawn("fd-warm", "test", t.TempDir(), "sid-fd-warm", "true", 80, 24))
-	time.Sleep(exitDrain + 500*time.Millisecond)
-	before := openFDs(t)
+	before := settledFDs(t)
 
 	const runs = 12
 	for i := 0; i < runs; i++ {
 		require.NoError(t, backend.Spawn(fmt.Sprintf("fd-%d", i), "test", t.TempDir(), fmt.Sprintf("sid-fd-%d", i), "true", 80, 24))
 	}
-	require.Eventually(t, func() bool { return openFDs(t) <= before+2 }, 10*time.Second, 100*time.Millisecond,
+	require.Eventually(t, func() bool { return openFDs(t) <= before+2 }, 2*time.Minute, 100*time.Millisecond,
 		"descriptors after %d sessions ended on their own: %d (before %d)", runs, openFDs(t), before)
 	assert.LessOrEqual(t, openFDs(t), before+2)
 }
@@ -52,12 +75,15 @@ func TestADescriptorIsFreedWhenTheShellExitsButAChildKeepsTheTerminal(t *testing
 	backend := NewPTYBackend()
 	defer backend.Close()
 	require.NoError(t, backend.Spawn("fd-warm2", "test", t.TempDir(), "sid-fd-warm2", "true", 80, 24))
-	time.Sleep(exitDrain + 500*time.Millisecond)
-	before := openFDs(t)
+	before := settledFDs(t)
 
-	// the shell starts a sleeper with the terminal as its output, then exits; the sleeper ends by itself after 6 s
-	require.NoError(t, backend.Spawn("fd-child", "test", t.TempDir(), "sid-fd-child", "sleep 6 & exit 0", 80, 24))
+	// The shell starts a sleeper with the terminal as its output, waits for the test's signal (a file), then exits. The test holds the shell until it has seen the terminal held, so how long it takes to look
+	// is no race with the shell's exit; and the sleeper outlives the whole test, so what frees the descriptor is the exit and not the child's end (#7163).
+	release := filepath.Join(t.TempDir(), "release")
+	command := "sleep 300 & while [ ! -e '" + release + "' ]; do sleep 0.05; done; exit 0"
+	require.NoError(t, backend.Spawn("fd-child", "test", t.TempDir(), "sid-fd-child", command, 80, 24))
 	assert.Greater(t, openFDs(t), before, "the session holds its terminal while it runs")
-	require.Eventually(t, func() bool { return openFDs(t) <= before+1 }, 4*time.Second, 50*time.Millisecond,
+	require.NoError(t, os.WriteFile(release, []byte("go"), 0o644))
+	require.Eventually(t, func() bool { return openFDs(t) <= before+1 }, 2*time.Minute, 50*time.Millisecond,
 		"descriptors while the left-behind child still runs: %d (before %d)", openFDs(t), before)
 }

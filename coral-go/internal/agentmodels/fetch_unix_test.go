@@ -28,6 +28,7 @@ func script(t *testing.T, body string) string {
 // A signed-out Claude is not started for its model list (#5469): the error is the sentence, and only the status command ran.
 func TestFetchClaudeDoesNotStartASignedOutClaude(t *testing.T) {
 	claudestub.Isolate(t)
+	patientCheck(t) // a busy machine starts the script slowly: a status check past the production 6 s is "did not answer", not what this test is about (#7163)
 	ran := filepath.Join(t.TempDir(), "ran")
 	p := filepath.Join(t.TempDir(), "cli")
 	require.NoError(t, os.WriteFile(p, []byte("#!/bin/sh\nif [ \"$1\" = auth ]; then echo '{\"loggedIn\":false}'; exit 1; fi\necho started > '"+ran+"'\n"), 0o755))

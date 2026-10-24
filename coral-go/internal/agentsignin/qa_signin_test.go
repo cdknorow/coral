@@ -94,6 +94,7 @@ func TestAHungStatusCommandIsKilledWhenTheLimitPasses(t *testing.T) {
 // What the status command is given: nothing on stdin and no terminal, the temp folder as its working directory, and no Coral session token in its environment (the check must never carry a credential to a CLI it is only asking a question).
 func TestTheStatusProcessGetsNoStdinNoCoralSecretsAndTheTempFolder(t *testing.T) {
 	claudestub.Isolate(t)
+	t.Cleanup(SetCheckTimeoutForTests(time.Minute)) // the script runs env, sed, sort and wc: a loaded machine takes longer than the production 6 s, and a check past its limit is "did not answer", not what this tests (#7163)
 	dir := t.TempDir()
 	report := filepath.Join(dir, "report")
 	bin := filepath.Join(dir, "claude")

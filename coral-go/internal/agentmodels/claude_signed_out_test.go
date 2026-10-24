@@ -25,7 +25,7 @@ func fetched(t *testing.T, path string) (Result, time.Duration) {
 	go func() { svc.Wait(); close(done) }()
 	select {
 	case <-done:
-	case <-time.After(12 * time.Second): // a run that holds the login (the bug) ends later than this; the test says so and moves on
+	case <-time.After(grossly): // a call that took a minute is broken however busy the machine is; a hold is found by what the stand-in recorded, not by seconds (#5924, #7163)
 	}
 	took := time.Since(start)
 	return svc.Get("claude"), took
@@ -80,7 +80,9 @@ func TestModelListStillAsksClaudeWhenSignedIn(t *testing.T) {
 	assert.False(t, strings.Contains(strings.ToLower(res.Error), "not signed in"), "signed in: %q", res.Error)
 	assert.Empty(t, res.Error, "signed in: the stub answers the initialize request, so the list is read")
 	assert.NotEmpty(t, res.Models, "the stub's one model is listed")
-	assert.Less(t, took, 5*time.Second, "the fetch ends when the reply is read, not when the test gives up (#5591: it used to wait out 12 s)")
+	// Not a number of seconds (#7163: on a loaded machine the stand-in's own start can take longer than any fixed bound): the fetch ended by reading the reply when the result has the model and no error. A fetch that
+	// waited for the process to end on its own would end at its deadline with an error, never with the list (#5591).
+	assert.Less(t, took, grossly, "the fetch ended")
 	runs := stub.PrintRuns()
 	require.Len(t, runs, 1, "one print-mode run")
 	assert.False(t, runs[0].TTY)

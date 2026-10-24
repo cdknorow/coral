@@ -25,7 +25,7 @@ func TestAgentScreenKeepsTheInputBoxAfterTheReplayRingWrapped(t *testing.T) {
 	ch, err := backend.Attach(name, "ws-agent-screen")
 	require.NoError(t, err)
 	var seen strings.Builder
-	deadline := time.After(30 * time.Second)
+	deadline := time.After(2 * time.Minute) // only the ceiling of a stand-in that never ends: the wait itself is for REPAINTS-DONE (#7163)
 	for !strings.Contains(seen.String(), "REPAINTS-DONE") {
 		select {
 		case data, ok := <-ch:
