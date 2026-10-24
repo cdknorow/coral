@@ -70,6 +70,11 @@ func (r *TmuxRuntime) SendInput(ctx context.Context, o terminalinput.Origin, nam
 	return r.client.SendKeys(ctx, o, agentName, text, agentType, sessionID)
 }
 
+// SendRawInput implements ptymanager.RawInputSender: single keys typed into the agent's pane. The gate dismisses Claude's session survey with a 0 through it, whatever the terminal a send was handed over with (#6974).
+func (r *TmuxRuntime) SendRawInput(ctx context.Context, o terminalinput.Origin, name string, keys []string, agentType, sessionID string) error {
+	return r.client.SendRawKeys(ctx, o, name, keys, agentType, sessionID)
+}
+
 func (r *TmuxRuntime) KillAgent(ctx context.Context, name string) error {
 	ptymanager.DropHeld(name, "killed") // nothing held for the old process is typed into a new one (#3431)
 	_, err := r.client.DisplayMessage(ctx, name, "")
