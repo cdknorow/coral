@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"github.com/subgentic/coral/internal/clitext"
 
 	"github.com/jmoiron/sqlx"
 )
@@ -78,6 +79,10 @@ func NewGitStore(db *DB) *GitStore {
 func (s *GitStore) UpsertGitSnapshot(ctx context.Context, snap *GitSnapshot) error {
 	now := nowUTC()
 	snap.RecordedAt = now
+	// A commit subject and a branch name are text from the repository: a person or a program wrote them, and they are shown in the dashboard and typed into agent prompts. Control sequences and the
+	// characters that reorder or hide text (U+202E) are taken out before they are stored, the one path every snapshot goes through (#6832).
+	snap.CommitSubject = clitext.Clean(snap.CommitSubject)
+	snap.Branch = clitext.CleanName(snap.Branch)
 	return s.db.WithTx(ctx, func(tx *sqlx.Tx) error {
 		const cols = `agent_name, agent_type, working_directory, branch, commit_hash,
 		  commit_subject, commit_timestamp, session_id, remote_url, recorded_at, pr_number,
