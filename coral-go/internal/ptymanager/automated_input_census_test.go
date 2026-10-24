@@ -120,6 +120,8 @@ var allowedSenders = map[string]sender{
 	"internal/ptymanager/tmux_backend.go\tTmuxBackend.sendInput\tSendTerminalInputToTarget":                          {guardPrimitive, "primitive: SendInput, and SendHumanInput for a person's keystrokes (#60)", ""},
 	"internal/ptymanager/prompt_screen.go\tTmuxSessionTerminal.SendEnter\tSendRawKeys":                               {guardPrimitive, "primitive", ""},
 	"internal/background/runtime_tmux.go\tTmuxRuntime.SendEnter\tSendRawKeys":                                        {guardPrimitive, "primitive", ""},
+	"internal/background/runtime_tmux.go\tTmuxRuntime.SendRawInput\tSendRawKeys":                                     {guardPrimitive, "primitive: what the gate's survey dismissal types through a runtime (#6974)", ""},
+	"internal/background/runtime_pty.go\tPTYRuntime.SendRawInput\tSendRawInput":                                      {guardPrimitive, "primitive: what the gate's survey dismissal types through a runtime (#6974)", ""},
 	// #5114: the one 0 that dismisses Claude's session survey (never a rating), only when it is the only thing open.
 	"internal/ptymanager/survey_dismiss.go\tinputGate.dismissSurvey\tSendRawInput": {guardScreen, "gate (a single 0, only for the exact session survey directly above the input box; waits for it to go; at most once per 30 s; #5114)", "TestSurveyWithADraftInTheInputBoxGetsNoZero"},
 	// #3457: automated text as a bracketed paste.
