@@ -834,6 +834,7 @@ export async function showSettingsModal(group) {
 
     importOnce('./terminal_backend.js').then(m => m.loadTerminalBackendRow()).catch(() => {}); // #3634
     importOnce('./security_settings.js').then(m => m.loadSecurityRow()).catch(() => {}); // #3948
+    importOnce('./firewall_warning.js').then(m => m.renderFirewallRow()).catch(() => {}); // #295: where the firewall warning stays once its toast is dismissed
     const s = state.settings || {};
     // What this dialog opens with: Save sends only the fields that end up different from it.
     _settingsAtOpen = { ...s };

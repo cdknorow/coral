@@ -347,6 +347,7 @@ POST /api/system/api-key/regenerate never
 POST /api/system/auto-wake/dismiss never
 POST /api/system/login-token never
 POST /api/system/restart never
+POST /api/system/security-notice/ack never
 POST /api/system/telemetry/acknowledge never
 POST /api/system/terminal-backend/end-leftover never
 POST /api/system/terminal-backend/notice-seen never

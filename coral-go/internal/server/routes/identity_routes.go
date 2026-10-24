@@ -84,8 +84,9 @@ var operatorOnlyRoutes = map[string]string{
 	"DELETE /api/system/debug-input-log":  "delete the terminal input debug log",
 	"PUT /api/system/hub-operator":        "change the Coral Hub Operator setting",
 	// #3460: Settings > Run as a hub, and restarting Coral (Security's review).
-	"PUT /api/system/hub-mode": "change whether Coral runs as a hub",
-	"POST /api/system/restart": "restart Coral",
+	"PUT /api/system/hub-mode":             "change whether Coral runs as a hub",
+	"POST /api/system/restart":             "restart Coral",
+	"POST /api/system/security-notice/ack": "mark the data-folder notice as shown", // #295
 	// #5280: relaunching into a staged update (Coral Hub's owner), and what is staged.
 	"GET /api/system/update":                 "see the staged update",
 	"POST /api/system/update/relaunch":       "relaunch Coral into the staged update",

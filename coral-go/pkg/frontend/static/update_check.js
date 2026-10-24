@@ -3,6 +3,7 @@
 import { escapeHtml, showToast, escapeAttr } from './utils.js';
 import { registerActions, textOf } from './actions.js';
 import { browserLocal } from './safe_storage.js';
+import { importOnce } from './import_once.js';
 import { reportUpdate } from './dashboard_analytics.js';
 import { noticeColumn, announceNotice } from './notifications.js';
 
@@ -103,16 +104,44 @@ export function showSecurityWarning(message) {
 }
 
 /** Damage the server's integrity check found in a database (#4157): what to do, as text. */
-export function showFirewallWarning(message) {
-    showWarningToast("firewall-warning-toast", "Windows Firewall", message);
+export async function showFirewallWarning(message) {
+    if (!message || document.getElementById("firewall-warning-toast")) return;
+    const fw = await importOnce("./firewall_warning.js");
+    if (fw.firewallDismissedForGood(message)) return; // "Don't show again": Settings > Security still has it, with the commands (#295)
+    const toast = buildWarningToast("firewall-warning-toast", "Windows Firewall", fw.parseFirewallWarning(message).summary, "status");
+    const body = toast.querySelector(".update-toast-body");
+    body.append(fw.firewallDetails(message));
+    const actions = document.createElement("div");
+    actions.className = "firewall-actions";
+    const never = document.createElement("button");
+    never.type = "button";
+    never.className = "btn btn-small";
+    never.textContent = "Don't show again";
+    never.title = "It stays in Settings, with the commands";
+    never.addEventListener("click", () => { fw.dismissFirewallForGood(message); toast.remove(); });
+    actions.append(never);
+    body.append(actions);
+    warningStack().appendChild(toast);
+}
+
+/** What Coral did to make an open data folder private: told once, as a fix, not as a warning (#295). */
+export function showSecurityNotice(message) {
+    if (!message || document.getElementById("security-notice-toast")) return;
+    showWarningToast("security-notice-toast", "Data folder made private", message, "status");
+    // The status keeps the notice until the page that showed it says so: a CLI or another tab reading the status does not use it up.
+    fetch("/api/system/security-notice/ack", { method: "POST" }).catch(() => {});
 }
 
 export function showDatabaseWarning(message) {
     showWarningToast("database-warning-toast", "Database damage", message);
 }
 
-function showWarningToast(id, heading, message) {
+function showWarningToast(id, heading, message, role = "alert") {
     if (!message || document.getElementById(id)) return;
+    warningStack().appendChild(buildWarningToast(id, heading, message, role));
+}
+
+function buildWarningToast(id, heading, message, role = "alert") {
     const toast = document.createElement("div");
     toast.id = id;
     toast.className = "update-toast security-warning-toast";
@@ -144,8 +173,10 @@ function showWarningToast(id, heading, message) {
     text.textContent = message;
     body.append(header, text);
     toast.append(body);
-    warningStack().appendChild(toast);
-    announceNotice(`${heading}: ${message}`, true); // the warning and its details, once, assertively, from the notices' own region: the buttons inside it are not read with it (#6213)
+    // The warning and its details, once, from the notices' own region: the buttons inside it are not read with it (#6213). A warning
+    // assertively; a notice (a folder made private) and the firewall's rule to tidy politely (#295).
+    announceNotice(`${heading}: ${message}`, role === "alert");
+    return toast;
 }
 
 // The warnings (security, firewall, database) and the update notice share the page's column of notices (notifications.js noticeColumn), so two at once are not drawn over each other.

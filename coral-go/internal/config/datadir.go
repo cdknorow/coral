@@ -48,7 +48,7 @@ func EnsureDataDir(dir string) error {
 	}
 	if notice != "" {
 		log.Printf("[security] %s", notice)
-		setDataDirNotice(notice)
+		setDataDirFixed(notice)
 	}
 	return nil
 }
@@ -59,7 +59,8 @@ var ErrSharedDataDir = errors.New("the data folder can be read by other accounts
 var (
 	allowSharedDataDir atomic.Bool
 	dataDirNoticeMu    sync.Mutex
-	dataDirNotice      string
+	dataDirNotice      string // a folder that stays open to others (--allow-shared-data-dir): reported with every status, as long as it is
+	dataDirFixed       string // what Coral did to make an open folder private: told once
 )
 
 // SetAllowSharedDataDir is --allow-shared-data-dir: run on a data folder other accounts can read even when it can't be made private.
@@ -73,6 +74,28 @@ func AllowSharedDataDir() bool {
 func setDataDirNotice(s string) {
 	dataDirNoticeMu.Lock()
 	dataDirNotice = s
+	dataDirNoticeMu.Unlock()
+}
+
+func setDataDirFixed(s string) {
+	dataDirNoticeMu.Lock()
+	dataDirFixed = s
+	dataDirNoticeMu.Unlock()
+}
+
+// DataDirFixed is what Coral did at startup to make its data folder private, or "" when it did nothing or the dashboard has acknowledged it
+// (AckDataDirFixed). A fixed folder is told as a fix until the dashboard has shown it, and never as a warning: DataDirWarning is for a folder
+// that is still open (#295). Reading it changes nothing, so a CLI or a second tab that reads the status does not use it up.
+func DataDirFixed() string {
+	dataDirNoticeMu.Lock()
+	defer dataDirNoticeMu.Unlock()
+	return dataDirFixed
+}
+
+// AckDataDirFixed is the dashboard saying it has shown the notice: it is not in the status after this.
+func AckDataDirFixed() {
+	dataDirNoticeMu.Lock()
+	dataDirFixed = ""
 	dataDirNoticeMu.Unlock()
 }
 
@@ -91,7 +114,7 @@ func DataDirWarning(dir string) string {
 		return fmt.Sprintf("couldn't read the data folder's access list (%s): %v", dir, err)
 	}
 	if len(groups) == 0 {
-		// Nothing to warn about now; say what Coral did about it at startup, if it did something.
+		// Nothing is open to others now. What Coral did about it at startup is told by DataDirFixed, not as a warning.
 		return getDataDirNotice()
 	}
 	return fmt.Sprintf("Coral's data folder %s can be read by %s. It holds the API key, the command-line token and the databases. Move the folder (CORAL_DATA_DIR) to one only you can read, or remove those groups from its permissions (Properties > Security).",

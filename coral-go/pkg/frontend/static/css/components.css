@@ -1432,7 +1432,7 @@ button.subscriber-history-link {
 /* The warnings share one column (security, firewall, database), so two at once do not sit on each other (#5737). */
 #warning-toasts {
     display: flex;
-    flex-direction: column-reverse;
+    flex-direction: column; /* not column-reverse: a strip that scrolls opens at its first heading, not at its end (#125) */
     gap: 10px;
     width: min(440px, calc(100vw - 40px));
     max-height: calc(100vh - 40px);
@@ -1473,6 +1473,25 @@ button.subscriber-history-link {
     #toast-host > .toast .toast-message { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
     #toast-host > .toast.error .toast-message { -webkit-line-clamp: 4; line-clamp: 4; } /* an error says what went wrong and what to do: four lines before the cut (#6727) */
     #toast-host > .toast.expanded .toast-message { display: block; -webkit-line-clamp: unset; line-clamp: unset; overflow: visible; }
+}
+
+/* The firewall warning (#295): a sentence, the commands behind a disclosure (closed), a Copy button for each command. */
+.firewall-details { margin-top: 8px; font-size: 0.75rem; }
+.firewall-details summary { cursor: pointer; }
+.firewall-how { margin: 6px 0; line-height: 1.4; overflow-wrap: anywhere; }
+.firewall-rule { margin-top: 8px; }
+.firewall-rule-label { overflow-wrap: anywhere; color: var(--text-secondary); }
+.firewall-cmd { display: flex; align-items: flex-start; gap: 6px; margin-top: 4px; }
+.firewall-cmd code { flex: 1; min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.75rem; }
+.firewall-actions { margin-top: 8px; display: flex; gap: 6px; }
+#warning-toasts .firewall-details[open] { max-height: 30vh; overflow-y: auto; }
+
+/* A small window (a phone, a short laptop, or 200% zoom, which halves the window in CSS pixels): the warnings are a compact strip that scrolls on its own,
+   never most of the page. */
+@media (max-height: 560px), (max-width: 640px) {
+    #warning-toasts { right: 8px; bottom: 8px; gap: 6px; width: min(440px, calc(100vw - 16px)); max-height: 40vh; }
+    #warning-toasts .security-warning-text { max-height: 4.5em; }
+    #warning-toasts .update-toast-body { gap: 4px; padding: 8px 12px; }
 }
 
 .update-toast-body {

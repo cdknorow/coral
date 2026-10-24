@@ -7,7 +7,8 @@ const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
 const BASE = require('./test_base').BASE;
 
-const FIREWALL = 'Windows Firewall lets other computers reach Coral on every port, more than it needs. Coral never makes firewall rules: Windows made these when someone clicked Allow on its prompt. To limit each rule to Private networks, open PowerShell as an administrator and run:\n- Coral (C:\\Coral\\coral.exe) on the Public profile, for every port: Set-NetFirewallRule -Name \'TCP Query User{26C1}C:\\Coral\\coral.exe\' -Profile Private   (or: Remove-NetFirewallRule -Name \'TCP Query User{26C1}C:\\Coral\\coral.exe\')\n- Coral tray (C:\\Coral\\coral-tray.exe) on the Public profile, for every port: Set-NetFirewallRule -Name \'TCP Query User{7A11}C:\\Coral\\coral-tray.exe\' -Profile Private   (or: Remove-NetFirewallRule -Name \'TCP Query User{7A11}C:\\Coral\\coral-tray.exe\')';
+const STATIC = "(window.__coralStatic || '/static/')";
+const FIREWALL = 'Windows Firewall lets other computers reach Coral on every port, more than it needs. Coral never makes firewall rules: Windows made these when someone clicked Allow on its prompt. To limit each rule to Private networks, open PowerShell as an administrator and run:\n- Coral (C:\\Coral\\coral.exe) on the Public profile, for every port:\nSet-NetFirewallRule -Name \'TCP Query User{26C1}C:\\Coral\\coral.exe\' -Profile Private\nOr, to remove the rule instead:\nRemove-NetFirewallRule -Name \'TCP Query User{26C1}C:\\Coral\\coral.exe\'\n- Coral tray (C:\\Coral\\coral-tray.exe) on the Public profile, for every port:\nSet-NetFirewallRule -Name \'TCP Query User{7A11}C:\\Coral\\coral-tray.exe\' -Profile Private\nOr, to remove the rule instead:\nRemove-NetFirewallRule -Name \'TCP Query User{7A11}C:\\Coral\\coral-tray.exe\'';
 const SECURITY = 'WARNING: Coral\'s data folder C:\\Users\\someone\\.coral can be read by Users. It holds the API key, the command-line token and the databases. Move the folder (CORAL_DATA_DIR) to one only you can read, or remove those groups from its permissions (Properties > Security).';
 const DATABASE = 'The sessions database is damaged (page 12 is corrupt). Stop Coral, copy the data folder somewhere safe, then start Coral again to rebuild it from the logs.';
 
@@ -26,7 +27,7 @@ const DATABASE = 'The sessions database is damaged (page 12 is corrupt). Stop Co
             await ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'update_check.js'); m.showSecurityWarning(${JSON.stringify(SECURITY)}); m.showFirewallWarning(${JSON.stringify(FIREWALL)}); m.showDatabaseWarning(${JSON.stringify(DATABASE)}); return true; })()`);
             await waitFor(`document.querySelectorAll('.security-warning-toast').length === 3`, 'three warnings');
             const m = await ev(`(() => { const r = [...document.querySelectorAll('.security-warning-toast')].map(t => { const b = t.getBoundingClientRect(); const c = t.querySelector('.update-toast-close'); const cb = c.getBoundingClientRect(); const txt = t.querySelector('.security-warning-text');
-                return { id: t.id, l: b.left, t: b.top, r: b.right, b: b.bottom, role: t.getAttribute('role'), closeName: c.getAttribute('aria-label'), closeTag: c.tagName + ':' + c.type, cw: cb.width, ch: cb.height, ws: getComputedStyle(txt).whiteSpace, border: getComputedStyle(t).borderLeftWidth, vw: innerWidth, vh: innerHeight }; });
+                return { id: t.id, l: b.left, t: b.top, r: b.right, b: b.bottom, role: t.getAttribute('role'), closeName: c.getAttribute('aria-label'), closeTag: c.tagName + ':' + c.type, textLen: txt.textContent.length, cw: cb.width, ch: cb.height, ws: getComputedStyle(txt).whiteSpace, border: getComputedStyle(t).borderLeftWidth, vw: innerWidth, vh: innerHeight }; });
                 const st = document.getElementById('warning-toasts').getBoundingClientRect();
                 return { stack: { l: st.left, t: st.top, r: st.right, b: st.bottom }, vw: innerWidth, vh: innerHeight, r, overflowX: document.scrollingElement.scrollWidth > innerWidth + 1 }; })()`);
             assert.equal(m.r.length, 3);
@@ -36,16 +37,91 @@ const DATABASE = 'The sessions database is damaged (page 12 is corrupt). Stop Co
                 assert.equal(t.closeTag, 'BUTTON:button');
                 assert.ok(t.cw >= 24 && t.ch >= 24, t.id + ' close target is 24 px or more: ' + t.cw + 'x' + t.ch);
                 assert.equal(t.ws, 'pre-line', t.id + ' keeps its lines');
-                if (!fs) assert.ok(t.l >= -1 && t.r <= t.vw + 1 && t.t >= -1 && t.b <= t.vh + 1, t.id + ' is inside the window: ' + JSON.stringify(t));
+                if (t.id === 'firewall-warning-toast') assert.ok(t.textLen < 200, 'the firewall toast is one short sentence, not ten lines: ' + t.textLen);
+                if (!fs) assert.ok(t.l >= -1 && t.r <= t.vw + 1, t.id + ' is inside the window sideways: ' + JSON.stringify(t));
                 assert.ok(parseFloat(t.border) > 0, t.id + ' has its edge');
             }
             for (let i = 0; i < 3; i++) for (let j = i + 1; j < 3; j++) { const a = m.r[i], b = m.r[j]; const overlap = Math.min(a.r, b.r) - Math.max(a.l, b.l) > 1 && Math.min(a.b, b.b) - Math.max(a.t, b.t) > 1; assert.ok(!overlap, `${a.id} and ${b.id} do not sit on each other`); }
+            // The strip scrolls on its own when the warnings are taller than it: each toast, scrolled to, is inside the strip (or, when taller than the strip, starts at its top).
+            if (!fs) {
+                const fit = await ev(`(() => { const st = document.getElementById('warning-toasts'); const out = [...document.querySelectorAll('.security-warning-toast')].map(t => { t.scrollIntoView({ block: 'nearest' }); const b = t.getBoundingClientRect(), s = st.getBoundingClientRect();
+                    return { id: t.id, ok: b.top >= s.top - 1 && (b.bottom <= s.bottom + 1 || b.top <= s.top + 1) && s.top >= -1 && s.bottom <= innerHeight + 1, b: [b.top, b.bottom], s: [s.top, s.bottom] }; }); st.scrollTop = 0; return out; })()`);
+                for (const f of fit) assert.ok(f.ok, f.id + ' is inside the strip, and the strip inside the window, once scrolled to: ' + JSON.stringify(f));
+            }
+            // A strip that scrolls opens at the top: the first warning's heading and its close button are in the first view.
+            const first = await ev(`(() => { const st = document.getElementById('warning-toasts'); const f = st.firstElementChild, sr = st.getBoundingClientRect(), h = f.querySelector('.update-toast-title').getBoundingClientRect(), x = f.querySelector('.update-toast-close').getBoundingClientRect(); return { scrollTop: st.scrollTop, title: h.top >= sr.top - 1 && h.bottom <= sr.bottom + 1, close: x.top >= sr.top - 1 && x.bottom <= sr.bottom + 1 }; })()`);
+            assert.equal(first.scrollTop, 0, name + ': the strip opens at the top');
+            assert.ok(first.title && first.close, name + ': the first heading and its close button are in view: ' + JSON.stringify(first));
             assert.ok(m.stack.l >= -1 && m.stack.r <= m.vw + 1 && m.stack.t >= -1 && m.stack.b <= m.vh + 1, 'the column of warnings is inside the window (it scrolls when 200% text outgrows it): ' + JSON.stringify(m.stack));
             assert.ok(!m.overflowX, 'the page does not scroll sideways');
             // the × closes its own warning and leaves the others where they are readable
             await ev(`document.querySelector('#firewall-warning-toast .update-toast-close').click(); true`);
             const left = await ev(`[...document.querySelectorAll('.security-warning-toast')].map(t => t.id)`);
             assert.deepEqual(left.sort(), ['database-warning-toast', 'security-warning-toast']);
+        }
+
+        console.log('the firewall toast: short, the commands behind a disclosure, dismissed for good, and a row in Settings (#295)');
+        await Emulation.setEmulatedMedia({ features: [] });
+        await Emulation.setDeviceMetricsOverride({ width: 1280, height: 800, deviceScaleFactor: 1, mobile: false });
+        await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired(); await install();
+        await waitFor(`!!document.getElementById('agent-search-input')`, 'the page', 15000);
+        await ev(`localStorage.removeItem('coral-firewall-warning-dismissed'); document.getElementById('firewall-warning-toast')?.remove(); true`); // a machine with a real broad rule shows its own toast at load: this test shows its own text
+        await ev(`(async () => { const m = await import(${STATIC} + 'update_check.js'); await m.showFirewallWarning(${JSON.stringify(FIREWALL)}); return true; })()`);
+        await waitFor(`!!document.getElementById('firewall-warning-toast')`, 'the firewall toast');
+        const fw = await ev(`(() => { const t = document.getElementById('firewall-warning-toast'); const d = t.querySelector('details'); const b = t.getBoundingClientRect();
+            return { text: t.querySelector('.security-warning-text').textContent, open: d.open, copies: t.querySelectorAll('.firewall-copy').length, cmds: [...t.querySelectorAll('.firewall-cmd code')].map(c => c.textContent), h: b.height, textH: t.querySelector('.security-warning-text').getBoundingClientRect().height, lh: parseFloat(getComputedStyle(t.querySelector('.security-warning-text')).lineHeight) || 20, role: t.getAttribute('role'), never: !![...t.querySelectorAll('button')].find(x => /Don.t show again/.test(x.textContent)) }; })()`);
+        assert.ok(/more than it needs/.test(fw.text) && !/Set-NetFirewallRule/.test(fw.text), 'the toast says the problem in a sentence, not the commands: ' + fw.text);
+        assert.equal(fw.open, false, 'the commands are behind a disclosure');
+        assert.equal(fw.copies, 4, 'a Copy button for each of the four commands');
+        assert.ok(fw.cmds.every(c => /^(Set|Remove)-NetFirewallRule -Name /.test(c)), 'each command is a command and nothing else: ' + JSON.stringify(fw.cmds));
+        // QA measured 205 px on Windows fonts at 1280x800 for four rules, with a 13 px text at line-height 1.45 (18.85 px): 10.9 lines, almost all of it the header, the
+        // padding, the disclosure and the button. 12 lines leaves 10% room; the sentence itself is held to 3 lines, so a long text cannot hide behind the chrome.
+        assert.ok(fw.textH <= fw.lh * 3 + 1, `the sentence is at most 3 lines: ${fw.textH}px of ${fw.lh}px lines`);
+        assert.ok(fw.h <= fw.lh * 12, `the closed toast is at most 12 lines tall, whatever the font: ${fw.h}px of ${fw.lh}px lines`);
+        assert.equal(fw.role, null, "announced politely by the notices' own region, not by a role of its own (#6213)");
+        assert.ok(fw.never, 'it can be dismissed for good');
+        await ev(`[...document.querySelectorAll('#firewall-warning-toast button')].find(x => /Don.t show again/.test(x.textContent)).click(); true`);
+        assert.equal(await ev(`!!document.getElementById('firewall-warning-toast')`), false, 'Dont show again removes it');
+        await ev(`(async () => { const m = await import(${STATIC} + 'update_check.js'); await m.showFirewallWarning(${JSON.stringify(FIREWALL)}); return true; })()`);
+        assert.equal(await ev(`!!document.getElementById('firewall-warning-toast')`), false, 'and it does not come back for the same warning');
+        // Settings has it, with the commands, and a way to bring the toast back
+        await ev(`(async () => { const m = await import(${STATIC} + 'firewall_warning.js'); window.__fwSaved = window.fetch; window.fetch = (u, o) => String(u).includes('/api/system/status') ? Promise.resolve(new Response(JSON.stringify({ startup_complete: true, firewall_warning: ${JSON.stringify(FIREWALL)} }), { status: 200, headers: { 'Content-Type': 'application/json' } })) : window.__fwSaved(u, o); await window.showSettingsModal('files'); await m.renderFirewallRow(); return true; })()`);
+        const fwRow = await ev(`(() => { const r = document.getElementById('settings-firewall-row'); return { hidden: r.hidden, copies: r.querySelectorAll('.firewall-copy').length, again: !![...r.querySelectorAll('button')].find(x => /again/.test(x.textContent)) }; })()`);
+        assert.equal(fwRow.hidden, false, 'the Settings row is there');
+        assert.equal(fwRow.copies, 4);
+        assert.ok(fwRow.again, 'with a way to show the warning on the dashboard again');
+        await ev(`window.fetch = window.__fwSaved; true`);
+
+        console.log('a data folder Coral made private is a notice, told once (#295)');
+        await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired(); await install();
+        await waitFor(`!!document.getElementById('agent-search-input')`, 'the page', 15000);
+        await ev(`(async () => { const m = await import(${STATIC} + 'update_check.js'); m.showSecurityNotice('Coral made its data folder C:/coral private to this user: Users could use it.'); return true; })()`);
+        const notice = await ev(`(() => { const t = document.getElementById('security-notice-toast'); return t && { title: t.querySelector('.update-toast-title').textContent, role: t.getAttribute('role'), warning: !!document.getElementById('security-warning-toast') }; })()`);
+        assert.equal(notice.title, 'Data folder made private');
+        assert.equal(notice.role, null, "announced politely by the notices' own region, not by a role of its own (#6213)");
+        assert.equal(notice.warning, false, 'it is not the Security warning');
+
+        // The notice stays in the status until the page that showed it says so (a CLI or a second tab reading the status does not use it up): the page posts the
+        // acknowledgement once, when the notice is on the screen.
+        await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired(); await install();
+        await waitFor(`!!document.getElementById('agent-search-input')`, 'the page', 15000);
+        const acks = await ev(`(async () => { const m = await import(${STATIC} + 'update_check.js'); const seen = []; const saved = window.fetch; window.fetch = (u, o) => { if (String(u).includes('security-notice/ack')) { seen.push(o && o.method); return Promise.resolve(new Response('{}', { status: 200 })); } return saved(u, o); };
+            m.showSecurityNotice('Coral made its data folder private.'); m.showSecurityNotice('Coral made its data folder private.'); window.fetch = saved; return seen; })()`);
+        assert.deepEqual(acks, ['POST'], 'the notice is acknowledged once, by a POST, when it is shown');
+
+        console.log('at 200% zoom the warnings are a strip, not the page (#295)');
+        for (const [w, h] of [[640, 360], [1280, 800]]) {
+            await Emulation.setDeviceMetricsOverride({ width: w, height: h, deviceScaleFactor: w === 640 ? 2 : 1, mobile: false });
+            await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired(); await install();
+            await waitFor(`!!document.getElementById('agent-search-input')`, 'the page', 15000);
+            await ev(`localStorage.removeItem('coral-firewall-warning-dismissed'); document.getElementById('firewall-warning-toast')?.remove(); (async () => { const m = await import(${STATIC} + 'update_check.js'); m.showSecurityWarning(${JSON.stringify(SECURITY)}); await m.showFirewallWarning(${JSON.stringify(FIREWALL)}); m.showDatabaseWarning(${JSON.stringify(DATABASE)}); m.showSecurityNotice('Coral made its data folder private.'); return true; })()`);
+            await waitFor(`document.querySelectorAll('.security-warning-toast').length === 4`, 'four toasts');
+            const z = await ev(`(() => { const s = document.getElementById('warning-toasts').getBoundingClientRect(); return { h: s.height, vh: innerHeight, w: s.width, vw: innerWidth, r: s.right, b: s.bottom }; })()`);
+            const top = await ev(`(() => { const s = document.getElementById('warning-toasts'); const first = s.firstElementChild.querySelector('.update-toast-title').getBoundingClientRect(); const x = s.firstElementChild.querySelector('.update-toast-close').getBoundingClientRect(); const sr = s.getBoundingClientRect(); return { scrollTop: s.scrollTop, titleVisible: first.top >= sr.top - 1 && first.bottom <= sr.bottom + 1, closeVisible: x.top >= sr.top - 1 && x.bottom <= sr.bottom + 1 }; })()`);
+            assert.equal(top.scrollTop, 0, 'the strip opens at the top');
+            assert.ok(top.titleVisible && top.closeVisible, 'so the first view has a heading and its close button: ' + JSON.stringify(top));
+            if (w === 640) assert.ok(z.h <= z.vh * 0.45, `at 200% the four toasts take at most 45% of the window height: ${z.h} of ${z.vh}`);
+            assert.ok(z.r <= z.vw + 1 && z.b <= z.vh + 1, 'inside the window: ' + JSON.stringify(z));
         }
 
         console.log('the tools folder row');
