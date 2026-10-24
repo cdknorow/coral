@@ -1975,8 +1975,10 @@
 .session-group-item.session-stale {
     opacity: 0.55;
     cursor: not-allowed;
-    filter: grayscale(0.6);
 }
+/* The grey is on the row's content, not on the row: a filter on the row makes it the containing block of its position:fixed hover tooltip, which then laid itself out inside the row, grew the list by 300 to 400 px
+   and made the sticky "+ New Agent" jump on every hover (#6340). The tooltip is the row's direct child and is left out. */
+.session-group-item.session-stale > :not(.session-tooltip) { filter: grayscale(0.6); }
 .session-group-item.session-stale .session-dot { background: var(--text-muted); animation: none; }
 .sidebar-rail-item.session-stale { opacity: 0.55; cursor: not-allowed; }
 
