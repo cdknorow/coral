@@ -260,8 +260,8 @@ function _renderDirRecents() {
         b.textContent = d.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || d;
         return b;
     }));
-    hint.textContent = dirs.length ? '' : 'Pick your project folder.';
-    hint.hidden = dirs.length > 0;
+    hint.textContent = ''; // the Browse button and the field's own placeholder say it: no line under the label (#7064)
+    hint.hidden = true;
 }
 
 // The home folder is a wide place to start an agent in: the person may choose it, and one line says what that means (#5990).

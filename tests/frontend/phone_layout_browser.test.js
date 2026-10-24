@@ -106,7 +106,7 @@ const { removeBoards } = require('./helpers/board_cleanup');
             // the Launch dialog, step 1 and step 2 (and the Agent Configuration section open)
             await ev(`document.querySelector('[data-on-click="launch-show"]').click(); true`); await settle(1000);
             await scan('launch dialog step 1', '#launch-modal');
-            await ev(`{ const c = [...document.querySelectorAll('.launch-type-card, .launch-type-label')].find(e => /AI Agent/.test(e.textContent)); (c.closest('[data-on-click]') || c).click(); } true`); await settle(1500);
+            await ev(`{ const c = [...document.querySelectorAll('.launch-type-card, .launch-type-label')].find(e => /New agent/.test(e.textContent)); (c.closest('[data-on-click]') || c).click(); } true`); await settle(1500);
             await scan('launch dialog step 2', '#launch-modal');
             await ev(`{ const t = [...document.querySelectorAll('#launch-step-agent *')].filter(e => /^\\s*Agent Configuration/.test(e.textContent) && e.children.length < 3).pop(); if (t) (t.closest('[data-on-click], button') || t).click(); } true`); await settle(800);
             await scan('launch dialog step 2, Agent Configuration open', '#launch-modal');

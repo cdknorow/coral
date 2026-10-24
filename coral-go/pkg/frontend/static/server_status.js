@@ -227,14 +227,14 @@ export function serverDetailsHtml(e) {
         + (!local && e.status !== 'online' ? `<p class="server-details-hint">${escHtml(m.hint)}</p>` : '');
 }
 
-/** One row at the top of a server's menu: Launch agent, Launch team, and Open in Servers (a text link when the row is narrow); Open folder is a fourth button on the hub's own machine only (a pinned folder lives
+/** One row at the top of a server's menu: New agent, New team, and Open in Servers (a text link when the row is narrow); Open folder is a fourth button on the hub's own machine only (a pinned folder lives
  *  on this Coral, pinned_folders.js), and elsewhere a one-line hint says to choose the folder when launching an agent. Each launch opens the launch flow with this server chosen; one that cannot run is disabled
  *  and the reason is said once under the row (launch_server.js decides: offline, key rejected, no hub). */
 function serverLaunchActionsHtml(e) {
     const id = normServer(e.id);
     const local = id === LOCAL_SERVER;
     const blocked = launchBlockReason(id, isHub(), state.servers);
-    const actions = [['agent', 'Launch agent'], ['team', 'Launch team']];
+    const actions = [['agent', 'New agent'], ['team', 'New team']];
     if (local) actions.push(['folder', 'Open folder']);
     const btn = ([kind, label]) => `<button type="button" class="server-launch-btn${kind === 'agent' ? ' server-launch-primary' : ''}" data-server-launch="${escHtml(kind)}" data-server-id="${escHtml(e.id)}"`
         + (blocked ? ` disabled aria-disabled="true" title="${escHtml(blocked)}"` : '') + `>${label}</button>`;

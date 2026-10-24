@@ -60,6 +60,7 @@ export function setTerminalSize(cols, rows) {
 /** The terminal has the keyboard focus: the typing hint steps back. */
 export function setTerminalFocused(on) {
     bar()?.classList.toggle('terminal-statusbar-focused', !!on);
+    if (on) bar()?.classList.add('terminal-statusbar-typed'); // "Click to type" is for the first time only (#7064): after it the line is just the way out
 }
 
 registerActions({

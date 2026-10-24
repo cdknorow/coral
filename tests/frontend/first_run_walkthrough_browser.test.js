@@ -133,7 +133,7 @@ async function freshServer() {
         await clickVisible('[data-on-click="launch-show"]');
         await waitFor(visible('#launch-step-chooser .launch-type-card'), `${tag}: the choice of what to launch`, { timeout: 8000, diag: `document.body.innerText.slice(0, 300)` });
         const cards = await ev(`[...document.querySelectorAll('#launch-step-chooser .launch-type-card')].map(c => c.textContent.replace(/\\s+/g, ' ').replace('smart_toy', '').trim())`);
-        assert.deepEqual(cards.slice(0, 3), ['AI Agent', 'Agent Team', 'Terminal'], `${tag}: step one offers the kinds in this order (${JSON.stringify(cards)})`);
+        assert.deepEqual(cards.slice(0, 3), ['New agent', 'New team', 'Terminal'], `${tag}: step one offers the kinds in this order (${JSON.stringify(cards)})`);
         await ev(`document.querySelector('#launch-step-chooser .launch-type-card[data-arg="agent"]').click(); true`);
         await waitFor(`(() => { const e = document.getElementById('launch-step-agent'); return !!e && getComputedStyle(e).display !== 'none' && !!document.getElementById('launch-dir'); })()`, `${tag}: the agent form (step two)`, { timeout: 8000, diag: `document.body.innerText.slice(0, 300)` });
         await setValue('launch-dir', s.dirs.work);

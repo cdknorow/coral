@@ -21,8 +21,8 @@
     "viewing an agent that was renamed": "500a3539670ab0627032af9d917d44355d9170fed4849189f78bafae61455172",
     "viewing an agent matched by name only adopts the new id": "e8a65bfc276236f609bda35524a4ad5cd000c8ffe9f109139eca1ff6924aee42",
     "the viewed agent falls asleep": "2a8521a31803225efed8dbc0885cf8db4ced7a7db65ddbbe9ca26706b661bca0",
-    "the viewed agent stays asleep and is archived": "640e1a5506cea0a5a624d8ac88acf2206d41c27e17f86cf3d25d8842183383a3",
-    "the viewed agent is gone from the feed": "6f9f9c9c3168e74a680ccc893d14916f3aad0d9eca84784686df79987fe15825"
+    "the viewed agent stays asleep and is archived": "7bd823397ecee2fe03477b3bd9192ae4568f36d6a62059e1b70bdbbd74eb51e5",
+    "the viewed agent is gone from the feed": "0035440c9aa25be3268254d5893a651fa19d7fc00e0710129362c08639bc09d7"
   },
   "lines": {
     "full update of two agents": "a1/a1-id/local/Working/false/sum a1//false/5/main/opus/[\"/x\"]/false ; a2/a2-id/local/Idle/false/sum a2//false/5/main/opus/[\"/x\"]/false | servers [] | header  |  | Type a command or paste an image... | current null | toasts  | calls  | sched>0 true",
@@ -45,7 +45,7 @@
     "viewing an agent that was renamed": "a1-renamed/a1-id/local/Working/false/sum a1-renamed//false/5/main/opus/[\"/x\"]/false ; a2/a2-id/local/Working/false/sum a2//false/5/main/opus/[\"/x\"]/false | servers [] | header a1-renamed | a1-renamed | Message a1-renamed, or paste an image | current a1-renamed/a1-id/tmx-1//sum a1-renamed | toasts  | calls  | sched>0 true",
     "viewing an agent matched by name only adopts the new id": "b1/b1-new/local/Working/false/sum b1//false/5/main/opus/[\"/x\"]/false ; a2/a2-id/local/Working/false/sum a2//false/5/main/opus/[\"/x\"]/false | servers [] | header b1 | b1 | Message b1, or paste an image | current b1/b1-new///sum b1 | toasts  | calls  | sched>0 true",
     "the viewed agent falls asleep": "b1/b1-new/local/Working/false/sum b1//true/5/main/opus/[\"/x\"]/false ; a2/a2-id/local/Working/false/sum a2//false/5/main/opus/[\"/x\"]/false | servers [] | header b1 | b1 | Message b1, or paste an image | current b1/b1-new///sum b1 | toasts  | calls select [\"b1\",\"claude\",\"b1-new\",\"local\"] | sched>0 true",
-    "the viewed agent stays asleep and is archived": "b1/b1-new/local/Working/false/sum b1//true/5/main/opus/[\"/x\"]/true ; a2/a2-id/local/Working/false/sum a2//false/5/main/opus/[\"/x\"]/false | servers [] | header b1 | b1 | Agent is archived — unarchive or wake it to send commands | current b1/b1-new///sum b1 | toasts  | calls  | sched>0 true",
-    "the viewed agent is gone from the feed": "a2/a2-id/local/Working/false/sum a2//false/5/main/opus/[\"/x\"]/false | servers [] | header b1 | b1 | Agent is archived — unarchive or wake it to send commands | current b1/b1-new///sum b1 | toasts  | calls  | sched>0 true"
+    "the viewed agent stays asleep and is archived": "b1/b1-new/local/Working/false/sum b1//true/5/main/opus/[\"/x\"]/true ; a2/a2-id/local/Working/false/sum a2//false/5/main/opus/[\"/x\"]/false | servers [] | header b1 | b1 |  | current b1/b1-new///sum b1 | toasts  | calls  | sched>0 true",
+    "the viewed agent is gone from the feed": "a2/a2-id/local/Working/false/sum a2//false/5/main/opus/[\"/x\"]/false | servers [] | header b1 | b1 |  | current b1/b1-new///sum b1 | toasts  | calls  | sched>0 true"
   }
 }

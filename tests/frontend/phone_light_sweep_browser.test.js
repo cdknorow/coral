@@ -91,7 +91,7 @@ const TASKS = ['Fix the lock taken twice in the update path of the store', 'Writ
         // the Launch dialog, step 1 and 2
         await ev(`document.querySelector('[data-on-click="launch-show"]').click(); true`); await settle(1000);
         await scan('launch dialog step 1', '#launch-modal');
-        await ev(`{ const c = [...document.querySelectorAll('.launch-type-card, .launch-type-label')].find(e => /AI Agent/.test(e.textContent)); (c.closest('[data-on-click]') || c).click(); } true`); await settle(1500);
+        await ev(`{ const c = [...document.querySelectorAll('.launch-type-card, .launch-type-label')].find(e => /New agent/.test(e.textContent)); (c.closest('[data-on-click]') || c).click(); } true`); await settle(1500);
         await scan('launch dialog step 2', '#launch-modal');
         await ev(`document.getElementById('launch-modal').style.display = 'none'; true`);
         // the Servers tab with a hub fixture

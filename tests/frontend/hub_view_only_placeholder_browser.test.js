@@ -60,7 +60,7 @@ const VIEW = 'View only through Coral Hub';
         const sv = `window.__sv`;
         await ev(`(async () => { window.__sv = await import((window.__coralStatic || '/static/') + 'sleeping_view.js'); window.__cp.setCommandPlaceholder(document.getElementById('command-input'), 'awake text'); window.__sv.applySleepingView(true); return true; })()`);
         const asleep = await box();
-        assert.equal(asleep.disabled, true); assert.match(asleep.placeholder, /sleeping/i);
+        assert.equal(asleep.disabled, true); assert.equal(asleep.placeholder, '', 'the sleeping bar says it; the box is empty (#7064)');
         await ev(`window.__cp.setCommandPlaceholder(document.getElementById('command-input'), 'text written while asleep'); true`);
         assert.deepEqual(await box(), asleep, 'a live update while asleep does not take the sleeping words away');
         await ev(`${sv}.applySleepingView(false); true`);

@@ -329,8 +329,8 @@ function _renderLiveSessions(sessions) {
 // The desktop's sidebar keeps its plain line; the CSS shows one or the other.
 const PHONE_WELCOME = `<li class="empty-state empty-welcome"><h2>What do you want to work on?</h2><p>Launch a single agent, or a team that works together on a shared message board.</p>
 <div class="empty-launch-list">
-<button type="button" class="empty-launch" data-on-click="m-show-launch-modal-then-select-launch-type" data-arg="agent"><span class="empty-launch-icon material-icons" aria-hidden="true">smart_toy</span><span class="empty-launch-copy"><strong>Launch agent</strong><span>One agent in a folder you choose.</span></span><span class="material-icons empty-launch-arrow" aria-hidden="true">arrow_forward</span></button>
-<button type="button" class="empty-launch" data-on-click="m-show-launch-modal-then-select-launch-type" data-arg="team"><span class="empty-launch-icon material-icons" aria-hidden="true">groups</span><span class="empty-launch-copy"><strong>Launch team</strong><span>Agents with roles on a shared board.</span></span><span class="material-icons empty-launch-arrow" aria-hidden="true">arrow_forward</span></button>
+<button type="button" class="empty-launch" data-on-click="m-show-launch-modal-then-select-launch-type" data-arg="agent"><span class="empty-launch-icon material-icons" aria-hidden="true">smart_toy</span><span class="empty-launch-copy"><strong>New agent</strong><span>One agent in a folder you choose.</span></span><span class="material-icons empty-launch-arrow" aria-hidden="true">arrow_forward</span></button>
+<button type="button" class="empty-launch" data-on-click="m-show-launch-modal-then-select-launch-type" data-arg="team"><span class="empty-launch-icon material-icons" aria-hidden="true">groups</span><span class="empty-launch-copy"><strong>New team</strong><span>Agents with roles on a shared board.</span></span><span class="material-icons empty-launch-arrow" aria-hidden="true">arrow_forward</span></button>
 </div></li>`;
 
 // Hidden tabs skip availability polls; catch up as soon as the tab is shown.

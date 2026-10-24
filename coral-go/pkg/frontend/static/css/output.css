@@ -530,6 +530,8 @@ body.panel-dragging .xterm-container {
     opacity: 1; /* while the terminal has focus is when the way out of it is needed: it was dimmed to 0.45 (#6188) */
 }
 
+.terminal-statusbar.terminal-statusbar-typed .xterm-click-hint { display: none; }
+
 .selection-pause-badge {
     position: absolute;
     top: 8px;

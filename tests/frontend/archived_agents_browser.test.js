@@ -11,8 +11,8 @@ const { connect } = require('./agent_view_harness');
 
 const BASE = require('./test_base').BASE;
 
-const ARCHIVED_PLACEHOLDER = 'Agent is archived — unarchive or wake it to send commands';
-const SLEEPING_PLACEHOLDER = 'Agent is sleeping — wake it to send commands';
+const ARCHIVED_PLACEHOLDER = '';
+const SLEEPING_PLACEHOLDER = '';
 
 (async () => {
     const { client, Page, Emulation, ev, waitFor, sleep, PRELOAD, install, select, view, reqs, clearReqs,

@@ -182,7 +182,7 @@ const SETTINGS_PRELOAD = `(() => {
         await ev(`document.querySelector('li.server-group-header[data-server-group="m3"] details[data-server-details]').open = true; true`);
         const d3 = await ev(`(() => { const p = document.querySelector('li.server-group-header[data-server-group="m3"] .server-switcher-panel'); const dl = Object.fromEntries([...p.querySelectorAll('dt')].map(dt => [dt.textContent, dt.nextElementSibling.textContent])); return { dl, hint: !!p.querySelector('.server-details-hint'), buttons: [...p.querySelectorAll('button')].map(b => b.textContent) }; })()`);
         assert.equal(d3.dl.Status, 'Unreachable'); assert.equal(d3.dl.Error, 'dial tcp: timeout'); assert.ok('Last contact' in d3.dl, 'one wording, Last contact, online or not (#3152)'); assert.ok(d3.hint, 'offline hint');
-        assert.deepEqual(d3.buttons, ['Launch agent', 'Launch team', 'Open in Servers']); // the launch row, with Open in Servers as its last item, and no Collapse button: the header toggles the group (#5487, server_menu_browser.test.js)
+        assert.deepEqual(d3.buttons, ['New agent', 'New team', 'Open in Servers']); // the launch row, with Open in Servers as its last item, and no Collapse button: the header toggles the group (#5487, server_menu_browser.test.js)
         // Persistence across a reload.
         await Page.navigate({ url: BASE });
         await Page.loadEventFired();

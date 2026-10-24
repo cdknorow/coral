@@ -245,7 +245,7 @@ URL alone does not trigger the offer. `--cloud-connect off` suppresses it;
 
 ## 4. Launch your first agent
 
-On Home choose **Launch agent** (elsewhere, **+ New > AI Agent**). Enter an existing
+On Home choose **New agent** (elsewhere, **+ New agent**). Enter an existing
 project folder on the computer running Coral. Open **More options > Agent** to choose
 your installed CLI, then choose **Launch**. In **Chat**, type a task and press Enter
 to send it; check **Terminal** first for any sign-in or trust prompt. The equivalent API call (with [strict local auth](auth.md#strict-local-auth-the-default), the default, add

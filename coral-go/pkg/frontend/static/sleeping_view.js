@@ -10,8 +10,8 @@ import { state } from './state.js';
 const lastState = new Map(); // session_id -> the words its state last had, to say a change once (#6213)
 let stateFlip = false;
 
-const PLACEHOLDER = 'Agent is sleeping — wake it to send commands';
-const ARCHIVED_PLACEHOLDER = 'Agent is archived — unarchive or wake it to send commands';
+const PLACEHOLDER = ''; // the bar above says it once, with Wake (#7064)
+const ARCHIVED_PLACEHOLDER = '';
 let waking = false;
 
 /**

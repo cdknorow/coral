@@ -25,8 +25,8 @@ const fs = require('node:fs');
 
             console.log(`${at}: no folder ever used: one line of help`);
             await open();
-            assert.equal(await ev(vis('#launch-dir-hint')), true, `${at}: the hint shows`);
-            assert.equal(await ev(`document.getElementById('launch-dir-hint').textContent`), 'Pick your project folder.');
+            assert.equal(await ev(vis('#launch-dir-hint')), false, `${at}: no line under the label (#7064)`);
+            assert.equal(await ev(`document.getElementById('launch-dir-hint').textContent`), '');
             assert.equal(await ev(`document.querySelectorAll('#launch-dir-recents button').length`), 0);
             await shot(Page, `folder-hint-${w}`);
             await ev(`window.hideLaunchModal(); true`);

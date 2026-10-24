@@ -86,9 +86,9 @@ const SERVERS = [
         const menu = await ev(`(() => { const p = document.querySelector('#live-sessions-list li.server-group-header[data-server-group="m1"] .server-switcher-panel');
             return { first: [...p.children].map(c => c.className.split(' ')[0]), actions: [...p.querySelectorAll('[data-server-launch]')].map(b => ({ kind: b.dataset.serverLaunch, label: b.firstChild.textContent.trim(), disabled: b.disabled })), row: [...p.querySelector('.server-launch-actions').children].map(b => b.textContent.trim()), hint: (p.querySelector('.server-launch-hint') || {}).textContent || '', collapse: [...p.querySelectorAll('button')].some(b => /^(Collapse|Expand)$/.test(b.textContent.trim())), hasDetails: !!p.querySelector('.server-details-list') }; })()`);
         assert.equal(menu.first[0], 'server-launch-actions', `the launch actions come first (${menu.first})`);
-        assert.deepEqual(menu.actions.map(a => a.label), ['Launch agent', 'Launch team']);
+        assert.deepEqual(menu.actions.map(a => a.label), ['New agent', 'New team']);
         assert.deepEqual(menu.actions.map(a => a.kind), ['agent', 'team']);
-        assert.deepEqual(menu.row, ['Launch agent', 'Launch team', 'Open in Servers'], 'one row: the two launches and Open in Servers as its last item');
+        assert.deepEqual(menu.row, ['New agent', 'New team', 'Open in Servers'], 'one row: the two launches and Open in Servers as its last item');
         assert.equal(menu.hint, 'To use a folder, choose it when you launch an agent.', 'a remote has no Open folder: a one-line hint says where the folder is chosen');
         assert.equal(menu.collapse, false, 'no Collapse button in the menu: the header toggles the group');
         assert.ok(menu.hasDetails, 'the details stay');

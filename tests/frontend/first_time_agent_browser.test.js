@@ -40,11 +40,11 @@ const BASE = require('./test_base').BASE;
         await open(390, 844, true);
         const phone = await ev(`(() => { const vis = e => !!e && e.checkVisibility({ checkVisibilityCSS: true }); const w = document.querySelector('.session-list li.empty-welcome'), p = document.querySelector('.session-list li.empty-plain');
             return { welcome: vis(w), plain: vis(p), title: w && w.querySelector('h2').textContent, buttons: w ? [...w.querySelectorAll('button')].map(b => b.querySelector('strong').textContent) : [], target: w ? [...w.querySelectorAll('button')].map(b => Math.round(b.getBoundingClientRect().height)) : [] }; })()`);
-        assert.equal(phone.welcome, true); assert.equal(phone.plain, false); assert.equal(phone.title, 'What do you want to work on?'); assert.deepEqual(phone.buttons, ['Launch agent', 'Launch team']);
+        assert.equal(phone.welcome, true); assert.equal(phone.plain, false); assert.equal(phone.title, 'What do you want to work on?'); assert.deepEqual(phone.buttons, ['New agent', 'New team']);
         assert.ok(phone.target.every(h => h >= 44), 'the cards are touch targets: ' + phone.target);
         await ev(`document.querySelector('.session-list li.empty-welcome button').click(); true`);
         await waitFor(`!!document.getElementById('launch-step-agent') && getComputedStyle(document.getElementById('launch-step-agent')).display !== 'none'`, 'the same New Agent dialog the desktop opens'); // (the dialog is a lazy template: it is not in the page until the click has built it)
-        assert.equal(await ev(`document.getElementById('launch-agent-title').textContent.replace(/\\s+/g, ' ').trim().replace(/^←\\s*/, '')`), 'New Agent');
+        assert.equal(await ev(`document.getElementById('launch-agent-title').textContent.replace(/\\s+/g, ' ').trim().replace(/^←\\s*/, '')`), 'New agent');
         await open(1280, 900, false);
         const desk = await ev(`(() => { const shown = e => !!e && getComputedStyle(e).display !== 'none'; return { welcome: shown(document.querySelector('.session-list li.empty-welcome')), plain: shown(document.querySelector('.session-list li.empty-plain')) }; })()`); // (the sidebar's section may itself be folded away on a desktop with nothing running: the rule is what is checked)
         assert.deepEqual(desk, { welcome: false, plain: true });

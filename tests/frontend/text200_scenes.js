@@ -91,7 +91,7 @@ const { removeBoards } = require('./helpers/board_cleanup');
             const ids = await ev(`[...document.querySelectorAll('.modal[role=dialog]')].map(m => m.id).filter(id => id !== 'settings-modal')`);
             for (const id of ids) { await probe('dialog ' + id, () => ev(`document.getElementById(${JSON.stringify(id)}).style.display = 'flex'; true`), '#' + id); await ev(`document.getElementById(${JSON.stringify(id)}).style.display = 'none'; true`); }
             await probe('launch step 2 (agent) with Agent Configuration open', async () => { await ev(`document.querySelector('[data-on-click="launch-show"]').click(); true`); await settle(800);
-                await ev(`{ const c = [...document.querySelectorAll('.launch-type-card, .launch-type-label')].find(e => /AI Agent/.test(e.textContent)); (c.closest('[data-on-click]') || c).click(); } true`); await settle(1000);
+                await ev(`{ const c = [...document.querySelectorAll('.launch-type-card, .launch-type-label')].find(e => /New agent/.test(e.textContent)); (c.closest('[data-on-click]') || c).click(); } true`); await settle(1000);
                 await ev(`{ const d = [...document.querySelectorAll('summary')].find(b => b.textContent.trim() === 'Agent Configuration'); if (d) d.parentElement.open = true; } true`); }, '#launch-modal');
             await ev(`document.getElementById('launch-modal').style.display = 'none'; true`);
             await ev(`document.documentElement.style.fontSize = ''; true`);
@@ -112,7 +112,7 @@ const { removeBoards } = require('./helpers/board_cleanup');
             await probe(tag + ' settings', () => ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'modals.js'); await m.showSettingsModal(); return true; })()`), '#settings-modal');
             await ev(`window.hideSettingsModal(); true`);
             await probe(tag + ' launch step 2', async () => { await ev(`document.querySelector('[data-on-click="launch-show"]').click(); true`); await settle(800);
-                await ev(`{ const c = [...document.querySelectorAll('.launch-type-card, .launch-type-label')].find(e => /AI Agent/.test(e.textContent)); (c.closest('[data-on-click]') || c).click(); } true`); await settle(1000); }, '#launch-modal');
+                await ev(`{ const c = [...document.querySelectorAll('.launch-type-card, .launch-type-label')].find(e => /New agent/.test(e.textContent)); (c.closest('[data-on-click]') || c).click(); } true`); await settle(1000); }, '#launch-modal');
             await ev(`document.getElementById('launch-modal').style.display = 'none'; window.switchNavTab('agents'); true`);
         };
         if (group === 'wide') {
