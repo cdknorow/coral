@@ -60,7 +60,7 @@ func (h *WorktreesHandler) entries(ctx context.Context, probe bool) []worktreeEn
 			}
 			json.Unmarshal([]byte(t.ConfigJSON), &cfg)
 			out = append(out, worktreeEntry{ID: "team-" + strconv.FormatInt(t.ID, 10), Kind: "team", Name: t.Name, Path: t.WorkingDir,
-				RepoPath: cfg.WorkingDir, Branch: coralnames.TeamBranch(filepath.Base(t.WorkingDir)), InUse: liveErr != nil || liveSessionIn(live, t)}) // a live list that cannot be read fails closed: in use
+				RepoPath: cfg.WorkingDir, Branch: coralnames.TeamBranch(filepath.Base(t.WorkingDir)), InUse: liveErr != nil || liveSessionIn(live, t) || teamLaunching(t, time.Now())}) // a live list that cannot be read fails closed: in use
 		}
 	}
 	if runs, err := h.sched.ListRunsWithWorktree(ctx); err == nil {
@@ -86,6 +86,28 @@ func (h *WorktreesHandler) entries(ctx context.Context, probe bool) []worktreeEn
 		probeWorktrees(ctx, kept)
 	}
 	return kept
+}
+
+// teamLaunching reports whether a team that is not stopped is young enough for its launch to be under way: the launch holds the team for lifecycleTimeout plus lifecyclePerSession for each member, and in that time
+// its agents are not registered yet, so no live session says the worktree is used. A clean fresh worktree could otherwise be removed (git finds nothing unsaved) under agents about to start in it (#6942). A team that
+// is stopped never needs the grace; a creation time that cannot be read fails closed.
+func teamLaunching(t store.Team, now time.Time) bool {
+	if t.Status == "stopped" {
+		return false
+	}
+	members := 20 // not named in the team's config: assume a large team
+	var cfg struct {
+		Agents []json.RawMessage `json:"agents"`
+	}
+	if json.Unmarshal([]byte(t.ConfigJSON), &cfg) == nil && len(cfg.Agents) > 0 {
+		members = len(cfg.Agents)
+	}
+	for _, layout := range []string{store.ISOFormat, time.RFC3339Nano, "2006-01-02 15:04:05"} {
+		if created, err := time.Parse(layout, t.CreatedAt); err == nil {
+			return now.Sub(created) < lifecycleTimeout+time.Duration(members)*lifecyclePerSession
+		}
+	}
+	return true
 }
 
 // liveSessionIn reports whether a live session belongs to the team or runs in its worktree. Killing a team's agents one by one (the dashboard's Kill Team) never marks the team stopped, so the team's own status says nothing.

@@ -296,6 +296,24 @@ func TestKeptTeamWorktreeIsNotInUseOnceItsAgentsWereKilledOneByOne(t *testing.T)
 			assert.True(t, inUse(), "one agent is still in it")
 		}
 	}
-	assert.False(t, inUse(), "every agent was killed: nothing is in it, so Remove is offered")
+	assert.True(t, inUse(), "a team just made with no live session could still be launching: in use for the launch's bound (#6942)")
+	_, err = h.db.Exec(`UPDATE teams SET created_at = ?`, time.Now().Add(-lifecycleTimeout-time.Hour).UTC().Format(store.ISOFormat))
+	require.NoError(t, err)
+	assert.False(t, inUse(), "past the bound, every agent killed: nothing is in it, so Remove is offered")
 	assert.FileExists(t, filepath.Join(wt, "unsaved.txt"), "kept: it has unsaved work")
+}
+
+// The grace of a launch in progress: a team that is not stopped is in use for lifecycleTimeout plus a few seconds a member from its creation, and never once it is stopped (#6942).
+func TestTeamLaunchingIsBoundedByTheLaunchTime(t *testing.T) {
+	now := time.Now()
+	at := func(ago time.Duration) string { return now.Add(-ago).UTC().Format(store.ISOFormat) }
+	team := func(status string, ago time.Duration, agents int) store.Team {
+		cfg := `{"agents":[` + strings.TrimSuffix(strings.Repeat(`{},`, agents), ",") + `]}`
+		return store.Team{Status: status, CreatedAt: at(ago), ConfigJSON: cfg}
+	}
+	assert.True(t, teamLaunching(team("running", time.Second, 2), now), "just made")
+	assert.True(t, teamLaunching(team("running", lifecycleTimeout+5*time.Second, 3), now), "within the bound of 3 members")
+	assert.False(t, teamLaunching(team("running", lifecycleTimeout+time.Hour, 3), now), "past the bound")
+	assert.False(t, teamLaunching(team("stopped", time.Second, 2), now), "a stopped team needs no grace")
+	assert.True(t, teamLaunching(store.Team{Status: "running", CreatedAt: "not a time"}, now), "an unreadable creation time fails closed")
 }
