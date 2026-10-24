@@ -641,6 +641,10 @@ func (h *WorkflowHandler) GetStepFile(w http.ResponseWriter, r *http.Request) {
 		errNotFound(w, "file not found")
 		return
 	}
+	if writtenBefore(info.ModTime(), run.CreatedAt) { // an older run's file under a repeated run id, before this run's folder was made (#6948)
+		errNotFound(w, "file not found")
+		return
+	}
 	if info.Size() > maxFileBytes()*20 {
 		errPayloadTooLarge(w, "file too large")
 		return

@@ -2,6 +2,8 @@ package routes
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -158,8 +160,16 @@ func (h *BoardHandler) SetTaskArtifactWriter(coralDir string, fn func(context.Co
 	h.writeTaskArtifact = fn
 }
 
-func (h *BoardHandler) taskArtifactPath(taskID int64) string {
-	return filepath.Join(h.coralDir, "artifacts", "tasks", strconv.FormatInt(taskID, 10), "changes.diff")
+// taskArtifactPath is where a task's changes.diff is kept: by board and id, since ids start again after a restore from an older backup or a reset, and an older board's task of the same id must not be shown
+// this one's diff (#6948). The board is a hash of its id, never the id itself, so no board name is a path.
+func (h *BoardHandler) taskArtifactPath(boardID string, taskID int64) string {
+	return filepath.Join(h.coralDir, "artifacts", "tasks", TaskBoardKey(boardID), strconv.FormatInt(taskID, 10), "changes.diff")
+}
+
+// TaskBoardKey is the folder name a board's task diffs are kept under.
+func TaskBoardKey(boardID string) string {
+	sum := sha256.Sum256([]byte(boardID))
+	return hex.EncodeToString(sum[:8])
 }
 
 // taskArtifactTimeout bounds the after-the-reply writing of a task's changes.diff: the agent's working tree is diffed (git diff,
@@ -196,7 +206,7 @@ func (h *BoardHandler) persistTaskArtifact(ctx context.Context, task *board.Task
 		slog.Debug("task changes not persisted: the task has no agent session", "task_id", task.ID, "board", task.BoardID)
 		return
 	}
-	if err := h.writeTaskArtifact(ctx, task, h.taskArtifactPath(task.ID)); err != nil {
+	if err := h.writeTaskArtifact(ctx, task, h.taskArtifactPath(task.BoardID, task.ID)); err != nil {
 		slog.Warn("persist task changes artifact failed", "task_id", task.ID, "board", task.BoardID, "error", err)
 	}
 }

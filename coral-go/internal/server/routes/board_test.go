@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -123,10 +124,13 @@ func TestBoardCompleteTask_PersistsChangesArtifact(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 
 	// Written after the reply (#217): the completion answers first.
-	artifactPath := filepath.Join(coralDir, "artifacts", "tasks", "1", "changes.diff")
 	var data []byte
 	require.Eventually(t, func() bool {
-		data, err = os.ReadFile(artifactPath)
+		found, _ := filepath.Glob(filepath.Join(coralDir, "artifacts", "tasks", "*", "1", "changes.diff")) // kept under the task's board (#6948)
+		if len(found) != 1 {
+			return false
+		}
+		data, err = os.ReadFile(found[0])
 		return err == nil
 	}, 5*time.Second, 10*time.Millisecond, "the changes artifact is written after the completion's reply")
 	assert.Contains(t, string(data), "diff --git")
@@ -1642,4 +1646,44 @@ func registerTaskPlanner(t *testing.T, h *BoardHandler, project, actor string) {
 	t.Helper()
 	_, err := h.bs.Subscribe(context.Background(), project, actor, "Orchestrator", "", nil, "all")
 	require.NoError(t, err)
+}
+
+// Ids start again after a restore from an older backup or a reset with the data folder kept (#6948, Security's #6946): a new task with an id used before is not shown the older task's changes.diff. The diff is kept by
+// board and id, and a file older than the task is refused.
+func TestTaskChangesDiffOfAnOlderTaskUnderARepeatedIdIsNotServed(t *testing.T) {
+	server, handler := setupBoardTestServer(t)
+	registerTaskPlanner(t, handler, "eval", "Orchestrator")
+	coralDir := t.TempDir()
+	handler.SetTaskArtifactWriter(coralDir, func(context.Context, *board.Task, string) error { return nil })
+	base := server.URL + "/api/board/eval/tasks"
+	resp := postJSON(t, base, map[string]string{"title": "Evaluate", "created_by": "Orchestrator"})
+	resp.Body.Close()
+	tasks, err := handler.bs.ListTasks(context.Background(), "eval")
+	require.NoError(t, err)
+	require.Len(t, tasks, 1)
+	task := tasks[0]
+	get := func() int {
+		r, err := http.Get(base + "/" + strconv.FormatInt(task.ID, 10) + "/changes.diff")
+		require.NoError(t, err)
+		r.Body.Close()
+		return r.StatusCode
+	}
+	diff := []byte("diff --git a/a.txt b/a.txt\n")
+
+	legacy := filepath.Join(coralDir, "artifacts", "tasks", strconv.FormatInt(task.ID, 10), "changes.diff") // the older layout, by id alone
+	require.NoError(t, os.MkdirAll(filepath.Dir(legacy), 0o755))
+	require.NoError(t, os.WriteFile(legacy, diff, 0o644))
+	assert.Equal(t, http.StatusNotFound, get(), "an older task's file kept by id alone is never served")
+
+	path := handler.taskArtifactPath(task.BoardID, task.ID)
+	assert.NotEqual(t, path, handler.taskArtifactPath("another-board", task.ID), "kept by board and id")
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+	require.NoError(t, os.WriteFile(path, diff, 0o644))
+	old := time.Now().Add(-48 * time.Hour)
+	require.NoError(t, os.Chtimes(path, old, old))
+	assert.Equal(t, http.StatusNotFound, get(), "a file older than the task cannot be this task's")
+
+	now := time.Now()
+	require.NoError(t, os.Chtimes(path, now, now))
+	assert.Equal(t, http.StatusOK, get(), "this task's own diff is served")
 }

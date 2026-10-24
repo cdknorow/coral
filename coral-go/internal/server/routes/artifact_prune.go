@@ -485,14 +485,48 @@ func (h *SessionsHandler) objectCandidates(ctx context.Context, o pruneOptions, 
 }
 
 type diffCandidate struct {
-	kind  string // "task" or "session"
-	id    string
-	path  string
-	board string
-	bytes int64
-	links uint64
-	inode fileKey
-	at    time.Time // when it was closed: the task's completed_at, the session's stopped_at
+	kind     string // "task" or "session"
+	id       string
+	path     string
+	board    string
+	boardKey string // a task diff's board folder ("" for the older layout, by id alone)
+	bytes    int64
+	links    uint64
+	inode    fileKey
+	at       time.Time // when it was closed: the task's completed_at, the session's stopped_at
+}
+
+// taskDiffDir is one task's folder of stored diffs: its id, where it is, and the board key it is kept under ("" for the older layout, by id alone, which nothing serves any more but the prune still ages out).
+type taskDiffDir struct {
+	id, path, boardKey string
+}
+
+// taskDiffDirs lists the task folders under artifacts/tasks: <board key>/<id> (#6948) and the older <id> folders.
+func taskDiffDirs(taskDir string) []taskDiffDir {
+	var out []taskDiffDir
+	entries, err := os.ReadDir(taskDir)
+	if err != nil {
+		return nil
+	}
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		if _, err := strconv.ParseInt(e.Name(), 10, 64); err == nil {
+			out = append(out, taskDiffDir{id: e.Name(), path: filepath.Join(taskDir, e.Name())})
+			continue
+		}
+		inner, err := os.ReadDir(filepath.Join(taskDir, e.Name()))
+		if err != nil {
+			continue
+		}
+		for _, i := range inner {
+			if i.IsDir() {
+				out = append(out, taskDiffDir{id: i.Name(), path: filepath.Join(taskDir, e.Name(), i.Name()), boardKey: e.Name()})
+			}
+		}
+	}
+	return out
 }
 
 // closedDiffs lists the stored task and session diffs whose task is completed or skipped, or
@@ -518,32 +552,30 @@ func (h *SessionsHandler) closedDiffs(ctx context.Context, o pruneOptions) ([]di
 		}
 	}
 	taskDir := filepath.Join(coralDir, "artifacts", "tasks")
-	if entries, err := os.ReadDir(taskDir); err == nil {
-		for _, e := range entries {
-			if !e.IsDir() {
-				continue
-			}
-			t, known := tasks[e.Name()]
-			if known && t.Status != "completed" && t.Status != "skipped" {
-				continue // an open task: its diff may still change
-			}
-			c, ok := diffAt(filepath.Join(taskDir, e.Name(), "changes.diff"))
+	for _, d := range taskDiffDirs(taskDir) {
+		t, known := tasks[d.id]
+		if known && d.boardKey != "" && TaskBoardKey(t.BoardID) != d.boardKey {
+			t, known = taskRow{}, false // another board's task of the same id (ids start again after a restore): not this one's
+		}
+		if known && t.Status != "completed" && t.Status != "skipped" {
+			continue // an open task: its diff may still change
+		}
+		c, ok := diffAt(filepath.Join(d.path, "changes.diff"))
+		if !ok {
+			continue
+		}
+		c.kind, c.id, c.board, c.boardKey = "task", d.id, t.BoardID, d.boardKey
+		if known {
+			// Aged by when the task was closed (a shared diff's file time is when it was first
+			// stored). No readable completed_at: too young to judge, so it stays.
+			at, ok := closedAt(t.CompletedAt)
 			if !ok {
 				continue
 			}
-			c.kind, c.id, c.board = "task", e.Name(), t.BoardID
-			if known {
-				// Aged by when the task was closed (a shared diff's file time is when it was first
-				// stored). No readable completed_at: too young to judge, so it stays.
-				at, ok := closedAt(t.CompletedAt)
-				if !ok {
-					continue
-				}
-				c.at = at
-			}
-			if o.Now.Sub(c.at) >= o.OlderThan {
-				out = append(out, c)
-			}
+			c.at = at
+		}
+		if o.Now.Sub(c.at) >= o.OlderThan {
+			out = append(out, c)
 		}
 	}
 
@@ -901,11 +933,15 @@ func (h *SessionsHandler) diffStillClosed(ctx context.Context, d diffCandidate, 
 		}
 		var t struct {
 			Status      string  `db:"status"`
+			BoardID     string  `db:"board_id"`
 			CompletedAt *string `db:"completed_at"`
 		}
-		err := h.bs.Reader().GetContext(ctx, &t, "SELECT status, completed_at FROM board_tasks WHERE id = ?", d.id)
+		err := h.bs.Reader().GetContext(ctx, &t, "SELECT status, board_id, completed_at FROM board_tasks WHERE id = ?", d.id)
 		if errors.Is(err, sqlNoRows) {
 			return true // the task is gone
+		}
+		if err == nil && d.boardKey != "" && TaskBoardKey(t.BoardID) != d.boardKey {
+			return true // another board's task of this id (ids start again after a restore): this diff's task is gone (#6948)
 		}
 		// Still closed AND still old: a task reopened and closed again since the listing has a
 		// new diff, which isn't due yet (Security's #3554 review).

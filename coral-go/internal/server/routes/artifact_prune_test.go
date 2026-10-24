@@ -39,6 +39,7 @@ type pruneRig struct {
 	coralDir string
 	srv      *httptest.Server
 	now      time.Time
+	diffs    map[int64]string // where each task's diff was stored: by board and id (#6948)
 }
 
 func newPruneRig(t *testing.T) *pruneRig {
@@ -71,7 +72,7 @@ func newPruneRig(t *testing.T) *pruneRig {
 	h.RegisterAgentArtifacts(r)
 	srv := httptest.NewServer(r)
 	t.Cleanup(srv.Close)
-	return &pruneRig{t: t, h: h, bs: bs, boardDB: raw, coralDir: cfg.CoralDir(), srv: srv, now: time.Now()}
+	return &pruneRig{t: t, h: h, bs: bs, boardDB: raw, coralDir: cfg.CoralDir(), srv: srv, now: time.Now(), diffs: map[int64]string{}}
 }
 
 // object stores data as an artifact uploaded by session at the given age; it returns the id.
@@ -115,14 +116,13 @@ func (rig *pruneRig) task(status string, completedAgo time.Duration, diff []byte
 	_, err = rig.boardDB.Exec("UPDATE board_tasks SET status = ?, completed_at = ? WHERE id = ?", status, at, tk.ID)
 	require.NoError(rig.t, err)
 	if diff != nil {
-		require.NoError(rig.t, writeChangesArtifact(rig.taskDiff(tk.ID), diff))
+		rig.diffs[tk.ID] = filepath.Join(rig.coralDir, "artifacts", "tasks", TaskBoardKey(tk.BoardID), fmt.Sprint(tk.ID), "changes.diff")
+		require.NoError(rig.t, writeChangesArtifact(rig.diffs[tk.ID], diff))
 	}
 	return tk.ID
 }
 
-func (rig *pruneRig) taskDiff(id int64) string {
-	return filepath.Join(rig.coralDir, "artifacts", "tasks", fmt.Sprint(id), "changes.diff")
-}
+func (rig *pruneRig) taskDiff(id int64) string { return rig.diffs[id] }
 
 func (rig *pruneRig) session(id, status string, sleeping bool, stoppedAgo time.Duration, diff []byte) string {
 	ss := store.NewSessionStore(rig.h.db)
@@ -626,4 +626,26 @@ func TestPruneRescansDuringALongRun(t *testing.T) {
 	// one more (the one already under the lock's re-check before the re-scan) can go.
 	assert.LessOrEqual(t, rep.Removed, 2, "the re-scan stopped the run deleting newly linked objects")
 	assert.GreaterOrEqual(t, left, 4)
+}
+
+// Task diffs are kept by board and id (#6948): the prune ages out the older layout (by id alone, which nothing serves any more), and a folder under another board's key is not this board's task of the same id: it is
+// listed as an orphan, never taken for the task that now has that id (which may be open).
+func TestPruneTaskDiffsByBoardKeyAndTheOlderLayout(t *testing.T) {
+	rig := newPruneRig(t)
+	old := 20 * 24 * time.Hour
+	open := rig.task("in_progress", old, []byte("diff --git a/a b/a\n+open\n"))
+	done := rig.task("completed", old, []byte("diff --git a/a b/a\n+done\n"))
+	legacy := filepath.Join(rig.coralDir, "artifacts", "tasks", fmt.Sprint(done), "changes.diff") // the older layout
+	require.NoError(t, writeChangesArtifact(legacy, []byte("diff --git a/a b/a\n+legacy\n")))
+	other := filepath.Join(rig.coralDir, "artifacts", "tasks", TaskBoardKey("some-other-board"), fmt.Sprint(open), "changes.diff") // an older board's task of the id the open task has now
+	require.NoError(t, writeChangesArtifact(other, []byte("diff --git a/a b/a\n+other\n")))
+	ageAllDiffObjects(t, rig.coralDir, 30*24*time.Hour) // an orphan is aged by its file, and these are shared objects
+
+	rig.run(pruneOptions{OlderThan: 7 * 24 * time.Hour, Kinds: kinds(pruneKindDiffs)})
+
+	gone := func(p string) bool { _, err := os.Stat(p); return os.IsNotExist(err) }
+	assert.True(t, gone(rig.taskDiff(done)), "the closed task's diff, under its board")
+	assert.True(t, gone(legacy), "the older layout is aged out too")
+	assert.False(t, gone(rig.taskDiff(open)), "the open task keeps its diff")
+	assert.True(t, gone(other), "another board's old diff is an orphan by age, not taken for the open task's")
 }
