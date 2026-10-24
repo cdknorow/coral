@@ -8,7 +8,7 @@ const { connect } = require('./agent_view_harness');
     const { client, Page, Emulation, ev, waitFor, PRELOAD, install } = await connect();
     const sleep = ms => new Promise(r => setTimeout(r, ms)); // sleep-ok: the layout re-flows over a few frames; there is no completion event
     const MEASURE = `(() => { const t = document.getElementById('command-input'); const cs = getComputedStyle(t); const probe = document.createElement('div');
-        probe.style.cssText = 'position:absolute;visibility:hidden;white-space:pre-wrap;overflow-wrap:break-word;box-sizing:content-box;width:' + (t.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)) + 'px;font:' + cs.font + ';line-height:' + cs.lineHeight + ';letter-spacing:' + cs.letterSpacing;
+        probe.style.cssText = 'position:absolute;visibility:hidden;white-space:pre-wrap;overflow-wrap:break-word;box-sizing:content-box;width:' + (t.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)) + 'px;font:' + cs.font + ';line-height:' + cs.lineHeight + ';letter-spacing:' + cs.letterSpacing + ';font-size:' + getComputedStyle(t, '::placeholder').fontSize; // the placeholder's own size: on a phone it is scaled to its widest word (#6971)
         probe.textContent = t.placeholder; document.body.appendChild(probe); const need = probe.getBoundingClientRect().height; probe.remove();
         return { have: t.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom), need, box: t.offsetHeight, font: cs.fontSize, placeholder: t.placeholder.length }; })()`;
     try {

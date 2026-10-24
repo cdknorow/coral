@@ -93,6 +93,8 @@ const S = `(window.__coralStatic || '/static/')`;
         await ev(`window.__coralReady.then(() => true)`);
         await ev(`import(${S} + 'worktree_notice.js').then(m => { m.showWorktreeNotice(${JSON.stringify(WT(1))}, 'team'); return true; })`);
         await waitFor(`!!document.querySelector('#worktree-dock:not([hidden])')`, 'the bar', 4000);
+        const pair = await ev(`(() => { const t = document.querySelector('#worktree-dock .worktree-dock-title').getBoundingClientRect(), b = document.querySelector('#worktree-dock .worktree-dock-line button').getBoundingClientRect(), d = document.getElementById('worktree-dock').getBoundingClientRect(); return { gap: Math.round(b.left - t.right), barW: Math.round(d.width), titleLeft: Math.round(t.left - d.left) }; })()`);
+        check('on a wide desktop the bar title and its buttons stay together (the gap between them is small, not the width of the bar)', pair.gap <= 24 && pair.barW > 600, JSON.stringify(pair));
         check('on a desktop the notice is the same bar, not a toast (worktree_notice_browser has the real Kill flows)', await ev(`!document.querySelector('.toast.worktree-notice') && document.querySelectorAll('.toast').length === 0 && !!document.querySelector('#worktree-dock .worktree-dock-copy')`));
     } finally { await client.close(); }
     if (results.some(r => !r)) { console.error(`${results.filter(r => !r).length} of ${results.length} failed`); process.exit(1); }

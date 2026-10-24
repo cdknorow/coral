@@ -610,8 +610,8 @@ body.popout-mode.popout-terminal-blocked .attach-image-btn { pointer-events: non
 .model-chip-add-actions { display: flex; gap: 6px; }
 
 @media (max-width: 767px), (pointer: coarse) and (max-height: 500px) and (max-width: 950px) {
-    /* The placeholder is a little smaller than the text on a phone: at 200% text in a 320 px window the box's content is about 138 px wide and "Message" (about 134 px) broke inside the word, "Messag / e dk-a" (#6943). */
-    #command-input::placeholder { font-size: .9em; }
+    /* On a phone's layout the placeholder is scaled to its widest word (command_autosize.js sets --ph-scale on the box, never below 60 percent), so it wraps only at spaces: "Message" broke inside the word, "Messag / e dk-a", in a 320 px window at 200% text (#6943), and a fixed 0.9 em broke again for a longer word or a narrower box (#6971). */
+    #command-input::placeholder { font-size: calc(1em * var(--ph-scale, 1)); }
     /* A phone: the menu is a sheet over the bottom of the screen, with room for 44 px targets. */
     .model-chip-menu { position: fixed; left: 8px; right: 8px; bottom: 8px; max-width: none; max-height: 60vh; }
     .model-chip-item { min-height: 44px; }

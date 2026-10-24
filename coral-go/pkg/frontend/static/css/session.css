@@ -2225,6 +2225,7 @@
 .worktree-dock.error { border-top-color: var(--error); }
 .worktree-dock-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
 .worktree-dock-title { font-weight: 600; margin-right: auto; min-width: 0; overflow-wrap: anywhere; }
+@media (min-width: 768px) { .worktree-dock-line { justify-content: flex-start; } .worktree-dock-title { margin-right: 12px; } } /* a wide window: the title and its buttons stay together, not at the two ends of a 1000 px bar (#6971); a phone's bar keeps them at the ends */
 .worktree-dock.error .worktree-dock-title { color: var(--error-text); }
 .worktree-dock .btn { min-height: var(--control-touch-height, 44px); min-width: var(--control-touch-height, 44px); padding-inline: 10px; margin: 0; } /* (the phone's .btn has a 20 px side margin of its own) */
 .worktree-dock-body { max-height: 40vh; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }

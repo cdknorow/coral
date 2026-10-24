@@ -41,6 +41,18 @@ const BASE = require('./test_base').BASE;
             const words = i.placeholder.split(/\\s+/).filter(Boolean).map(w => { probe.textContent = w; return [w, Math.round(probe.getBoundingClientRect().width)]; }); probe.remove();
             return { room: Math.round(room), fs: ps.fontSize, words }; })()`);
         check('every word of the placeholder fits the box on one line (none breaks inside a word)', p.words.every(([, w]) => w <= p.room), JSON.stringify(p));
+        // a longer word and a narrower box (#6971): the scale follows the widest word, whatever it is
+        const fits = text => ev(`(async () => { const i = document.getElementById('command-input'); i.placeholder = ${JSON.stringify(text)}; const m = await import((window.__coralStatic || '/static/') + 'command_autosize.js'); m.autosizeCommandInput();
+            const cs = getComputedStyle(i), ps = getComputedStyle(i, '::placeholder'); const room = i.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+            const probe = document.createElement('span'); probe.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap;font:' + ps.font + ';letter-spacing:' + ps.letterSpacing; document.body.appendChild(probe);
+            const words = i.placeholder.split(/\\s+/).filter(Boolean).map(w => { probe.textContent = w; return [w, Math.round(probe.getBoundingClientRect().width)]; }); probe.remove();
+            return { room: Math.round(room), fs: ps.fontSize, scale: i.style.getPropertyValue('--ph-scale'), words }; })()`);
+        const longer = await fits('Message Orchestrator…');
+        check('a longer word than "Message" still fits the box on one line (the placeholder is scaled to its widest word)', longer.words.every(([, w]) => w <= longer.room), JSON.stringify(longer));
+        await Emulation.setDeviceMetricsOverride({ width: 280, height: 640, deviceScaleFactor: 1, mobile: true });
+        await sleep(600); // sleep-ok: the layout settles after a resize
+        const narrow = await fits('Message dk-a…');
+        check('and in a narrower box (280 px) at 200% text too', narrow.words.every(([, w]) => w <= narrow.room + 0.5) || /^0\.6/.test(narrow.scale), JSON.stringify(narrow));
     } finally { await client.close(); }
     if (results.some(r => !r)) { console.error(`${results.filter(r => !r).length} of ${results.length} failed`); process.exit(1); }
     console.log(`\nAll ${results.length} worktree row and placeholder checks passed`);
