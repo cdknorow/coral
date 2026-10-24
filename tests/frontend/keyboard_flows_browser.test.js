@@ -81,7 +81,7 @@ const { settle } = require('./helpers/wait');
             assert.equal(into[0], 'Enter command or paste image', `${w} px: Tab from the control before the composer reaches the text box first (got ${into[0]})`);
             const after = await tabs(mobile ? 3 : 12);
             if (mobile) {
-                assert.deepEqual(after, ['Add image', 'Send with team reminder', 'Send'], `${w} px: after the text box come Add image and the two send buttons`);
+                assert.deepEqual(after, ['Add image', 'Send options', 'Send'], `${w} px: after the text box come Add image, Send options (the team reminder is in it, #7063) and Send`);
             } else {
                 const iStop = after.indexOf('Stop (Escape)'), iSend = after.indexOf('Send command'), iOpts = after.indexOf('Send options');
                 assert.ok(iStop >= 0 && iSend > iStop && iOpts > iSend, `${w} px: after the text box Tab reaches Stop, then Send, then Send options (got ${JSON.stringify(after)})`);

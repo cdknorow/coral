@@ -169,7 +169,12 @@ async function run() {
   // Chat mode: the command bar keeps just Cancel (Esc) and Send
   const bar = () => ev(`Array.from(document.querySelectorAll('#command-toolbar button')).filter(b => b.offsetParent !== null && !b.closest('.send-btn-menu') && b.id !== 'model-chip' && !b.closest('#model-chip-bar')).map(b => (b.innerText || b.getAttribute('aria-label') || '').trim())`);
   const chatBar = await bar();
-  check('in chat mode the command bar shows only Cancel and Send', JSON.stringify(chatBar) === JSON.stringify(['Cancel', '', '']) || (chatBar.some(t => /^(Cancel|stop)$/i.test(t)) && !chatBar.includes('Esc') && chatBar.length <= 3 && !chatBar.some(t => /Bash|Undo|\u2191|\u2193/.test(t))), JSON.stringify(chatBar));
+  // an idle agent has nothing to stop (#7065): the chat bar is Send and its options (#7063); Stop (Cancel) is drawn while the agent works, asks or is stuck
+  check('in chat mode, idle, the command bar shows only Send and Send options', JSON.stringify(chatBar) === JSON.stringify(['Send command', 'Send options']), JSON.stringify(chatBar));
+  await ev(`document.getElementById('command-pane').dataset.canStop = 'true'; true`);
+  const workingBar = await bar();
+  check('in chat mode, while the agent works, the command bar keeps just Cancel (Esc) and Send', workingBar.some(t => /^(Cancel|stop)$/i.test(t)) && !workingBar.includes('Esc') && workingBar.length <= 4 && !workingBar.some(t => /Bash|Undo|\u2191|\u2193/.test(t)), JSON.stringify(workingBar));
+  await ev(`document.getElementById('command-pane').dataset.canStop = 'false'; true`);
   await ev(`window.setLiveViewMode('terminal'); true`);
   // On desktop the bottom command bar is hidden in terminal view on purpose (chat.css: the xterm takes keystrokes itself;
   // mobile keeps it). It still carries the full control set with Esc, which shows on mobile: read it from the DOM.
