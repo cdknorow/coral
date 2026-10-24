@@ -80,7 +80,7 @@ func (s *Store) CreateTaskWithOpts(ctx context.Context, project, title, body, pr
 	// The goal is checked before anything is stored: a refusal leaves no task behind.
 	var goalID *int64
 	if opts != nil && opts.GoalID != nil {
-		if err := s.checkGoalForTask(ctx, project, *opts.GoalID); err != nil {
+		if err := s.checkGoalForTask(ctx, s.db, project, *opts.GoalID); err != nil {
 			return nil, err
 		}
 		goalID = opts.GoalID

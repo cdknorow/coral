@@ -405,7 +405,7 @@ func TestGoalRoutesThroughCoralHub(t *testing.T) {
 	_, t2, hdr := viaHub(alice, "task-key-0123456789ab", "POST", "/api/board/team/tasks", task)
 	assert.Equal(t, t1["id"], t2["id"])
 	assert.Equal(t, "true", hdr.Get("Idempotent-Replay"))
-	tasks, err := bs.GoalTasks(ctx, "team", gid)
+	tasks, _, err := bs.GoalTasks(ctx, "team", gid)
 	require.NoError(t, err)
 	assert.Len(t, tasks, 1, "one task for two sends")
 
@@ -414,4 +414,30 @@ func TestGoalRoutesThroughCoralHub(t *testing.T) {
 	assert.Equal(t, 200, code, "%v", out)
 	code, out, _ = viaHub(alice, "", "POST", "/api/board/team/goals/"+itoa(gid)+"/close", map[string]any{"reason": "done", "subscriber_id": "Operator"})
 	assert.Equal(t, 200, code, "%v", out)
+}
+
+// A goal's task read says when it is cut (Frontend's #7135 finding): past board.MaxGoalTasks the page says truncated; under it, no flag.
+func TestGoalTasksReadSaysWhenItIsTruncated(t *testing.T) {
+	server, h := setupBoardTestServer(t)
+	ctx := context.Background()
+	registerTaskPlanner(t, h, "team", "Orchestrator")
+	call := goalCall(t, server.URL)
+	_, g := call("POST", "/api/board/team/goals", map[string]any{"title": "Many tasks", "subscriber_id": "Orchestrator"})
+	gid := int64(g["id"].(float64))
+	for i := 0; i < board.MaxGoalTasks; i++ {
+		_, err := h.bs.CreateTaskWithOpts(ctx, "team", "t", "", "medium", "Orchestrator", &board.CreateTaskOpts{GoalID: &gid})
+		require.NoError(t, err)
+	}
+	code, page := call("GET", "/api/board/team/tasks?goal="+itoa(gid), nil)
+	require.Equal(t, 200, code)
+	assert.Len(t, page["tasks"], board.MaxGoalTasks)
+	_, has := page["truncated"]
+	assert.False(t, has, "exactly the cap is not a truncation")
+	_, err := h.bs.CreateTaskWithOpts(ctx, "team", "one too many", "", "medium", "Orchestrator", &board.CreateTaskOpts{GoalID: &gid})
+	require.NoError(t, err)
+	code, page = call("GET", "/api/board/team/tasks?goal="+itoa(gid), nil)
+	require.Equal(t, 200, code)
+	assert.Len(t, page["tasks"], board.MaxGoalTasks)
+	assert.Equal(t, true, page["truncated"])
+	assert.EqualValues(t, board.MaxGoalTasks, page["total_open"])
 }

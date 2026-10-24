@@ -240,7 +240,7 @@ func (s *Store) CreateGoal(ctx context.Context, board string, in GoalInput) (*Go
 	if err != nil {
 		return nil, err
 	}
-	driver, err := s.checkDriver(ctx, board, in.Driver)
+	driver, err := s.checkDriver(ctx, s.db, board, in.Driver)
 	if err != nil {
 		return nil, err
 	}
@@ -255,14 +255,20 @@ func (s *Store) CreateGoal(ctx context.Context, board string, in GoalInput) (*Go
 	return s.GetGoal(ctx, board, id)
 }
 
+// goalQuerier is what a read of a goal needs: the store's connection, or the transaction a write holds (the board database has one writer connection, so a read through the store inside a
+// transaction would wait for the transaction it is part of).
+type goalQuerier interface {
+	GetContext(ctx context.Context, dest any, query string, args ...any) error
+}
+
 // checkDriver cleans a driver's name and says it is a subscriber of the board; "" is no driver.
-func (s *Store) checkDriver(ctx context.Context, board, name string) (string, error) {
+func (s *Store) checkDriver(ctx context.Context, q goalQuerier, board, name string) (string, error) {
 	name, err := goalLine("driver", name, MaxGoalDriver)
 	if err != nil || name == "" {
 		return "", err
 	}
 	var n int
-	if err := s.db.GetContext(ctx, &n, `SELECT COUNT(*) FROM board_subscribers WHERE project = ? AND subscriber_id = ?`, board, name); err != nil {
+	if err := q.GetContext(ctx, &n, `SELECT COUNT(*) FROM board_subscribers WHERE project = ? AND subscriber_id = ?`, board, name); err != nil {
 		return "", err
 	}
 	if n == 0 {
@@ -388,39 +394,34 @@ type GoalUpdate struct {
 }
 
 // UpdateGoal changes a goal's text or state: keeping it true (active, proposed, blocked on someone) and reopening a closed one. Moving a goal to blocked needs blocked_on; moving it
-// anywhere else clears it.
+// anywhere else clears it. The goal is read, changed and written in one transaction, so two writers changing different fields of one goal at the same moment (the orchestrator sets the state
+// while the Operator or the Hub edits the title) both keep their change (#7087, Backend's review: 188 of 200 concurrent pairs lost one before).
 func (s *Store) UpdateGoal(ctx context.Context, board string, id int64, u GoalUpdate) (*Goal, error) {
-	g, err := s.GetGoal(ctx, board, id)
-	if err != nil {
-		return nil, err
-	}
+	// What does not depend on the goal's own row is checked first, outside the transaction.
+	var (
+		title, outcome, doneWhen, blockedOn, decision, recommendation, ifSilent string
+		err                                                                     error
+	)
 	if u.Title != nil {
-		t, err := goalLine("title", *u.Title, MaxGoalTitle)
-		if err != nil {
+		if title, err = goalLine("title", *u.Title, MaxGoalTitle); err != nil {
 			return nil, err
 		}
-		if t == "" {
+		if title == "" {
 			return nil, ErrGoalTitleRequired
 		}
-		g.Title = t
 	}
 	if u.Outcome != nil {
-		if g.Outcome, err = goalText("outcome", *u.Outcome, MaxGoalOutcome); err != nil {
+		if outcome, err = goalText("outcome", *u.Outcome, MaxGoalOutcome); err != nil {
 			return nil, err
 		}
 	}
 	if u.DoneWhen != nil {
-		if g.DoneWhen, err = goalLine("done_when", *u.DoneWhen, MaxGoalDoneWhen); err != nil {
+		if doneWhen, err = goalLine("done_when", *u.DoneWhen, MaxGoalDoneWhen); err != nil {
 			return nil, err
 		}
 	}
 	if u.BlockedOn != nil {
-		if g.BlockedOn, err = goalLine("blocked_on", *u.BlockedOn, MaxGoalBlockedOn); err != nil {
-			return nil, err
-		}
-	}
-	if u.Driver != nil {
-		if g.Driver, err = s.checkDriver(ctx, board, *u.Driver); err != nil {
+		if blockedOn, err = goalLine("blocked_on", *u.BlockedOn, MaxGoalBlockedOn); err != nil {
 			return nil, err
 		}
 	}
@@ -428,7 +429,7 @@ func (s *Store) UpdateGoal(ctx context.Context, board string, id int64, u GoalUp
 		field string
 		in    *string
 		to    *string
-	}{{"decision", u.Decision, &g.Decision}, {"recommendation", u.Recommendation, &g.Recommendation}, {"if_silent", u.IfSilent, &g.IfSilent}} {
+	}{{"decision", u.Decision, &decision}, {"recommendation", u.Recommendation, &recommendation}, {"if_silent", u.IfSilent, &ifSilent}} {
 		if f.in != nil {
 			if *f.to, err = goalLine(f.field, *f.in, MaxGoalDecision); err != nil {
 				return nil, err
@@ -443,6 +444,46 @@ func (s *Store) UpdateGoal(ctx context.Context, board string, id int64, u GoalUp
 		default:
 			return nil, ErrGoalBadState
 		}
+	}
+
+	tx, err := s.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	var g Goal
+	if err := tx.GetContext(ctx, &g, `SELECT `+goalColumns+` FROM board_goals WHERE id = ? AND board_id = ?`, id, board); errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrGoalNotFound
+	} else if err != nil {
+		return nil, err
+	}
+	if u.Title != nil {
+		g.Title = title
+	}
+	if u.Outcome != nil {
+		g.Outcome = outcome
+	}
+	if u.DoneWhen != nil {
+		g.DoneWhen = doneWhen
+	}
+	if u.BlockedOn != nil {
+		g.BlockedOn = blockedOn
+	}
+	if u.Driver != nil {
+		if g.Driver, err = s.checkDriver(ctx, tx, board, *u.Driver); err != nil {
+			return nil, err
+		}
+	}
+	if u.Decision != nil {
+		g.Decision = decision
+	}
+	if u.Recommendation != nil {
+		g.Recommendation = recommendation
+	}
+	if u.IfSilent != nil {
+		g.IfSilent = ifSilent
+	}
+	if u.State != nil {
 		if g.Closed() {
 			g.ClosedAt, g.ClosedReason = nil, ""
 		}
@@ -453,8 +494,11 @@ func (s *Store) UpdateGoal(ctx context.Context, board string, id int64, u GoalUp
 	} else if g.BlockedOn == "" {
 		return nil, ErrGoalBlockedOnRequired
 	}
-	if _, err := s.db.ExecContext(ctx, `UPDATE board_goals SET title = ?, outcome = ?, done_when = ?, state = ?, blocked_on = ?, driver = ?, decision = ?, recommendation = ?, if_silent = ?, closed_at = ?, closed_reason = ?, updated_at = ? WHERE id = ? AND board_id = ?`,
+	if _, err := tx.ExecContext(ctx, `UPDATE board_goals SET title = ?, outcome = ?, done_when = ?, state = ?, blocked_on = ?, driver = ?, decision = ?, recommendation = ?, if_silent = ?, closed_at = ?, closed_reason = ?, updated_at = ? WHERE id = ? AND board_id = ?`,
 		g.Title, g.Outcome, g.DoneWhen, g.State, g.BlockedOn, g.Driver, g.Decision, g.Recommendation, g.IfSilent, g.ClosedAt, g.ClosedReason, nowUTC(), id, board); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 	return s.GetGoal(ctx, board, id)
@@ -464,7 +508,8 @@ func (s *Store) UpdateGoal(ctx context.Context, board string, id int64, u GoalUp
 var openTaskStatuses = []string{"pending", "in_progress", "blocked", "draft", "review_pending"}
 
 // CloseGoal closes a goal as done (the default) or dropped, with the one-line reason that is required. It does not refuse a goal that still has open tasks: it says how many (openTasks), so
-// the caller can warn, as coral-hub's defaults ask; the tasks stay as they are.
+// the caller can warn, as coral-hub's defaults ask; the tasks stay as they are. The close is one UPDATE that only an open goal matches, so of two concurrent closes one wins and the other is
+// told the goal is already closed (it overwrote the first's reason and time before).
 func (s *Store) CloseGoal(ctx context.Context, board string, id int64, reason, state string) (g *Goal, openTasks int, err error) {
 	if state == "" {
 		state = GoalDone
@@ -479,51 +524,72 @@ func (s *Store) CloseGoal(ctx context.Context, board string, id int64, reason, s
 	if reason == "" {
 		return nil, 0, ErrGoalReasonRequired
 	}
-	cur, err := s.GetGoal(ctx, board, id)
+	tx, err := s.db.BeginTxx(ctx, nil)
 	if err != nil {
 		return nil, 0, err
 	}
-	if cur.Closed() {
-		return nil, 0, ErrGoalAlreadyClosed
-	}
+	defer tx.Rollback()
 	now := nowUTC()
-	if _, err := s.db.ExecContext(ctx, `UPDATE board_goals SET state = ?, blocked_on = '', decision = '', recommendation = '', if_silent = '', closed_at = ?, closed_reason = ?, updated_at = ? WHERE id = ? AND board_id = ?`, state, now, reason, now, id, board); err != nil {
+	res, err := tx.ExecContext(ctx, `UPDATE board_goals SET state = ?, blocked_on = '', decision = '', recommendation = '', if_silent = '', closed_at = ?, closed_reason = ?, updated_at = ?
+		WHERE id = ? AND board_id = ? AND state NOT IN ('done', 'dropped')`, state, now, reason, now, id, board)
+	if err != nil {
 		return nil, 0, err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		var exists int
+		if err := tx.GetContext(ctx, &exists, `SELECT COUNT(*) FROM board_goals WHERE id = ? AND board_id = ?`, id, board); err != nil {
+			return nil, 0, err
+		}
+		if exists == 0 {
+			return nil, 0, ErrGoalNotFound
+		}
+		return nil, 0, ErrGoalAlreadyClosed
 	}
 	marks := strings.TrimSuffix(strings.Repeat("?,", len(openTaskStatuses)), ",")
 	args := []any{board, id}
 	for _, st := range openTaskStatuses {
 		args = append(args, st)
 	}
-	if err := s.db.GetContext(ctx, &openTasks, `SELECT COUNT(*) FROM board_tasks WHERE board_id = ? AND goal_id = ? AND status IN (`+marks+`)`, args...); err != nil {
+	if err := tx.GetContext(ctx, &openTasks, `SELECT COUNT(*) FROM board_tasks WHERE board_id = ? AND goal_id = ? AND status IN (`+marks+`)`, args...); err != nil {
+		return nil, 0, err
+	}
+	if err := tx.Commit(); err != nil {
 		return nil, 0, err
 	}
 	g, err = s.GetGoal(ctx, board, id)
 	return g, openTasks, err
 }
 
-// SetTaskGoal links a task to a goal of its own board, or unlinks it (goalID nil). A goal of another board, an unknown one and a closed one are refused (the first two as not found).
+// SetTaskGoal links a task to a goal of its own board, or unlinks it (goalID nil). A goal of another board, an unknown one and a closed one are refused (the first two as not found). The
+// checks and the link are one transaction, so a goal closed at the same moment is not linked to.
 func (s *Store) SetTaskGoal(ctx context.Context, board string, taskID int64, goalID *int64) error {
+	tx, err := s.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
 	var exists int
-	if err := s.db.GetContext(ctx, &exists, `SELECT COUNT(*) FROM board_tasks WHERE id = ? AND board_id = ?`, taskID, board); err != nil {
+	if err := tx.GetContext(ctx, &exists, `SELECT COUNT(*) FROM board_tasks WHERE id = ? AND board_id = ?`, taskID, board); err != nil {
 		return err
 	}
 	if exists == 0 {
 		return ErrGoalTaskNotFound
 	}
 	if goalID != nil {
-		if err := s.checkGoalForTask(ctx, board, *goalID); err != nil {
+		if err := s.checkGoalForTask(ctx, tx, board, *goalID); err != nil {
 			return err
 		}
 	}
-	_, err := s.db.ExecContext(ctx, `UPDATE board_tasks SET goal_id = ? WHERE id = ? AND board_id = ?`, goalID, taskID, board)
-	return err
+	if _, err := tx.ExecContext(ctx, `UPDATE board_tasks SET goal_id = ? WHERE id = ? AND board_id = ?`, goalID, taskID, board); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // checkGoalForTask is nil when a task of this board may be linked to goal id: it is on the board and not closed.
-func (s *Store) checkGoalForTask(ctx context.Context, board string, id int64) error {
+func (s *Store) checkGoalForTask(ctx context.Context, q goalQuerier, board string, id int64) error {
 	var state string
-	err := s.db.GetContext(ctx, &state, `SELECT state FROM board_goals WHERE id = ? AND board_id = ?`, id, board)
+	err := q.GetContext(ctx, &state, `SELECT state FROM board_goals WHERE id = ? AND board_id = ?`, id, board)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrGoalNotFound
 	}
@@ -536,19 +602,23 @@ func (s *Store) checkGoalForTask(ctx context.Context, board string, id int64) er
 	return nil
 }
 
-// GoalTasks is a goal's tasks as list rows (every state, oldest first, at most MaxGoalTasks), for the board of the goal. A goal of another board is not found.
-func (s *Store) GoalTasks(ctx context.Context, board string, goalID int64) ([]TaskListItem, error) {
+// GoalTasks is a goal's tasks as list rows (every state, oldest first, at most MaxGoalTasks), for the board of the goal; truncated says there were more than that. A goal of another board is
+// not found.
+func (s *Store) GoalTasks(ctx context.Context, board string, goalID int64) (rows []TaskListItem, truncated bool, err error) {
 	if _, err := s.GetGoal(ctx, board, goalID); err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	rows := []TaskListItem{}
-	if err := s.reader().SelectContext(ctx, &rows, `SELECT `+taskListColumns+` WHERE t.board_id = ? AND t.goal_id = ? ORDER BY t.id ASC LIMIT ?`, board, goalID, MaxGoalTasks); err != nil {
-		return nil, err
+	rows = []TaskListItem{}
+	if err := s.reader().SelectContext(ctx, &rows, `SELECT `+taskListColumns+` WHERE t.board_id = ? AND t.goal_id = ? ORDER BY t.id ASC LIMIT ?`, board, goalID, MaxGoalTasks+1); err != nil {
+		return nil, false, err
+	}
+	if len(rows) > MaxGoalTasks {
+		rows, truncated = rows[:MaxGoalTasks], true
 	}
 	if err := s.loadListBlockedBy(ctx, rows); err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return rows, nil
+	return rows, truncated, nil
 }
 
 // inheritedGoal is the goal a retry of task retryOf continues under: the retried task's own, when it has one and that goal is still open.
