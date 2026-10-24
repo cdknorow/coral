@@ -3,11 +3,11 @@ package startup
 import (
 	"context"
 	"github.com/subgentic/coral/internal/backendchoice"
+	"github.com/subgentic/coral/internal/coralnames"
 	"log"
 	"log/slog"
 	"net"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -182,7 +182,7 @@ func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Conf
 	})
 	scheduler.SetRuntime(agentRT)
 	scheduler.SetNextFireTimeFn(background.NextFireTime)
-	scheduler.SetWorktreeRoot(filepath.Join(cfg.CoralDir(), "worktrees"))
+	scheduler.SetWorktreeRoot(coralnames.WorktreesRoot(cfg.CoralDir()))
 	safeGo(ctx, "job_scheduler", func() { scheduler.Run(ctx) })
 	srv.SetScheduler(scheduler)
 

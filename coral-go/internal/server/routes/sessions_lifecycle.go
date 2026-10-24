@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/subgentic/coral/internal/coralnames"
 	"github.com/subgentic/coral/internal/executil"
 	"github.com/subgentic/coral/internal/logsafe"
 	"log"
@@ -1253,7 +1254,7 @@ func (h *SessionsHandler) KillTeam(w http.ResponseWriter, r *http.Request) {
 	// Artifact snapshots above have finished: the owned worktree goes only if nothing in it is unsaved, and the answer says what was kept and why (#6701).
 	resp := map[string]any{"ok": true, "sessions_killed": killed}
 	if teamWorktree != "" {
-		resp["worktree"] = h.removeOwnedWorktree(bgCtx, "kill-team", teamRepo, teamWorktree, gitutil.TeamBranch(filepath.Base(teamWorktree)))
+		resp["worktree"] = h.removeOwnedWorktree(bgCtx, "kill-team", teamRepo, teamWorktree, coralnames.TeamBranch(filepath.Base(teamWorktree)))
 	}
 
 	// Unpause board
@@ -1267,10 +1268,10 @@ func (h *SessionsHandler) KillTeam(w http.ResponseWriter, r *http.Request) {
 // teamBranchOf is the branch a team's worktree is on when path is one Coral made for a team (a folder directly in its worktrees folder), else "": the single kill of the last agent in
 // it takes the branch with the worktree when nothing is on it, as a team stop does (QA's #6722).
 func (h *SessionsHandler) teamBranchOf(path string) string {
-	if filepath.Clean(filepath.Dir(path)) != filepath.Join(h.cfg.CoralDir(), "worktrees") {
+	if !coralnames.InWorktreesRoot(h.cfg.CoralDir(), path) {
 		return ""
 	}
-	return gitutil.TeamBranch(filepath.Base(path))
+	return coralnames.TeamBranch(filepath.Base(path))
 }
 
 // removeOwnedWorktree takes a stopped agent's or team's worktree away when nothing in it is unsaved and answers what happened ({state, path, branch, reason}): the worktree and its work are never deleted
@@ -1352,12 +1353,12 @@ func (h *SessionsHandler) ResurrectTeam(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 
-		if filepath.Clean(filepath.Dir(team.WorkingDir)) != filepath.Join(h.cfg.CoralDir(), "worktrees") { // a stored folder is checked again: only Coral's own worktrees folder
+		if !coralnames.InWorktreesRoot(h.cfg.CoralDir(), team.WorkingDir) { // a stored folder is checked again: only Coral's own worktrees folder
 			errBadRequest(w, "failed to recreate worktree: the team's folder is not in Coral's worktrees folder")
 			return
 		}
 		// On the team's own branch (coral-team/<board slug>, as the launch made it), not on the base branch itself: that one is checked out in the repository (#6701).
-		if _, err := gitutil.AddTeamWorktree(ctx, repoDir, team.WorkingDir, gitutil.TeamBranch(filepath.Base(team.WorkingDir)), branch); err != nil {
+		if _, err := gitutil.AddTeamWorktree(ctx, repoDir, team.WorkingDir, coralnames.TeamBranch(filepath.Base(team.WorkingDir)), branch); err != nil {
 			errBadRequest(w, "failed to recreate worktree: "+err.Error())
 			return
 		}

@@ -2,14 +2,10 @@ package gitutil
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
-	"unicode"
-	"unicode/utf8"
 )
 
 // RepoOfWorktree is the repository a worktree belongs to (the folder holding its .git), "" when path is not a worktree of one.
@@ -105,9 +101,6 @@ func oneLine(s string) string {
 // maxWorktreePath is the longest worktree folder path accepted: git and Windows stop well before the 260 of MAX_PATH once a repository's own paths are added.
 const maxWorktreePath = 200
 
-// maxTeamSlug is the longest slug TeamBranch keeps of a board name, in bytes. A name this long could never launch a worktree (the folder path is capped at maxWorktreePath), so a team that works keeps its branch; with the prefix and the hash suffix the branch stays under 255.
-const maxTeamSlug = 200
-
 // AddTeamWorktree makes the worktree at path on branch, from base when the branch is new, and says whether it made the branch (#6701). What an earlier run left is met, not tripped over: a registration whose
 // folder is gone is pruned, a branch that exists is checked out (its commits kept) instead of made again, a worktree already at path is reused, and an empty folder is used. A folder that is not empty and
 // no worktree is the one thing it refuses, in one line. Every failure is one plain line, not git's two.
@@ -170,38 +163,4 @@ func registered(ctx context.Context, repoDir, path string) bool {
 		}
 	}
 	return false
-}
-
-// TeamBranch is the branch a team's worktree is on: coral-team/ and the board's name, with every character git's branch names refuse (a space, "..", "~", "^", ":", "?", "*", "[", "\", "@{", a leading
-// or trailing "." or "-", ".lock") replaced by "-" and a short hash of the name added when anything was replaced, so two names that differ only there get two branches. A name that is already a valid
-// branch name is used as it is. The board and its worktree folder keep the name (#6701, Security's #6708 C1: a board named "my team" made every worktree launch fail).
-func TeamBranch(board string) string {
-	var b strings.Builder
-	for _, r := range board {
-		switch {
-		case r == '.' || r == '-' || r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r):
-			b.WriteRune(r)
-		default:
-			b.WriteRune('-')
-		}
-	}
-	slug := b.String()
-	for strings.Contains(slug, "..") {
-		slug = strings.ReplaceAll(slug, "..", ".-")
-	}
-	for len(slug) > maxTeamSlug { // a long name would make a branch git or ValidRef refuses (255 characters): cut at a character, the hash below keeps two long names apart (#6878)
-		_, size := utf8.DecodeLastRuneInString(slug)
-		slug = slug[:len(slug)-size]
-	}
-	slug = strings.Trim(slug, ".-")
-	slug = strings.TrimSuffix(slug, ".lock")
-	slug = strings.Trim(slug, ".-")
-	if slug != board || slug == "" {
-		sum := sha256.Sum256([]byte(board))
-		if slug == "" {
-			slug = "team"
-		}
-		slug += "-" + hex.EncodeToString(sum[:3])
-	}
-	return "coral-team/" + slug
 }
