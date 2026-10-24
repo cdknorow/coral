@@ -4,6 +4,7 @@ which permission, that the code is checked before anything signs, that the file 
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -58,6 +59,24 @@ def publish_problems(wf):
     if 'gh release upload "${PROMOTE_TAG}"' in t or "--clobber" in t:
         out.append("a file is added to the product release or clobbered")
     return out
+
+
+def release_step_lines(first, last):
+    """The lines of the validate job's release step from the one starting with first to the one containing last, unindented: a piece of the real script to run."""
+    script = re.search(r"- name: Read the release and check what release.yml signed\n.*?run: \|\n(.*?)(?=\n      - |\n\n  [a-z])", WF, re.S).group(1)
+    lines = [l[10:] for l in script.split("\n")]
+    start = next(i for i, l in enumerate(lines) if l.startswith(first))
+    end = next(i for i in range(start, len(lines)) if last in lines[i])
+    return "\n".join(lines[start:end + 1])
+
+
+def shell_quote(s):
+    return "'" + s.replace("'", "'\\''") + "'"
+
+
+def run_bash(script):
+    """Runs a piece of the workflow's script under bash with its options (set -euo pipefail); jq must be on PATH."""
+    return subprocess.run(["bash", "-c", "set -euo pipefail\n" + script], capture_output=True, text=True)
 
 
 def env(**kw):
@@ -188,6 +207,45 @@ class Workflow(unittest.TestCase):
     def test_a_promotion_is_its_own_draft_release_published_after_both_files(self):
         self.assertEqual(publish_problems(WF), [])
 
+    @unittest.skipUnless(shutil.which("jq"), "jq is not on PATH (it is on the release runners)")
+    def test_a_release_marked_revoked_is_not_promoted(self):
+        # approve-release.sh's revoke writes "Revoked: <UTC> by <actor>" into the body; the same line refuses the promotion (Security's #337)
+        lines = release_step_lines('body="$(jq', "then echo \"the release is marked revoked\"")
+        for body, refused in (("notes\n\nRevoked: 2026-10-21T00:00:00Z by someone", True), ("notes\nRevoked: x", True), ("notes", False),
+                              ("notes\n  Revoked: indented is not the marker", False), ("", False)):
+            rel = json.dumps({"body": body})
+            r = run_bash("rel=" + shell_quote(rel) + "\n" + lines + "\necho passed\n")
+            self.assertEqual(r.returncode == 1 and "marked revoked" in r.stdout, refused, (body, r.stdout, r.stderr))
+            if not refused:
+                self.assertIn("passed", r.stdout)
+
+    def test_the_tag_is_resolved_by_its_exact_ref_and_an_annotated_tag_is_peeled(self):
+        # commits/<name> also takes a branch of that name; git/ref/tags/<tag> is the tag itself (Security's #337)
+        self.assertNotIn("commits/${PROMOTE_TAG}", WF)
+        lines = release_step_lines('obj="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/', "the tag's commit could not be read")
+        c, t1, t2 = "c" * 40, "1" * 40, "2" * 40
+        cases = (
+            ({"git/ref/tags/v1.4.160": "commit " + c}, c),                                                    # a lightweight tag
+            ({"git/ref/tags/v1.4.160": "tag " + t1, "git/tags/" + t1: "commit " + c}, c),                       # an annotated tag
+            ({"git/ref/tags/v1.4.160": "tag " + t1, "git/tags/" + t1: "tag " + t2, "git/tags/" + t2: "commit " + c}, c),  # a tag of a tag
+            ({"git/ref/tags/v1.4.160": "tag " + t1, "git/tags/" + t1: "tag " + t1}, None),                      # a loop never ends in a commit
+            ({"git/ref/tags/v1.4.160": "tree " + c}, None),                                                   # not a commit
+            ({"git/ref/tags/v1.4.160": "commit nothex"}, None),
+            ({}, None),                                                                                       # no such tag
+        )
+        for answers, want in cases:
+            fake = "gh() {\n  case \"$2\" in\n"
+            for path, answer in answers.items():
+                fake += "    repos/subgentic/coral/%s) echo %s ;;\n" % (path, shell_quote(answer))
+            fake += "    *) echo \"gh: 404 $2\" >&2; return 1 ;;\n  esac\n}\n"
+            r = run_bash(fake + "GITHUB_REPOSITORY=subgentic/coral\nPROMOTE_TAG=v1.4.160\n" + lines + '\necho "resolved $sha"\n')
+            if want:
+                self.assertEqual(r.returncode, 0, (answers, r.stdout, r.stderr))
+                self.assertIn("resolved " + want, r.stdout)
+            else:
+                self.assertNotEqual(r.returncode, 0, (answers, r.stdout))
+                self.assertNotIn("resolved", r.stdout)
+
     def test_the_publish_check_notices_each_mistake(self):
         mutants = {
             "added to the product release": WF.replace('gh release upload "$name" promote.json', 'gh release upload "${PROMOTE_TAG}" promote.json', 1),
@@ -265,6 +323,16 @@ class Manifest(unittest.TestCase):
         with self.assertRaises(pm.InputError):
             pm.parse_revoked(",".join("1.4.%d" % i for i in range(21)))
         self.assertEqual(len(pm.parse_revoked(",".join("1.4.%d" % i for i in range(20)))), 20)
+
+    def test_a_promotion_never_revokes_its_own_version(self):
+        # every client would refuse such a manifest, and the channel would be stuck until the next promotion (Security's #337)
+        for revoke in ("1.4.160", "v1.4.160", "1.4.100, 1.4.160"):
+            with self.assertRaises(pm.InputError, msg=revoke):
+                pm.build(env(PROMOTE_REVOKE=revoke), now=1)
+            r = subprocess.run([sys.executable, "-I", TOOL, "check"], env=dict(PROMOTE_TAG="v1.4.160", PROMOTE_REVOKE=revoke), capture_output=True, text=True)
+            self.assertEqual(r.returncode, 1, revoke)
+            self.assertIn("the promoted version is in the versions to revoke", r.stderr)
+        self.assertEqual(pm.build(env(PROMOTE_REVOKE="1.4.159, 1.4.161"), now=1)["revoked"], ["1.4.159", "1.4.161"])
 
     def test_a_tag_must_be_a_version_tag(self):
         for bad in ("1.4.160", "v1.4", "v1.4.160 ", " v1.4.160", "v1.4.160\n", "../v1.4.160", "v1.4.160;x", "v1.4.160/../x", "V1.4.160", "", "v1.4.160-rc1", "v1.4.160-beta", "v1.4.160-dev", "v1.4.160-forDropbox", "v1.4.160-"):
