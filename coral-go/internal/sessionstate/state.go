@@ -140,6 +140,10 @@ type State struct {
 	Since      time.Time
 	LastEvent  time.Time
 	LastStop   time.Time
+
+	// WaitingSince is when the agent's own request to the user began (zero: it waits for nothing, or only on Coral's held notice, a sign-in or a launch prompt, which are not its request). It does not move when a second
+	// request opens while the first is open, nor when Coral's held notice came first; Since is the phase's start and is left to the paste gate (#6981).
+	WaitingSince time.Time
 }
 
 // Derive applies one restart-safe state machine.
@@ -193,6 +197,8 @@ type deriver struct {
 	// waits are the open requests whose calls are known: the calls each still waits for. A PostToolUse answers a request only by a call's id, and the request closes when every one of its calls has
 	// finished, so a parallel call of the same tool that finishes first (an auto-allowed Bash beside one waiting for approval) does not close it (#6687).
 	waits []*requestWait
+	// ownOpen: the agent's own request is open (a held notice of Coral's is not one), so WaitingSince is already set.
+	ownOpen bool
 }
 
 // requestWait is one open request and the calls it waits for.
@@ -207,6 +213,7 @@ func (d *deriver) clearRequest() {
 	d.state.WaitingSummary = ""
 	d.state.WaitingKind = ""
 	d.state.WaitingWants = ""
+	d.state.WaitingSince, d.ownOpen = time.Time{}, false
 	d.pending, d.open, d.waits = map[string]int{}, 0, nil
 }
 
@@ -218,6 +225,10 @@ func (d *deriver) raise(event Event, kind string) {
 	}
 	if !d.state.NeedsInput {
 		d.beforeType, d.beforeAwaiting = d.latestType, d.state.AwaitingUser
+	}
+	if !IsHeldInputSummary(event.Summary) && !d.ownOpen { // the agent's own request begins here, also after Coral's held notice (#6981)
+		d.ownOpen = true
+		d.state.WaitingSince = event.At
 	}
 	d.latestType = "notification"
 	d.state.NeedsInput = true

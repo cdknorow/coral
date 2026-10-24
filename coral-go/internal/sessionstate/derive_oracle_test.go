@@ -124,6 +124,7 @@ func TestDeriveAgreesWithBefore4756(t *testing.T) {
 		rng := rand.New(rand.NewSource(seed))
 		in := randomDeriveInput(rng)
 		old, got := deriveBefore4756(in), Derive(in)
+		got.WaitingSince = time.Time{} // the one field added since (#6981): the copy has none; routes' TestWaitingSinceThroughDerive checks it
 		if !reflect.DeepEqual(old, got) {
 			require.Equal(t, fmt.Sprintf("%+v", old), fmt.Sprintf("%+v", got), "seed %d: %+v", seed, in)
 		}
