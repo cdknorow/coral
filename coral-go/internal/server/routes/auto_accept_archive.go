@@ -21,7 +21,7 @@ func tarRisk(_ string, args []string, at func([]string) []string, workDir string
 	var file string
 	// -C is cumulative (GNU tar: -C a -C b is a/b, an absolute one starts over) and applies to what follows: dirs are every folder it set, cur the one now in force, and an operand is
 	// judged from the folder in force where it stands (--remove-files deletes the files it archived).
-	var dirs, removed []string
+	var dirs, removed, oneTop []string
 	cur := "."
 	setDir := func(v string) {
 		next := changeDir(cur, []string{v}) // "" when it cannot be read: judged as outside
@@ -79,6 +79,10 @@ func tarRisk(_ string, args []string, at func([]string) []string, workDir string
 			file = strings.TrimPrefix(a, "--file=")
 		case strings.HasPrefix(a, "--directory="):
 			setDir(strings.TrimPrefix(a, "--directory="))
+		case a == "--one-top-level": // extracts into a folder named after the archive, in the folder in force
+			oneTop = append(oneTop, inDir(cur, ".")) // a new folder inside the one in force
+		case strings.HasPrefix(a, "--one-top-level="): // extracts into the folder it names, under the one in force
+			oneTop = append(oneTop, inDir(cur, strings.TrimPrefix(a, "--one-top-level=")))
 		case strings.HasPrefix(a, "--"):
 		case strings.HasPrefix(a, "-") && len(a) > 1:
 			for k := 1; k < len(a); k++ {
@@ -115,6 +119,7 @@ func tarRisk(_ string, args []string, at func([]string) []string, workDir string
 			dirs = []string{"."}
 		}
 		targets = append(targets, dirs...)
+		targets = append(targets, oneTop...)
 	}
 	return archiveOutside(targets, at, workDir)
 }
@@ -340,4 +345,88 @@ func hasRsyncFlag(args []string, names ...string) bool {
 		}
 	}
 	return false
+}
+
+// cpioRisk judges cpio: -i/--extract writes into the folder it runs in or the one -D/--directory names, -p/--pass-through copies into its first operand (a folder), -O/--file and -F/--file name the archive
+// it writes (-o) or extracts from.
+func cpioRisk(_ string, args []string, at func([]string) []string, workDir string) string {
+	var extract, passThrough, create bool
+	var dir, outFile, archive string
+	var operands []string
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "-D" || a == "--directory":
+			if i+1 < len(args) {
+				dir = args[i+1]
+				i++
+			}
+		case strings.HasPrefix(a, "--directory="):
+			dir = strings.TrimPrefix(a, "--directory=")
+		case a == "-O":
+			if i+1 < len(args) {
+				outFile = args[i+1]
+				i++
+			}
+		case a == "-F" || a == "--file":
+			if i+1 < len(args) {
+				archive = args[i+1]
+				i++
+			}
+		case strings.HasPrefix(a, "--file="):
+			archive = strings.TrimPrefix(a, "--file=")
+		case a == "--extract":
+			extract = true
+		case a == "--pass-through":
+			passThrough = true
+		case a == "--create":
+			create = true
+		case strings.HasPrefix(a, "--"):
+		case strings.HasPrefix(a, "-") && len(a) > 1:
+			for k := 1; k < len(a); k++ {
+				switch a[k] {
+				case 'i':
+					extract = true
+				case 'p':
+					passThrough = true
+				case 'o':
+					create = true
+				case 'D', 'O', 'F': // the value is attached or the next word
+					v := a[k+1:]
+					if v == "" && i+1 < len(args) {
+						i++
+						v = args[i]
+					}
+					switch a[k] {
+					case 'D':
+						dir = v
+					case 'O':
+						outFile = v
+					case 'F':
+						archive = v
+					}
+					k = len(a)
+				}
+			}
+		default:
+			operands = append(operands, a)
+		}
+	}
+	var targets []string
+	if extract || passThrough {
+		if dir == "" {
+			dir = "."
+		}
+		targets = append(targets, dir)
+	}
+	if passThrough && len(operands) > 0 {
+		targets = append(targets, operands[0]) // the destination folder
+	}
+	if outFile != "" {
+		targets = append(targets, outFile)
+	}
+	if create && archive != "" {
+		targets = append(targets, archive)
+	}
+	return archiveOutside(targets, at, workDir)
 }

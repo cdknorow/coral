@@ -273,6 +273,7 @@ var launchCommandRisks = map[string]commandRisk{
 	"xz":       compressRisk,
 	"unxz":     compressRisk,
 	"zstd":     compressRisk,
+	"cpio":     cpioRisk,
 	"rsync":    rsyncRisk,
 }
 

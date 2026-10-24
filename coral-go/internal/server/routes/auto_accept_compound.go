@@ -22,7 +22,14 @@ const maxParsedCommand = 256 << 10
 // riskRun is one judgement of one command. The three readings (the rules, the parsed leaves, the separated text) each meet a shell wrapper's inner command (bash -c '...') and judge it
 // again, so a wrapper in a wrapper in a wrapper was read three times per level (#7086, QA's round 2: 2.5 times more per level than the old linear reading). A run remembers what it has judged
 // by (command, folder, directory): each distinct inner command is judged once, whichever reading meets it first, and the cost is the depth times one pass.
-type riskRun struct{ memo map[riskKey]string }
+type riskRun struct {
+	memo  map[riskKey]string
+	depth int // how many commands inside commands (a shell wrapper, eval, find -exec, ...) this one is nested in
+}
+
+// maxWrapperDepth is how deep commands may sit inside commands (bash -c in bash -c, eval in eval, find -exec sh -c ...) before the reading stops and asks the person (a launcher takes two of these levels: the command it runs, and the shell inside that): a real command line does not nest a dozen of them, and each
+// level of quoting doubles the text, so the work is bounded by the depth (#7106).
+const maxWrapperDepth = 24
 
 type riskKey struct{ command, workDir, dir string }
 
@@ -34,6 +41,11 @@ func (r *riskRun) from(command, workDir, dir string) string {
 	if why, ok := r.memo[k]; ok {
 		return why
 	}
+	if r.depth >= maxWrapperDepth {
+		return "it is nested too deeply to check"
+	}
+	r.depth++
+	defer func() { r.depth-- }()
 	why := r.plain(command, workDir, dir)
 	if why == "" {
 		// The command again with every spelled-out word written plainly (r''m, \rm, "rm", $'\x72m' are rm), and a command whose name is built at run time ($X, $(echo rm)) is a risk (#7106).

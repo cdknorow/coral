@@ -32,6 +32,9 @@ const xargsInput = "$XARGS_INPUT"
 // nice are already unwrapped), seg is the segment's text (quotes intact), and inner judges a command text in the directory cwd.
 func launchedRisk(cmd string, args []string, seg, workDir, cwd string, inner func(command, workDir, dir string) string) string {
 	run := func(words ...string) string { return inner(strings.Join(words, " "), workDir, cwd) }
+	for len(args) > 0 && args[0] == "--" && cmd != "xargs" { // eval -- rm -rf /etc: the shell takes -- as the end of options, the command follows
+		args = args[1:]
+	}
 	switch cmd {
 	case "eval":
 		if len(args) == 0 {
@@ -63,12 +66,73 @@ func launchedRisk(cmd string, args []string, seg, workDir, cwd string, inner fun
 		if len(args) > 0 && (strings.HasPrefix(args[0], "<(") || args[0] == "/dev/stdin" || args[0] == "-" || strings.HasPrefix(args[0], "/dev/fd/") || strings.HasPrefix(args[0], "/proc/self/fd/")) {
 			return whyInputCommand
 		}
+	case "unshare", "chroot", "strace", "ltrace", "valgrind", "nsenter", "script", "systemd-run", "pkexec", "setpriv", "firejail", "runuser":
+		if words := runnerCommand(cmd, args); len(words) > 0 {
+			return run(words...)
+		}
 	case "setsid", "busybox", "chrt", "taskset", "flock", "unbuffer":
 		if words := launcherCommand(cmd, args); len(words) > 0 {
 			return run(words...)
 		}
 	}
 	return ""
+}
+
+// runnerCommand is the command a program that runs another one under some setting runs, with the options of each skipped by their arity: unshare [options] command, chroot [options] newroot command,
+// strace and ltrace [options] command, valgrind [options] command, nsenter [options] command, systemd-run [options] command, script -c 'command' [file], pkexec, setpriv and firejail [options] command.
+func runnerCommand(cmd string, args []string) []string {
+	takes := map[string]map[string]bool{
+		"unshare":     {"-S": true, "-G": true, "--setuid": true, "--setgid": true, "--wd": true, "--root": true, "--mount-proc": false, "--propagation": true, "--map-users": true, "--map-groups": true, "--kill-child": false},
+		"chroot":      {"--userspec": true, "--groups": true},
+		"strace":      {"-o": true, "-e": true, "-p": true, "-s": true, "-u": true, "-E": true, "-a": true, "-O": true, "-S": true, "-P": true, "-I": true, "-b": true, "-X": true, "-U": true, "-z": false, "-D": false, "-w": false, "-x": false, "-y": false},
+		"ltrace":      {"-o": true, "-e": true, "-p": true, "-s": true, "-u": true, "-a": true, "-l": true, "-n": true, "-F": true},
+		"valgrind":    {},
+		"nsenter":     {"-t": true, "--target": true, "-S": true, "-G": true, "-w": true, "--wd": true, "-r": true, "--root": true},
+		"systemd-run": {"-p": true, "--property": true, "-u": true, "--unit": true, "--uid": true, "--gid": true, "-E": true, "--setenv": true, "--slice": true, "-M": true, "--machine": true, "-H": true, "--host": true, "-d": false},
+		"pkexec":      {"--user": true},
+		"setpriv":     {"--reuid": true, "--regid": true, "--ruid": true, "--rgid": true, "--euid": true, "--egid": true, "--groups": true, "--inh-caps": true, "--bounding-set": true, "--ambient-caps": true, "--securebits": true, "--pdeathsig": true, "--selinux-label": true, "--apparmor-profile": true},
+		"firejail":    {},
+		"runuser":     {"-u": true, "-g": true, "-G": true, "-l": false, "-c": false},
+	}[cmd]
+	if cmd == "script" { // script [options] [file]: -c text is the command (attached as -qc or alone), the typescript file is written but not judged here
+		for i, a := range args {
+			if strings.HasPrefix(a, "-") && !strings.HasPrefix(a, "--") && strings.Contains(a, "c") && i+1 < len(args) {
+				return args[i+1:]
+			}
+			if a == "--command" && i+1 < len(args) {
+				return args[i+1:]
+			}
+			if strings.HasPrefix(a, "--command=") {
+				return append([]string{strings.TrimPrefix(a, "--command=")}, args[i+1:]...)
+			}
+		}
+		return nil
+	}
+	if cmd == "runuser" { // runuser -u user command, or runuser -l user -c 'command'
+		for i, a := range args {
+			if (a == "-c" || a == "--command") && i+1 < len(args) {
+				return args[i+1:]
+			}
+		}
+	}
+	skipPositional := 0
+	if cmd == "chroot" {
+		skipPositional = 1 // the new root
+	}
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "--":
+		case takes[a]:
+			i++
+		case strings.HasPrefix(a, "-") && a != "-":
+		case skipPositional > 0:
+			skipPositional--
+		default:
+			return args[i:]
+		}
+	}
+	return nil
 }
 
 // launcherCommand is the command a small launcher runs: setsid [-cfw] cmd, busybox applet args, chrt [opts] priority cmd, taskset [opts] mask cmd, flock [opts] file cmd, unbuffer cmd.
@@ -423,33 +487,37 @@ func normalizedCommand(command string) (text string, dynamic, ok bool) {
 	return strings.TrimSpace(b.String()), dynamic, true
 }
 
-// dynamicName reports whether a command name is built at run time: it holds an expansion and no literal "/" after it (a path as $HOME/bin/tool or $(git rev-parse --show-toplevel)/x names a program
-// in a place; $X, $(echo rm) and r$(echo m) name the program itself).
+// dynamicName reports whether a command name is built at run time: it holds an expansion anywhere (a variable, a command substitution, backticks), unless it is a path that BEGINS with the one expansion
+// and goes on with a literal "/" (as $HOME/bin/tool, "$CLAUDE_PROJECT_DIR"/hooks/x, $(git rev-parse --show-toplevel)/scripts/x.sh). rm${IFS}-rf${IFS}/etc, r${x}m, ${IFS}rm, $X, $(echo rm) and "$@"
+// all ask: the shell splits or joins them into words the rules never saw.
 func dynamicName(w *syntax.Word) bool {
-	dyn, slashAfter := false, false
-	for _, p := range w.Parts {
-		switch p := p.(type) {
-		case *syntax.Lit:
-			if dyn && strings.Contains(p.Value, "/") {
-				slashAfter = true
-			}
-		case *syntax.SglQuoted:
-		case *syntax.DblQuoted:
-			for _, q := range p.Parts {
-				switch q := q.(type) {
-				case *syntax.Lit:
-					if dyn && strings.Contains(q.Value, "/") {
-						slashAfter = true
-					}
-				default:
-					dyn = true
+	expansions := 0
+	firstIsExpansion := false
+	slashAfterFirst := false
+	for i, p := range w.Parts {
+		parts := []syntax.WordPart{p}
+		if dq, ok := p.(*syntax.DblQuoted); ok {
+			parts = dq.Parts
+		}
+		for _, q := range parts {
+			switch q := q.(type) {
+			case *syntax.Lit:
+				if expansions == 1 && firstIsExpansion && strings.HasPrefix(q.Value, "/") && !slashAfterFirst && i > 0 {
+					slashAfterFirst = true
+				}
+			case *syntax.SglQuoted:
+			default:
+				expansions++
+				if i == 0 && expansions == 1 {
+					firstIsExpansion = true
 				}
 			}
-		default:
-			dyn = true
 		}
 	}
-	return dyn && !slashAfter
+	if expansions == 0 {
+		return false
+	}
+	return !(expansions == 1 && firstIsExpansion && slashAfterFirst)
 }
 
 // spelledOut is the text a word spells when all of it is literal (unquoted, single or double quoted without expansions, ANSI-C quoted), and whether it is.
