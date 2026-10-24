@@ -50,7 +50,10 @@ Subcommands:
 	case "add":
 		cmdTaskAdd(st, taskArgs)
 	case "list":
-		cmdTaskList(st, hasFlag(taskArgs, "--json"))
+		asJSON, goal := taskListArgs(taskArgs)
+		cmdTaskListGoal(st, asJSON, goal)
+	case "goal":
+		cmdTaskGoal(st, taskArgs)
 	case "claim":
 		cmdTaskClaim(st, taskArgs...)
 	case "current":
@@ -112,8 +115,9 @@ Subcommands:
 const taskUsageText = `Usage: coral-board task <subcommand> [args]
 
 Subcommands:
-  add "title" [--body "details"] [--priority P] [--assignee "Agent Name"] [--remind-at TIME]
-  list [--json]                    Every task; --json prints the tasks as a JSON array
+  add "title" [--body "details"] [--priority P] [--assignee "Agent Name"] [--remind-at TIME] [--goal ID]
+  list [--json] [--goal ID]        Every task, or one goal's; --json prints the tasks as a JSON array
+  goal <task-id> <goal-id|none>    Put a task on a goal of this board, move it, or take it off (coral-board goal ... manages the goals)
   claim [id]                       Claim a specific task or the next available one
   current                          Show your current in-progress task
   detail <id> [--json]             Read task instructions, inputs and results (always JSON; --json is accepted)
@@ -175,6 +179,7 @@ func cmdTaskAdd(st *boardState, args []string) {
 	remindAt := fs.String("remind-at", "", "A one-time reminder to the assignee (or the orchestrator) at that time: \"2026-10-19 21:58\", 21:58, 2026-10-19, 30m, 2h or 3d")
 	parent := fs.Int64("parent", 0, "Parent task ID")
 	retryOf := fs.Int64("retry-of", 0, "Finished task ID this new task retries")
+	goal := fs.Int64("goal", 0, "The goal of this board the task serves")
 	clihelp.ParseFlags(fs, reordered, func() string { return commandUsage(os.Args[1], os.Args[2:]) })
 	*taskBody = flagText(*taskBody, "task body")
 
@@ -194,6 +199,13 @@ func cmdTaskAdd(st *boardState, args []string) {
 	}
 	if *assignee != "" {
 		reqBody["assigned_to"] = *assignee
+	}
+	if *goal < 0 {
+		fmt.Fprintln(os.Stderr, "--goal needs a goal ID, a whole number")
+		clierr.Exit1()
+	}
+	if *goal > 0 {
+		reqBody["goal_id"] = *goal
 	}
 	if *remindAt != "" {
 		at, err := parseWhen(*remindAt, time.Now())
@@ -253,8 +265,32 @@ func cmdTaskAdd(st *boardState, args []string) {
 	fmt.Printf("Created Task #%.0f: %s\n", id, title)
 }
 
-func cmdTaskList(st *boardState, asJSON bool) {
-	tasks := fetchAllTasks(st)
+func cmdTaskList(st *boardState, asJSON bool) { cmdTaskListGoal(st, asJSON, 0) }
+
+// taskListArgs reads task list's options: --json and --goal ID (a whole number, 1 or more).
+func taskListArgs(args []string) (asJSON bool, goal int64) {
+	asJSON = hasFlag(args, "--json")
+	for i, a := range args {
+		name, value, inline := strings.Cut(a, "=")
+		if name != "--goal" {
+			continue
+		}
+		if !inline && i+1 < len(args) {
+			value = args[i+1]
+		}
+		n, err := strconv.ParseInt(value, 10, 64)
+		if err != nil || n <= 0 {
+			fmt.Fprintf(os.Stderr, "--goal needs a goal ID, a whole number (got %q)\n", value)
+			clierr.Exit1()
+		}
+		goal = n
+	}
+	return asJSON, goal
+}
+
+// cmdTaskListGoal lists the board's tasks, or one goal's when goal is not 0.
+func cmdTaskListGoal(st *boardState, asJSON bool, goal int64) {
+	tasks := fetchTasks(st, goal)
 	if asJSON {
 		if tasks == nil {
 			tasks = []map[string]any{} // an empty board is [], never null
@@ -289,11 +325,17 @@ func cmdTaskList(st *boardState, asJSON bool) {
 // fetchAllTasks reads every task of the board, a page at a time (#3269), in the order
 // the full list always had: priority, then id. A server from before pagination ignores
 // the parameters and answers with every task and no next_cursor, which ends the loop.
-func fetchAllTasks(st *boardState) []map[string]any {
+func fetchAllTasks(st *boardState) []map[string]any { return fetchTasks(st, 0) }
+
+// fetchTasks is fetchAllTasks for one goal's tasks when goal is not 0.
+func fetchTasks(st *boardState, goal int64) []map[string]any {
 	var tasks []map[string]any
 	cursor := ""
 	for {
 		path := "/" + url.PathEscape(st.Project) + "/tasks?status=all&limit=200"
+		if goal > 0 {
+			path += "&goal=" + strconv.FormatInt(goal, 10)
+		}
 		if cursor != "" {
 			path += "&cursor=" + url.QueryEscape(cursor)
 		}
