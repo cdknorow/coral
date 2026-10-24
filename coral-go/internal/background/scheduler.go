@@ -272,7 +272,15 @@ func (s *JobScheduler) reapStaleRuns(ctx context.Context) {
 			// "agent_done" only when its last event shows it finished: it may have crashed while Coral was down, and the run history must not claim a success it never saw.
 			reason := "agent_done"
 			if s.lastEventType != nil {
-				if last, stopFailed := s.lastEventType(ctx, *run.SessionID); (last != "stop" && last != "session_end") || stopFailed { // a stop that is a failed turn (StopFailure: an API error) is not a finish
+				last, stopFailed := s.lastEventType(ctx, *run.SessionID)
+				if last == "" && !stopFailed { // no event from the agent at all (a read that failed is not this: it comes back as a failed stop): it never started, which is not "completed" (#6978, Codex Test's 07:10 run)
+					s.logger.Warn("a run's agent ended without ever reporting", "run_id", run.ID)
+					finish("failed", agentNeverStartedCode, agentNeverStartedMsg)
+					s.store.UpdateScheduledRun(ctx, run.ID, map[string]interface{}{"error_code": agentNeverStartedCode})
+					s.cleanupSettledWorktree(ctx, run, *job)
+					continue
+				}
+				if (last != "stop" && last != "session_end") || stopFailed { // a stop that is a failed turn (StopFailure: an API error) is not a finish
 					reason = "ended_while_coral_was_down"
 				}
 			}
