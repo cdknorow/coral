@@ -1,7 +1,7 @@
 // How much text each Settings group shows before anything is opened (the usability pass, #5985: "help people get to the setting, then expand it with more info if necessary"). The words a person
 // can see in a group are counted (text nodes whose whole path is shown; a select's options are not text); a group that has been cut has a budget, so a paragraph that creeps back fails here. The
 // long explanations are behind each row's (i): a button with aria-expanded that controls its text, and the text still describes its control. Read as a computer connected to Coral Hub at Launch, with
-// every Hub row shown (the largest the Network and Hub group gets). Drives Chrome over CDP against the isolated dev server; the cloud routes are stood in for the page's fetch.
+// every Hub row shown (the largest the Network and Hub group gets). What the server holds is stood in for too: no terminal logs and no kept worktrees (a suite that ran before on the same server leaves a log of an ended agent, which adds its row's words). Drives Chrome over CDP against the isolated dev server; the cloud routes are stood in for the page's fetch.
 const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
 
@@ -16,7 +16,7 @@ const BUDGET = { 'Network and Hub': 91, 'Agents': 64, 'Storage and cleanup': 65,
         await Page.navigate({ url: process.env.CORAL_TEST_URL + '/' }); await Page.loadEventFired(); await install();
         await ev(`window.__coralReady.then(() => true)`);
         await ev(`(async () => { window.__coral.buildAllLazy(); const real = window.fetch; const json = b => new Response(JSON.stringify(b), { headers: { 'Content-Type': 'application/json' } });
-            window.fetch = async (u, o = {}) => { const p = String(u); if (p.endsWith('/api/cloud/status')) return json({ configured: true, state: 'connected', hub_url: 'https://app.coralhub.dev', label: 'my-mac', server_id: 'srv_x', max_mode: 'launch', max_mode_saved: true, allow_hub_auto_accept: true, redact_tokens: true, hub_relaunch_updates: true, hub_cross_team_settings: true, allow_hub_auto_accept_changed: { by: 'hub', user: 'hub-user-3f2a', at: '2026-10-21T20:15:00Z' } }); if (/hub-operator/.test(p)) return json({ linked: true, disabled: false, recent_actions: [] }); return real(u, o); };
+            window.fetch = async (u, o = {}) => { const p = String(u); if (p.endsWith('/api/cloud/status')) return json({ configured: true, state: 'connected', hub_url: 'https://app.coralhub.dev', label: 'my-mac', server_id: 'srv_x', max_mode: 'launch', max_mode_saved: true, allow_hub_auto_accept: true, redact_tokens: true, hub_relaunch_updates: true, hub_cross_team_settings: true, allow_hub_auto_accept_changed: { by: 'hub', user: 'hub-user-3f2a', at: '2026-10-21T20:15:00Z' } }); if (/hub-operator/.test(p)) return json({ linked: true, disabled: false, recent_actions: [] }); if (p.split('?')[0].endsWith('/api/system/terminal-logs')) return json({ files: 0, bytes: 0, ended: { count: 0, bytes: 0 } }); if (p.split('?')[0].endsWith('/api/worktrees')) return json({ worktrees: [] }); return real(u, o); };
             const cc = await import((window.__coralStatic || '/static/') + 'cloud_connect.js'); cc.initCloudConnect(); await cc.loadCloudStatus(); return true; })()`);
         await ev(`window.showSettingsModal(); true`);
         await waitFor(`getComputedStyle(document.getElementById('settings-modal')).display !== 'none'`, 'the dialog open', 8000);
