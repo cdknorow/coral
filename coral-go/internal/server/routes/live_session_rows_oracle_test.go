@@ -506,6 +506,7 @@ func (h *SessionsHandler) liveSessionRowsBefore4713(r *http.Request, trace *phas
 			"done":                  state.Done,
 			"waiting_reason":        nilIf(!state.NeedsInput, state.WaitingReason),
 			"waiting_summary":       nilIf(!state.NeedsInput, state.WaitingSummary),
+			"waiting_since":         waitingSince(state),
 			"waiting_kind":          nilIf(!state.NeedsInput || state.WaitingKind == "", state.WaitingKind),
 			"held_messages":         h.heldMessagesOf(agent.SessionID, naming.SessionName(agent.AgentType, agent.SessionID)), // #6627: the oracle follows the row builder in this one field
 			"working":               state.Working,
@@ -602,6 +603,7 @@ func (h *SessionsHandler) liveSessionRowsBefore4713(r *http.Request, trace *phas
 			"done":                  false,
 			"waiting_reason":        nil,
 			"waiting_summary":       nil,
+			"waiting_since":         nil,
 			"waiting_kind":          nil,
 			"working":               false,
 			"stuck":                 false,

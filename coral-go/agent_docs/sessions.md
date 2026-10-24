@@ -80,7 +80,7 @@ Poll lifecycle and agent-turn state using only the stable session ID. The `state
 }
 ```
 
-`waiting_for_input` is true only while the agent has asked the user something directly, such as a permission or approval prompt, and is blocked on the answer, or while its CLI waits for the user to sign in (then `needs_login` is true and `waiting_kind` is `"login"`). It is not set by every notification: the idle reminder an agent sends after finishing a turn reports `done` instead. `waiting_reason` and `waiting_summary` are `null` unless a request is pending.
+`waiting_since` is the time (UTC, RFC 3339) its request began, or null when it waits for nothing; the Inbox says how long it has waited from it. `waiting_for_input` is true only while the agent has asked the user something directly, such as a permission or approval prompt, and is blocked on the answer, or while its CLI waits for the user to sign in (then `needs_login` is true and `waiting_kind` is `"login"`). It is not set by every notification: the idle reminder an agent sends after finishing a turn reports `done` instead. `waiting_reason` and `waiting_summary` are `null` unless a request is pending.
 
 An Antigravity (agy) agent waits the same way (#4819), from its own signals: agy sends no hook for a permission prompt, so Coral records the request itself when the tool its PreToolUse hook named is still pending after 1.5 s and the terminal shows a prompt with options (the same `permission_request` event Claude's hook sends, which the tool's PostToolUse or the turn's end clears); its `ask_question` tool is recorded by the hook at once, as a question. A tool that is only slow records nothing.
 
