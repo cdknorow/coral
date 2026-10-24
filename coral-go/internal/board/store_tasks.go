@@ -22,7 +22,7 @@ func (s *Store) GetTask(ctx context.Context, project string, taskID int64) (*Tas
 func (s *Store) getTaskByID(ctx context.Context, project string, taskID int64) (*Task, error) {
 	var t Task
 	err := s.reader().GetContext(ctx, &t,
-		"SELECT id, revision, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, parked_reason, parked_until, remind_at FROM board_tasks WHERE id = ? AND board_id = ?", taskID, project)
+		"SELECT id, revision, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, parked_reason, parked_until, remind_at, goal_id FROM board_tasks WHERE id = ? AND board_id = ?", taskID, project)
 	if err != nil {
 		return nil, err
 	}
@@ -42,6 +42,8 @@ type CreateTaskOpts struct {
 	MaxDepth  int
 	Draft     bool
 	Workflow  TaskWorkflow
+	// GoalID links the new task to a goal of its board (#7087); a goal of another board or a closed one refuses the task. A retry of a task that has a goal, with none given, continues under it.
+	GoalID *int64
 }
 
 // CreateTask inserts a task and returns it.
@@ -75,10 +77,21 @@ func (s *Store) CreateTaskWithOpts(ctx context.Context, project, title, body, pr
 
 	initialStatus := "draft"
 
+	// The goal is checked before anything is stored: a refusal leaves no task behind.
+	var goalID *int64
+	if opts != nil && opts.GoalID != nil {
+		if err := s.checkGoalForTask(ctx, project, *opts.GoalID); err != nil {
+			return nil, err
+		}
+		goalID = opts.GoalID
+	} else if w.RetryOf != 0 {
+		goalID = s.inheritedGoal(ctx, project, w.RetryOf)
+	}
+
 	result, err := s.db.ExecContext(ctx,
-		`INSERT INTO board_tasks (board_id, title, body, status, priority, created_by, assigned_to, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		project, title, bodyPtr, initialStatus, priority, createdBy, assignPtr, now)
+		`INSERT INTO board_tasks (board_id, title, body, status, priority, created_by, assigned_to, created_at, goal_id)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		project, title, bodyPtr, initialStatus, priority, createdBy, assignPtr, now, goalID)
 	if err != nil {
 		return nil, err
 	}
@@ -129,7 +142,7 @@ func (s *Store) ListTasks(ctx context.Context, project string) ([]Task, error) {
 // ListTasksCapped is ListTasks limited to max rows (max <= 0: every row). more says there were rows past the cap, so a caller
 // that must bound a reply (the full=1 list a viewer or an agent can ask for, #4602) can say it was cut.
 func (s *Store) ListTasksCapped(ctx context.Context, project string, max int) (tasks []Task, more bool, err error) {
-	q := `SELECT id, revision, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, parked_reason, parked_until, remind_at FROM board_tasks WHERE board_id = ?
+	q := `SELECT id, revision, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, parked_reason, parked_until, remind_at, goal_id FROM board_tasks WHERE board_id = ?
 		 ORDER BY CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END, id ASC`
 	args := []any{project}
 	if max > 0 {
@@ -146,7 +159,7 @@ func (s *Store) ListTasksCapped(ctx context.Context, project string, max int) (t
 		// in the same order as before.
 		more = true
 		tasks = tasks[:0]
-		q = `SELECT id, revision, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, parked_reason, parked_until, remind_at FROM board_tasks WHERE board_id = ?
+		q = `SELECT id, revision, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, parked_reason, parked_until, remind_at, goal_id FROM board_tasks WHERE board_id = ?
 		 ORDER BY CASE WHEN ` + doneTaskStatusSQL + ` THEN 1 ELSE 0 END ASC,
 		          CASE WHEN ` + doneTaskStatusSQL + ` THEN 0 ELSE CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END END ASC,
 		          CASE WHEN ` + doneTaskStatusSQL + ` THEN -id ELSE id END ASC LIMIT ?`
@@ -197,7 +210,7 @@ func (s *Store) CountOpenTasksCreatedBy(ctx context.Context, project, createdBy 
 func (s *Store) ListOpenTasks(ctx context.Context, project string) ([]Task, error) {
 	var tasks []Task
 	err := s.reader().SelectContext(ctx, &tasks,
-		`SELECT id, revision, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, parked_reason, parked_until, remind_at FROM board_tasks
+		`SELECT id, revision, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, parked_reason, parked_until, remind_at, goal_id FROM board_tasks
 		 WHERE board_id = ? AND status IN ('pending', 'in_progress', 'blocked', 'draft')
 		 ORDER BY CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END, id ASC`,
 		project)
@@ -238,7 +251,7 @@ func (s *Store) ListAllTasks(ctx context.Context, limit int) ([]Task, error) {
 	}
 	var tasks []Task
 	err := s.reader().SelectContext(ctx, &tasks,
-		`SELECT id, revision, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, parked_reason, parked_until, remind_at FROM board_tasks
+		`SELECT id, revision, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, parked_reason, parked_until, remind_at, goal_id FROM board_tasks
 		 ORDER BY created_at DESC, id DESC LIMIT ?`, limit)
 	if err != nil {
 		return nil, err
@@ -359,7 +372,7 @@ func (s *Store) FindIdleSubscriber(ctx context.Context, project string, skip fun
 func (s *Store) ActiveTaskForSubscriber(ctx context.Context, project, subscriberID string) *Task {
 	var task Task
 	err := s.reader().GetContext(ctx, &task,
-		`SELECT id, revision, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens
+		`SELECT id, revision, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, goal_id
 		 FROM board_tasks WHERE board_id = ? AND assigned_to = ? AND status = 'in_progress'
 		 ORDER BY claimed_at DESC, id DESC LIMIT 1`, project, subscriberID)
 	if err != nil {
@@ -379,7 +392,7 @@ func (s *Store) NextPendingTaskForSubscriber(ctx context.Context, project, subsc
 	var task Task
 	// Check assigned tasks first
 	err := s.db.GetContext(ctx, &task,
-		`SELECT id, revision, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens
+		`SELECT id, revision, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, goal_id
 		 FROM board_tasks WHERE board_id = ? AND status = 'pending' AND assigned_to = ? AND NOT `+parkedSQL+`
 		 ORDER BY `+priorityOrder+` LIMIT 1`, project, subscriberID)
 	if err == nil {
@@ -387,7 +400,7 @@ func (s *Store) NextPendingTaskForSubscriber(ctx context.Context, project, subsc
 	}
 	// Then unassigned
 	err = s.db.GetContext(ctx, &task,
-		`SELECT id, revision, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens
+		`SELECT id, revision, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, goal_id
 		 FROM board_tasks WHERE board_id = ? AND status = 'pending' AND (assigned_to IS NULL OR assigned_to = '') AND NOT `+parkedSQL+`
 		 ORDER BY `+priorityOrder+` LIMIT 1`, project)
 	if err == nil {

@@ -61,6 +61,7 @@ type TaskListItem struct {
 	ClaimedAt       *string   `db:"claimed_at" json:"claimed_at,omitempty"`
 	CompletedAt     *string   `db:"completed_at" json:"completed_at,omitempty"`
 	SessionID       *string   `db:"session_id" json:"session_id,omitempty"`
+	GoalID          *int64    `db:"goal_id" json:"goal_id,omitempty"`
 	CostUSD         *float64  `db:"cost_usd" json:"cost_usd,omitempty"`
 	Outcome         string    `db:"outcome" json:"outcome,omitempty"`
 	ReviewRequested bool      `db:"review_requested" json:"review_requested,omitempty"`
@@ -89,7 +90,7 @@ type TaskListQuery struct {
 const taskListColumns = `t.id, t.revision, t.board_id, t.title,
 	COALESCE(SUBSTR(t.body, 1, 200), '') AS body_preview,
 	t.status, t.priority, t.created_by, t.assigned_to, t.completed_by, t.created_at, t.claimed_at,
-	t.completed_at, t.session_id, t.cost_usd,
+	t.completed_at, t.session_id, t.goal_id, t.cost_usd,
 	COALESCE(json_extract(w.data, '$.outcome'), '') AS outcome,
 	COALESCE(json_type(w.data, '$.completion_review') = 'object', 0) AS review_requested
 	FROM board_tasks t LEFT JOIN task_workflows w ON w.task_id = t.id`

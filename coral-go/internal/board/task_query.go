@@ -625,7 +625,7 @@ func (s *Store) QueryTaskRowsResult(ctx context.Context, q *TaskQuery) ([]Task, 
 	}
 	var rows []Task
 	err = s.reader().SelectContext(ctx, &rows,
-		`SELECT id, revision, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, parked_reason, parked_until, remind_at FROM board_tasks WHERE id IN (`+placeholders(len(ids))+`)`, ids...)
+		`SELECT id, revision, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, parked_reason, parked_until, remind_at, goal_id FROM board_tasks WHERE id IN (`+placeholders(len(ids))+`)`, ids...)
 	if err != nil {
 		return nil, nil, err
 	}

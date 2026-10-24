@@ -60,7 +60,9 @@ type Task struct {
 	ParkedReason *string `db:"parked_reason" json:"parked_reason,omitempty"`
 	ParkedUntil  *string `db:"parked_until" json:"parked_until,omitempty"`
 	// RemindAt: a one-time reminder of the task at that time (task add --remind-at, remind.go).
-	RemindAt  *string      `db:"remind_at" json:"remind_at,omitempty"`
+	RemindAt *string `db:"remind_at" json:"remind_at,omitempty"`
+	// GoalID is the goal of this board the task works toward (#7087), or nil.
+	GoalID    *int64       `db:"goal_id" json:"goal_id,omitempty"`
 	BlockedBy []TaskDep    `db:"-" json:"blocked_by,omitempty"`
 	Workflow  TaskWorkflow `db:"-" json:"workflow"`
 	// Verification: whether a completed task's "done" is backed by an independent check (#4563); set when the workflow is
