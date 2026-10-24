@@ -112,8 +112,10 @@ export function mountInbox(host, adapter, options) {
         head.setAttribute('aria-controls', bodyId);
         const title = el('span', 'ibx-task-title', task.title || '(no title)');
         const meta = el('span', 'ibx-task-meta');
-        const bits = [task.created_by ? `From ${task.created_by}` : '', task.board, task.priority, task.status === 'review_pending' ? 'review' : '', ago(task.updated_at || task.created_at, adapter.now)].filter(Boolean); // who, where, how urgent, how old: said once, here
+        const high = task.priority === 'high';
+        const bits = [task.created_by ? `From ${task.created_by}` : '', task.board, high ? '' : task.priority, task.status === 'review_pending' ? 'review' : '', ago(task.updated_at || task.created_at, adapter.now)].filter(Boolean); // who, where, how urgent, how old: said once, here
         meta.textContent = bits.join(' · ');
+        if (high) meta.prepend(el('span', 'ibx-chip-high', 'High')); // the urgent ones say so in a word, first in the line (#7122)
         head.append(title, meta);
         const region = el('div', 'ibx-task-body');
         region.id = bodyId; // not a landmark: aria-controls and aria-expanded on the button already tie them together
@@ -160,9 +162,9 @@ export function mountInbox(host, adapter, options) {
         const reviewNote = review ? el('p', 'ibx-task-facts', 'To approve or reject, open the task') : null;
         if (reviewNote) { reviewNote.id = uid('ibx-review-note'); metaRow.append(reviewNote); }
         const href = typeof adapter.taskHref === 'function' ? safePath(adapter.taskHref(task)) : '';
-        if (href) { const a = el('a', 'ibx-open', 'Open the task'); a.setAttribute('href', safePath(href)); metaRow.append(a); }
+        if (href) { const a = el('a', 'btn btn-small ibx-open', 'Open the task'); a.setAttribute('href', safePath(href)); metaRow.append(a); }
         else if (typeof adapter.openTask === 'function') {
-            const b = el('button', 'btn ibx-open', 'Open the task'); b.type = 'button';
+            const b = el('button', 'btn btn-small ibx-open', 'Open the task'); b.type = 'button';
             b.addEventListener('click', () => adapter.openTask(task));
             metaRow.append(b);
         }
@@ -178,7 +180,7 @@ export function mountInbox(host, adapter, options) {
         form.noValidate = true;
         const key = draftKey(task.project, task.id);
         const id = uid('ibx-reply');
-        const label = el('label', 'ibx-reply-label', `Your reply to ${task.title || 'this task'}`);
+        const label = el('label', 'ibx-reply-label', `Your reply to ${task.title || 'this task'} (the task stays open)`);
         label.setAttribute('for', id);
         const ta = el('textarea', 'ibx-reply-input');
         ta.id = id; ta.rows = 1; ta.maxLength = REPLY_MAX; // one line that grows as the reply does
@@ -190,7 +192,6 @@ export function mountInbox(host, adapter, options) {
         const row = el('div', 'ibx-reply-row'); row.append(send, status);
         form.append(label, ta, row);
         if (describedBy) ta.setAttribute('aria-describedby', describedBy); // a task to review: the line above the box says it cannot be answered here
-        else { const note = el('p', 'ibx-note', 'A reply does not complete or change the task.'); note.id = uid('ibx-reply-note'); ta.setAttribute('aria-describedby', note.id); form.append(note); }
         const grow = () => { ta.style.height = 'auto'; if (ta.scrollHeight > 0) ta.style.height = `${Math.min(ta.scrollHeight + 2, 240)}px`; };
         queueMicrotask(grow); // after the form is in the page (a box with a saved draft opens tall enough for it)
         let busy = false;
@@ -232,7 +233,8 @@ export function mountInbox(host, adapter, options) {
         try {
             const tasks = await adapter.listTasks();
             if (gone) return;
-            const rows = Array.isArray(tasks) ? tasks : [];
+            const RANK = { high: 0, medium: 1, low: 2 }; // priority first, then the newest update (the list's own order, kept by a stable sort) (#7122)
+            const rows = (Array.isArray(tasks) ? [...tasks] : []).sort((a, b) => (RANK[a.priority] ?? 3) - (RANK[b.priority] ?? 3));
             const kept = document.activeElement && list.contains(document.activeElement) ? document.activeElement.closest('.ibx-task')?.dataset.key : '';
             const stillListed = new Set(rows.map(t => draftKey(t.project, t.id)));
             for (const k of [...drawn.keys()]) if (!stillListed.has(k)) drawn.delete(k);
@@ -240,7 +242,7 @@ export function mountInbox(host, adapter, options) {
             if (kept) list.querySelector(`.ibx-task[data-key="${CSS.escape(kept)}"] .ibx-task-head`)?.focus(); // a refresh does not take the focus from the task being read
             empty.hidden = rows.length > 0;
             empty.textContent = rows.length ? '' : 'No assigned tasks.';
-            if (options && typeof options.onCount === 'function') options.onCount(rows.length);
+            if (options && typeof options.onCount === 'function') options.onCount(rows.length, rows.filter(t => t.priority === 'high').length);
         } catch (e) {
             if (gone) return;
             list.replaceChildren();

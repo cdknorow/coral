@@ -40,17 +40,18 @@ export function updateInboxTab() {
 
 // The count on each of the Inbox's three tabs (Needs you, Tasks, Saved), in the tab's name as well as drawn beside it: a screen reader hears "Needs you, 2 waiting" with the tab, not a grey number after it.
 // Only what changed is written (this runs for every message of the feed). A count that is not known yet (the tasks before the first read) or is 0 shows nothing.
-const COUNT_NAMES = { needs: n => `Needs you, ${n} waiting`, tasks: n => `Tasks, ${n}`, saved: n => `Saved, ${n}` };
+const COUNT_NAMES = { needs: n => `Needs you, ${n} waiting`, tasks: (n, high) => `Tasks, ${n}${high ? `, ${high} high` : ''}`, saved: n => `Saved, ${n}` };
 const _counts = {};
-export function setInboxCount(kind, n) {
+export function setInboxCount(kind, n, high = 0) {
     const tab = document.getElementById(`inbox-tab-${kind}`), box = document.getElementById(`inbox-tab-${kind}-count`);
     if (!tab || !box || !COUNT_NAMES[kind]) return;
     n = Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
     _counts[kind] = n;
-    const text = n > 99 ? '99+' : n > 0 ? String(n) : '';
+    high = Number.isFinite(high) && high > 0 ? Math.min(Math.floor(high), n) : 0;
+    const text = (n > 99 ? '99+' : n > 0 ? String(n) : '') + (high ? ` · ${high} high` : '');
     if (box.textContent !== text) box.textContent = text;
     if (box.hidden !== (n === 0)) box.hidden = n === 0;
-    const name = n > 0 ? COUNT_NAMES[kind](n) : null;
+    const name = n > 0 ? COUNT_NAMES[kind](n, high) : null;
     if (tab.getAttribute('aria-label') !== name) { if (name) tab.setAttribute('aria-label', name); else tab.removeAttribute('aria-label'); }
 }
 
@@ -103,6 +104,8 @@ function renderNeedsYou(force = false) {
         const why = document.createElement('span'); why.className = 'inbox-needs-why'; why.textContent = sessionStateInfo(s).label;
         const head = document.createElement('span'); head.className = 'inbox-needs-head'; head.append(lead, name, why);
         if (s.board_project) { const t = document.createElement('span'); t.className = 'inbox-needs-team'; t.textContent = keyLabel(identityKey(sessionServer(s), s.board_project)); head.append(t); }
+        const dir = String(s.working_directory || '').replace(/[\\/]+$/, '').split(/[\\/]/).pop(); // the folder's own name: two agents of one role in two folders are told apart (#7122)
+        if (dir) { const f = document.createElement('span'); f.className = 'inbox-needs-folder'; f.textContent = dir; f.title = String(s.working_directory); head.append(f); }
         b.append(head);
         const ask = askOf(s); // the agent's own request, as text (never markup): one line, cut by the CSS to the row's width
         if (ask && ask !== why.textContent) { const a = document.createElement('span'); a.className = 'inbox-needs-ask'; a.textContent = ask; a.title = ask; b.append(a); }

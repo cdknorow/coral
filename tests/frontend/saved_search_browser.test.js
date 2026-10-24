@@ -99,7 +99,7 @@ async function run() {
             await ev(`document.querySelector('#saved-bar .list-bar-filter-btn').click(); document.querySelector('#saved-bar .list-bar-clear-all').click(); true`);
             await settle(`document.querySelector('#saved-bar .list-bar-count').textContent === '4 messages'`, 'Clear all');
 
-            const order = () => ev(`[...document.querySelectorAll('#saved-list > li:not(.saved-empty)')].map(r => r.textContent.replace(/\\s+/g, ' ').slice(0, 40))`);
+            const order = () => ev(`[...document.querySelectorAll('#saved-list > li:not(.saved-empty)')].map(r => r.querySelector('.snip').textContent.replace(/\\s+/g, ' ').slice(0, 40))`); // the snippets: a row's Gone sentence is said once for the list (#7122), so the whole text differs by row
             const newest = await order();
             await pick('sv-sort', 'oldest');
             await settle(`(() => { const r = document.querySelector('#saved-list > li:not(.saved-empty)'); return !!r && !/rollout checklist|unrelated/.test(r.textContent); })()`, 'oldest first');

@@ -4809,3 +4809,8 @@ li:has(> .row-btn:focus-visible) { outline: 2px solid var(--accent); outline-off
 .settings-subsection { margin: 0 0 12px; }
 .settings-subhead { margin: 14px 0 4px; font-size: var(--fs-md); font-weight: 700; color: var(--text-primary); }
 .settings-subsection:first-of-type .settings-subhead { margin-top: 0; }
+
+/* The Inbox (#7122): the folder beside a waiting agent's name, a High chip on an urgent task, and the top bar's Saved count left out where the Inbox's own tab counts are. */
+.inbox-needs-folder { color: var(--text-secondary); font-size: 0.8125rem; font-family: var(--font-mono); }
+.ibx-chip-high { display: inline-block; margin-right: 8px; padding: 0 8px; border: 1px solid var(--warning); border-radius: 999px; color: var(--warning); font-size: var(--fs-sm, 0.6875rem); font-weight: 600; vertical-align: middle; }
+body:has(#nav-tab-hub-inbox.active) #saved-btn .saved-count { display: none; }

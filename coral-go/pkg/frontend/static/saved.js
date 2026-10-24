@@ -177,7 +177,7 @@ function moreMenu(it) {
     return wrap;
 }
 
-function itemNode(it) {
+function itemNode(it, seenWhy = null) {
     const done = !!it.done_at;
     const chk = checks.get(uid(it));
     const gone = chk && chk.state === 'gone';
@@ -195,12 +195,15 @@ function itemNode(it) {
     else { src = document.createElement('button'); src.type = 'button'; src.className = 'src saved-open'; src.setAttribute('aria-label', openLabel(it).name + (openSuffix.get(uid(it)) || '')); src.addEventListener('click', () => openItem(it, li)); }
     src.textContent = srcLabel(it); src.title = srcLabel(it);
     top.append(ic, src);
-    if (chip.text) { const kind = document.createElement('span'); kind.className = `kind ${chip.cls}`.trim(); kind.textContent = chip.text; top.append(kind); }
+    if (chip.text) { const kind = document.createElement('span'); kind.className = `kind ${chip.cls}`.trim(); kind.textContent = chip.text; if ((gone || noopen) && chk.why) kind.title = chk.why; top.append(kind); }
     if (multi) { const sv = document.createElement('span'); sv.className = 'server'; sv.textContent = serverName(it.server); sv.title = sv.textContent; top.append(sv); }
     const snip = document.createElement('p'); snip.className = 'snip'; snip.textContent = it.snippet || '(no text)';
     li.append(top, snip);
-    const why = document.createElement('p'); why.className = 'why'; why.setAttribute('role', 'status'); why.hidden = !(gone || noopen);
-    if (gone || noopen) {
+    // The same reason is said once for a list (the first row that has it); the other rows keep their Gone chip, which carries the sentence as its tip (#7122).
+    const sayWhy = (gone || noopen) && (!seenWhy || !seenWhy.has(chk.why));
+    if (sayWhy && seenWhy) seenWhy.add(chk.why);
+    const why = document.createElement('p'); why.className = 'why'; why.setAttribute('role', 'status'); why.hidden = !sayWhy;
+    if (sayWhy) {
         const w = document.createElement('span'); w.className = 'material-icons'; w.setAttribute('aria-hidden', 'true'); w.textContent = 'error_outline';
         const t = document.createElement('span'); t.textContent = chk.why;
         why.append(w, t);
@@ -263,7 +266,8 @@ function render() {
     syncBar(shown.length);
     verify(shown); // before the items are drawn: their chips and actions read the marks
     nameApart(shown);
-    list.replaceChildren(...down.map(noticeNode), ...shown.map(itemNode));
+    const seenWhy = new Set();
+    list.replaceChildren(...down.map(noticeNode), ...shown.map(it => itemNode(it, seenWhy)));
     if (!shown.length) {
         const li = document.createElement('li');
         li.className = 'saved-empty';
