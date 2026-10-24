@@ -315,7 +315,9 @@ var reviewedOrigins = map[string]bool{
 	"internal/background/runtime_pty.go	PTYRuntime.SendEnter	SendInput	Internal":                                     true,
 	"internal/background/runtime_pty.go	PTYRuntime.SendInput	SendText	o":                                             true,
 	"internal/background/runtime_pty.go	PTYRuntime.SendPrompt	SendPrompt	o":                                          true,
+	"internal/background/runtime_pty.go	PTYRuntime.SendRawInput	SendRawInput	o":                                      true, // only the gate's survey-dismiss 0 (survey_dismiss.go), which passes terminalinput.Internal (#6974)
 	"internal/background/runtime_tmux.go	TmuxRuntime.SendEnter	SendRawKeys	Internal":                                 true,
+	"internal/background/runtime_tmux.go	TmuxRuntime.SendRawInput	SendRawKeys	o":                                     true, // only the gate's survey-dismiss 0 (survey_dismiss.go), which passes terminalinput.Internal (#6974)
 	"internal/background/runtime_tmux.go	TmuxRuntime.SendInput	SendKeys	o":                                           true,
 	"internal/background/runtime_tmux.go	TmuxRuntime.SendPrompt	SendPrompt	o":                                        true,
 	"internal/background/runtime_tmux.go	TmuxRuntime.SpawnAgent	SendKeysToTarget	Internal":                           true,
