@@ -59,6 +59,13 @@ func sentByAnother() bool {
 	return r&ismexSend != 0
 }
 
+// closeAllowed is set by the owner just before it ends the guarded window itself: the systray library's own Quit posts WM_CLOSE to that window,
+// so Guard lets WM_CLOSE through only after AllowClose, and drops one posted by anything else (QA on #155: it ended the tray and its server).
+var closeAllowed atomic.Bool
+
+// AllowClose says the next WM_CLOSE to the guarded window is this process's own (call it just before systray.Quit). It stays set: the process is ending.
+func AllowClose() { closeAllowed.Store(true) }
+
 // installerAsked is set when a sent WM_ENDSESSION that really ends says ENDSESSION_CLOSEAPP: Restart Manager closing the program for an
 // installer, not a logoff or a shutdown (which never set it).
 var installerAsked atomic.Bool
@@ -176,8 +183,9 @@ func Watch(title string, end func(closeApp bool)) error {
 	return <-ready
 }
 
-// Guard filters WM_ENDSESSION for a window of this process that another library owns (the tray icon's, class className): one that was
-// posted, or says the end was cancelled, never reaches it; a real one is recorded (InstallerAsked) and passed on. The systray library ends
+// Guard filters WM_ENDSESSION and WM_CLOSE for a window of this process that another library owns (the tray icon's, class className): a
+// WM_ENDSESSION that was posted, or says the end was cancelled, never reaches it, and a WM_CLOSE does only after AllowClose; a real
+// WM_ENDSESSION is recorded (InstallerAsked) and passed on. The systray library ends
 // the tray on any WM_ENDSESSION, posted or not.
 func Guard(className string) error {
 	h := findOwnWindow(className)
@@ -204,6 +212,9 @@ var (
 )
 
 func guardProc(hwnd windows.Handle, message uint32, wParam, lParam uintptr) uintptr {
+	if message == wmClose && !closeAllowed.Load() {
+		return 0 // a posted WM_CLOSE from any program on the desktop (#346): only the tray's own quit (AllowClose) may close this window
+	}
 	if message == wmEndSession {
 		if wParam == 0 || !sentByAnother() {
 			return 0

@@ -100,6 +100,7 @@ func TestWatchMakesAHiddenTopLevelWindowThatRunsTheStop(t *testing.T) {
 // Guard keeps a posted or cancelled WM_ENDSESSION from a window another library owns (the tray icon's), and passes a sent one on.
 func TestGuardPassesOnlyASentEndOfSession(t *testing.T) {
 	got := make(chan uintptr, 4)
+	closes := make(chan struct{}, 4)
 	ready := make(chan uintptr, 1)
 	go func() {
 		runtime.LockOSThread()
@@ -107,6 +108,10 @@ func TestGuardPassesOnlyASentEndOfSession(t *testing.T) {
 		proc := syscall.NewCallback(func(hwnd windows.Handle, message uint32, wParam, lParam uintptr) uintptr {
 			if message == wmEndSession {
 				got <- wParam
+				return 0
+			}
+			if message == wmClose {
+				closes <- struct{}{}
 				return 0
 			}
 			r, _, _ := procDefWindowProcW.Call(uintptr(hwnd), uintptr(message), wParam, lParam)
@@ -145,4 +150,20 @@ func TestGuardPassesOnlyASentEndOfSession(t *testing.T) {
 		t.Fatal("a sent WM_ENDSESSION did not reach the window")
 	}
 	assert.True(t, InstallerAsked())
+
+	// #346: a WM_CLOSE posted by any program is dropped; the owner's own quit (AllowClose, then the library's Quit posting WM_CLOSE) passes.
+	user32.NewProc("PostMessageW").Call(h, wmClose, 0, 0)
+	user32.NewProc("SendMessageW").Call(h, wmClose, 0, 0)
+	select {
+	case <-closes:
+		t.Fatal("a WM_CLOSE reached the window before AllowClose")
+	case <-time.After(300 * time.Millisecond):
+	}
+	AllowClose()
+	user32.NewProc("PostMessageW").Call(h, wmClose, 0, 0)
+	select {
+	case <-closes:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the owner's own WM_CLOSE did not reach the window after AllowClose")
+	}
 }

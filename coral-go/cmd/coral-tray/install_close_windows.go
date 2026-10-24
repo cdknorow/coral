@@ -48,3 +48,6 @@ func watchEndSession(title string, end func(closeApp bool)) {
 		log.Printf("[ENDSESSION] no window for Windows to close this process with: %v", err)
 	}
 }
+
+// allowTrayWindowClose is called just before the tray's own systray.Quit, which posts WM_CLOSE to the icon's window: Guard drops every other WM_CLOSE (#346).
+func allowTrayWindowClose() { endsession.AllowClose() }
