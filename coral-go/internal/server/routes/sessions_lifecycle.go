@@ -1353,6 +1353,9 @@ func (h *SessionsHandler) ResurrectTeam(w http.ResponseWriter, r *http.Request) 
 
 	// The team record stays "stopped" until its members are launched, so the kept-worktrees list is told the resurrect is under way: a clean worktree it has just recreated must not be removed before the first
 	// member registers (#6959).
+	resurrectLock := teamLock(team.ID) // Remove of this team's worktree and this resurrect do not interleave (#6977)
+	resurrectLock.Lock()
+	defer resurrectLock.Unlock()
 	defer beginTeamResurrect(team.ID)()
 
 	// Recreate worktree if team had one

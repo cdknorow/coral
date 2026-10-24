@@ -605,3 +605,65 @@ func TestRemoveOfARunFolderWhoseRepositoryReadTimedOutNeverTouchesAnotherReposit
 	assert.Contains(t, otherGit("worktree", "list", "--porcelain"), "stale", "the repository it names was not pruned")
 	assert.Contains(t, otherGit("branch", "--list", "stale-branch"), "stale-branch")
 }
+
+// Security Reviewer Windows's #6972 LOW (#6977): Remove read "not in use" and then ran git with nothing held, so a resurrect of the team that began in that gap reused the worktree and Remove then took it. A resurrect now waits
+// for a Remove under way, and a Remove that finds a resurrect under way keeps the worktree.
+func TestRemoveAndAResurrectOfTheSameTeamDoNotInterleave(t *testing.T) {
+	url, cfg := teamServer(t)
+	git, id, wt := launchWorktreeTeam(t, url, cfg, "removeraces")
+	require.NoError(t, os.WriteFile(filepath.Join(wt, "work.txt"), []byte("work"), 0o644))
+	git("-C", wt, "add", "work.txt")
+	git("-C", wt, "commit", "-q", "-m", "work")
+	stopTeam(t, url, id) // clean: its worktree is removed, the branch with its commit stays
+	require.NoDirExists(t, wt)
+	git("worktree", "add", "--", wt, "coral-team/"+id) // a clean worktree of the stopped team again: the one a person would Remove
+	list := listWorktrees(t, url)
+	require.Len(t, list, 1)
+	require.Equal(t, false, list[0]["in_use"])
+
+	resurrected := make(chan int, 1)
+	afterRemoveCheckHook = func() { // Remove has found it clean and not in use; its git has not run yet
+		go func() {
+			status, _ := apiPost(t, url+"/api/teams/detail/"+id+"/resurrect")
+			resurrected <- status
+		}()
+		time.Sleep(500 * time.Millisecond) // sleep-ok: the resurrect has every chance to start while Remove holds the check
+	}
+	t.Cleanup(func() { afterRemoveCheckHook = nil })
+	code, out := removeWorktree(t, url, list[0]["id"].(string))
+	require.Equal(t, http.StatusOK, code)
+	assert.Equal(t, "removed", out["state"])
+	select {
+	case status := <-resurrected:
+		assert.Equal(t, http.StatusOK, status, "the resurrect ran after the removal")
+	case <-time.After(30 * time.Second):
+		t.Fatal("the resurrect never answered")
+	}
+	assert.DirExists(t, wt, "the resurrect's worktree is there: the removal did not run under it")
+	assert.Contains(t, git("worktree", "list"), id)
+}
+
+// A Remove that finds the team's resurrect under way keeps the worktree, without waiting for it.
+func TestRemoveKeepsAWorktreeWhileTheTeamIsBeingResurrected(t *testing.T) {
+	url, cfg := teamServer(t)
+	git, id, wt := launchWorktreeTeam(t, url, cfg, "removewhileresurrect")
+	require.NoError(t, os.WriteFile(filepath.Join(wt, "work.txt"), []byte("work"), 0o644))
+	git("-C", wt, "add", "work.txt")
+	git("-C", wt, "commit", "-q", "-m", "work")
+	stopTeam(t, url, id)
+	git("worktree", "add", "--", wt, "coral-team/"+id)
+	list := listWorktrees(t, url)
+	require.Len(t, list, 1)
+
+	var teamNum int64
+	_, err := fmt.Sscanf(list[0]["id"].(string), "team-%d", &teamNum)
+	require.NoError(t, err)
+	mu := teamLock(teamNum) // as a resurrect holds it
+	mu.Lock()
+	defer mu.Unlock()
+	code, out := removeWorktree(t, url, list[0]["id"].(string))
+	assert.Equal(t, http.StatusOK, code)
+	assert.Equal(t, "kept", out["state"])
+	assert.Equal(t, "it is in use", out["reason"])
+	assert.DirExists(t, wt)
+}

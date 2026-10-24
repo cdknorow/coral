@@ -42,7 +42,8 @@ type worktreeEntry struct {
 	Dirty    bool   `json:"dirty"`    // uncommitted or untracked changes
 	Unmerged int    `json:"unmerged"` // commits on its branch that no other branch holds
 	InUse    bool   `json:"in_use"`   // an agent of its team is live in it, or its run is still going
-	Checked  bool   `json:"checked"`  // false: git had not answered in time, so dirty and unmerged are not known (not "clean")
+	teamID   int64  // a team entry's team, for the lock Remove and a resurrect share (#6977)
+	Checked  bool   `json:"checked"` // false: git had not answered in time, so dirty and unmerged are not known (not "clean")
 }
 
 // entries are the worktrees on disk that Coral made, newest first: a team's (its record says it has one) and a job run's (its run recorded one), each still in a repository's worktree list.
@@ -62,7 +63,7 @@ func (h *WorktreesHandler) entries(ctx context.Context, probe bool) []worktreeEn
 				WorkingDir string `json:"working_dir"`
 			}
 			json.Unmarshal([]byte(t.ConfigJSON), &cfg)
-			out = append(out, worktreeEntry{ID: "team-" + strconv.FormatInt(t.ID, 10), Kind: "team", Name: t.Name, Path: t.WorkingDir,
+			out = append(out, worktreeEntry{teamID: t.ID, ID: "team-" + strconv.FormatInt(t.ID, 10), Kind: "team", Name: t.Name, Path: t.WorkingDir,
 				RepoPath: cfg.WorkingDir, Branch: coralnames.TeamBranch(filepath.Base(t.WorkingDir)), InUse: liveErr != nil || liveSessionIn(live, t) || teamLaunching(t, time.Now()) || teamResurrecting(t.ID)}) // a live list that cannot be read fails closed: in use
 		}
 	}
@@ -108,6 +109,18 @@ func (h *WorktreesHandler) entries(ctx context.Context, probe bool) []worktreeEn
 	}
 	return kept
 }
+
+// teamLocks serialize a team's worktree Remove and its resurrect (#6977): Remove reads that the worktree is not in use and then runs git with nothing held, so a resurrect that began in that gap could lose the worktree it
+// reuses. A resurrect holds the team's lock for its whole run; Remove takes it only if it is free (a resurrect under way means the worktree is in use) and keeps it from its check to the end of its git.
+var teamLocks sync.Map // team id -> *sync.Mutex
+
+func teamLock(id int64) *sync.Mutex {
+	m, _ := teamLocks.LoadOrStore(id, &sync.Mutex{})
+	return m.(*sync.Mutex)
+}
+
+// afterRemoveCheckHook runs in Remove between its in-use check and its git, with the team's lock held (a var for the tests).
+var afterRemoveCheckHook func()
 
 var (
 	resurrectMu       sync.Mutex
@@ -259,9 +272,25 @@ func (h *WorktreesHandler) Remove(w http.ResponseWriter, r *http.Request) {
 		if e.ID != body.ID {
 			continue
 		}
+		if e.teamID != 0 {
+			mu := teamLock(e.teamID)
+			if !mu.TryLock() { // a resurrect of this team is under way: the worktree is in use
+				writeJSON(w, http.StatusOK, gitutil.WorktreeOutcome{State: "kept", Path: e.Path, Branch: e.Branch, Reason: "it is in use"})
+				return
+			}
+			defer mu.Unlock()
+			for _, fresh := range h.entries(r.Context(), false) { // read again under the lock: a resurrect may have finished since the list above
+				if fresh.ID == e.ID {
+					e = fresh
+				}
+			}
+		}
 		if e.InUse {
 			writeJSON(w, http.StatusOK, gitutil.WorktreeOutcome{State: "kept", Path: e.Path, Branch: e.Branch, Reason: "it is in use"})
 			return
+		}
+		if afterRemoveCheckHook != nil {
+			afterRemoveCheckHook()
 		}
 		ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 30*time.Second)
 		defer cancel()
