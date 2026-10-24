@@ -239,3 +239,59 @@ func TestALiveAgentIsNotReadAsGoneWhenTheJobsAgentTypeWasEdited(t *testing.T) {
 	cancel() // the adopted run's watcher ends with the context
 	e.s.waitWatchers()
 }
+
+// #6906: a one-shot run started with auto-accept keeps it across a restart: the setting is stored on the run, and the adopted run is registered again (and taken out when it ends), so it does not wait on a
+// permission prompt until its deadline. A run that did not ask for it is not registered.
+func TestAnAdoptedOneShotKeepsItsAutoAccept(t *testing.T) {
+	ctx := context.Background()
+	e, rt := restartEnv(t, "left-auto")
+	adoptedRunPoll = 20 * time.Millisecond
+	defer func() { adoptedRunPoll = 30 * time.Second }()
+	asked := e.leftRun(t, time.Minute, "sid-auto-yes")
+	plain := e.leftRun(t, time.Minute, "sid-auto-no")
+	require.NoError(t, e.ss.UpdateScheduledRun(ctx, asked, map[string]interface{}{"auto_accept": 1, "max_auto_accepts": 7}))
+	rt.set("claude-sid-auto-yes", true)
+	rt.set("claude-sid-auto-no", true)
+	defer func() {
+		autoAcceptMu.Lock()
+		delete(AutoAcceptSessions, "sid-auto-yes")
+		delete(AutoAcceptLimits, "sid-auto-yes")
+		autoAcceptMu.Unlock()
+	}()
+
+	e.s.reapStaleRuns(ctx)
+	autoAcceptMu.Lock()
+	name, on := AutoAcceptSessions["sid-auto-yes"]
+	limit := AutoAcceptLimits["sid-auto-yes"]
+	_, plainOn := AutoAcceptSessions["sid-auto-no"]
+	autoAcceptMu.Unlock()
+	assert.True(t, on, "registered again")
+	assert.Equal(t, "claude-sid-auto-yes", name)
+	assert.Equal(t, 7, limit, "with the limit it was started with")
+	assert.False(t, plainOn, "a run that did not ask is not registered")
+
+	rt.set("claude-sid-auto-yes", false)
+	rt.set("claude-sid-auto-no", false)
+	require.Eventually(t, func() bool { return e.runOf(t, asked).Status == "completed" && e.runOf(t, plain).Status == "completed" }, 3*time.Second, 20*time.Millisecond)
+	e.s.waitWatchers()
+	autoAcceptMu.Lock()
+	_, still := AutoAcceptSessions["sid-auto-yes"]
+	autoAcceptMu.Unlock()
+	assert.False(t, still, "taken out when the run ends")
+}
+
+// FireOneshot stores auto_accept and its limit on the run.
+func TestAOneShotRunStoresItsAutoAccept(t *testing.T) {
+	e, _ := restartEnv(t, "fire-auto")
+	e.s.SetLaunchFn(func(ctx context.Context, job store.ScheduledJob, runID int64) error { return nil })
+	id, err := e.s.FireOneshot(context.Background(), map[string]any{"repo_path": t.TempDir(), "prompt": "p", "auto_accept": true, "max_auto_accepts": float64(9)})
+	require.NoError(t, err)
+	e.s.waitWatchers()
+	r := e.runOf(t, id)
+	assert.Equal(t, 1, r.AutoAccept)
+	assert.Equal(t, 9, r.MaxAutoAccepts)
+	id2, err := e.s.FireOneshot(context.Background(), map[string]any{"repo_path": t.TempDir(), "prompt": "p"})
+	require.NoError(t, err)
+	e.s.waitWatchers()
+	assert.Equal(t, 0, e.runOf(t, id2).AutoAccept, "not asked for: not stored")
+}

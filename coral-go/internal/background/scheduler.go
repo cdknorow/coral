@@ -337,6 +337,16 @@ func (s *JobScheduler) runAgentType(ctx context.Context, run store.ScheduledRun,
 // leaves the run as it is for the next start to settle again.
 func (s *JobScheduler) adoptRun(ctx context.Context, run store.ScheduledRun, job store.ScheduledJob, deadline time.Time) {
 	s.logger.Info("adopting a run whose agent outlived the previous Coral", "run_id", run.ID, "until", deadline.Format(time.RFC3339))
+	if run.AutoAccept == 1 && run.SessionID != nil { // a one-shot started with auto-accept: registered again, or it would wait on a permission prompt until its deadline (#6906)
+		limit := run.MaxAutoAccepts
+		if limit <= 0 {
+			limit = defaultMaxAutoAccepts
+		}
+		autoAcceptMu.Lock()
+		AutoAcceptSessions[*run.SessionID] = s.runAgentType(ctx, run, job.AgentType) + "-" + *run.SessionID
+		AutoAcceptLimits[*run.SessionID] = limit
+		autoAcceptMu.Unlock()
+	}
 	s.watching.Add(1)
 	go func() {
 		defer safego.Recover("background/scheduler:adoptRun")
@@ -351,11 +361,13 @@ func (s *JobScheduler) adoptRun(ctx context.Context, run store.ScheduledRun, job
 				if !s.agentAlive(ctx, run, job.AgentType) {
 					s.finishRun(ctx, run.ID, job, "completed", "agent_done", false)
 					s.cleanupSettledWorktree(ctx, run, job)
+					s.unregisterAutoAccept(ctx, run.ID)
 					return
 				}
 				if time.Now().After(deadline) {
 					s.finishRun(ctx, run.ID, job, "killed", "timeout", false) // finishRun ends its agent
 					s.cleanupSettledWorktree(ctx, run, job)
+					s.unregisterAutoAccept(ctx, run.ID)
 					return
 				}
 			}
@@ -656,6 +668,9 @@ func (s *JobScheduler) FireOneshot(ctx context.Context, config map[string]interf
 		tag:             "task",
 	}
 
+	if autoAccept { // kept on the run: a run adopted after a restart is registered for auto-accept again (#6906)
+		s.store.UpdateScheduledRun(ctx, runID, map[string]interface{}{"auto_accept": 1, "max_auto_accepts": maxAutoAccepts})
+	}
 	s.watch(runID, job, rc)
 	return runID, nil
 }

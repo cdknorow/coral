@@ -245,6 +245,9 @@ var columnMigrations = []struct {
 	{"workflow_runs", "agent_type", "TEXT"},
 	{"scheduled_runs", "error_code", "TEXT"},
 	{"scheduled_runs", "agent_type", "TEXT"},
+	// A one-shot run's auto-accept and its limit (#6906): kept on the run so a run adopted after a restart is registered for auto-accept again. 0 on every other run.
+	{"scheduled_runs", "auto_accept", "INTEGER NOT NULL DEFAULT 0"},
+	{"scheduled_runs", "max_auto_accepts", "INTEGER NOT NULL DEFAULT 0"},
 	// Existing views have unknown provenance, so they migrate as "api": the dashboard asks once before running them.
 	{"custom_views", "created_via", "TEXT NOT NULL DEFAULT 'api'"},
 	// Where a bookmark belongs (#4792): its team (the board), and for a board message who wrote it (NULL: not looked up yet).
