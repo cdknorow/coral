@@ -258,7 +258,7 @@
 .mb-message-header {
     min-width: 0;
     display: flex;
-    align-items: baseline;
+    align-items: center; /* not baseline: the 16 px Save icon button sat 3 px off the sender's line on the gate's fonts (-5.5 px at 200% text), the icon census's red (#6995); touch already centred */
     gap: 8px;
     margin-bottom: 4px;
     flex-wrap: wrap;
