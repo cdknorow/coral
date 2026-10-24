@@ -126,3 +126,21 @@ func TestCheckNameRefusesWindowsDeviceNames(t *testing.T) {
 		assert.NoError(t, CheckName(n), "%q", n)
 	}
 }
+
+// #7069: on Windows CheckName also refuses the characters its file systems do not allow in a name; elsewhere they are ordinary.
+func TestCheckNameRefusesTheCharactersWindowsDoesNotAllowOnlyOnWindows(t *testing.T) {
+	old := windowsNameCharsRefused
+	t.Cleanup(func() { windowsNameCharsRefused = old })
+	bad := []string{"what?", "a<b", "a>b", `a"b`, "a|b", "a*b", "?", "wip?1"}
+	windowsNameCharsRefused = true
+	for _, n := range bad {
+		assert.ErrorIs(t, CheckName(n), ErrReservedName, "%q", n)
+	}
+	for _, n := range []string{"my team", "wip~1", "a-b_c.d", "RUNNER~1"} {
+		assert.NoError(t, CheckName(n), "%q", n)
+	}
+	windowsNameCharsRefused = false
+	for _, n := range bad {
+		assert.NoError(t, CheckName(n), "%q: an ordinary name off Windows", n)
+	}
+}
