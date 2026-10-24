@@ -85,6 +85,9 @@ func TestTheOwnerDecisionHasOneImplementation(t *testing.T) {
 		scanned++
 		assert.NotContains(t, src, "identifyOwner(", "%s: the stamp checks live in hub_owner.go only", name)
 		assert.NotContains(t, src, "tunnel.HubRoleHeader", "%s: the owner marker is read in hub_owner.go only", name)
+		for _, h := range []string{"tunnel.HubOrgHeader", "tunnel.HubTeamRoleHeader", "tunnel.HubUserIDHeader"} {
+			assert.NotContains(t, src, h, "%s: a team's stamp is read in hub_owner.go only (#7061)", name)
+		}
 		assert.NotContains(t, src, "refuseArtifactsToNonOwner", "%s: one refusal helper, refuseNonOwner", name)
 	}
 	assert.Greater(t, scanned, 100, "the scan must not go blind")
@@ -142,4 +145,15 @@ func TestOwnerRouteCensus(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, string(want), got, "the owner routes changed: review them, then OWNER_GOLDEN_UPDATE=1 go test -tags 'dev fts5' ./internal/server -run OwnerRouteCensus")
 	assert.Len(t, lines, len(tunnel.OwnerRoutes()), "every owner route of the table is a route of the server")
+}
+
+// #7061: both owner checks read what the machine is enrolled as. A wiring that forgot it would treat a team's machine as a person's, so the two places that build the check name the record, and
+// the owner check never reads the personal label of a team.
+func TestBothOwnerChecksAreWiredToTheEnrolmentRecord(t *testing.T) {
+	router, err := os.ReadFile("router.go")
+	require.NoError(t, err)
+	assert.Contains(t, string(router), "routes.SetHubOwnerRecord(ownerCloud.OwnerRecord)")
+	wire, err := os.ReadFile(filepath.Join("routes", "system_update_relaunch_wire.go"))
+	require.NoError(t, err)
+	assert.Contains(t, string(wire), "OwnerRecord: cs.OwnerRecord")
 }

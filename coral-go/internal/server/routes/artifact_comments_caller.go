@@ -27,6 +27,19 @@ import (
 // hubIssuer is the issuer stamped on a Coral Hub viewer's identity until the hub names its origin and a stable account (#5176): the subject then is today's hub-user id.
 const hubIssuer = "coral-hub"
 
+// commentTeamIssuerPrefix starts the issuer of a comment written on a team's machine (#7061): the prefix and the organisation's id, so the same hub user id in another organisation is another author.
+// The issuer is stored, compared and rate-limited as it is; what a viewer is shown is commentTeamIssuerShown, never the organisation's id.
+const (
+	commentTeamIssuerPrefix = "coral-hub-team:"
+	commentTeamIssuerShown  = "coral-hub-team"
+)
+
+func commentTeamIssuer(org string) string { return commentTeamIssuerPrefix + org }
+
+func isCommentTeamIssuer(issuer string) bool {
+	return strings.HasPrefix(issuer, commentTeamIssuerPrefix)
+}
+
 // commentOwnerIdentity names the owner for new comments: the account this Coral is signed in to Coral Hub with, when it has one (set by the server once the roll-up is on; nil until then), or
 // this computer's user. It is the one place the owner's (issuer, subject) comes from.
 type commentOwnerIdentity func(r *http.Request) (issuer, subject, name string)
@@ -85,11 +98,17 @@ func (h *SessionsHandler) artifactCommentCaller(r *http.Request) (c commentCalle
 		if !cloud.TunneledAuthentic(r) {
 			return commentCaller{}, http.StatusForbidden, "forged_tunnel_stamp"
 		}
-		if ownerCommentWrite(r) && hubOwnerRequest(r).owner {
-			// The Hub's owner, by every check of hubOwnerRequest (the stamp, the owner marker, the enrolled label), on an owner write route: the owner's own identity, the server's (ownerIdentity), never the
-			// stamped hub user: that is used for the check only (#7052).
-			issuer, subject, name := h.ownerIdentity(r)
-			return commentCaller{Kind: commentCallerOwner, Issuer: issuer, Subject: subject, Name: cleanCommentName(name)}, 0, ""
+		if ownerCommentWrite(r) {
+			if id := hubOwnerRequest(r); id.owner && id.team {
+				// A team's machine (#7061): the owner is several people, so the author is the stamped person, not the machine's one owner identity: the organisation (the record's, which the stamp matched) and
+				// the person's stable id in it are the identity, and the label they are shown by is the display name. The same person in two organisations is two identities.
+				return commentCaller{Kind: commentCallerOwner, Issuer: commentTeamIssuer(id.org), Subject: id.hubUserID, Name: cleanCommentName(id.pseudo)}, 0, ""
+			} else if id.owner {
+				// The Hub's owner, by every check of hubOwnerRequest (the stamp, the owner marker, the enrolled label), on an owner write route: the owner's own identity, the server's (ownerIdentity), never the
+				// stamped hub user: that is used for the check only (#7052).
+				issuer, subject, name := h.ownerIdentity(r)
+				return commentCaller{Kind: commentCallerOwner, Issuer: issuer, Subject: subject, Name: cleanCommentName(name)}, 0, ""
+			}
 		}
 		c = commentCaller{Kind: commentCallerHub, Issuer: hubIssuer}
 		if u := r.Header.Get(tunnel.HubUserHeader); tunnel.ValidHubUser(u) {

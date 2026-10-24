@@ -120,6 +120,9 @@ type HubSignin struct {
 	// operatorAllowed is the #3404 switch: false when "Don't let Coral Hub act as the
 	// Operator" is on.
 	operatorAllowed func() bool
+	// teamMachine is true when this computer belongs to a Coral Hub organisation (#7061), or when that cannot be told: Hub sign-in is refused there, not only off. A person's account that enrolled the
+	// machine must not become a standing way into the organisation's computer, and the organisation's owners reach it through Coral Hub's own routes.
+	teamMachine func() bool
 	// loopbackOrigins are this server's own loopback origins, always on the list.
 	loopbackOrigins func() []string
 	// originsChanged tells the connector to send the list again.
@@ -146,6 +149,7 @@ type HubSigninConfig struct {
 	Hub             HubBackend
 	Settings        HubSettings
 	OperatorAllowed func() bool
+	TeamMachine     func() bool
 	LoopbackOrigins func() []string
 	OriginsChanged  func()
 	OnAction        func(ctx context.Context, who, method, path string, status int)
@@ -154,7 +158,7 @@ type HubSigninConfig struct {
 // NewHubSignin makes the routes' Hub sign-in.
 func (ar *Routes) NewHubSignin(c HubSigninConfig) *HubSignin {
 	h := &HubSignin{
-		ks: ar.ks, ar: ar, hub: c.Hub, settings: c.Settings, operatorAllowed: c.OperatorAllowed,
+		ks: ar.ks, ar: ar, hub: c.Hub, settings: c.Settings, operatorAllowed: c.OperatorAllowed, teamMachine: c.TeamMachine,
 		loopbackOrigins: c.LoopbackOrigins, originsChanged: c.OriginsChanged, onAction: c.OnAction, now: time.Now,
 		starts: map[string][]time.Time{}, lastCheck: map[string]time.Time{},
 		readLogged: map[string]time.Time{},
@@ -162,6 +166,9 @@ func (ar *Routes) NewHubSignin(c HubSigninConfig) *HubSignin {
 	ar.hub = h
 	return h
 }
+
+// team reports whether sign-in is refused because the computer is a Coral Hub organisation's (#7061).
+func (h *HubSignin) team() bool { return h != nil && h.teamMachine != nil && h.teamMachine() }
 
 func (h *HubSignin) record(ctx context.Context, who, what string) {
 	if h.onAction != nil {
@@ -172,7 +179,7 @@ func (h *HubSignin) record(ctx context.Context, who, what string) {
 // allowed is every local condition for Hub sign-in: the setting on, Coral Hub allowed to act
 // as the Operator, and linked. When it turns false, live Hub sessions end (the check loop).
 func (h *HubSignin) allowed() bool {
-	return h != nil && h.settings.SigninEnabled() && (h.operatorAllowed == nil || h.operatorAllowed()) && h.hub.Linked()
+	return h != nil && !h.team() && h.settings.SigninEnabled() && (h.operatorAllowed == nil || h.operatorAllowed()) && h.hub.Linked()
 }
 
 // allowedCached is allowed, read at most once a second: it is asked on every Hub-session
@@ -259,7 +266,7 @@ func (h *HubSignin) requestOrigin(r *http.Request) string {
 // PageState is the sign-in page's Hub state for r: "" (no Hub UI), "ready", "unpaired" or
 // "disabled_in_hub".
 func (h *HubSignin) PageState(r *http.Request) string {
-	if h == nil || (h.operatorAllowed != nil && !h.operatorAllowed()) {
+	if h == nil || h.team() || (h.operatorAllowed != nil && !h.operatorAllowed()) {
 		return ""
 	}
 	if !h.hub.Linked() {
@@ -885,7 +892,7 @@ func (h *HubSignin) LinkStatus(w http.ResponseWriter, r *http.Request) {
 	state, msg := h.hub.LinkState()
 	if state == "linked" {
 		h.mu.Lock()
-		apply := link.enable && !link.applied
+		apply := link.enable && !link.applied && !h.team()
 		link.applied = true
 		h.mu.Unlock()
 		if apply {
@@ -933,10 +940,11 @@ func (h *HubSignin) Settings(w http.ResponseWriter, r *http.Request) {
 	if !h.hubSettingsCaller(w, r, false) {
 		return
 	}
-	enabled, linked := h.settings.SigninEnabled(), h.hub.Linked()
+	team := h.team()
+	enabled, linked := h.settings.SigninEnabled() && !team, h.hub.Linked()
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
-		"enabled": enabled, "linked": linked,
-		"offer":            linked && !enabled && !h.settings.OfferDismissed(),
+		"enabled": enabled, "linked": linked, "team_machine": team,
+		"offer":            linked && !enabled && !team && !h.settings.OfferDismissed(),
 		"operator_allowed": h.operatorAllowed == nil || h.operatorAllowed(),
 	})
 }
@@ -954,6 +962,10 @@ func (h *HubSignin) SetSettings(w http.ResponseWriter, r *http.Request) {
 		if body.Enabled == nil {
 			authError(w, http.StatusBadRequest, "bad_request", `Send {"enabled": true} or {"enabled": false}`)
 		}
+		return
+	}
+	if *body.Enabled && h.team() {
+		authError(w, http.StatusConflict, "hub_signin_team_machine", "This computer belongs to a Coral Hub organisation: signing in to it with Coral Hub is not offered")
 		return
 	}
 	if err := h.settings.SetSigninEnabled(*body.Enabled); err != nil {

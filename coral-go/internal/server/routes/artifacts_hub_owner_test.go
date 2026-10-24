@@ -352,3 +352,30 @@ func setHubOwner(t *testing.T, req *http.Request) {
 		req.Header.Set(k, v)
 	}
 }
+
+// #7061: an organisation's admin deleting an artifact through the Hub is recorded in the Operator actions with the label AND the stable id, so a rename or a removed member never re-attributes it;
+// a member is refused and nothing is recorded; a personal machine's row has no id.
+func TestATeamAdminsDeleteIsRecordedWithTheirStableID(t *testing.T) {
+	rig := uploadRig(t)
+	_, out := postImage(t, "p.png", cleanPNG(t), "s1")
+	pasted := artifactOf(out)["id"].(string)
+	withLabel(t, "", nil)
+	withRecord(t, "team", teamOrgA, nil)
+	asTeam := func(role string) map[string]string {
+		h := cmtAsTeam(teamOrgA, role, teamUIDA, teamUser)
+		h[testDashboardHeader] = "1"
+		return h
+	}
+	assert.Equal(t, http.StatusForbidden, rig.hubDelete(pasted, asTeam("member")))
+	got, err := rig.h.bs.RecentHubOperatorActions(context.Background(), 10)
+	require.NoError(t, err)
+	assert.Empty(t, got, "a refusal is not an Operator action")
+
+	assert.Equal(t, http.StatusOK, rig.hubDelete(pasted, asTeam("admin")))
+	got, err = rig.h.bs.RecentHubOperatorActions(context.Background(), 10)
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, teamUser, got[0].HubUser)
+	assert.Equal(t, teamUIDA, got[0].HubUserID)
+	assert.NotContains(t, got[0].Path, teamOrgA, "the organisation's id is not in the record")
+}

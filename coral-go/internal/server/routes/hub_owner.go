@@ -20,6 +20,11 @@ import (
 type callerIdentity struct {
 	owner  bool
 	pseudo string // the stamped hub user when it has the stamp's form; "" otherwise
+	// team is true when the machine is a Coral Hub organisation's (#7061) and the stamp passed the organisation checks: org is then the organisation it matched (the machine's own record, never a
+	// request's value) and hubUserID the person's stable id, scoped by that organisation. Both are empty on a personal machine. pseudo is then the label the person is shown by.
+	team      bool
+	org       string
+	hubUserID string
 	// local is the owner at this computer's own dashboard or command line (a request that did not come through the Hub's tunnel): no Hub gate applies to it, its pseudonym is "local".
 	local bool
 }
@@ -34,17 +39,40 @@ var (
 // SetHubOwnerLabel sets where the routes read the owner's enrolled label.
 func SetHubOwnerLabel(f func(ctx context.Context) (string, error)) { hubOwnerLabel = f }
 
+// hubOwnerRecord is what the machine is enrolled as (#7061): the kind and, for a team's machine, the organisation, read from the enrolment record at every request. Unset, a machine is personal
+// (as with the label, a wiring that was never made adds no team); a record that cannot be read or understood is no owner.
+var hubOwnerRecord func(ctx context.Context) (kind, org string, err error)
+
+// SetHubOwnerRecord sets where the routes read what the machine is enrolled as.
+func SetHubOwnerRecord(f func(ctx context.Context) (kind, org string, err error)) { hubOwnerRecord = f }
+
+// ownerRecordWith reads the record from record: personal when there is no source.
+func ownerRecordWith(ctx context.Context, record func(context.Context) (string, string, error)) (kind, org string, err error) {
+	if record == nil {
+		return tunnel.OwnerKindPersonal, "", nil
+	}
+	return record(ctx)
+}
+
+// machineIsTeam reports whether the enrolment record says this machine is a team's. A record that cannot be read is not "personal": it is reported as a team's here, so that the callers that offer
+// something only a personal machine has (adopting an owner label) offer nothing.
+func machineIsTeam(ctx context.Context, record func(context.Context) (string, string, error)) bool {
+	kind, _, err := ownerRecordWith(ctx, record)
+	return err != nil || kind == tunnel.OwnerKindTeam
+}
+
 // hubOwnerRequest is THE owner check (#5610): who the stamp says is asking, with the server's enrolment record. Whether the enrolled owner label is REQUIRED is the route table's
 // (tunnel.OwnerMode.LabelRequired): the owner routes need it (a machine whose enrolment recorded no owner label, linked before it was recorded, refuses them until it is linked again: the
 // hub's marker alone is not enough to read or change the configuration or the artifacts), the update routes accept the marker alone (#5280). A route that is not in the table needs it.
 func hubOwnerRequest(r *http.Request) callerIdentity {
-	return ownerIdentityWith(r, hubOwnerLabel, &hubOwnerNoLabelLog)
+	return ownerIdentityWith(r, hubOwnerLabel, hubOwnerRecord, &hubOwnerNoLabelLog)
 }
 
 // ownerIdentityWith is hubOwnerRequest with another source of the enrolled label (the update handler has its own, set at wiring). It is the only caller of identifyOwner.
-func ownerIdentityWith(r *http.Request, label func(context.Context) (string, error), noLabelLogged *sync.Once) callerIdentity {
-	id := identifyOwner(r, label, noLabelLogged)
-	if id.owner && routeNeedsOwnerLabel(r) && !ownerLabelRecordedWith(r, label) {
+func ownerIdentityWith(r *http.Request, label func(context.Context) (string, error), record func(context.Context) (string, string, error), noLabelLogged *sync.Once) callerIdentity {
+	id := identifyOwner(r, label, record, noLabelLogged)
+	// A team's machine has no owner label to require: its record is the organisation, which the check has just matched.
+	if id.owner && !id.team && routeNeedsOwnerLabel(r) && !ownerLabelRecordedWith(r, label) {
 		id.owner = false
 	}
 	return id
@@ -140,14 +168,14 @@ func refuseNonOwner(w http.ResponseWriter, r *http.Request) bool {
 // stamp, the owner marker and a hub user of the exact form. If the adoption is armed it is used up here, and when the connected hub is the enrolled one the request's hub user becomes the owner
 // label; true means the label was recorded and the request goes on as the owner's. Only GET and HEAD adopt, and never while several hub accounts were stamped as the owner in the last hour.
 func adoptOwnerFromRequest(r *http.Request) bool {
-	if hubOwnerAdopt == nil {
-		return false
+	if hubOwnerAdopt == nil || machineIsTeam(r.Context(), hubOwnerRecord) {
+		return false // a team's machine has no person to adopt (#7061)
 	}
 	// Only a read can carry the adoption (a write is refused without using the arm up): a label recorded from a request that changes something would let that request act before anyone confirmed the account.
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		return false
 	}
-	id := identifyOwner(r, hubOwnerLabel, &hubOwnerNoLabelLog)
+	id := identifyOwner(r, hubOwnerLabel, hubOwnerRecord, &hubOwnerNoLabelLog)
 	if !id.owner || !tunnel.ValidHubUser(id.pseudo) {
 		return false
 	}
@@ -169,10 +197,10 @@ const textOwnerLabelMissing = "Coral Hub can't confirm you own this computer yet
 // ownerLabelMissingFor reports whether r is a stamped owner request refused only because no owner label is recorded: the stamp passes every owner check (identifyOwner), the label was read
 // without an error and is empty. An unreadable record is not "missing": that stays a plain refusal.
 func ownerLabelMissingFor(r *http.Request) bool {
-	if hubOwnerLabel == nil {
+	if hubOwnerLabel == nil || machineIsTeam(r.Context(), hubOwnerRecord) {
 		return false
 	}
-	if !identifyOwner(r, hubOwnerLabel, &hubOwnerNoLabelLog).owner {
+	if !identifyOwner(r, hubOwnerLabel, hubOwnerRecord, &hubOwnerNoLabelLog).owner {
 		return false
 	}
 	l, err := hubOwnerLabel(r.Context())
@@ -242,13 +270,27 @@ func ownerSeveralClearsIn(now time.Time) time.Duration {
 // identifyOwner runs the stamp and owner checks. It never trusts a header unless the request really came through the connector: the stamp must
 // be the connector's own, the owner marker must be there once and be "owner", the hub user must have the stamp's form, and when the enrolment
 // recorded the owner's label the user must equal it. An unreadable record is no owner.
-func identifyOwner(r *http.Request, ownerUser func(context.Context) (string, error), noLabelLogged *sync.Once) callerIdentity {
+//
+// The machine's own record decides which rules apply, before any marker is read (#7061): a team's machine runs identifyTeamOwner and nothing else (the personal owner marker is not an owner there,
+// whatever else the request carries), a personal one runs what follows, and a record that cannot be read or understood is no owner.
+func identifyOwner(r *http.Request, ownerUser func(context.Context) (string, error), record func(context.Context) (string, string, error), noLabelLogged *sync.Once) callerIdentity {
 	var id callerIdentity
 	if !cloud.TunneledAuthentic(r) {
 		return id
 	}
 	if u := r.Header.Get(tunnel.HubUserHeader); tunnel.ValidHubUser(u) && len(r.Header.Values(tunnel.HubUserHeader)) == 1 {
 		id.pseudo = u
+	}
+	kind, org, rerr := ownerRecordWith(r.Context(), record)
+	if rerr != nil {
+		return id // fail closed: a record that cannot be read or understood is no owner
+	}
+	switch kind {
+	case tunnel.OwnerKindTeam:
+		return identifyTeamOwner(r, id, org)
+	case tunnel.OwnerKindPersonal:
+	default:
+		return id // a kind this code does not know is no owner, never personal
 	}
 	roles := r.Header.Values(tunnel.HubRoleHeader)
 	if len(roles) != 1 || roles[0] != tunnel.HubRoleOwner {
@@ -275,5 +317,27 @@ func identifyOwner(r *http.Request, ownerUser func(context.Context) (string, err
 		return id
 	}
 	id.owner = subtle.ConstantTimeCompare([]byte(label), []byte(id.pseudo)) == 1
+	return id
+}
+
+// identifyTeamOwner is identifyOwner for a team's machine (#7061): the request is the owner's when the connector's stamp carries the organisation this machine was enrolled to (compared as exact
+// bytes, in constant time, with the record and never with anything the request chose), the person's role in it, owner or admin (a member, and any other word, is refused), their stable hub user id
+// and the label they are shown by, each exactly once and exactly in its form. A stamp missing any part, or with a repeated header, is no owner. The personal owner marker is not read: the hub does not
+// send it for a team's machine, and one that arrived would not make anyone its owner.
+func identifyTeamOwner(r *http.Request, id callerIdentity, recorded string) callerIdentity {
+	orgs, roles, uids := r.Header.Values(tunnel.HubOrgHeader), r.Header.Values(tunnel.HubTeamRoleHeader), r.Header.Values(tunnel.HubUserIDHeader)
+	if len(orgs) != 1 || len(roles) != 1 || len(uids) != 1 || id.pseudo == "" {
+		return id
+	}
+	if !tunnel.ValidHubOrg(recorded) || !tunnel.ValidHubOrg(orgs[0]) || subtle.ConstantTimeCompare([]byte(orgs[0]), []byte(recorded)) != 1 {
+		return id
+	}
+	if roles[0] != tunnel.HubTeamRoleOwner && roles[0] != tunnel.HubTeamRoleAdmin {
+		return id
+	}
+	if !tunnel.ValidHubUserID(uids[0]) {
+		return id
+	}
+	id.owner, id.team, id.org, id.hubUserID = true, true, recorded, uids[0]
 	return id
 }

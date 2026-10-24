@@ -55,7 +55,7 @@ type SwitchChange struct {
 // SetSwitchByHub sets one switch of a board for Coral Hub's owner and records it, in ONE transaction with the Operator-actions row (hub user, method, path, board, status): when either
 // record cannot be written, the switch is unchanged and the error says so (#5572, Security's condition 4). A request for the value the switch already has is recorded too (changed is
 // false). The caller has checked who is asking.
-func (s *Store) SetSwitchByHub(ctx context.Context, project, key string, on bool, hubUser, method, path string) (c SwitchChange, changed bool, err error) {
+func (s *Store) SetSwitchByHub(ctx context.Context, project, key string, on bool, hubUser, hubUserID, method, path string) (c SwitchChange, changed bool, err error) {
 	if key != SwitchMessaging && key != SwitchFiles {
 		return c, false, fmt.Errorf("not a switch: %q", key)
 	}
@@ -76,8 +76,8 @@ func (s *Store) SetSwitchByHub(ctx context.Context, project, key string, on bool
 		return c, false, err
 	}
 	if _, err := tx.ExecContext(ctx,
-		`INSERT INTO hub_operator_actions (at, hub_user, method, path, project, status) VALUES (?, ?, ?, ?, ?, ?)`,
-		at, hubUser, method, path, project, 200); err != nil {
+		`INSERT INTO hub_operator_actions (at, hub_user, hub_user_id, method, path, project, status) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		at, hubUser, hubUserID, method, path, project, 200); err != nil {
 		return c, false, err
 	}
 	c = SwitchChange{Project: project, Key: key, Old: old, New: on, Via: SwitchViaHub, Who: hubUser, At: at}

@@ -20,13 +20,14 @@ import (
 func NewUpdateRelaunchHandler(ss *store.SessionStore, dataDir string, backend func() string, updater RelaunchUpdater) *UpdateRelaunchHandler {
 	cs := store.NewCloudStore(ss.DB(), store.NewRemoteServerStore(ss.DB(), dataDir))
 	return &UpdateRelaunchHandler{
-		Enabled:    func() bool { return updateRelaunchFeature },
-		Updater:    updater,
-		Settings:   ss.GetSettings,
-		SetSetting: ss.SetSetting,
-		OwnerUser:  cs.OwnerUser,
-		Feeds:      releaseFeeds,
-		Dir:        filepath.Join(dataDir, updatesDirName),
+		Enabled:     func() bool { return updateRelaunchFeature },
+		Updater:     updater,
+		Settings:    ss.GetSettings,
+		SetSetting:  ss.SetSetting,
+		OwnerUser:   cs.OwnerUser,
+		OwnerRecord: cs.OwnerRecord,
+		Feeds:       releaseFeeds,
+		Dir:         filepath.Join(dataDir, updatesDirName),
 		// Coral must be startable again before a relaunch is offered: this computer's own record of how it was started, or a service manager (#5419).
 		CanRestart: func() bool {
 			exe, err := os.Executable()

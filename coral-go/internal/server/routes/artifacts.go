@@ -814,7 +814,7 @@ func (h *SessionsHandler) deleteAgentArtifact(w http.ResponseWriter, r *http.Req
 		if rec.status == 0 {
 			rec.status = http.StatusOK
 		}
-		recordHubOperatorAction(r.Context(), h.bs, owner.pseudo, r.Method, r.URL.Path, "", rec.status)
+		recordHubOwnerAction(r.Context(), h.bs, owner, r.Method, r.URL.Path, "", rec.status)
 		return
 	}
 	if !humanInputCaller(r) {

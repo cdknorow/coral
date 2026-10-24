@@ -15,6 +15,7 @@ import (
 
 	"github.com/subgentic/coral/internal/cloud"
 	"github.com/subgentic/coral/internal/httputil"
+	"github.com/subgentic/coral/pkg/tunnel"
 )
 
 const (
@@ -26,6 +27,7 @@ const (
 // ownerLabelStore is the part of the enrolment record this uses.
 type ownerLabelStore interface {
 	OwnerUser(ctx context.Context) (string, error)
+	OwnerRecord(ctx context.Context) (kind, org string, err error)
 	ServerID(ctx context.Context) (string, error)
 	AdoptOwnerUser(ctx context.Context, serverID, user, at string) (bool, error)
 	OwnerAdoptedAt(ctx context.Context) (string, error)
@@ -130,6 +132,14 @@ func (h *CloudHandler) ownerLabelState(ctx context.Context) (missing, known bool
 	if h.ownerLabels == nil {
 		return false, false
 	}
+	// A team's machine has no owner label and never will: nothing is missing, and nothing is offered to confirm (#7061). A record that cannot be read is not known.
+	kind, _, err := h.ownerLabels.OwnerRecord(ctx)
+	if err != nil {
+		return false, false
+	}
+	if kind == tunnel.OwnerKindTeam {
+		return false, true
+	}
 	l, err := h.ownerLabels.OwnerUser(ctx)
 	if err != nil {
 		return false, false
@@ -213,6 +223,9 @@ func (h *CloudHandler) ArmOwnerLabel(w http.ResponseWriter, r *http.Request) {
 	case !known:
 		errInternalServer(w, "the owner record could not be read")
 		return
+	case h.ownerIsTeam(r.Context()):
+		writeJSON(w, http.StatusConflict, map[string]string{"code": "team_machine", "error": "this computer belongs to a Coral Hub organisation: its owners are the organisation's, and there is no person to confirm"})
+		return
 	case !missing:
 		writeJSON(w, http.StatusConflict, map[string]string{"code": "owner_label_set", "error": "this computer already has an owner recorded, or is not linked to Coral Hub"})
 		return
@@ -233,4 +246,14 @@ func (h *CloudHandler) ArmOwnerLabel(w http.ResponseWriter, r *http.Request) {
 	}
 	user, _, _ := ownerCandidate(ownerNow())
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "armed_until": until.UTC().Format(time.RFC3339), "seconds": int(ownerArmWindow / time.Second), "hub": h.hubHost(), "candidate": user})
+}
+
+// ownerIsTeam reports whether the enrolment record says this computer belongs to a Coral Hub organisation (#7061). A record that cannot be read, or no store, is not one here (the callers that
+// ask have already refused an unreadable record).
+func (h *CloudHandler) ownerIsTeam(ctx context.Context) bool {
+	if h.ownerLabels == nil {
+		return false
+	}
+	kind, _, err := h.ownerLabels.OwnerRecord(ctx)
+	return err == nil && kind == tunnel.OwnerKindTeam
 }
