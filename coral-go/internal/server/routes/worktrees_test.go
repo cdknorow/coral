@@ -21,6 +21,7 @@ import (
 
 	"github.com/subgentic/coral/internal/config"
 	"github.com/subgentic/coral/internal/store"
+	"github.com/subgentic/coral/internal/store/storetest"
 )
 
 func listWorktrees(t *testing.T, url string) []map[string]any {
@@ -316,4 +317,29 @@ func TestTeamLaunchingIsBoundedByTheLaunchTime(t *testing.T) {
 	assert.False(t, teamLaunching(team("running", lifecycleTimeout+time.Hour, 3), now), "past the bound")
 	assert.False(t, teamLaunching(team("stopped", time.Second, 2), now), "a stopped team needs no grace")
 	assert.True(t, teamLaunching(store.Team{Status: "running", CreatedAt: "not a time"}, now), "an unreadable creation time fails closed")
+}
+
+// A live-session list that cannot be read fails closed (#6942, QA): the entry is in use, so Remove refuses it, rather than offering a folder an agent may be working in.
+func TestWorktreeListFailsClosedWhenTheLiveSessionsCannotBeRead(t *testing.T) {
+	cfg := config.Load(t.TempDir())
+	db, err := storetest.Open(t, filepath.Join(t.TempDir(), "main.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { db.Close() })
+	dir := filepath.Join(cfg.CoralDir(), "worktrees", "b-failclosed")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	_, err = store.NewTeamStore(db).CreateTeam(t.Context(), &store.Team{Name: "fc", ConfigJSON: "{}", Status: "stopped", WorkingDir: dir, IsWorktree: 1}) // stopped, so only the failed read can make it in use
+	require.NoError(t, err)
+	h := NewWorktreesHandler(db, cfg)
+
+	entries := h.entries(t.Context(), false)
+	require.Len(t, entries, 1)
+	assert.False(t, entries[0].InUse, "a readable, empty live list: nothing in it")
+
+	broken, err := storetest.Open(t, filepath.Join(t.TempDir(), "broken.db"))
+	require.NoError(t, err)
+	require.NoError(t, broken.Close())
+	h.sess = store.NewSessionStore(broken) // reads fail
+	entries = h.entries(t.Context(), false)
+	require.Len(t, entries, 1)
+	assert.True(t, entries[0].InUse, "a live list that cannot be read counts as in use")
 }
