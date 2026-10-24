@@ -13,13 +13,19 @@ import (
 // viewDroppedFields are the keys set to null for a view-only viewer.
 // waiting_summary is what an agent waits for (its command, #6592); held_messages are a person's own chat messages queued behind the agent's question (#6627): neither is for a viewer who
 // cannot send.
-var viewDroppedFields = map[string]bool{"waiting_summary": true, "held_messages": true}
+//
+// A blocked goal's blocked_on, decision, recommendation and if_silent (#7087) are what a person is asked to decide and what is recommended: the same rule, so a view-only viewer sees the goal
+// (title, outcome, done_when, state, driver, rollup) and not what it waits for.
+var viewDroppedFields = map[string]bool{"waiting_summary": true, "held_messages": true, "blocked_on": true, "decision": true, "recommendation": true, "if_silent": true}
 
 // viewDropRoutes are the View routes whose JSON replies carry a live row (or part of one).
 var viewDropRoutes = map[string]bool{
 	"GET /api/sessions/live":         true,
 	"GET /api/sessions/{id}/resolve": true,
 	"GET /api/sessions/{id}/status":  true,
+	// A board's goals (#7087): the list answers {"goals": [...]}, the other one goal.
+	"GET /api/board/{project}/goals":      true,
+	"GET /api/board/{project}/goals/{id}": true,
 }
 
 // viewDropMax is the largest reply read whole to drop a field (a live list is a few hundred KiB at most).

@@ -449,6 +449,7 @@ var knownPathParams = map[string]string{
 	"agentName":    "an agent's knowledge file in a team: a target",
 	"remoteServer": "a configured remote server's id",
 	"folderName":   "a folder's tag set",
+	"goalID":       "a goal of the board addressed by its number (another board's goal is not found): a target",
 	"category":     "a template category",
 	"ref":          "an image of the session's own transcript, by the hash of its bytes (the chat's attachment): a target inside the session addressed by {name}",
 	"*":            "the rest of a path: a file inside a workflow run's step, or a remote server's own path (board remotes, the call metrics' remote pattern)",

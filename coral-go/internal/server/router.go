@@ -775,6 +775,13 @@ func (s *Server) registerBoard(r *chi.Mux, h *routeHandlers) {
 		r.Put("/api/board/{project}/working-mode/presets/{presetID}", boardHandler.SaveWorkflowPreset)
 		r.Post("/api/board/{project}/working-mode/presets/{presetID}/reset", boardHandler.ResetWorkflowPreset)
 		r.Get("/api/board/{project}/tasks", boardHandler.ListTasks)
+		// Goals (#7087): board text, written by the Operator or an orchestrator, readable like tasks.
+		r.Post("/api/board/{project}/goals", boardHandler.CreateGoal)
+		r.Get("/api/board/{project}/goals", boardHandler.ListGoals)
+		r.Get("/api/board/{project}/goals/{goalID}", boardHandler.GetGoal)
+		r.Patch("/api/board/{project}/goals/{goalID}", boardHandler.UpdateGoal)
+		r.Post("/api/board/{project}/goals/{goalID}/close", boardHandler.CloseGoal)
+		r.Put("/api/board/{project}/tasks/{taskID}/goal", boardHandler.SetTaskGoal)
 		r.Post("/api/board/{project}/tasks/claim", boardHandler.ClaimTask)
 		r.Post("/api/board/{project}/tasks/current", boardHandler.ActiveTask)
 		r.Get("/api/board/{project}/tasks/{taskID}", boardHandler.GetTask)

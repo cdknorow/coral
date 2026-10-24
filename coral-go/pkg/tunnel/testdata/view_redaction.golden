@@ -12,6 +12,8 @@ GET /api/board/tasks redact
 GET /api/board/{project} redact
 GET /api/board/{project}/artifacts redact
 GET /api/board/{project}/cross-team/settings redact
+GET /api/board/{project}/goals redact
+GET /api/board/{project}/goals/{id} redact
 GET /api/board/{project}/messages redact
 GET /api/board/{project}/messages/all redact
 GET /api/board/{project}/messages/search redact

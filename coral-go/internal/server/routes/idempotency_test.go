@@ -261,7 +261,7 @@ func TestIdempotencyMiddlewareCoversExactlyTheFiveRoutes(t *testing.T) {
 		h.ServeHTTP(rec, idemReq(path, `{}`, "hub-user-1234abcd", idemKey))
 		return rec
 	}
-	for _, path := range []string{"/api/sessions/launch", "/api/sessions/launch-team", "/api/sessions/live/claude-x/resume", "/api/sessions/live/claude-x/wake", "/api/tasks/run"} {
+	for _, path := range []string{"/api/sessions/launch", "/api/sessions/launch-team", "/api/sessions/live/claude-x/resume", "/api/sessions/live/claude-x/wake", "/api/tasks/run", "/api/board/team/goals", "/api/board/team/tasks"} {
 		before := c.runs.Load()
 		serve(path)
 		again := serve(path)

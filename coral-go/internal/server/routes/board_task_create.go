@@ -88,6 +88,7 @@ func (h *BoardHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 		Draft        bool               `json:"draft,omitempty"`
 		Workflow     board.TaskWorkflow `json:"workflow,omitempty"`
 		RemindAt     string             `json:"remind_at,omitempty"` // RFC 3339: a one-time reminder (#4175 step 3)
+		GoalID       *int64             `json:"goal_id,omitempty"`   // a goal of this board the task works toward (#7087)
 	}
 	if err := decodeJSON(r, &body); err != nil {
 		errBadRequest(w, "invalid JSON")
@@ -162,7 +163,7 @@ func (h *BoardHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 	// How the creator's name is backed: the server's to say, whatever the request sent (#4175).
 	body.Workflow.CreatedIdentity = h.claimIdentity(r, project, createdBy)
 	body.Workflow.AmendIdentity = nil
-	opts := &board.CreateTaskOpts{Draft: body.Draft, Workflow: body.Workflow}
+	opts := &board.CreateTaskOpts{Draft: body.Draft, Workflow: body.Workflow, GoalID: body.GoalID}
 	if len(body.BlockedBy) > 0 {
 		deps, err := parseBlockedBy(body.BlockedBy, project)
 		if err != nil {
@@ -177,7 +178,9 @@ func (h *BoardHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 	}
 	task, err := h.bs.CreateTaskWithOpts(r.Context(), project, body.Title, body.Body, body.Priority, createdBy, opts, body.AssignedTo)
 	if err != nil {
-		errBadRequest(w, err.Error())
+		if !goalError(w, err) {
+			errBadRequest(w, err.Error())
+		}
 		return
 	}
 	if !remindAt.IsZero() {

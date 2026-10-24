@@ -68,6 +68,8 @@ GET /api/board/{project}/artifacts view
 GET /api/board/{project}/cross-team-candidates never
 GET /api/board/{project}/cross-team-state never
 GET /api/board/{project}/cross-team/settings view
+GET /api/board/{project}/goals view
+GET /api/board/{project}/goals/{goalID} view
 GET /api/board/{project}/groups never
 GET /api/board/{project}/groups/{groupID}/members never
 GET /api/board/{project}/messages view
@@ -219,6 +221,7 @@ GET /ws/terminal/{name} view
 PATCH /api/agent/tasks/{taskID} never
 PATCH /api/artifacts/{id}/comments/{cid} never
 PATCH /api/board/{project} never
+PATCH /api/board/{project}/goals/{goalID} interact
 PATCH /api/board/{project}/tasks/{taskID} interact
 PATCH /api/board/{project}/tasks/{taskID}/amend interact
 PATCH /api/saved/{id} interact
@@ -255,6 +258,8 @@ POST /api/board/{project}/cross-team/files/disable launch
 POST /api/board/{project}/cross-team/files/enable launch
 POST /api/board/{project}/external-artifacts interact
 POST /api/board/{project}/external-messages interact
+POST /api/board/{project}/goals interact
+POST /api/board/{project}/goals/{goalID}/close interact
 POST /api/board/{project}/groups/{groupID}/members never
 POST /api/board/{project}/health/ack never
 POST /api/board/{project}/hub-notice interact
@@ -378,6 +383,7 @@ PUT /api/artifacts/{id}/keep never
 PUT /api/auth/hub-origins never
 PUT /api/auth/hub-signin never
 PUT /api/board/{project}/settings launch
+PUT /api/board/{project}/tasks/{taskID}/goal interact
 PUT /api/board/{project}/working-mode interact
 PUT /api/board/{project}/working-mode/presets/{presetID} never
 PUT /api/cloud/allow-auto-accept never

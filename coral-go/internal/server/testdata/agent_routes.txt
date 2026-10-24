@@ -75,6 +75,8 @@ a GET /api/board/{project}/artifacts
 b GET /api/board/{project}/cross-team-candidates
 b GET /api/board/{project}/cross-team-state
 b GET /api/board/{project}/cross-team/settings
+a GET /api/board/{project}/goals
+a GET /api/board/{project}/goals/{goalID}
 c GET /api/board/{project}/groups
 c GET /api/board/{project}/groups/{groupID}/members
 a GET /api/board/{project}/messages
@@ -229,6 +231,7 @@ b OPTIONS /api/remote/{server}/*
 a PATCH /api/agent/tasks/{taskID}
 b PATCH /api/artifacts/{id}/comments/{cid}
 b PATCH /api/board/{project}
+a PATCH /api/board/{project}/goals/{goalID}
 a PATCH /api/board/{project}/tasks/{taskID}
 a PATCH /api/board/{project}/tasks/{taskID}/amend
 b PATCH /api/remote/{server}/*
@@ -267,6 +270,8 @@ b POST /api/board/{project}/cross-team/files/disable
 b POST /api/board/{project}/cross-team/files/enable
 a POST /api/board/{project}/external-messages
 a POST /api/board/{project}/external-artifacts
+a POST /api/board/{project}/goals
+a POST /api/board/{project}/goals/{goalID}/close
 b POST /api/board/{project}/groups/{groupID}/members
 a POST /api/board/{project}/health/ack
 c POST /api/board/{project}/hub-notice
@@ -395,6 +400,7 @@ b PUT /api/artifacts/{id}/keep
 b PUT /api/auth/hub-origins
 b PUT /api/auth/hub-signin
 b PUT /api/board/{project}/settings
+a PUT /api/board/{project}/tasks/{taskID}/goal
 b PUT /api/board/{project}/working-mode
 b PUT /api/board/{project}/working-mode/presets/{presetID}
 b PUT /api/cloud/allow-auto-accept
