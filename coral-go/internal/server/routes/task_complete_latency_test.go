@@ -99,8 +99,8 @@ func TestCompletingATaskAnswersBeforeItsChangesAreWritten(t *testing.T) {
 	close(release)
 	require.Eventually(t, finished.Load, 2*time.Second, 10*time.Millisecond)
 	assert.Equal(t, "", ctxErrAtWrite.Load(), "the write ran on its own context, not the finished request's")
-	_, err = os.Stat(h.taskArtifactPath(1))
-	assert.NoError(t, err, "the task's changes.diff is there")
+	found, _ := filepath.Glob(filepath.Join(h.coralDir, "artifacts", "tasks", "*", "1", "changes.diff"))
+	assert.Len(t, found, 1, "the task's changes.diff is there, under its board")
 }
 
 // A task with no agent session still starts no writing at all (#4098), now after the reply too.
