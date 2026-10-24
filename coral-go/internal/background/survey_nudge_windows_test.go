@@ -20,14 +20,17 @@ import (
 )
 
 // The Windows proof of #6974: a fake Claude Code on a ConPTY draws the session survey above an input box, and a board nudge handed over with the background runtime gets the survey dismissed with one 0 and is delivered;
-// over a draft in the box nothing is typed. The fake is this test binary run again (-fake-claude=<mode>:<out file>): the agent's environment is filtered, so a mode cannot travel in it.
-var fakeClaudeFlag = flag.String("fake-claude", "", "internal: act as the fake Claude Code for the survey tests (mode:out file)")
+// over a draft in the box nothing is typed. The fake is this test binary run again (-fake-claude=<mode> -fake-claude-out=<file>): the agent's environment is filtered, so a mode cannot travel in it.
+var (
+	fakeClaudeFlag    = flag.String("fake-claude", "", "internal: act as the fake Claude Code for the survey tests (survey or draft)")
+	fakeClaudeOutFlag = flag.String("fake-claude-out", "", "internal: the file the fake Claude Code writes what it receives to")
+)
 
 func TestFakeSurveyClaudeHelper(t *testing.T) {
 	if *fakeClaudeFlag == "" {
 		t.Skip("not the fake Claude")
 	}
-	mode, out, _ := strings.Cut(*fakeClaudeFlag, "|")
+	mode, out := *fakeClaudeFlag, *fakeClaudeOutFlag
 	k32 := syscall.NewLazyDLL("kernel32.dll")
 	getMode, setMode := k32.NewProc("GetConsoleMode"), k32.NewProc("SetConsoleMode")
 	inH, outH := syscall.Handle(os.Stdin.Fd()), syscall.Handle(os.Stdout.Fd())
@@ -98,7 +101,8 @@ func startFakeSurveyClaude(t *testing.T, mode string) (rt *PTYRuntime, name, sid
 	rt = newTestPTYRuntime()
 	sid = "11111111-2222-3333-4444-555555555555"
 	name = "claude-" + sid
-	cmd := fmt.Sprintf("\"%s\" -test.run=TestFakeSurveyClaudeHelper -fake-claude=%s|%s", exe, mode, out)
+	// the start command runs in PowerShell: call operator, quoted paths, no pipe character
+	cmd := fmt.Sprintf("& \"%s\" -test.run=TestFakeSurveyClaudeHelper -fake-claude=%s -fake-claude-out=\"%s\"", exe, mode, out)
 	require.NoError(t, rt.SpawnAgent(context.Background(), name, dir, "", cmd), "the fake Claude starts on a ConPTY")
 	t.Cleanup(func() { rt.KillAgent(context.Background(), name) })
 	time.Sleep(2 * time.Second) // sleep-ok: the fake draws its screen
