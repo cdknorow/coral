@@ -16,7 +16,7 @@ jobs:
   home:
     name: home paths (windows-latest)
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     defaults:
       run:
         shell: bash
@@ -37,9 +37,12 @@ jobs:
           cache: false
       - name: Sync agent docs
         run: bash ../tools/sync-agent-docs.sh
-      - name: the two tests and the tests around them
+      - name: the whole routes package, with the temp folder in its long form (the 8.3 failures are #7069's)
         run: |
           set +e +o pipefail
-          go test -count=1 -tags fts5 -run '^(TestBrowseThroughTheHubWalksDownAndUp|TestSensitivePathAgentCredentials|TestHubHomeMatchFoldsCaseAndSeparators)$' -v ./internal/server/routes 2>&1 | grep -E "^(--- |ok|FAIL)|Error:|Messages|expected|actual" | cut -c1-240 | head -40
-          go test -count=1 -tags fts5 -run 'Hub|Browse|SensitivePath|HomeMatch|FileBounds|Bounds' ./internal/server/routes 2>&1 | grep -E "^(--- FAIL|ok|FAIL)" | head -20
-          go test -count=1 -tags fts5 ./pkg/tunnel -run 'Home|Route|Classify|Query' 2>&1 | tail -3
+          long=$(cygpath -l -w "$TEMP")
+          export TMP="$long" TEMP="$long"
+          start=$(date +%s)
+          go test -count=1 -timeout 40m -tags fts5 ./internal/server/routes 2>&1 | tee "$RUNNER_TEMP/routes.log" | grep -E "^(--- FAIL|ok|FAIL|panic)" | cut -c1-200
+          echo "ROUTES WALL SECONDS: $(( $(date +%s) - start ))"
+          echo "FAILED TESTS: $(grep -c '^--- FAIL' "$RUNNER_TEMP/routes.log")"
