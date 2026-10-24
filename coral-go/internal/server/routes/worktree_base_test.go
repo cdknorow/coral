@@ -396,3 +396,19 @@ func TestResurrectedWorktreeTeamRowsCarryTheirBranch(t *testing.T) {
 	}
 	assert.Greater(t, found, 0, "a resurrected member's row names the team's branch: %v", rows)
 }
+
+// #6861 (Codex Test's #6858): the resurrect answer carries the board as launch-team's does: board, board_id (the same id) and board_label.
+func TestResurrectAnswersTheBoardLikeALaunch(t *testing.T) {
+	url, cfg := teamServer(t)
+	_, id, _ := launchWorktreeTeam(t, url, cfg, "resurrectshape")
+	stopTeam(t, url, id)
+	status, body := apiPost(t, url+"/api/teams/detail/"+id+"/resurrect")
+	require.Equal(t, http.StatusOK, status, body)
+	var out map[string]any
+	require.NoError(t, json.Unmarshal([]byte(body), &out))
+	assert.Equal(t, id, out["board"])
+	assert.Equal(t, id, out["board_id"], "the same id launch-team answers")
+	_, hasLabel := out["board_label"]
+	assert.True(t, hasLabel, "board_label is there too (a launch's answer has it)")
+	assert.Equal(t, true, out["ok"])
+}

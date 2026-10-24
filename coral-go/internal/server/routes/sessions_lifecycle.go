@@ -1423,10 +1423,12 @@ func (h *SessionsHandler) ResurrectTeam(w http.ResponseWriter, r *http.Request) 
 	h.teamStore.UpdateTeamStatus(ctx, team.ID, "running")
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"ok":      true,
-		"team_id": team.ID,
-		"board":   team.Name,
-		"agents":  launched,
+		"ok":          true,
+		"team_id":     team.ID,
+		"board":       team.Name,
+		"board_id":    team.Name, // as launch-team answers: the board's id (a team is named by it, #6861)
+		"board_label": h.boardLabel(team.Name),
+		"agents":      launched,
 	})
 }
 
