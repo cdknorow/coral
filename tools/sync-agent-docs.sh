@@ -15,5 +15,15 @@ if [ ! -d "$SRC" ]; then
 fi
 
 rm -rf "$DST"
-cp -r "$SRC" "$DST"
-echo "Synced agent_docs → static/agent_docs ($(find "$DST" -name '*.md' | wc -l | tr -d ' ') files)"
+mkdir -p "$DST"
+# The docs are embedded gzipped (#6814): about 700 KB of Markdown ship as about 260 KB, and the server unzips them for a client that does not accept gzip. -n: no name or time in the
+# stream, so the same text always makes the same bytes. Anything that is not a .md file is copied as it is.
+count=0
+for f in "$SRC"/*; do
+    [ -f "$f" ] || continue
+    case "$f" in
+        *.md) gzip -9 -n -c "$f" > "$DST/$(basename "$f").gz"; count=$((count + 1)) ;;
+        *) cp "$f" "$DST/" ;;
+    esac
+done
+echo "Synced agent_docs → static/agent_docs ($count files, gzipped)"
