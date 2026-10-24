@@ -11,6 +11,7 @@ const { connect } = require('../agent_view_harness');
 const { launchStandIn } = require('./stand_in_agent');
 const { guardSettings } = require('./settings_guard');
 const { STUB, HEX } = require('./comments_scale');
+const { GOALS_STUB } = require('./goals_stub');
 const { scene, tap: tapSel, problems, required, useScaleShot, openBoardComposer, BOARD_COMPOSER_UP, showUpdateReady, UPDATE_NOTICE_UP, UPDATE_DIALOG_UP } = require('./phone_targets');
 const { requiredScenes } = require('./census_required'); // the scenes the suite must visit: one file each, so commits that add scenes do not conflict
 const BASE = require('../test_base').BASE;
@@ -145,6 +146,9 @@ module.exports = part => (async () => {
             await tap('.mobile-history-back');
             await sc('board', async () => { await ev(`window.switchNavTab('board'); true`); }, { min: 2, expect: `document.getElementById('messageboard-view').getClientRects().length > 0` });
             await sc('board: a team board', async () => { await tap('#mb-projects-ul [data-project]'); await waitFor(`/Please check the release notes/.test(document.getElementById('mb-messages').textContent)`, 'board messages', 10000); }, { min: 8, expect: `/Please check the release notes/.test(document.getElementById('mb-messages').textContent)` });
+            await sc('board: goals', async () => { await ev(GOALS_STUB); await tap('#mb-face-goals'); await waitFor(`document.querySelectorAll('#mb-goals .goal-card').length === 5`, 'the goals', 10000); }, { min: 5, expect: `document.querySelectorAll('#mb-goals .goal-card').length === 5` });
+            await sc('board: a goal', async () => { await tap('#mb-goals .goal-card'); await waitFor(`document.querySelectorAll('#mb-goals .goal-task').length === 3`, 'the goal\'s tasks', 10000); }, { min: 5, expect: `document.querySelectorAll('#mb-goals .goal-task').length === 3` });
+            await tap('#mb-face-messages'); // the other screens read the board's messages again
             // the team board's own controls and its task list (#6566): the More menu, the subscribers sheet, the Tasks panel with tasks (its filters open, one task opened)
             const keyEsc = async () => { await client.Input.dispatchKeyEvent({ type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 }); await client.Input.dispatchKeyEvent({ type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 }); await new Promise(r => setTimeout(r, 300)); }; // sleep-ok: the close transition
             await sc('board: more actions menu', async () => { await tap('#mb-more-btn'); }, { expect: `document.getElementById('mb-more-btn').getAttribute('aria-expanded') === 'true'` });

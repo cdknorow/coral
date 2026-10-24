@@ -7,6 +7,11 @@
             <span class="badge" id="messageboard-project-badge" style="display:none"></span>
         </div>
         <div class="mb-header-actions" style="margin-left:auto">
+            <!-- Messages | Goals (#7113): the board's two faces, drawn while a board is open on this computer; the choice is remembered per browser (message_board.js) -->
+            <div class="mb-face-switch" id="mb-face-switch" role="group" aria-label="Board view" hidden>
+                <button type="button" class="mb-action-btn mb-face-btn" id="mb-face-messages" data-on-click="mb-face" data-face="messages" aria-pressed="true">Messages</button>
+                <button type="button" class="mb-action-btn mb-face-btn" id="mb-face-goals" data-on-click="mb-face" data-face="goals" aria-pressed="false">Goals</button>
+            </div>
             <!-- At phone width the sidebar is an overlay: this opens the same list as a sheet (#3610). -->
             <button type="button" class="mb-action-btn mb-subscribers-btn" id="mb-subscribers-btn" data-on-click="mb-subscribers" aria-haspopup="dialog" aria-controls="mb-subscribers-sheet" aria-expanded="false">Subscribers</button>
             <!-- On a phone Select, Export, Pause and Delete sit in a More menu (#4538, UX #4536): the toolbar keeps one row at
@@ -29,6 +34,9 @@
             <div class="empty-state" id="mb-projects-empty">No projects yet</div>
             <ul class="session-list" id="mb-projects-ul"></ul>
         </div>
+
+        <!-- Goals (#7113): the board's second face, built by goals_view.js -->
+        <div id="mb-goals" class="mb-goals" hidden></div>
 
         <!-- Board view (shown when project selected) -->
         <div id="mb-board" class="mb-board" style="display:none">

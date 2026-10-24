@@ -10,6 +10,7 @@ const VERSIONS = require('./helpers/artifact_versions_stub');
 const { requiredScenes } = require('./helpers/census_required'); // the scenes the suite must visit: one file each, so commits that add scenes do not conflict
 const { STUB, HEX } = require('./helpers/comments_scale');
 const kb = require('./helpers/keyboard_census');
+const { GOALS_STUB } = require('./helpers/goals_stub');
 const { DATA_WORLD, httpJson, UPDATE_STAGED, CLOUD_LINKED, CLOUD_IDLE, CLOUD_WAITING } = require('./helpers/census_world');
 const { INBOX_WORLD } = require('./helpers/inbox_world');
 const BASE = require('./test_base').BASE;
@@ -95,6 +96,9 @@ const BUBBLES = [{ type: 'user', content: 'Is the build green?', key: 'c1', time
         for (const t of ['notes', 'activity', 'tasks', 'agent-notes', 'commits']) await sc(`history chat: ${t}`, async () => { await tap(`.history-tab-btn[data-tab="${t}"]`); }, { min: 5, expect: `document.querySelector('.history-tab-btn[data-tab="${t}"]').classList.contains('active')` });
         await sc('board', async () => { await ev(`window.switchNavTab('board'); true`); }, { min: 2, expect: `document.getElementById('messageboard-view').getClientRects().length > 0` });
         await sc('board: a team board', async () => { await tap('#mb-projects-ul [data-project]'); await waitFor(`/Please check the release notes/.test(document.getElementById('mb-messages').textContent)`, 'board messages', 10000); }, { min: 5, expect: `/Please check the release notes/.test(document.getElementById('mb-messages').textContent)` });
+        await sc('board: goals', async () => { await ev(GOALS_STUB); await tap('#mb-face-goals'); await waitFor(`document.querySelectorAll('#mb-goals .goal-card').length === 5`, 'the goals', 10000); }, { min: 5, expect: `document.querySelectorAll('#mb-goals .goal-card').length === 5` });
+        await sc('board: a goal', async () => { await tap('#mb-goals .goal-card'); await waitFor(`document.querySelectorAll('#mb-goals .goal-task').length === 3`, 'the goal\'s tasks', 10000); }, { min: 5, expect: `document.querySelectorAll('#mb-goals .goal-task').length === 3` });
+        await tap('#mb-face-messages'); // the other screens read the board's messages again
         // the team board's own controls and its task list (#6566): the More menu, the subscribers sheet, the Tasks panel with tasks (its filters open, one task opened)
         const keyEsc = async () => { await client.Input.dispatchKeyEvent({ type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 }); await client.Input.dispatchKeyEvent({ type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 }); await new Promise(r => setTimeout(r, 300)); }; // sleep-ok: the close transition
         await sc('board: more actions menu', async () => { await tap('#mb-more-btn'); }, { expect: `document.getElementById('mb-more-btn').getAttribute('aria-expanded') === 'true'` });

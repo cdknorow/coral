@@ -15,6 +15,9 @@ import { messageTimeHtml } from './message_time.js';
 import { paintPauseButton } from './board_pause_button.js';
 import { pathId, keyLabel, noteBoardLabel, hasBoardLabel, onBoardLabelsChanged, splitKey, boardFetch, teamFetch, isCloud, inTeam } from './server_base.js';
 import { importOnce } from './import_once.js';
+import { browserLocal } from './safe_storage.js';
+import './goals_adapter.js'; // the Goals view (goals_view.js) is lazy and imports only what loads at startup (import_hygiene): its two small helpers load here (#7113)
+import './goal_words.js';
 import { OUTCOME_UNKNOWN_LINE, isOutcomeUnknown } from './outcome_unknown.js';
 import { launchBlockedReason, blockedReason } from './hub_access.js';
 import { pollEvery, afterPause, isBusyStatus, busyRetryingText, machineOf } from './overload.js';
@@ -146,6 +149,26 @@ export function selectBoardProject(project, messageId = null) {
     loadBoardProjects();
     startBoardPoll();
     boardPageChanged(); // the sidebar's tabs read the board again
+    applyBoardFace(project);
+}
+
+// Messages | Goals (#7113): the board's two faces. The Goals face is this computer's own (the Hub has its own goals page), so the switch is not drawn through the Hub; the choice is kept for this browser.
+const FACE_KEY = 'coral.board.face';
+function applyBoardFace(project) {
+    const sw = document.getElementById('mb-face-switch'), goals = document.getElementById('mb-goals'), board = document.getElementById('mb-board');
+    if (!sw || !goals || !board) return;
+    const has = !!project && !isCloud();
+    sw.hidden = !has;
+    const face = has && browserLocal.get(FACE_KEY) === 'goals' ? 'goals' : 'messages';
+    document.getElementById('mb-face-messages')?.setAttribute('aria-pressed', String(face === 'messages'));
+    document.getElementById('mb-face-goals')?.setAttribute('aria-pressed', String(face === 'goals'));
+    if (face === 'goals') {
+        board.style.display = 'none'; // display-ok: #mb-board is shown and hidden this way everywhere else in this file
+        importOnce('./goals_view.js').then(m => m.showGoals(goals, project)).catch(() => {});
+    } else {
+        goals.hidden = true;
+        if (project) board.style.display = 'flex'; // display-ok: as above
+    }
 }
 
 export function showMessageBoardProjects() {
@@ -163,6 +186,7 @@ export function showMessageBoardProjects() {
 
     document.getElementById('mb-project-list').style.display = '';
     document.getElementById('mb-board').style.display = 'none';
+    applyBoardFace(null);
     hideBoardSubscribers();
     for (const list of ['mb-subscribers-list', 'mb-subscribers-sheet-list']) { const el = document.getElementById(list); if (el) el.innerHTML = '<li class="mb-project-meta">Open a board to see who is subscribed.</li>'; }
     boardPageChanged();
@@ -1049,6 +1073,7 @@ document.addEventListener('click', (e) => {
 registerActions({
     'mb-project': el => { const p = textOf(el.dataset.project); if (p) selectBoardProject(p); },
     'mb-earlier': () => loadEarlierMessages(),
+    'mb-face': el => { browserLocal.set(FACE_KEY, el.dataset.face === 'goals' ? 'goals' : 'messages'); applyBoardFace(currentProject); },
     'mb-more': (el, event) => toggleMoreMenu(event),
     'mb-jump-latest': () => jumpToLatest(),
     'mb-msg-select': el => withId(el.dataset.msgId, id => toggleMessageSelect(id, el.checked)),

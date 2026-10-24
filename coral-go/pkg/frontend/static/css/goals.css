@@ -1,0 +1,88 @@
+/* The local Goals view (#7113, layout A of UI/UX's #7091): the board's second face. Two columns wide (list 300 to 380 px, the open goal beside it); on a phone two screens with a back row. */
+.mb-face-switch { display: inline-flex; gap: 0; margin-right: 8px; }
+.mb-face-switch[hidden] { display: none; }
+.mb-face-btn[aria-pressed="true"] { background: var(--accent-dim); color: var(--text-on-accent); border-color: var(--accent); }
+
+.mb-goals { flex: 1; min-height: 0; overflow: auto; }
+.mb-goals[hidden] { display: none; }
+.goals-page { display: flex; flex-direction: column; gap: 12px; padding: 12px 16px; min-height: 100%; box-sizing: border-box; }
+.goals-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.goals-head-text { min-width: 0; }
+.goals-title { margin: 0; font-size: 1.125rem; }
+.goals-sub-line, .goals-note { margin: 2px 0 0; color: var(--text-secondary); font-size: 0.8125rem; overflow-wrap: anywhere; }
+.goals-cols { display: grid; grid-template-columns: minmax(300px, 380px) minmax(0, 1fr); gap: 16px; align-items: start; }
+.goals-list-col, .goals-detail-col { min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.goals-detail-col { border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 14px; background: var(--bg-secondary); }
+.goals-detail-col.goals-detail-none { display: none; }
+.goals-back { display: none; align-self: flex-start; background: none; border: none; color: var(--accent); font: inherit; padding: 8px 0; min-height: var(--control-touch-height, 44px); cursor: pointer; }
+
+.goals-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.goals-chip { min-height: 32px; padding: 4px 10px; border: 1px solid var(--control-border); border-radius: 999px; background: var(--bg-secondary); color: var(--text-secondary); font: inherit; font-size: 0.8125rem; cursor: pointer; }
+.goals-chip[aria-pressed="true"] { background: var(--accent-dim); color: var(--text-on-accent); border-color: var(--accent); }
+
+.goals-ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.goal-item { border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--bg-secondary); display: flex; flex-direction: column; align-items: stretch; }
+.goal-item.active { border-color: var(--accent); }
+.goal-item > .goal-card { flex-direction: column; align-items: stretch; gap: 6px; padding: 10px 12px; }
+.goal-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.goal-card-title { font-weight: 600; overflow-wrap: anywhere; min-width: 0; }
+.goal-card-meta, .goal-card-sentence, .goal-task-sub { color: var(--text-secondary); font-size: 0.8125rem; overflow-wrap: anywhere; }
+
+.goal-chip { --goal-hue: var(--text-muted); display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border: 1px solid var(--goal-hue); border-radius: 999px; font-size: 0.75rem; white-space: nowrap; color: var(--text-primary); }
+.goal-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--goal-hue); flex: none; }
+/* the word stays in the page's text colour (the accent as text was 4.44:1 on the light theme's panel); the dot and the border carry the state's colour, and the word says it */
+.goal-state-active, .goal-state-task-active { --goal-hue: var(--accent); }
+.goal-state-blocked, .goal-state-task-blocked { --goal-hue: var(--warning); }
+.goal-state-done, .goal-state-task-done { --goal-hue: var(--success); }
+
+.goal-rollup { display: flex; height: 6px; border-radius: var(--radius-xs); overflow: hidden; background: var(--bg-tertiary); }
+.goal-rollup-done { background: var(--success); }
+.goal-rollup-active { background: var(--accent); }
+.goal-rollup-blocked { background: var(--warning); }
+
+.goals-waiting { border: 1px solid var(--warning); border-radius: var(--radius-lg); padding: 10px 12px; background: rgba(var(--warning-rgb), 0.1); display: flex; flex-direction: column; gap: 6px; }
+.goals-waiting-head { margin: 0; font-size: 0.875rem; }
+.goals-waiting-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.goals-waiting-text { min-width: 0; overflow-wrap: anywhere; }
+.goals-label { color: var(--text-secondary); font-size: 0.75rem; }
+.goals-text { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.goals-sub { margin: 8px 0 0; font-size: 0.8125rem; color: var(--text-secondary); }
+.goals-detail-title { margin: 0; font-size: 1.0625rem; overflow-wrap: anywhere; }
+.goals-detail-line { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+
+.goal-tasks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.goal-task { display: flex; flex-direction: column; gap: 4px; padding: 8px 0; border-top: 1px solid var(--border-subtle); }
+.goal-task-head { display: flex; align-items: flex-start; gap: 8px; flex-wrap: wrap; }
+.goal-task-id { color: var(--text-muted); }
+.goal-task-title { flex: 1 1 12rem; min-width: 0; overflow-wrap: anywhere; }
+.goal-task-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.goal-open-agent.is-off { opacity: 0.55; cursor: default; }
+.goal-task-why { color: var(--text-secondary); font-size: 0.75rem; }
+
+.goals-empty, .goals-failed { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 12px; border: 1px dashed var(--border-light); border-radius: var(--radius-lg); color: var(--text-secondary); }
+.goals-empty p { margin: 0; }
+.goals-failed { flex-direction: row; flex-wrap: wrap; align-items: center; border-style: solid; border-color: var(--error); }
+.goals-cmd { overflow-wrap: anywhere; font-size: 0.8125rem; }
+
+.goals-dialog { margin: auto; /* the base reset gives every dialog margin 0, which pinned it to the corner */ border: 1px solid var(--border-light); border-radius: var(--radius-lg); background: var(--bg-secondary); color: var(--text-primary); padding: 16px; width: min(440px, calc(100vw - 32px)); }
+.goals-dialog::backdrop { background: rgba(var(--black-rgb), 0.5); }
+.goals-form { display: flex; flex-direction: column; gap: 10px; }
+.goals-form h3 { margin: 0; }
+.goals-field { display: flex; flex-direction: column; gap: 4px; font-size: 0.8125rem; }
+.goals-field input, .goals-field select { min-height: 36px; padding: 6px 8px; border: 1px solid var(--control-border); border-radius: var(--radius-md); background: var(--bg-primary); color: var(--text-primary); font: inherit; font-size: 1rem; }
+.goals-field-error { margin: 0; color: var(--error-text); min-height: 0; }
+.goals-field-error:empty { display: none; }
+.goals-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+@media (max-width: 767px) {
+    .goals-page { padding: 10px 12px; }
+    .goals-cols { grid-template-columns: minmax(0, 1fr); }
+    .goals-page.goals-open .goals-list-col { display: none; }
+    .goals-detail-col { border: none; padding: 0; background: none; }
+    .goals-back { display: inline-flex; align-items: center; }
+    .goals-chip, .goals-dialog .btn, .goals-new, .goal-task-actions .btn, .goals-waiting .btn, .goals-failed .btn, .goals-empty .btn { min-height: var(--control-touch-height, 44px); }
+    .goals-dialog { width: 100vw; height: 100dvh; max-width: none; max-height: none; border-radius: 0; margin: 0; }
+    .goals-field input, .goals-field select { min-height: var(--control-touch-height, 44px); }
+    .goals-page.goals-open .goals-head, .goals-page.goals-open .goals-require { display: none; } /* an open goal is a screen of its own, the back row first (UI/UX #7113) */
+    .goal-item { min-height: var(--control-touch-height, 44px); }
+}
