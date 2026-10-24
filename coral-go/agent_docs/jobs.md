@@ -109,7 +109,25 @@ GET /api/tasks/runs/{run_id}
 | Field | Values |
 |---|---|
 | `status` | `pending`, `running`, `completed`, `killed`, `failed` |
-| `exit_reason` | `agent_done`, `timeout`, `user_cancelled`, or `null` |
+| `exit_reason` | One of the values below, the text of a failed launch's own error, or `null` while the run is going |
+| `error_msg` | A plain sentence for a run that failed, or `null` |
+| `error_code` | A fixed word for some failures (`start_command_failed`, `agent_never_started`, `agent_exited_before_start`, `worktree_failed`, ...), or `null` |
+
+`exit_reason` values, with the `status` each comes with:
+
+| `exit_reason` | `status` | Meaning |
+|---|---|---|
+| `agent_done` | `completed` | The agent finished its work (its last event was a stop or a session end), or ended while Coral could not tell. |
+| `timeout` | `killed` | The run passed `max_duration_s`; its agent was killed. |
+| `user_cancelled` | `killed` | `POST /api/tasks/runs/{run_id}/kill`. |
+| `timeout_reap` | `killed` | A run found at startup past twice its maximum duration. |
+| `interrupted_by_restart` | `failed` | Coral restarted before this run launched its agent. |
+| `ended_while_coral_was_down` | `completed` | The agent ended while Coral was stopped, and nothing it reported shows it finished: its result was not seen. |
+| `agent_never_started` | `failed` | The agent never reported anything and its terminal sat at an idle shell (after about 3 minutes), or it was gone at the next start with no event at all. `error_msg` holds the sentence. |
+| `start_command_failed` | `failed` | Coral could not hand the agent its start command (its temporary folder was not usable, and the data folder fallback failed too). |
+| `agent_exited_before_start` | `failed` | The agent ended within seconds without reporting anything. |
+
+A launch that fails for another reason (the worktree could not be made, the CLI is not signed in) is `failed` with that reason's own words in `exit_reason` and `error_msg`.
 
 Returns `{"error": "Run not found"}, 404` if the run_id doesn't exist.
 

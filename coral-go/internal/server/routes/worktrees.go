@@ -268,6 +268,12 @@ func (h *WorktreesHandler) Remove(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusOK, gitutil.WorktreeOutcome{State: "kept", Path: e.Path, Branch: e.Branch, Reason: "it is not a worktree Coral knows"})
 			return
 		}
+		// A run's repository may be the one its own git file names (the job's repository changed since, #7026), which a planted folder could point anywhere: git is run in that repository only when it has this folder
+		// registered as one of its worktrees, so a remove never prunes or touches a repository that does not know the folder (#7035).
+		if e.Kind == "job" && !gitutil.IsRegisteredWorktree(ctx, e.RepoPath, e.Path) {
+			writeJSON(w, http.StatusOK, gitutil.WorktreeOutcome{State: "kept", Path: e.Path, Branch: e.Branch, Reason: "its repository does not list it as a worktree"})
+			return
+		}
 		outcome, err := gitutil.RemoveWorktree(ctx, e.RepoPath, e.Path, e.Branch)
 		if err != nil {
 			outcome.State, outcome.Reason = "failed", "git could not find its repository"
