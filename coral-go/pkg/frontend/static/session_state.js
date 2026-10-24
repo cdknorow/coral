@@ -276,12 +276,15 @@ export function _repoBranch(repoName, branch) {
 
 export function _shortPath(fullPath, segments = 2) {
     if (!fullPath) return '';
-    let p = fullPath.replace(/\/+$/, '');
+    // A Windows path (a drive letter or a UNC start, and backslashes) is cut on its own separator: the last folders are what tell the agents apart (#290).
+    const win = /^[A-Za-z]:[\\/]|^\\\\/.test(fullPath);
+    const sep = win ? '\\' : '/';
+    let p = fullPath.replace(win ? /[\\/]+$/ : /\/+$/, '');
     // Try to replace common home dir with tilde
     p = p.replace(/^\/Users\/[^\/]+/, '~').replace(/^\/home\/[^\/]+/, '~');
-    const parts = p.split('/');
+    const parts = win ? p.split(/[\\/]+/).filter(Boolean) : p.split('/');
     if (parts.length <= segments) return p;
-    return '…/' + parts.slice(-segments).join('/');
+    return '…' + sep + parts.slice(-segments).join(sep);
 }
 
 /** held_inputs (automated sends the gate holds, #3578) as a safe non-negative integer. */

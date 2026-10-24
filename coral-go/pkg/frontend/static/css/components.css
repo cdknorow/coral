@@ -2397,6 +2397,7 @@ button.subscriber-history-link {
 .acf-model-select,
 .acf-prompt,
 .acf-agent-type,
+#launch-dir:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 #launch-dir,
 #launch-board-select,
 #launch-board-name,
@@ -4617,7 +4618,7 @@ a.ibx-open, a.ibx-open:visited { color: var(--link-text); }
 /* Settings' footer: the note that something is not saved yet, on the left (UI audit #5589, finding 27); and the CLI paths behind one line. */
 .settings-unsaved { margin-right: auto; align-self: center; font-size: var(--fs-base); color: var(--text-secondary); }
 .settings-unsaved[hidden] { display: none; }
-.settings-cli-details > summary { cursor: pointer; font-weight: 600; font-size: var(--fs-md); min-height: 32px; display: flex; align-items: center; }
+.settings-cli-details > summary { cursor: pointer; font-weight: 600; font-size: var(--fs-md); min-height: 32px; line-height: 32px; display: list-item; } /* not flex: a flex summary loses its disclosure arrow, and the CLI paths looked like a heading with no fields (#290) */
 .settings-cli-details[open] > summary { margin-bottom: 8px; }
 
 /* A number field with its unit beside it, inside the field's own box (UI audit #5589, finding 20): the unit is no longer in the label. */

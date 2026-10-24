@@ -275,6 +275,11 @@ body.panel-dragging .sidebar {
 .sidebar-search-input:focus { border-color: var(--accent); }
 .sidebar-search-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; } /* a ring as well as the border colour (#6094) */
 
+/* The skip link: off screen until it has the keyboard focus (#290). */
+.skip-link { position: absolute; left: 8px; top: -56px; z-index: 1000; display: inline-flex; align-items: center; box-sizing: border-box; min-height: 44px; padding: 8px 14px; border-radius: var(--radius-lg); background: var(--bg-secondary); color: var(--text-primary); border: 2px solid var(--accent); font-size: 0.875rem; text-decoration: none; }
+.skip-link:focus { top: 8px; }
+#main-stage:focus { outline: none; }
+
 .sidebar-header {
     display: flex;
     gap: 8px;

@@ -125,9 +125,12 @@ export async function refreshCapture() {
         if (!resp.ok && !unchanged) {
             dropBody(resp);
             if (gateway) { if (!_gatewayLogged) { _gatewayLogged = true; console.warn(`capture poll: server not reachable (${resp.status}); backing off`); } return; }
+            // A launch's first poll can arrive before Coral knows the session (400): the next poll finds it, so say it quietly. Three in a row are a problem (#290).
+            if (resp.status === 400 && ++_quietPoll400 <= 3) { console.debug('capture poll: the session is not known yet (400); trying again'); return; }
             throw new Error(`poll failed: ${resp.status}`);
         }
         _gatewayLogged = false;
+        _quietPoll400 = 0;
         let data;
         if (unchanged) {
             data = last.data;
@@ -183,6 +186,7 @@ export async function refreshCapture() {
 
 let _lastCaptureAt = 0;
 let _gatewayLogged = false;
+let _quietPoll400 = 0; // 400s in a row from the first polls of a new session (#290)
 // The last poll answer with its ETag, for the same agent's next poll (#3439).
 let _lastPoll = null; // { key, etag, data }
 // How many polls came back in full or as 304 (tests and diagnostics).
