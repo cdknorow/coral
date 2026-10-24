@@ -252,6 +252,11 @@
     overflow-y: hidden;
 }
 
+.cost-note { margin: 0 0 12px; font-size: var(--fs-md); line-height: 1.45; color: var(--text-secondary); max-width: 70ch; }
+.cost-scroll-hint { margin: 0 0 4px; font-size: var(--fs-sm); color: var(--text-secondary); }
+.cost-scroll-hint[hidden] { display: none; }
+/* A table wider than its box on a phone: while more columns are to the right, the clipped edge fades out, so a column is not cut off as if it ended there (#6975) */
+.cost-table-container[data-more="right"] { -webkit-mask-image: linear-gradient(to right, rgb(var(--black-rgb)) calc(100% - 32px), transparent); mask-image: linear-gradient(to right, rgb(var(--black-rgb)) calc(100% - 32px), transparent); }
 .cost-empty {
     padding: 24px;
     text-align: center;
@@ -422,14 +427,8 @@
     display: block;
 }
 
-.cost-card-highlight {
-    border-color: var(--accent-dim);
-    background: color-mix(in srgb, var(--accent) 8%, var(--bg-secondary));
-}
-
 .cost-card-highlight .cost-card-value {
-    color: var(--accent);
-    font-size: 1.375rem;
+    font-size: 1.375rem; /* the figure the page is opened for is larger; it is not drawn as a selected or clickable card (#6975: no card here is interactive) */
 }
 
 .cost-card-burn .cost-card-value {

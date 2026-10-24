@@ -10,6 +10,8 @@ import { pollEvery } from './overload.js';
 import { keyLabel } from './server_base.js';
 import { formatTokens, formatDuration, formatCost } from './format.js';
 
+// What an empty table says: where the numbers come from and what to try (#6975), not just that there are none.
+const NO_DATA = 'No data in this range yet. It appears once an agent has used tokens; try a longer range.';
 const _formatCost = c => formatCost(c, { zeroAsTwo: true });
 
 // ── Column order on a phone (#5056) ──────────────────────────────────────
@@ -382,8 +384,34 @@ registerActions({
     'cost-task': el => { const id = idOf(el.dataset.taskId); if (id) _showCostTaskDetail(id); },
 });
 
+// A table wider than its box scrolls sideways inside it (#4589); on a phone the clipped edge cut a column in half with nothing saying there was more (#6975). While more columns are to the right the box is
+// marked (data-more="right": the CSS fades the clipped edge) and a line above it says so in words; it goes when the table is scrolled to its end or fits. Kept in step as tables are drawn, scrolled and resized.
+let _scrollCues = false;
+function _markScrollables() {
+    for (const box of document.querySelectorAll('#cost-dashboard-view .cost-table-container')) {
+        const more = box.scrollWidth > box.clientWidth + 1 && box.scrollLeft + box.clientWidth < box.scrollWidth - 1;
+        if (more) box.setAttribute('data-more', 'right'); else box.removeAttribute('data-more');
+        let hint = box.previousElementSibling && box.previousElementSibling.classList.contains('cost-scroll-hint') ? box.previousElementSibling : null;
+        if (!hint && box.scrollWidth > box.clientWidth + 1) { hint = document.createElement('p'); hint.className = 'cost-scroll-hint'; hint.textContent = 'More columns to the right: scroll the table sideways.'; box.before(hint); }
+        if (hint) hint.hidden = !more;
+    }
+}
+function _watchScrollCues() {
+    if (_scrollCues) return;
+    const view = document.getElementById('cost-dashboard-view');
+    if (!view) return;
+    _scrollCues = true;
+    let queued = false;
+    const soon = () => { if (queued) return; queued = true; requestAnimationFrame(() => { queued = false; _markScrollables(); }); };
+    new MutationObserver(soon).observe(view, { childList: true, subtree: true });
+    view.addEventListener('scroll', soon, true); // scroll does not bubble: the capture phase hears every box's own
+    window.addEventListener('resize', soon);
+    soon();
+}
+
 export async function showCostDashboard() {
     showView('cost-dashboard-view');
+    _watchScrollCues();
     await _refreshCostDashboard();
     await _refreshCallMetrics();
     stopCostDashboard(); // clear any existing timer
@@ -588,7 +616,7 @@ function _renderProviderTable(rows) {
     const filtered = _applyColFilters(rows, 'provider', { agent_type: r => r.agent_type || '' });
     const sorted = _sortRows(filtered, 'provider', (r, f) => f === 'agent_type' ? (r.agent_type || '') : (r[f] || 0));
     if (sorted.length === 0) {
-        emptyState(container, 'No data', 'cost-empty');
+        emptyState(container, NO_DATA, 'cost-empty');
         return;
     }
     let html = `<table class="cost-table">
@@ -634,7 +662,7 @@ function _renderModelTable(rows) {
     });
 
     if (sorted.length === 0) {
-        emptyState(container, 'No data', 'cost-empty');
+        emptyState(container, NO_DATA, 'cost-empty');
         return;
     }
 
@@ -689,7 +717,7 @@ function _renderThinkingTable(rows) {
         return r[f] || 0;
     });
     if (sorted.length === 0) {
-        emptyState(container, 'No data', 'cost-empty');
+        emptyState(container, NO_DATA, 'cost-empty');
         return;
     }
     let html = `<table class="cost-table">
@@ -745,7 +773,7 @@ function _renderAgentTable(rows) {
     });
 
     if (sorted.length === 0) {
-        emptyState(container, 'No data', 'cost-empty');
+        emptyState(container, NO_DATA, 'cost-empty');
         return;
     }
 
@@ -928,7 +956,7 @@ function _renderTaskTable(tasks) {
     _costTaskCache = sorted;
 
     if (sorted.length === 0) {
-        emptyState(container, 'No data', 'cost-empty');
+        emptyState(container, NO_DATA, 'cost-empty');
         return;
     }
 
@@ -1208,7 +1236,7 @@ function _renderTeamTable(teams) {
     });
 
     if (sorted.length === 0) {
-        emptyState(container, 'No data', 'cost-empty');
+        emptyState(container, NO_DATA, 'cost-empty');
         return;
     }
 
@@ -1270,7 +1298,7 @@ function _renderBranchTable(branches) {
     });
 
     if (sorted.length === 0) {
-        emptyState(container, 'No data', 'cost-empty');
+        emptyState(container, NO_DATA, 'cost-empty');
         return;
     }
 
