@@ -197,7 +197,7 @@ func TestTunneledDiffsAreFiltered(t *testing.T) {
 	old := "diff --git a/main.go b/main.go\n--- a/main.go\n+++ b/main.go\n@@ -1 +1 @@\n-a\n+b\n" +
 		"diff --git a/.env.local b/.env.local\nnew file mode 100644\n--- /dev/null\n+++ b/.env.local\n@@ -0,0 +1 @@\n+" + secretEnv + "\n" +
 		"diff --git a/shot.png b/shot.png\nnew file mode 100644\nGIT binary patch\nliteral 12\nzcmZ?wbhEHbWMp7uXlP(yU|@&|\n\n"
-	path := h.taskArtifactPath(task.ID)
+	path := h.taskArtifactPath(task.BoardID, task.ID)
 	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
 	require.NoError(t, os.WriteFile(path, []byte(old), 0o644))
 

@@ -62,9 +62,11 @@ func TestHubSweepNoHomeInAnyViewRoute(t *testing.T) {
 	rec := call(h, "POST", "/api/board/team/tasks", `{"subscriber_id":"Operator","created_by":"Operator","title":"a task","assigned_to":"Dev"}`, js)
 	require.Equal(t, 201, rec.Code, rec.Body.String())
 	var task struct {
-		ID int64 `json:"id"`
+		ID      int64  `json:"id"`
+		BoardID string `json:"board_id"`
 	}
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &task))
+	require.NotEmpty(t, task.BoardID, "the task answer names its board: its diff is kept under it")
 	// #3561 (d): one of everything a View route reads, so all of them answer (each created on
 	// this computer, the cheapest way: a local call, a store row, or the file Coral would write).
 	ctx := context.Background()
@@ -82,7 +84,7 @@ func TestHubSweepNoHomeInAnyViewRoute(t *testing.T) {
 	require.Equal(t, 200, rec.Code, "task result: %s", rec.Body.String())
 	diff := []byte("diff --git a/README.md b/README.md\n--- a/README.md\n+++ b/README.md\n@@ -1 +1,2 @@\n hi\n+changed\n")
 	for _, p := range []string{
-		filepath.Join(r.dir, "artifacts", "tasks", strconv.FormatInt(task.ID, 10), "changes.diff"),
+		filepath.Join(r.dir, "artifacts", "tasks", routes.TaskBoardKey(task.BoardID), strconv.FormatInt(task.ID, 10), "changes.diff"),
 		filepath.Join(r.dir, "artifacts", "sessions", sid, "changes.diff"),
 	} {
 		require.NoError(t, os.MkdirAll(filepath.Dir(p), 0o700))

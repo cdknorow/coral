@@ -297,9 +297,12 @@ func writeChangesArtifact(artifactPath string, diff []byte) error {
 }
 
 // storeDiffObject stores diff once under <coral>/artifacts/diff-objects/<sha256> (found from
-// artifactPath: .../artifacts/{tasks,sessions}/<id>/changes.diff) and returns its path.
+// artifactPath: .../artifacts/sessions/<id>/changes.diff or .../artifacts/tasks/<board key>/<id>/changes.diff, #6948) and returns its path.
 func storeDiffObject(artifactPath string, diff []byte) (string, error) {
-	root := filepath.Dir(filepath.Dir(filepath.Dir(artifactPath))) // .../artifacts
+	root := filepath.Dir(filepath.Dir(filepath.Dir(artifactPath))) // .../artifacts (sessions)
+	if filepath.Base(root) != "artifacts" {
+		root = filepath.Dir(root) // .../artifacts/tasks/<board key>/<id>/changes.diff
+	}
 	if filepath.Base(root) != "artifacts" {
 		return "", fmt.Errorf("not under artifacts/")
 	}

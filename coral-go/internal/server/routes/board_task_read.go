@@ -145,14 +145,14 @@ func (h *BoardHandler) TaskChangesDiff(w http.ResponseWriter, r *http.Request) {
 		errInternalServer(w, err.Error())
 		return
 	}
-	found := false
+	var found *board.Task
 	for i := range tasks {
 		if tasks[i].ID == taskID {
-			found = true
+			found = &tasks[i]
 			break
 		}
 	}
-	if !found {
+	if found == nil {
 		errNotFound(w, "task not found")
 		return
 	}
@@ -160,7 +160,12 @@ func (h *BoardHandler) TaskChangesDiff(w http.ResponseWriter, r *http.Request) {
 		errNotFound(w, "task changes artifact not found")
 		return
 	}
-	data, err := os.ReadFile(h.taskArtifactPath(taskID))
+	path := h.taskArtifactPath(found.BoardID, taskID)
+	if info, serr := os.Stat(path); serr == nil && writtenBefore(info.ModTime(), found.CreatedAt) { // an older task's file under a repeated id (#6948)
+		errNotFound(w, "task changes artifact not found")
+		return
+	}
+	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			errNotFound(w, "task changes artifact not found")
