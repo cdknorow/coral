@@ -160,6 +160,7 @@ func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Conf
 	// Job scheduler
 	scheduler := background.NewJobScheduler(schedStore, 30*time.Second)
 	launcher := background.NewAgentLauncher(agentRT, sessStore, cfg.Port)
+	agent.SetStartStagger(true)                         // two Codex starts at once raced its shared state database: every launch path spaces them (#6848)
 	launcher.SetServer(cfg.AgentHost(), cfg.CoralDir()) // the agents it starts dial this server and use this data folder (#6767)
 	scheduler.SetLaunchFn(launcher.BuildSchedulerLaunchFn(schedStore))
 	scheduler.SetSessionStore(sessStore)

@@ -161,11 +161,12 @@ func (s *stampRecorder) SpawnAgent(_ context.Context, _, _, _, _ string) error {
 }
 
 // #6839 (Codex Test's #6828): two Codex runs fired in the same minute started at once against one Codex home's state database, and one exited during its state initialisation. Codex starts are now spaced
-// apart (sharedHomeStartGap); the other agents start at once as before.
+// apart (agent.SharedHomeStartGap); the other agents start at once as before.
 func TestCodexRunsFiredTogetherAreStartedApart(t *testing.T) {
 	ctx := context.Background()
-	defer func(g time.Duration) { sharedHomeStartGap = g }(sharedHomeStartGap)
-	sharedHomeStartGap = 400 * time.Millisecond
+	defer func(g time.Duration) { agent.SharedHomeStartGap = g; agent.SetStartStagger(false) }(agent.SharedHomeStartGap)
+	agent.SetStartStagger(true)
+	agent.SharedHomeStartGap = 400 * time.Millisecond
 	launch := func(agentType string, n int) []time.Time {
 		rt := &stampRecorder{}
 		l := NewAgentLauncher(rt, store.NewSessionStore(setupTestDB(t)), 8450)

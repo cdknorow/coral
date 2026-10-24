@@ -2,6 +2,7 @@ package routes
 
 import (
 	"context"
+	"github.com/subgentic/coral/internal/agent"
 	"os"
 	"path/filepath"
 	"sync"
@@ -111,4 +112,31 @@ func TestTheStartPathDefersTheSecondCodexStartOnANewHome(t *testing.T) {
 // multi-Codex launch of a new person wait that much longer, so it is pinned.
 func TestTheFirstCodexStartGapIsAShortMargin(t *testing.T) {
 	assert.Equal(t, 3*time.Second, codexFirstStartGapDefault)
+}
+
+// #6848 (Security's MUST): a Codex start is spaced from the previous one by agent.SharedHomeStartGap, and the request never waits for it: the start is typed later (afterTeamSlot) and the call returns at once, so
+// a Hub viewer's response deadline cannot cut a team launch in half.
+func TestTheStartPathSpacesCodexStartsWithoutBlockingTheRequest(t *testing.T) {
+	freshCodexHome(t)
+	oldGap := agent.SharedHomeStartGap
+	agent.SharedHomeStartGap = 500 * time.Millisecond
+	agent.SetStartStagger(true)
+	oldFirst := codexFirstStartGap
+	codexFirstStartGap = 0 // the first-start gap of a new home is its own rule: this test is the general spacing
+	t.Cleanup(func() { agent.SharedHomeStartGap = oldGap; agent.SetStartStagger(false); codexFirstStartGap = oldFirst })
+	var mu sync.Mutex
+	var deferred []time.Duration
+	prev := afterTeamSlot
+	afterTeamSlot = func(d time.Duration, f func()) { mu.Lock(); deferred = append(deferred, d); mu.Unlock() } // not typed here: only what was asked for
+	t.Cleanup(func() { afterTeamSlot = prev })
+	_, h, _, _ := setupSessionsTestServer(t)
+
+	start := time.Now()
+	for _, name := range []string{"codex-a", "codex-b", "codex-c"} {
+		require.NoError(t, h.startAgentCLI(context.Background(), "", "codex", name, "codex"))
+	}
+	assert.Less(t, time.Since(start), 200*time.Millisecond, "the three calls returned at once")
+	require.Len(t, deferred, 2, "the first start is typed now, the others later")
+	assert.InDelta(t, float64(500*time.Millisecond), float64(deferred[0]), float64(100*time.Millisecond))
+	assert.InDelta(t, float64(time.Second), float64(deferred[1]), float64(100*time.Millisecond))
 }
