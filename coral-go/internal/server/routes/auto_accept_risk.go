@@ -259,6 +259,21 @@ var launchCommandRisks = map[string]commandRisk{
 	"mkfifo":   operandRisk(map[string]bool{"-m": true, "--mode": true}),
 	"shred":    operandRisk(map[string]bool{"-n": true, "-s": true, "--iterations": true, "--size": true, "--random-source": true}),
 	"truncate": operandRisk(map[string]bool{"-s": true, "-r": true, "--size": true, "--reference": true}),
+	"tar":      tarRisk,
+	"bsdtar":   tarRisk,
+	"unzip":    unzipRisk,
+	"zip":      zipRisk,
+	"7z":       sevenZipRisk,
+	"7za":      sevenZipRisk,
+	"7zr":      sevenZipRisk,
+	"gzip":     compressRisk,
+	"gunzip":   compressRisk,
+	"bzip2":    compressRisk,
+	"bunzip2":  compressRisk,
+	"xz":       compressRisk,
+	"unxz":     compressRisk,
+	"zstd":     compressRisk,
+	"rsync":    rsyncRisk,
 }
 
 // dropNegation drops the leading ! words of a command (! rm, ! ! rm): the command after them is what runs.
