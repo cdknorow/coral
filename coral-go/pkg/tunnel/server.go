@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -44,10 +45,11 @@ type SessionConfig struct {
 	// OnRelay set) and "hub-signin" (with OnSignin set) are known.
 	Capabilities func(identity any) []string
 	// CheckHello vets an authenticated connector's Hello. It runs only after auth succeeds and before anything else in the
-	// handshake (version negotiation, capabilities, route key included), and gets the Hello as read (CoralVersion already
-	// bounded to 64 bytes) with ServerToken blanked. An error that is ErrUnsupportedVersion answers Welcome.error
-	// "unsupported_version" and ends the handshake; any other error is answered "unauthorized", as a failed auth is. A peer
-	// that fails auth never reaches the hook, and its answer is the one it got before the hook existed. Nil: no check.
+	// handshake (version negotiation, capabilities, route key included), and gets a copy of the Hello as read (CoralVersion
+	// already bounded to 64 bytes, ServerToken blanked, Capabilities cloned). Its errors are answered as an AuthFunc's are:
+	// ErrRetryLater (or RetryLater(after)) answers "retry_later" with its wait, ErrUnsupportedVersion answers
+	// "unsupported_version", any other error "unauthorized"; each ends the handshake. A peer that fails auth never reaches
+	// the hook, and its answer is the one it got before the hook existed. Nil: no check.
 	CheckHello func(hello Hello, identity any) error
 	// RouteKey gives, per authenticated tunnel, the route key the hub sends in Welcome
 	// (#3683); nil or a malformed value sends none.
@@ -227,9 +229,13 @@ func Accept(ctx context.Context, c *websocket.Conn, auth AuthFunc, cfg SessionCo
 	}
 	if cfg.CheckHello != nil {
 		seen := hello
-		seen.ServerToken = "" // the hook never sees the token
+		seen.ServerToken = ""                                // the hook never sees the token
+		seen.Capabilities = slices.Clone(hello.Capabilities) // nor can it change what the handshake goes on to read
 		if err := cfg.CheckHello(seen, identity); err != nil {
-			if errors.Is(err, ErrUnsupportedVersion) {
+			switch {
+			case errors.Is(err, ErrRetryLater): // as an AuthFunc's refusal is answered, with the wait the hook asked for
+				return reject(CodeRetryLater, err)
+			case errors.Is(err, ErrUnsupportedVersion):
 				return reject(CodeUnsupportedVersion, ErrUnsupportedVersion)
 			}
 			return reject(CodeUnauthorized, ErrUnauthorized)

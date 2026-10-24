@@ -118,3 +118,51 @@ func TestCheckHelloAcceptAndNilHookAreUnchanged(t *testing.T) {
 	c.CloseNow()
 	nilHub.next(t)
 }
+
+// The hook's errors are answered as an AuthFunc's are: retry_later with the wait it asked for (also wrapped), unsupported_version, anything else unauthorized.
+func TestCheckHelloErrorsAreAnsweredAsAnAuthFuncsAre(t *testing.T) {
+	for name, c := range map[string]struct {
+		err       error
+		code      string
+		retryWait int
+	}{
+		"retry later with a wait":          {RetryLater(42 * time.Second), CodeRetryLater, 42},
+		"retry later wrapped":              {fmt.Errorf("account busy: %w", RetryLater(7*time.Second)), CodeRetryLater, 7},
+		"the plain retry later":            {ErrRetryLater, CodeRetryLater, 0},
+		"unsupported version":              {ErrUnsupportedVersion, CodeUnsupportedVersion, 0},
+		"unsupported version wrapped":      {fmt.Errorf("too old: %w", ErrUnsupportedVersion), CodeUnsupportedVersion, 0},
+		"any other error":                  {errors.New("lookup failed"), CodeUnauthorized, 0},
+		"the unauthorized error itself":    {ErrUnauthorized, CodeUnauthorized, 0},
+		"a wait too long is capped":        {RetryLater(time.Hour), CodeRetryLater, int(MaxRetryAfter / time.Second)},
+		"a wait under a second is no wait": {RetryLater(500 * time.Millisecond), CodeRetryLater, 0},
+	} {
+		cfg := fastCfg()
+		cfg.CheckHello = func(Hello, any) error { return c.err }
+		hub := newHub(t, cfg)
+		w, conn := rawHandshake(t, hub, Hello{ProtocolVersion: ProtocolVersion, ServerToken: testToken})
+		assert.Equal(t, c.code, w.Error, name)
+		assert.Equal(t, c.retryWait, w.RetryAfter, name)
+		conn.CloseNow()
+		select {
+		case <-hub.Sessions:
+			t.Fatal(name + ": a refused hello got a session")
+		default:
+		}
+	}
+}
+
+// The hook is handed a copy: editing its Capabilities does not change what the handshake goes on to read.
+func TestCheckHelloCannotChangeWhatTheHandshakeReads(t *testing.T) {
+	cfg := fastCfg()
+	cfg.CheckHello = func(h Hello, _ any) error {
+		require.NotEmpty(t, h.Capabilities)
+		h.Capabilities[0] = "edited/9"
+		return nil
+	}
+	hub := newHub(t, cfg)
+	w, c := rawHandshake(t, hub, Hello{ProtocolVersion: ProtocolVersion, ServerToken: testToken, Capabilities: []string{CapCrossTeamAllowlist}})
+	defer c.CloseNow()
+	require.Empty(t, w.Error)
+	s := hub.next(t)
+	assert.Equal(t, []string{CapCrossTeamAllowlist}, s.peerCaps)
+}
