@@ -1,0 +1,72 @@
+name: Worktree upgrade proof (findings)
+
+# The upgrade proof (#6882): a worktree team and a five-minute cron job on the old build, then the new build on the same data folder (tests/stress/worktree_upgrade.sh).
+# A findings run, not a gate. Runs on a push to a trial/worktree-upgrade-* branch or by hand. A throwaway GitHub-hosted runner; everything is under the run's own temp folder.
+on:
+  workflow_dispatch:
+  push:
+    branches: ["trial/worktree-upgrade-*"]
+
+permissions:
+  contents: read
+
+env:
+  CORAL_TELEMETRY_DISABLED: "1"
+
+jobs:
+  upgrade:
+    name: upgrade (windows-latest)
+    runs-on: windows-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out LF line endings
+        shell: bash
+        working-directory: ${{ runner.temp }}
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: coral-go/go.mod
+          cache: false
+      - name: A C compiler for the dev build
+        shell: pwsh
+        run: |
+          if (-not (Get-Command gcc -ErrorAction SilentlyContinue)) { choco install mingw --version=16.1.0 -y --no-progress; if ($LASTEXITCODE -ne 0) { throw "choco install mingw failed" } }
+          gcc --version
+      - name: The old build's source (v1.4.163)
+        run: git worktree add "$RUNNER_TEMP/old-src" 8e2d41c4c
+      - name: run the upgrade proof
+        env:
+          CORAL_TEST_BACKEND: pty
+          CORAL_TEST_PORT: "8477"
+          WTU_OLD_SRC: ${{ runner.temp }}/old-src
+          WORKTREE_MATRIX_OUT: ${{ runner.temp }}/wtu-out
+          TMPDIR: ${{ runner.temp }}
+        run: bash tests/stress/worktree_upgrade.sh 2>&1 | tee "$RUNNER_TEMP/wtu.log"
+      - name: Redact
+        if: always()
+        shell: pwsh
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP 'wtu-out'
+          if (Test-Path $dir) {
+            $names = @($env:USERNAME, $env:COMPUTERNAME) | Where-Object { $_ -and $_.Length -ge 4 }
+            Get-ChildItem $dir -Recurse -File | ForEach-Object {
+              $t = [IO.File]::ReadAllText($_.FullName)
+              foreach ($n in $names) { $t = $t.Replace($n, '<redacted>') }
+              [IO.File]::WriteAllText($_.FullName, $t)
+            }
+          }
+      - name: Keep the table
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: worktree-upgrade-windows-latest
+          path: ${{ runner.temp }}/wtu-out
+          retention-days: 7
+          if-no-files-found: ignore
