@@ -846,3 +846,40 @@ func TestArtifactCommentsOwnerReadThroughTheHubIsExactlyWhatTheHubMayDo(t *testi
 	assert.Equal(t, true, list[0]["can"].(map[string]any)["edit"])
 	assert.Equal(t, true, list[0]["can"].(map[string]any)["delete"])
 }
+
+// #7052 (Security Windows's LOW on round 3): the handler's own owner check, under the middleware's. artifactCommentCaller makes a request the owner only when the stamp passes hubOwnerRequest: an authentic
+// stamp with no owner marker, or another hub user's marker, on the comment routes the table lists is a hub viewer; and a route that is an owner route but not a comments route (an artifact read, the list) is
+// never taken as the comments owner request, marker or not.
+func TestArtifactCommentCallerNeedsTheOwnerChecksAndTheListedRoutes(t *testing.T) {
+	rig := newCmtRig(t)
+	withLabel(t, cmtHubUser, nil)
+	call := func(method, path string, hdr map[string]string) commentCaller {
+		req := httptest.NewRequest(method, path, nil)
+		for k, v := range hdr {
+			if k != testDashboardHeader {
+				req.Header.Set(k, v)
+			}
+		}
+		c, status, code := rig.h.artifactCommentCaller(req)
+		require.Zero(t, status, code)
+		return c
+	}
+	noMarker := map[string]string{tunnel.ViaHeader: cloud.ViaSecret(), tunnel.HubUserHeader: cmtHubUser}
+	otherUser := map[string]string{tunnel.ViaHeader: cloud.ViaSecret(), tunnel.HubUserHeader: "hub-user-9999ffff", tunnel.HubRoleHeader: "owner"}
+	owner := map[string]string{tunnel.ViaHeader: cloud.ViaSecret(), tunnel.HubUserHeader: cmtHubUser, tunnel.HubRoleHeader: "owner"}
+	for _, r := range []struct{ method, path string }{
+		{"GET", cp(cmtDoc)}, {"POST", cp(cmtDoc)}, {"POST", cp(cmtDoc) + "/1/resolve"}, {"POST", cp(cmtDoc) + "/1/reopen"},
+	} {
+		assert.Equal(t, commentCallerHub, call(r.method, r.path, noMarker).Kind, "no owner marker: a hub viewer, "+r.method+" "+r.path)
+		assert.Equal(t, commentCallerHub, call(r.method, r.path, otherUser).Kind, "another hub user's marker: a hub viewer, "+r.method+" "+r.path)
+		assert.Equal(t, commentCallerOwner, call(r.method, r.path, owner).Kind, "the owner, "+r.method+" "+r.path)
+	}
+	// Owner routes that are not the comments' own: never the comments owner request, whatever the marker.
+	for _, r := range []struct{ method, path string }{
+		{"GET", "/api/artifacts/" + cmtDoc}, {"GET", "/api/artifacts"}, {"GET", "/api/artifacts/" + cmtDoc + "/meta"}, {"GET", "/api/artifacts/" + cmtDoc + "/readers"}, {"DELETE", "/api/artifacts/" + cmtDoc},
+		{"PATCH", cp(cmtDoc) + "/1"}, {"DELETE", cp(cmtDoc) + "/1"}, {"PUT", cp(cmtDoc) + "/lock"},
+	} {
+		assert.False(t, ownerCommentRequest(httptest.NewRequest(r.method, r.path, nil)), r.method+" "+r.path)
+		assert.Equal(t, commentCallerHub, call(r.method, r.path, owner).Kind, "not a comments owner route: "+r.method+" "+r.path)
+	}
+}
