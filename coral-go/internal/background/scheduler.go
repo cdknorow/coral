@@ -695,6 +695,11 @@ func (s *JobScheduler) killRunSession(ctx context.Context, run *store.ScheduledR
 	if err := s.runtime.KillAgent(ctx, name); err != nil {
 		s.logger.Warn("could not kill the run's agent", "run_id", run.ID, "session", name, "error", err)
 	}
+	if s.sessionStore != nil { // ended like a killed session: its live row is no longer active (a run's agent that is killed here left it "active" with no stopped_at, #7016)
+		if err := s.sessionStore.UnregisterLiveSession(ctx, *run.SessionID); err != nil {
+			s.logger.Warn("could not end the run's session row", "run_id", run.ID, "session", name, "error", err)
+		}
+	}
 }
 
 // launchAndWatch is the core goroutine that creates worktrees, launches agents,
@@ -794,15 +799,15 @@ func (s *JobScheduler) launchAndWatch(runID int64, job store.ScheduledJob, rc ru
 
 	status, exitReason := runOutcome(launchErr, watchCtx.Err())
 	if neverStarted.Load() && status == "failed" { // the backstop ended the run: its own sentence and code, not "context canceled" (#6978)
-		exitReason = agentNeverStartedMsg
+		exitReason = agentNeverStartedCode // the code in exit_reason, the sentence in error_msg, on every path (the startup settle's shape, #7016)
 		s.store.UpdateScheduledRun(ctx, runID, map[string]interface{}{"error_msg": agentNeverStartedMsg, "error_code": agentNeverStartedCode})
 	}
 	if status == "failed" && errors.Is(launchErr, ptymanager.ErrStartCommand) { // one plain sentence and a fixed code, not "spawn agent failed: ..." (#6978)
-		exitReason = ptymanager.ErrStartCommand.Error()
-		s.store.UpdateScheduledRun(ctx, runID, map[string]interface{}{"error_msg": exitReason, "error_code": startCommandFailedCode})
+		exitReason = startCommandFailedCode
+		s.store.UpdateScheduledRun(ctx, runID, map[string]interface{}{"error_msg": ptymanager.ErrStartCommand.Error(), "error_code": startCommandFailedCode})
 	}
 	if status == "completed" && s.exitedBeforeStarting(ctx, runID, job, time.Now().UTC().Format(store.ISOFormat), startedAt) {
-		status, exitReason = "failed", agentExitedEarlyMsg
+		status, exitReason = "failed", agentExitedEarlyCode // the sentence is in error_msg (exitedBeforeStarting)
 	}
 	s.finishRun(ctx, runID, job, status, exitReason, launchErr != nil)
 
