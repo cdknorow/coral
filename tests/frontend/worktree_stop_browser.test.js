@@ -26,6 +26,7 @@ const BASE = require('./test_base').BASE;
         await seed(true);
         const m1 = await ask();
         check('a team on a worktree: the confirmation says the worktree is removed if it has no unsaved changes, otherwise kept, and names its branch', m1.includes('Its worktree (branch coral-team/team-k) is removed if it has no unsaved changes; otherwise it is kept.'), m1);
+        check('the confirmation is described by its message (a screen reader says what Kill Team will do, not only its title)', await ev(`(document.getElementById('confirm-modal').getAttribute('aria-describedby') || '').split(' ').includes('confirm-modal-message')`));
         check('and that sentence comes before the log note, once', m1.indexOf('worktree') < m1.indexOf('terminal log') && m1.split('worktree').length === 2, m1);
         await cancel();
         await seed(false);

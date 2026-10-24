@@ -504,7 +504,7 @@
     </div>
 
     <!-- Confirm Modal (reusable) -->
-    <div id="confirm-modal" class="modal" role="dialog" aria-labelledby="confirm-modal-title" aria-modal="true" style="display:none">
+    <div id="confirm-modal" class="modal" role="dialog" aria-labelledby="confirm-modal-title" aria-describedby="confirm-modal-message" aria-modal="true" style="display:none">
         <div class="modal-content modal-md">
             <div class="modal-header">
                 <h3 id="confirm-modal-title">Are you sure?</h3>
@@ -1353,7 +1353,7 @@
                     <div id="job-modal-limit-msg" class="field-error" role="alert" hidden></div>
                     <div id="job-modal-prompt-more" hidden>
                         <label class="job-field">Base branch
-                            <input type="text" id="job-modal-branch" placeholder="the repo's current branch" value="">
+                            <input type="text" id="job-modal-branch" placeholder="the repo's current branch" value="" aria-describedby="job-modal-branch-msg">
                         </label>
                         <div id="job-modal-branch-msg" class="field-error" role="alert" hidden></div>
                         <label class="job-field">Flags <span class="job-optional">(optional)</span>
