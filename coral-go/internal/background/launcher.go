@@ -13,7 +13,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -36,43 +35,6 @@ type AgentLauncher struct {
 	// :8420 (#6767: a scheduled agent's events went to the default port, so a server on any other port stored none).
 	host     string
 	coralDir string
-	// startGap serializes the starts of agents that share one CLI home's state (startMu, lastStart by agent type): see staggerStart.
-	startMu   sync.Mutex
-	lastStart map[string]time.Time
-}
-
-// sharedHomeStartGap is how far apart two launches of an agent that keeps its state in one shared home (Codex's SQLite state database) are started. Two Codex cron runs firing in the same minute raced the first
-// run's state initialisation and migration: one exited with a "duplicate" error (code 1) before it did anything (Codex Test's #6828). A variable so tests need not wait.
-var sharedHomeStartGap = 4 * time.Second
-
-// staggerStart waits its turn: it reserves the next free start slot for agentType (at least sharedHomeStartGap after the previous reservation) and sleeps until it, or until ctx ends. Only the agents whose CLI
-// initialises a shared state database at start are staggered (Codex); the others start at once as before.
-func (l *AgentLauncher) staggerStart(ctx context.Context, agentType string) error {
-	if agentType != at.Codex || sharedHomeStartGap <= 0 {
-		return nil
-	}
-	l.startMu.Lock()
-	if l.lastStart == nil {
-		l.lastStart = map[string]time.Time{}
-	}
-	slot := time.Now()
-	if next := l.lastStart[agentType].Add(sharedHomeStartGap); next.After(slot) {
-		slot = next
-	}
-	l.lastStart[agentType] = slot
-	l.startMu.Unlock()
-	wait := time.Until(slot)
-	if wait <= 0 {
-		return nil
-	}
-	t := time.NewTimer(wait)
-	defer t.Stop()
-	select {
-	case <-t.C:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
 }
 
 // runTagger is a runtime whose agents carry a run tag (the tmux one): the agent's processes get CORAL_PTY_RUN=<tag> so a Kill, a sleep or a quit finds what they detached. The built-in terminal
@@ -208,7 +170,7 @@ func (l *AgentLauncher) LaunchAgent(ctx context.Context, workingDir, agentType, 
 	} else {
 		slog.Info("spawning agent", "session_id", sessionID, "agent_type", agentType, "agent_name", folderName, "workdir", logsafe.Dir(workingDir))
 	}
-	if err := l.staggerStart(ctx, agentType); err != nil {
+	if err := agent.StaggerStart(ctx, agentType); err != nil {
 		return nil, fmt.Errorf("waiting to start: %w", err)
 	}
 	if err := l.runtime.SpawnAgent(ctx, sessionName, workingDir, logFile, launchCmd); err != nil {

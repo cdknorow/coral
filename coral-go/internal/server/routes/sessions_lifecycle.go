@@ -326,6 +326,9 @@ func (h *SessionsHandler) startAgentCLI(ctx context.Context, team, agentType, ta
 	if g := reserveCodexFirstStart(agentType, time.Now()); g > d {
 		d = g
 	}
+	if g := agent.ReserveStart(agentType); g > d { // Codex starts are spaced like a scheduled run's (two at once raced its shared state database, #6848): typed later, this returns now
+		d = g
+	}
 	if d <= 0 {
 		return sendLaunchCommand(ctx, h.terminal, target, cmd)
 	}
