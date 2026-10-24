@@ -15,4 +15,15 @@ assert.ok(!/"onclick/.test(evil), 'a quote cannot leave the href');
 assert.match(evil, /data-knowledge-link="a&quot;b&lt;c"/, 'the target is escaped as an attribute');
 assert.deepEqual(knowledgeFallbackHtml('', {}), '');
 assert.ok(!knowledgeFallbackHtml('[x](./constructor.md)', {}).includes('data-knowledge-link'), 'an inherited name is not a note');
+// Security's #7045 LOWs: a bounded link rule answers a hostile text at once, and a backtick in a name cannot be read across the attribute.
+for (const hostile of ['['.repeat(100000) + 'x', '['.repeat(100000) + 'x](', '[a](https://' + 'a'.repeat(100000), '[a](./' + 'b'.repeat(100000), '[x]('.repeat(30000), '`'.repeat(100000), '**'.repeat(50000)]) {
+    const t0 = performance.now(); knowledgeFallbackHtml(hostile, {});
+    assert.ok(performance.now() - t0 < 500, `a hostile text returns at once (${hostile.slice(0, 12)}…: ${Math.round(performance.now() - t0)} ms)`);
+}
+const tick = knowledgeFallbackHtml('see [n](./a-b.md) and `code`', { 'a-b': 'a`b**c' });
+assert.match(tick, /data-knowledge-link="a`b\*\*c"/, 'the attribute holds the name as it is: ' + tick);
+assert.match(tick, /<code class="knowledge-code">code<\/code>/, 'the code rule still works');
+assert.ok(!/data-knowledge-link="[^"]*<code/.test(tick), 'no tag inside the attribute');
+assert.match(knowledgeFallbackHtml('[ok](https://example.com/x)', {}), /href="https:\/\/example.com\/x"/, 'a short link still links');
+assert.ok(!/<a /.test(knowledgeFallbackHtml('[' + 'l'.repeat(300) + '](https://example.com/x)', {})), 'a label over 200 characters stays text');
 console.log('knowledge_fallback: ok');
