@@ -1,5 +1,36 @@
 # Release Notes
 
+## v1.4.163 — Worktrees that start from your branch and never lose work, a phone terminal with a key bar, and a phone chat that keeps its answers in reach
+
+### Changes
+
+- **Worktrees start from the repository's own branch,** not from "main" (a repository on master, and a new one with no main, used to fail). A branch the repository does not have is refused with the branches that exist. A job's base branch is checked when the job is saved, and a failed run says why in one sentence. An older team whose branch was made from its name gets a valid branch name, and a team's worktree path that is too long, has a file in the way or collides by letter case is refused before git runs. A bare or unreadable repository gets its own plain sentence, not "no commits yet".
+- **Stopping an agent or team never deletes unsaved work:** a worktree with unsaved changes or commits that are not merged is kept, and the answer says so; a clean one is removed with its branch (git's own refusal decides, never --force). Restart uses the team's own branch, and a launch that was refused before anything started can be retried with the same name. Kill Team and Kill Session say what happens to the worktree, Launch Team's Base Branch starts as the repository's branch, and a job's worktree failure is on its row and announced.
+- **Kept worktrees can be listed and removed through the API:** GET /api/worktrees lists them and POST /api/worktrees/remove takes one away (this computer only, never forces). The Settings panel for them comes in the next release.
+- **Windows worktrees:** long paths work (core.longpaths), a base that exists only on the remote starts from origin/<base>, and a data folder given in the //?/ form is used as the plain drive path so SQLite opens it.
+- **Scheduled and one-shot agents report to their own Coral on any port:** they used to fall back to port 8420, so their approval boxes, held messages and the "starting" chip did not work on another port. A scheduled agent on tmux carries its run tag, so Kill and quit find what it detached.
+- **The "starting" chip clears on any first event from the agent's CLI,** or when a scheduled run finishes.
+- **The phone terminal has a key bar** (Esc, Tab, Ctrl-C, the four arrows and | ~ / -) and a Copy screen button (wrapped lines are joined). With the keyboard open it shows more rows: the banner, chips, status bar and top bar step aside. A phone turned sideways gets the phone layout and follows the pane's size without ever setting it, so it never resizes a pane shared with a computer (a touch laptop with a wide, short window is not a phone). Header controls are 44 px, and Open Agent Tab is not shown on a phone.
+- **The phone chat keeps approval answers reachable:** they stay on screen with the keyboard open and Yes is 44 px; Copy and Save of a long chat are one Tab stop (arrow keys move); the sign-in note is one short line; queued messages are one line each with a count. A long error toast on a phone is readable (four lines, on screen long enough, and a tap keeps it).
+- **The (i) buttons are text-sized and sit beside their label** (a 24 px circle on the label's first line; the 44 px touch target is invisible), and the artifacts list gives Name the room (icon beside the name, one line, a short Created date, the name, time and action icons on one centre line).
+- **On a small phone the header keeps room for the agent name** (about 100 px at 320 px), with gaps kept between its buttons.
+- **Screen readers:** seven more message areas announce reliably: their status is always in the page and only its words change (the held-messages notice, the Coral-was-updated banner, the update-ready notice, the Claude sign-in line, and the notes on Unsaved changes, the home folder and the tmux default are descriptions or notes, not live regions). A Copy button made before its reply has words is named when they arrive, and "2 queued" is text.
+
+### Fixes
+
+- **A terminal's first size is the pane's size:** a resize a moment ago no longer shows the old size until the next tick.
+- **A team launch refused before anything started takes back the board it made,** so fixing the field and launching again works.
+- **A resurrect or a re-launch meets what an earlier run left** (the team's own branch, pruned registrations) with one plain line, and a resurrect recreates a worktree only inside Coral's worktrees folder.
+
+### Known issues
+
+- **The phone chat has no Stop or key buttons yet** (the design comes first).
+- **Kept worktrees have no Settings view yet;** the API above is all there is in this release (the view comes in 164).
+
+### Internal
+
+- **Tests:** the contrast census is two suites (68 s and 64 s instead of one of 110 to 133 s against a 120 s runner limit); every phone media query keeps the sideways clause's 950 px limit and a test pins it; the censuses look at an open approval question in the chat, take it down when its scene ends and put the page's fetch back first; the announcements census marks a polite region shown and filled in one turn as silent; the census world's send answer is outside its GET branch; the startup golden is regenerated; a test keeps every function that builds an AgentLauncher calling SetServer; an agent's own call_ids are dropped when no call is in flight.
+
 ## v1.4.162 — Launch Team in three steps, Jobs and Workflow pages that answer first, a held message you can see and cancel, and a safer permission default for Codex
 
 ### Changes
