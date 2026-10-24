@@ -10,6 +10,9 @@ let open = false;   // Details shown
 
 const $ = () => document.getElementById('worktree-dock');
 
+/** Is the text at 150% or more of the default (the page's root size is 24 px or more)? The bar's closed row is then just the title and the x. */
+const largeText = () => parseFloat(getComputedStyle(document.documentElement).fontSize) >= 24;
+
 function button(cls, label, text) {
     const b = document.createElement('button'); b.type = 'button'; b.className = `btn btn-small ${cls}`; b.textContent = text; if (label) b.setAttribute('aria-label', label);
     return b;
@@ -50,19 +53,25 @@ function paint() {
     const bad = items.some(i => i.error);
     dock.hidden = false; dock.classList.toggle('error', bad);
     const line = document.createElement('div'); line.className = 'worktree-dock-line';
-    const title = document.createElement('span'); title.className = 'worktree-dock-title';
-    title.textContent = items.length === 1 ? (items[0].error ? 'Worktree not removed' : 'Worktree kept') : `${items.length} worktrees ${bad ? 'kept or not removed' : 'kept'}`;
-    line.append(title);
-    if (items.length === 1) { const c = button('worktree-dock-copy', 'Copy the worktree path', 'Copy path'); c.addEventListener('click', () => copy(items[0].path, c)); line.append(c); }
-    const d = button('worktree-dock-details', '', 'Details'); d.setAttribute('aria-expanded', String(open)); d.setAttribute('aria-controls', 'worktree-dock-details');
-    d.addEventListener('click', () => { open = !open; const was = document.activeElement === d; paint(); if (was) { const n = $() && $().querySelector('.worktree-dock-details'); if (n) n.focus(); } });
-    const x = button('worktree-dock-dismiss', 'Dismiss the worktree notice', '×'); x.addEventListener('click', dismissWorktreeDock);
-    line.append(d, x);
+    const title = items.length === 1 ? (items[0].error ? 'Worktree not removed' : 'Worktree kept') : `${items.length} worktrees ${bad ? 'kept or not removed' : 'kept'}`;
+    const big = largeText(); // at large text the closed bar is one row, the title (which opens the details) and the x: Copy path and the words are inside the disclosure
+    const toggle = () => { open = !open; const was = document.activeElement && document.activeElement.classList.contains('worktree-dock-details'); paint(); if (was) { const n = $() && $().querySelector('.worktree-dock-details'); if (n) n.focus(); } };
+    if (big) {
+        const t = button('worktree-dock-details worktree-dock-title', '', title); t.setAttribute('aria-expanded', String(open)); t.setAttribute('aria-controls', 'worktree-dock-details'); t.addEventListener('click', toggle);
+        line.append(t);
+    } else {
+        const t = document.createElement('span'); t.className = 'worktree-dock-title'; t.textContent = title; line.append(t);
+        if (items.length === 1) { const c = button('worktree-dock-copy', 'Copy the worktree path', 'Copy path'); c.addEventListener('click', () => copy(items[0].path, c)); line.append(c); }
+        const d = button('worktree-dock-details', '', 'Details'); d.setAttribute('aria-expanded', String(open)); d.setAttribute('aria-controls', 'worktree-dock-details'); d.addEventListener('click', toggle);
+        line.append(d);
+    }
+    const x = button('worktree-dock-dismiss', items.length > 1 ? `Dismiss all ${items.length} worktree notices` : 'Dismiss the worktree notice', '×'); x.addEventListener('click', dismissWorktreeDock);
+    line.append(x);
     const body = document.createElement('div'); body.id = 'worktree-dock-details'; body.className = 'worktree-dock-body'; body.hidden = !open;
     for (const i of items) {
         const row = document.createElement('div'); row.className = 'worktree-dock-item';
         const t = document.createElement('span'); t.className = 'worktree-dock-text'; t.textContent = i.text; row.append(t);
-        if (items.length > 1) { const c = button('worktree-dock-copy', `Copy the path ${i.path}`, 'Copy path'); c.addEventListener('click', () => copy(i.path, c)); row.append(c); }
+        if (items.length > 1 || big) { const c = button('worktree-dock-copy', `Copy the path ${i.path}`, 'Copy path'); c.addEventListener('click', () => copy(i.path, c)); row.append(c); }
         body.append(row);
     }
     if (!dock.dataset.keys) { dock.dataset.keys = '1'; dock.addEventListener('keydown', e => { if (e.key === 'Escape') dismissWorktreeDock(); }); }

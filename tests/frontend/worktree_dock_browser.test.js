@@ -18,7 +18,7 @@ const S = `(window.__coralStatic || '/static/')`;
         const hit = (a, b) => a && b && a.left < b.right - 0.5 && a.right > b.left + 0.5 && a.top < b.bottom - 0.5 && a.bottom > b.top + 0.5;
         const line = document.querySelector('#worktree-dock .worktree-dock-line'); const lb = line && line.getBoundingClientRect();
         return { dock, overlaps: Object.entries(others).filter(([k, o]) => hit(dock, o)).map(([k]) => k), seen: Object.entries(others).filter(([, o]) => o).map(([k]) => k), inside: !!dock && dock.bottom <= innerHeight + 0.5 && dock.left >= -0.5 && dock.right <= innerWidth + 0.5,
-            lineH: lb ? Math.round(lb.height) : null, docH: dock ? Math.round(dock.bottom - dock.top) : null, vh: innerHeight }; })()`;
+            buttons: [...document.querySelectorAll('#worktree-dock .worktree-dock-line button')].map(b => b.textContent), lineH: lb ? Math.round(lb.height) : null, docH: dock ? Math.round(dock.bottom - dock.top) : null, vh: innerHeight }; })()`;
     try {
         await Page.enable(); await Page.addScriptToEvaluateOnNewDocument({ source: PRELOAD });
         for (const [w, h] of [[360, 800], [390, 844]]) {
@@ -41,6 +41,7 @@ const S = `(window.__coralStatic || '/static/')`;
                     const m = await ev(MEASURE);
                     check(`${tag}, ${kb}: the bar overlaps nothing (${m.seen.join(', ')}) and is inside the screen`, m.dock && m.overlaps.length === 0 && m.inside && m.seen.includes('toggle'), JSON.stringify(m));
                     check(`${tag}, ${kb}: closed it is a line of 44 px or more and does not take the screen (at most half of it)`, m.lineH >= 44 && m.docH <= m.vh / 2, `${m.lineH} px line, ${m.docH} of ${m.vh} px`);
+                    if (pct === 200) check(`${tag}, ${kb}: at large text the closed bar is one row: the title (it opens the details) and the x, with Copy path inside the disclosure`, m.buttons.length === 2 && m.buttons[1] === '×' && m.buttons[0] === 'Worktree kept' && m.lineH <= 80, JSON.stringify([m.buttons, m.lineH]));
                     if (pct === 100) check(`${tag}, ${kb}: it is one row (title, Copy path, Details and × side by side)`, m.lineH <= 48, `${m.lineH} px`);
                     if (kb === 'keyboard down') await shot(`worktree-dock-${w}-${pct}`);
                 }
@@ -78,6 +79,7 @@ const S = `(window.__coralStatic || '/static/')`;
         await say({ state: 'failed', path: '/tmp/wt/team-3', branch: 'coral-team/team-3', reason: 'the worktree is locked' }); await waitFor(`document.querySelectorAll('#worktree-dock .worktree-dock-item').length === 3`, 'three items', 4000);
         b = await bar();
         check('several are one bar with a count, and Details lists each with its own Copy path (no path is lost)', /^3 worktrees/.test(b.title) && b.buttons.join() === 'Details,×' && b.items.length === 3 && b.items.every(i => i.copy) && b.items.some(i => i.text.includes('/tmp/wt/team-1')) && b.items.some(i => i.text.includes('/tmp/wt/team-3')), JSON.stringify(b));
+        check('the x of several is named for all of them', await ev(`document.querySelector('#worktree-dock .worktree-dock-dismiss').getAttribute('aria-label')`) === 'Dismiss all 3 worktree notices');
         check('one that could not be removed is an alert, and the bar says so', b.error && /not removed/.test(b.title + '') || b.error, JSON.stringify([b.error, b.title, b.alert]));
         await ev(`document.querySelector('#worktree-dock .worktree-dock-dismiss').click(); true`);
         check('Dismiss takes the bar away entirely', (await bar()) === null);
