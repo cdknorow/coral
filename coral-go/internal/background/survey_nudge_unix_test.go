@@ -3,8 +3,10 @@
 package background
 
 import (
+	"bufio"
 	"context"
-	"fmt"
+	"github.com/google/uuid"
+	"golang.org/x/sys/unix"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -34,14 +36,15 @@ draw() {
   [ "$1" = survey ] && printf '● How is Claude doing this session? (optional)\n  1: Bad    2: Fine   3: Good   0: Dismiss\n\n'
   printf '%s\n❯ \n%s\n  ⏵⏵ bypass permissions on (shift+tab to cycle)\n                                        ✔ Update installed · Restart to update\n' "$rule" "$rule"
 }
-draw survey
+# Input must be ready before the screen advertises a dismissible survey.
 stty raw -echo
+draw survey
 k=$(dd bs=1 count=1 2>/dev/null)
+printf '%s\n' "$k" > "$KEY"
 if [ "$k" = "0" ]; then
   draw clear
-  cat >> "$OUT"
+  exec cat > "$OUT"
 fi
-sleep 60
 `
 
 // The board's nudges are delivered with the background runtime as the gate's terminal (deliverAutomatedIfWanted). The runtime could read the screen but not type a single key, so the gate's dismissal of Claude's session survey
@@ -49,37 +52,94 @@ sleep 60
 func TestABoardNudgeBehindClaudesSessionSurveyDismissesItAndIsDelivered(t *testing.T) {
 	skipIfNoPTY(t)
 	dir := t.TempDir()
-	out := filepath.Join(dir, "typed.txt")
+	// FIFOs acknowledge what the fake CLI actually read, instead of polling a
+	// file and assuming a delivery goroutine finished within a separate 5 s wait.
+	openPipe := func(name string) *os.File {
+		path := filepath.Join(dir, name)
+		require.NoError(t, unix.Mkfifo(path, 0o600))
+		f, err := os.OpenFile(path, os.O_RDWR, 0)
+		require.NoError(t, err)
+		t.Cleanup(func() { f.Close() })
+		return f
+	}
+	output, key := openPipe("typed.pipe"), openPipe("key.pipe")
 	script := filepath.Join(dir, "fake-claude.sh")
 	require.NoError(t, os.WriteFile(script, []byte(fakeSurveyClaude), 0o755))
-	t.Setenv("OUT", out)
-
+	t.Setenv("OUT", output.Name())
+	t.Setenv("KEY", key.Name())
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute) // deadlock guard, not a speed assertion
+	defer cancel()
 	rt := newTestPTYRuntime()
-	// A session of its own on every run: the gate remembers when it last sent a 0 to a session NAME (once per 30 s, surveyRetryGap), process-wide, so a test run again in the same process (-count, shuffled reruns) with a fixed
-	// name would find the 0 refused for up to 30 s (the flake of #6974's first test: 9 of 10 runs under -count=10).
-	sid := fmt.Sprintf("11111111-2222-3333-4444-%012d", time.Now().UnixNano()%1_000_000_000_000)
+	sid := uuid.NewString() // fresh gate identity on every -count run
 	name := "claude-" + sid
-	require.NoError(t, rt.SpawnAgent(context.Background(), name, dir, "", script))
-	t.Cleanup(func() { rt.KillAgent(context.Background(), name) })
-	// The nudge is delivered once the survey is on the rendered screen, as the gate would find it for a real agent that has drawn it: delivered before that, with an empty screen, the text goes to the fake as keys.
+	require.NoError(t, rt.SpawnAgent(ctx, name, dir, "", script))
+	t.Cleanup(func() { cancel(); rt.KillAgent(context.Background(), name) })
 	require.Eventually(t, func() bool {
-		screen, err := rt.AgentScreen(context.Background(), name, "claude", sid)
+		screen, err := rt.AgentScreen(ctx, name, "claude", sid)
 		return err == nil && strings.Contains(screen, "How is Claude doing this session?")
-	}, 20*time.Second, 50*time.Millisecond, "the fake drew the survey")
-
+	}, 20*time.Second, 50*time.Millisecond, "the input-ready fake drew the survey")
+	type readResult struct {
+		text string
+		err  error
+	}
+	readUntil := func(f *os.File, marker string) <-chan readResult {
+		result := make(chan readResult, 1)
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			reader := bufio.NewReader(f)
+			var text strings.Builder
+			for {
+				b, err := reader.ReadByte()
+				if err != nil {
+					result <- readResult{text.String(), err}
+					return
+				}
+				text.WriteByte(b)
+				if strings.HasSuffix(text.String(), marker) {
+					result <- readResult{text.String(), nil}
+					return
+				}
+			}
+		}()
+		t.Cleanup(func() {
+			// macOS FIFOs are not pollable by Go: closing the descriptor alone
+			// does not interrupt a blocked read. Wake this reader explicitly
+			// after assertions finish, then join it before closing the file.
+			_, _ = f.Write([]byte(marker))
+			<-done
+			f.Close()
+		})
+		return result
+	}
 	const text = "You have 1 unread message on the message board. Run 'coral-board read' to see them."
-	done := make(chan error, 1)
+	keyRead, textRead := readUntil(key, "\n"), readUntil(output, text)
+	delivery := make(chan error, 1)
+	deliveryDone := make(chan struct{})
 	go func() {
-		_, err := deliverAutomatedIfWanted(context.Background(), rt, slog.Default(), name, "claude", sid, "nudge-1", text, "board nudge", false, true, nil)
-		done <- err
+		defer close(deliveryDone)
+		_, err := deliverAutomatedIfWanted(ctx, rt, slog.Default(), name, "claude", sid, "nudge-1", text, "board nudge", false, true, nil)
+		delivery <- err
 	}()
-	require.Eventually(t, func() bool {
-		b, _ := os.ReadFile(out)
-		return strings.Contains(string(b), "unread message")
-	}, 30*time.Second, 100*time.Millisecond, "the survey is dismissed with a 0 and the nudge is typed")
+	t.Cleanup(func() { cancel(); rt.KillAgent(context.Background(), name); <-deliveryDone })
+	receive := func(ch <-chan readResult, stage string) string {
+		select {
+		case result := <-ch:
+			require.NoError(t, result.err, stage)
+			return result.text
+		case <-ctx.Done():
+			t.Fatalf("%s: %v", stage, ctx.Err())
+			return ""
+		}
+	}
+	require.Equal(t, "0\n", receive(keyRead, "fake CLI read the dismiss key"), "dismissal never rates the session")
+	typed := receive(textRead, "fake CLI read the nudge")
+	require.Contains(t, typed, text)
+	require.Equal(t, 1, strings.Count(typed, text))
 	select {
-	case err := <-done:
+	case err := <-delivery:
 		require.NoError(t, err)
-	case <-time.After(5 * time.Second):
+	case <-ctx.Done():
+		t.Fatalf("delivery did not return: %v", ctx.Err())
 	}
 }

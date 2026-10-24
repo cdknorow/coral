@@ -166,6 +166,7 @@ func (h *SystemHandler) CLICheck(w http.ResponseWriter, r *http.Request) {
 var (
 	signInAskMu   sync.Mutex
 	signInAskedAt = map[string]time.Time{}
+	signInAskNow  = time.Now // read/replaced under signInAskMu; tests control the burst window
 )
 
 const signInAskGap = 3 * time.Second
@@ -174,7 +175,7 @@ const signInAskGap = 3 * time.Second
 func claimSignInAsk(agentType string) bool {
 	signInAskMu.Lock()
 	defer signInAskMu.Unlock()
-	now := time.Now()
+	now := signInAskNow()
 	if last, ok := signInAskedAt[agentType]; ok && now.Sub(last) < signInAskGap {
 		return false
 	}

@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"github.com/subgentic/coral/internal/agentsignin"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -70,26 +72,60 @@ func TestCLICheckSaysWhetherAFoundCLIIsSignedIn(t *testing.T) {
 	})
 }
 
-// The route runs a process, so it is not a loop: requests at the same moment, and requests one after another inside the gap, run the CLI's status command once and share its answer.
+// Forty requests belong to one logical throttle window regardless of how long
+// their version/status subprocesses take on a loaded host. Advancing the clock
+// to the boundary must permit the next status command, too.
 func TestCLICheckSignInRunsTheStatusCommandOnceForABurst(t *testing.T) {
+	clis := useFakeCLIs(t)
 	runs := fakeClaude(t, `{"loggedIn": false}`, 1)
+	clis.present["claude"] = filepath.Join(filepath.Dir(runs), "claude")
+	t.Cleanup(agentsignin.SetCheckTimeoutForTests(time.Minute))
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	signInAskMu.Lock()
+	previous := signInAskNow
+	signInAskNow = func() time.Time { return now }
+	signInAskMu.Unlock()
+	t.Cleanup(func() {
+		signInAskMu.Lock()
+		signInAskNow = previous
+		delete(signInAskedAt, "claude")
+		signInAskMu.Unlock()
+	})
 	h := newSystemHandlerForTest(t)
 	var wg sync.WaitGroup
 	start := make(chan struct{})
-	for i := 0; i < 20; i++ { // twenty requests at once: the claim is atomic
+	replies := make(chan *httptest.ResponseRecorder, 20)
+	for i := 0; i < 20; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			<-start
 			w := httptest.NewRecorder()
 			h.CLICheck(w, httptest.NewRequest(http.MethodGet, "/api/system/cli-check?type=claude&signin=1", nil))
+			replies <- w
 		}()
 	}
 	close(start)
 	wg.Wait()
-	for i := 0; i < 20; i++ { // and twenty more one after another inside the gap
-		assert.Contains(t, cliCheckBody(t, "type=claude&signin=1"), `"signed_in":false`, "the answer already recorded is shared")
+	close(replies)
+	for w := range replies {
+		require.Equal(t, http.StatusOK, w.Code)
+		require.Contains(t, w.Body.String(), `"probe":"ok"`)
 	}
-	b, _ := os.ReadFile(runs)
-	assert.Equal(t, 1, strings.Count(string(b), "ran"), "one run of the CLI's status command for forty requests")
+	for i := 0; i < 20; i++ {
+		reply := cliCheck(t, h, "type=claude&signin=1")
+		require.Equal(t, probeOK, reply["probe"])
+		assert.Equal(t, false, reply["signed_in"], "the answer already recorded is shared")
+	}
+	b, err := os.ReadFile(runs)
+	require.NoError(t, err)
+	assert.Equal(t, 1, strings.Count(string(b), "ran"), "one status command for forty requests in one window")
+	signInAskMu.Lock()
+	now = now.Add(signInAskGap)
+	signInAskMu.Unlock()
+	reply := cliCheck(t, h, "type=claude&signin=1")
+	require.Equal(t, false, reply["signed_in"])
+	b, err = os.ReadFile(runs)
+	require.NoError(t, err)
+	assert.Equal(t, 2, strings.Count(string(b), "ran"), "the next window permits a fresh status command")
 }
