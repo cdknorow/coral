@@ -1673,17 +1673,21 @@ func TestTaskChangesDiffOfAnOlderTaskUnderARepeatedIdIsNotServed(t *testing.T) {
 	legacy := filepath.Join(coralDir, "artifacts", "tasks", strconv.FormatInt(task.ID, 10), "changes.diff") // the older layout, by id alone
 	require.NoError(t, os.MkdirAll(filepath.Dir(legacy), 0o755))
 	require.NoError(t, os.WriteFile(legacy, diff, 0o644))
-	assert.Equal(t, http.StatusNotFound, get(), "an older task's file kept by id alone is never served")
+	old := time.Now().Add(-48 * time.Hour)
+	require.NoError(t, os.Chtimes(legacy, old, old))
+	assert.Equal(t, http.StatusNotFound, get(), "a file kept by id alone that is older than the task is an older task's: not served")
+	now := time.Now()
+	require.NoError(t, os.Chtimes(legacy, now, now))
+	assert.Equal(t, http.StatusOK, get(), "an upgrade: a diff kept by id alone, written after the task was made, still shows")
+	require.NoError(t, os.Remove(legacy))
 
 	path := handler.taskArtifactPath(task.BoardID, task.ID)
 	assert.NotEqual(t, path, handler.taskArtifactPath("another-board", task.ID), "kept by board and id")
 	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
 	require.NoError(t, os.WriteFile(path, diff, 0o644))
-	old := time.Now().Add(-48 * time.Hour)
 	require.NoError(t, os.Chtimes(path, old, old))
 	assert.Equal(t, http.StatusNotFound, get(), "a file older than the task cannot be this task's")
 
-	now := time.Now()
 	require.NoError(t, os.Chtimes(path, now, now))
 	assert.Equal(t, http.StatusOK, get(), "this task's own diff is served")
 }
