@@ -962,7 +962,7 @@ function _renderTaskTable(tasks) {
         html += `<tr data-on-click="cost-task" data-task-id="${Number(t.id)}" style="cursor:pointer">
             <td>${statusIcon(t.status)}</td>
             <td class="cost-task-id">#${t.id}</td>
-            <td>${escapeHtml(t.title || '')}</td>
+            <td><button type="button" class="row-open-btn" data-on-click="cost-task" data-task-id="${Number(t.id)}">${escapeHtml(t.title || '')}</button></td>
             <td class="cost-agent-name">${escapeHtml(t.assigned_to || '\u2014')}</td>
             <td><span class="board-task-priority ${priorityClass}">${escapeHtml(t.priority || 'medium')}</span></td>
             <td>${startTime}</td>

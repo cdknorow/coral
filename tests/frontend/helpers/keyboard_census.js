@@ -4,6 +4,7 @@
 //   noFocus      a control Tab reaches that shows nothing when focused (no outline, shadow, border, fill, colour or underline difference from when it is not)
 //   offscreen    a control Tab reaches that is not on the screen even after the browser scrolled to it
 //   positive     a tabindex above 0 (it jumps the reading order)
+//   clickOnly    a visible element with data-on-click that is not focusable, holds no focusable control and is not in a roving group: a mouse can do what it does, a keyboard cannot (#6976: the Workflows cards and the Jobs and Chats rows)
 // dialogCheck() does the same for a dialog: focus moves in when it opens, Tab and Shift+Tab stay inside it, Escape closes it and focus goes back to what opened it.
 // ALLOW_KEYBOARD below is the reviewed list of exceptions: [scene pattern, control pattern, kind, why]. Empty: a control a keyboard cannot reach or see is fixed, not listed.
 const ALLOW_KEYBOARD = [
@@ -86,7 +87,15 @@ async function walk(ev, Input, { max = 250, within = null } = {}) {
             const b = e.getBoundingClientRect(); if (!b.width || !b.height) continue;
             out.push(window.__kb.name(e)); }
         return out; })()`);
-    return { stops, unreachable: unreachable.filter(Boolean), noFocus, offscreen, positive, trapped, terminalEscape, extra };
+    const clickOnly = await ev(`(() => { const FOC = 'button, a[href], input, select, textarea, summary, [tabindex]:not([tabindex="-1"]), [contenteditable=true]'; const out = [];
+        const modal = [...document.querySelectorAll('dialog[open], .modal.show, .modal[style*="flex"], [aria-modal=true]')].find(m => window.__kb.vis(m));
+        for (const e of document.querySelectorAll('[data-on-click]')) {
+            if (!window.__kb.vis(e) || e.closest('.sr-only, .xterm, [data-census-skip], [inert], [aria-hidden=true]') || (modal && !modal.contains(e))) continue;
+            if (e.matches(FOC) || e.querySelector(FOC) || e.closest('button, a[href], summary, [role=button]') || e.closest(${JSON.stringify(COMPOSITE)}) || e.matches('.modal, [role=presentation], [role=dialog]') || e.hasAttribute('disabled')) continue;
+            const b = e.getBoundingClientRect(); if (!b.width || !b.height) continue;
+            out.push(window.__kb.name(e)); }
+        return out; })()`);
+    return { stops, unreachable: unreachable.filter(Boolean), clickOnly: clickOnly.filter(Boolean), noFocus, offscreen, positive, trapped, terminalEscape, extra };
 }
 
 /** A dialog: focus goes in when it opens, Tab and Shift+Tab stay in, Escape closes it and focus returns to the opener. `open` opens it (given the opener focused), `box` is its selector, `opener` the selector of what opens it. */
@@ -118,7 +127,7 @@ async function dialogCheck(ev, Input, { opener, box, open, closedWhen }) {
 
 function problems(name, r) {
     const out = [];
-    for (const [kind, list] of [['unreachable by Tab', r.unreachable], ['shows no focus', r.noFocus], ['off the screen when focused', r.offscreen], ['has tabindex above 0', r.positive]]) for (const c of list) if (!allowedKb(name, kind, c)) out.push(`${name}: ${c} ${kind}`);
+    for (const [kind, list] of [['unreachable by Tab', r.unreachable], ['clickable but not focusable (a keyboard cannot do what a click does)', r.clickOnly || []], ['shows no focus', r.noFocus], ['off the screen when focused', r.offscreen], ['has tabindex above 0', r.positive]]) for (const c of list) if (!allowedKb(name, kind, c)) out.push(`${name}: ${c} ${kind}`);
     for (const x of r.extra || []) out.push(`${name}: ${x}`);
     if (r.trapped) out.push(`${name}: Tab is trapped on ${r.trapped} (it stays there)`);
     return out;

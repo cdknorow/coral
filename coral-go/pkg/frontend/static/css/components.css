@@ -4787,3 +4787,10 @@ dialog.reminder-dialog::backdrop { background: rgba(var(--black-rgb), 0.5); }
 .launch-agent-summary tr[hidden] { display: none; }
 @media (pointer: coarse), (max-width: 767px) { .launch-agent-summary .las-change { min-height: var(--control-touch-height, 44px); } }
 .launch-dir-summary .btn { margin: 0; } /* the folder's Change is flush right, in the column of the rows' Change buttons (#6460) */
+
+/* A list row or card that opens something is a button for the keyboard and a screen reader (#6976): one Tab stop, Enter or Space opens it (data-key-click), and its focus is drawn inside it. In a table the first cell holds a real button that looks like its text (a row with a button role would lose its table semantics). */
+[data-key-click]:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.row-open-btn { background: none; border: 0; padding: 0; margin: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.row-open-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-xs); }
+
+@media (pointer: coarse), (max-width: 767px) { .row-open-btn { display: inline-flex; align-items: center; min-width: var(--control-touch-height, 44px); min-height: var(--control-touch-height, 44px); } } /* a table row's open button is a 44 px target on a phone */

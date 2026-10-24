@@ -395,7 +395,7 @@
 1	scheduler.js	paused
 2	scheduler.js	resultCell(r)
 1	scheduler.js	runFailureTag(r)
-1	scheduler.js	runs.map(r => `<tr data-on-click="job-run" data-run-id="${Number(r.id)}" style="cursor:pointer"> <td>${escapeH
+1	scheduler.js	runs.map(r => `<tr data-on-click="job-run" data-run-id="${Number(r.id)}" style="cursor:pointer"> <td><button t
 1	scheduler.js	runs.map(r => { const sessionLink = r.session_id ? ` <a href="#" class="run-session-link" title="Open the conv
 1	scheduler.js	runsHtml
 1	scheduler.js	sessionLink

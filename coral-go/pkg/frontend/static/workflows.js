@@ -216,7 +216,7 @@ function renderWorkflowList() {
             lastRunHtml = '<span style="color:var(--text-muted)">Never run</span>';
         }
 
-        return `<div class="wf-card" data-on-click="wf-select" data-workflow-id="${Number(wf.id)}">
+        return `<div class="wf-card" data-on-click="wf-select" role="button" tabindex="0" data-key-click data-workflow-id="${Number(wf.id)}">
             <div class="wf-card-top">
                 <span class="wf-card-name">${esc(wf.name)}</span>
                 <span class="wf-card-badges">
@@ -297,7 +297,7 @@ function renderWorkflowDetail(wf, runs) {
     let runsHtml = '';
     if (runs.length) {
         const rowsHtml = runs.map(r => `<tr data-on-click="wf-run" data-run-id="${Number(r.id)}">
-                <td>${r.started_at ? esc(whenWords(r.started_at)) : '—'}</td>
+                <td><button type="button" class="row-open-btn" data-on-click="wf-run" data-run-id="${Number(r.id)}">${r.started_at ? esc(whenWords(r.started_at)) : '—'}</button></td>
                 <td>${statusIconHtml(r.status)} ${runResult(r)}</td>
                 <td>${r.duration_seconds != null ? (r.duration_seconds < 1 ? 'under 1s' : esc(formatDuration(Math.round(r.duration_seconds)))) : '—'}</td>
                 <td>${esc(r.trigger_type || '')}</td>

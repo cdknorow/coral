@@ -79,7 +79,7 @@ export function renderStarredFiles() {
             const copyBtn = `<button class="file-action-btn" data-on-click="file-copy" data-path="${escapeAttr(filepath)}" title="Copy path" aria-label="${escapeAttr(copyLabel)}"><span class="material-icons" aria-hidden="true">content_copy</span></button>`;
             const previewBtn = `<button class="file-action-btn" data-on-click="file-preview" data-path="${escapeAttr(filepath)}" title="Preview" aria-label="${escapeAttr(previewLabel)}"><span class="material-icons" aria-hidden="true">visibility</span></button>`;
             const editBtn = `<button class="file-action-btn" data-on-click="file-edit" data-path="${escapeAttr(filepath)}" title="Edit" aria-label="${escapeAttr(editLabel)}"><span class="material-icons" aria-hidden="true">edit</span></button>`;
-            return `<div class="file-item file-starred" data-on-click="file-open" data-path="${escapeAttr(filepath)}">
+            return `<div class="file-item file-starred" data-on-click="file-open" role="button" tabindex="0" data-key-click data-path="${escapeAttr(filepath)}">
                 ${starBtn}
                 <div class="file-path-wrap">
                     <span class="file-name">${escapeHtml(name)}</span>

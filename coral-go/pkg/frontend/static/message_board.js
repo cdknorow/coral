@@ -74,7 +74,7 @@ function renderBoardSidebar(projects) {
     }
     list.innerHTML = projects.map(p => {
         const active = currentProject === p.project ? 'active' : '';
-        return `<li class="session-list-item ${escapeAttr(active)}" data-on-click="mb-project" data-project="${escapeAttr(p.project)}">
+        return `<li class="session-list-item ${escapeAttr(active)}" data-on-click="mb-project" role="button" tabindex="0" data-key-click data-project="${escapeAttr(p.project)}">
             <span class="session-name">${escapeHtml(keyLabel(p.project))}</span>
             <span class="mb-project-count">${p.message_count} msgs</span>
         </li>`;
@@ -198,7 +198,7 @@ async function loadBoardProjectList() {
         }
         empty.style.display = 'none';
         ul.innerHTML = projects.map(p => `
-            <li class="session-list-item" data-on-click="mb-project" data-project="${escapeAttr(p.project)}"
+            <li class="session-list-item" data-on-click="mb-project" role="button" tabindex="0" data-key-click data-project="${escapeAttr(p.project)}"
                 style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px">
                 <div>
                     <strong>${escapeHtml(keyLabel(p.project))}</strong>

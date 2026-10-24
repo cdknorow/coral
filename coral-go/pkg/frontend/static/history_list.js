@@ -60,7 +60,7 @@ export function renderHistorySessions(sessions, total, page, pageSize) {
             const subsInfo = s.subscriber_count != null ? `<span class="session-meta">${escapeHtml(`${s.subscriber_count} members`)}</span>` : "";
             // laid out as a chat row (#6961): the title and its Group badge, then one line of facts: how many messages and members, and when
             const gfacts = [countInfo, subsInfo, gWhenTag].filter(Boolean).join('<span class="chat-sep" aria-hidden="true"> · </span>');
-            return `<li class="${escapeAttr(isActive ? 'active' : '')}" data-on-click="board-open" data-board="${escapeAttr(identityKey(historyServer(), projectName))}">
+            return `<li class="${escapeAttr(isActive ? 'active' : '')}" data-on-click="board-open" role="button" tabindex="0" data-key-click data-board="${escapeAttr(identityKey(historyServer(), projectName))}">
                 <div class="session-row-mid chat-row-title"><span class="session-label" title="${escapeHtml(label)}">${escapeHtml(label)}</span><span class="badge board-badge">Group</span></div>
                 ${gfacts ? `<div class="session-row-bottom chat-row-facts">${gfacts}</div>` : ""}
             </li>`;
@@ -80,7 +80,7 @@ export function renderHistorySessions(sessions, total, page, pageSize) {
         const whenTag = when ? `<span class="session-time"><time datetime="${escapeAttr(when.iso)}" title="${escapeAttr(when.full)}">${escapeHtml(when.day)}</time>${when.ran ? `, ${escapeHtml(when.ran)}` : ''}</span>` : '';
         const noWhen = !when ? '<span class="session-time">date unknown</span>' : '';
         const facts = [agentTag, branchTag, whenTag || noWhen].filter(Boolean).join('<span class="chat-sep" aria-hidden="true"> · </span>');
-        return `<li class="${escapeAttr(isActive ? 'active' : '')}" data-on-click="history-open" data-session-id="${escapeAttr(s.session_id)}">
+        return `<li class="${escapeAttr(isActive ? 'active' : '')}" data-on-click="history-open" role="button" tabindex="0" data-key-click${isActive ? ' aria-current="true"' : ''} data-session-id="${escapeAttr(s.session_id)}">
             <div class="session-row-mid chat-row-title"><span class="session-label" title="${escapeHtml(label)}">${escapeHtml(label)}</span>${typeTag}${tagDots}${reminderTag}</div>
             ${facts ? `<div class="session-row-bottom chat-row-facts">${facts}</div>` : ""}
         </li>`;

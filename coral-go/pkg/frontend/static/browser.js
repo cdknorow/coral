@@ -62,7 +62,7 @@ function renderRecentDirs() {
     section.innerHTML = `<div class="dir-browser-recents-label">Recent</div>` +
         dirs.map(dir => {
             const name = dir.split("/").filter(Boolean).pop() || dir;
-            return `<div class="dir-browser-recent" data-on-click="browser-recent" data-dir="${escapeAttr(dir)}" title="${escapeAttr(dir)}">
+            return `<div class="dir-browser-recent" data-on-click="browser-recent" role="button" tabindex="0" data-key-click data-dir="${escapeAttr(dir)}" title="${escapeAttr(dir)}">
                 <span class="dir-icon">&#128338;</span>
                 <span class="dir-name">${escapeHtml(name)}</span>
                 <span class="dir-browser-recent-path">&lrm;${escapeHtml(dir)}</span>
@@ -148,7 +148,7 @@ async function loadBrowserEntries(path) {
         }
 
         list.innerHTML = data.entries.map(name =>
-            `<li data-on-click="browser-nav" data-name="${escapeAttr(name)}" title="${escapeAttr(name)}">
+            `<li data-on-click="browser-nav" role="button" tabindex="0" data-key-click data-name="${escapeAttr(name)}" title="${escapeAttr(name)}">
                 <span class="dir-icon">&#128193;</span>
                 <span class="dir-name">${escapeHtml(name)}</span>
             </li>`
