@@ -29,13 +29,18 @@ func compoundRisk(command, workDir, dir string) string {
 	return separatedRisk(command, workDir, dir)
 }
 
-// parsedRisk judges every simple command the parser finds, in source order. It also reads what the separator reading cannot: a single & between commands, |&, a line continuation.
+// parsedRisk judges every simple command the parser finds, in source order. It also reads what the separator reading cannot: a single & between commands, |&, a line continuation. A command
+// so nested that reading it would cost more than a few passes over its own text (a $( ) inside a $( ) a thousand times: each level is a command with the rest inside it) is not read: it is
+// answered as risky, so the person is asked, which fails closed and takes the time of one pass (#7086, QA's round 1).
 func parsedRisk(command, workDir, dir string) string {
 	if len(command) > maxParsedCommand {
 		return ""
 	}
-	leaves, ok := leafCommands(command)
-	if !ok {
+	leaves, status := readLeaves(command)
+	switch status {
+	case leavesTooComplex:
+		return "it is nested too deeply to check"
+	case leavesUnreadable:
 		return ""
 	}
 	return shellRiskCore(strings.Join(leaves, "\n"), workDir, dir, shellRiskFrom)
@@ -46,17 +51,46 @@ func separatedRisk(command, workDir, dir string) string {
 	return shellRiskCore(separatedCompound(command), workDir, dir, shellRiskFrom)
 }
 
-// leafCommands is every simple command of command, in source order, each as one line of text, and ok false when the parser could not read it. A compound command's own redirections
-// come out as the redirections of a no-op command.
+// leafCommands is every simple command of command, in source order, each as one line of text, and ok false when the parser could not read it or the command is too complex to read. A
+// compound command's own redirections come out as the redirections of a no-op command.
 func leafCommands(command string) (leaves []string, ok bool) {
+	leaves, status := readLeaves(command)
+	return leaves, status == leavesRead
+}
+
+// leafStatus says how readLeaves ended.
+type leafStatus int
+
+const (
+	leavesRead       leafStatus = iota // every simple command was found
+	leavesUnreadable                   // the parser could not read the command
+	leavesTooComplex                   // the commands found would cost more to print than leafBudget allows
+)
+
+// leafBudget is how much text readLeaves may print: a leaf holds the text of everything nested in its words, so a command nested n deep prints n times its own length. A real command prints
+// about its own length once; four times that and a little more is room for the deepest ordinary nesting, and what needs more is answered as too complex.
+func leafBudget(command string) int { return 4*len(command) + 8192 }
+
+func readLeaves(command string) (leaves []string, status leafStatus) {
 	f, err := syntax.NewParser(syntax.Variant(syntax.LangBash)).Parse(strings.NewReader(command), "")
 	if err != nil {
-		return nil, false
+		return nil, leavesUnreadable
 	}
 	pr := syntax.NewPrinter(syntax.SingleLine(true))
+	budget := leafBudget(command)
+	printed := 0
+	complex := false
 	print := func(st *syntax.Stmt) {
+		if complex {
+			return
+		}
 		var b strings.Builder
 		if pr.Print(&b, st) == nil {
+			printed += b.Len()
+			if printed > budget {
+				complex = true
+				return
+			}
 			leaves = append(leaves, b.String())
 		}
 	}
@@ -76,9 +110,12 @@ func leafCommands(command string) (leaves []string, ok bool) {
 				print(&leaf)
 			}
 		}
-		return true
+		return !complex // stop walking once it is too complex
 	})
-	return leaves, true
+	if complex {
+		return nil, leavesTooComplex
+	}
+	return leaves, leavesRead
 }
 
 var (

@@ -3,6 +3,7 @@ package routes
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -177,4 +178,48 @@ func TestParsedReadingKeepsTheWorkingDirectory(t *testing.T) {
 	assert.Contains(t, parsedRisk("{ cd /tmp; } & rm -rf x", wd, wd), "deletes recursively")
 	assert.Contains(t, parsedRisk("{ cd /tmp; rm -rf x; }", wd, wd), "deletes recursively")
 	assert.Empty(t, parsedRisk("{ cd sub; rm -rf x; }", wd, wd))
+}
+
+// QA's round 1 (#7086): a command nested n deep costs n passes over its own text, because each level is a command with the rest inside it. It is answered as risky once reading it would print more
+// than a few times its own length, in about the time of one pass, whatever the nesting.
+func TestShellRiskDeepNestingIsAnsweredInOnePass(t *testing.T) {
+	wd := t.TempDir()
+	for _, n := range []int{50, 500, 4000, 20000} {
+		cmd := strings.Repeat("echo $(", n) + "echo hi" + strings.Repeat(")", n)
+		start := time.Now()
+		why := shellRisk(cmd, wd)
+		took := time.Since(start)
+		assert.Less(t, took, 2*time.Second, "%d nested $( ) took %s", n, took)
+		if n >= 4000 {
+			assert.Equal(t, "it is nested too deeply to check", why, "%d deep is not read, and asks", n)
+		}
+	}
+	// An ordinary nesting is read, and a risky command at the bottom of it is found.
+	deep := strings.Repeat("echo $(", 20) + "rm -rf /etc" + strings.Repeat(")", 20)
+	assert.Contains(t, shellRisk(deep, wd), "deletes recursively")
+	assert.Empty(t, shellRisk(strings.Repeat("echo $(", 20)+"echo hi"+strings.Repeat(")", 20), wd))
+	// The other deep shapes are linear: groups, if, pipes, a long run of commands, parameter defaults.
+	for name, cmd := range map[string]string{
+		"groups":     strings.Repeat("{ ", 5000) + "echo hi;" + strings.Repeat(" }", 5000),
+		"ifs":        strings.Repeat("if true; then ", 3000) + "echo hi;" + strings.Repeat(" fi", 3000),
+		"run":        strings.Repeat("echo hi; ", 30000),
+		"pipes":      strings.Repeat("echo hi | ", 10000) + "cat",
+		"parameters": "echo " + strings.Repeat("${a:-", 2000) + "x" + strings.Repeat("}", 2000),
+		"backticks":  strings.Repeat("echo hi; echo `echo hi`; ", 5000),
+	} {
+		start := time.Now()
+		_ = shellRisk(cmd, wd)
+		assert.Less(t, time.Since(start), 2*time.Second, name)
+	}
+}
+
+func TestLeafBudgetIsFourTimesTheCommandAndAMargin(t *testing.T) {
+	assert.Equal(t, 8192, leafBudget(""))
+	assert.Equal(t, 4*100+8192, leafBudget(strings.Repeat("x", 100)))
+	_, status := readLeaves(strings.Repeat("echo $(", 4000) + "echo hi" + strings.Repeat(")", 4000))
+	assert.Equal(t, leavesTooComplex, status)
+	_, status = readLeaves("echo $(echo $(echo hi))")
+	assert.Equal(t, leavesRead, status)
+	_, status = readLeaves("if true; then")
+	assert.Equal(t, leavesUnreadable, status)
 }
