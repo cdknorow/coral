@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"github.com/subgentic/coral/internal/clitext"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -550,9 +549,9 @@ func (h *SessionsHandler) Info(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if git != nil {
-		result["git_branch"] = clitext.CleanName(git.Branch)
+		result["git_branch"] = git.Branch
 		result["git_commit_hash"] = git.CommitHash
-		result["git_commit_subject"] = clitext.Clean(git.CommitSubject)
+		result["git_commit_subject"] = git.CommitSubject
 		if git.RemoteURL != nil {
 			if rn := gitutil.ParseRepoName(*git.RemoteURL); rn != "" {
 				result["git_repo"] = rn

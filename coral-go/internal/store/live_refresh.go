@@ -58,7 +58,7 @@ func (s *GitStore) GetLiveGitState(ctx context.Context, sessionAgents map[string
 		return nil, err
 	}
 	for i := range rows {
-		result[rows[i].TargetSessionID] = &rows[i].GitSnapshot
+		result[rows[i].TargetSessionID] = rows[i].GitSnapshot.sanitize()
 	}
 	return result, nil
 }

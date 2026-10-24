@@ -144,3 +144,43 @@ func TestGitSnapshotTextIsCleanedBeforeItIsStored(t *testing.T) {
 	assert.NotContains(t, got.CommitSubject, "\x1b")
 	assert.NotContains(t, got.CommitSubject, "‮")
 }
+
+// Security's #6836 SHOULD: a row stored before the write path cleaned its text (written here by plain SQL) is handed out clean by every getter, so no route shows it raw.
+func TestOldGitSnapshotRowsAreCleanedByEveryGetter(t *testing.T) {
+	db := openTestDB(t)
+	s := NewGitStore(db)
+	ctx := context.Background()
+	_, err := db.ExecContext(ctx, `INSERT INTO git_snapshots (agent_name, agent_type, working_directory, branch, commit_hash, commit_subject, commit_timestamp, session_id, recorded_at)
+		VALUES ('old-repo', 'claude', '/tmp/old', ?, 'abc', ?, '2026-10-01T10:00:00Z', 'sess-old', '2026-10-01T10:00:00Z')`,
+		"old/‮branch\x1b[31m", "old \x1b[2Jsubject ‮gpj")
+	require.NoError(t, err)
+	sid := "sess-old"
+	check := func(what string, branch, subject string) {
+		assert.Equal(t, "old/branch", branch, what)
+		assert.Equal(t, "old subject gpj", subject, what)
+	}
+	g, err := s.GetLatestGitState(ctx, "old-repo")
+	require.NoError(t, err)
+	check("by agent", g.Branch, g.CommitSubject)
+	g, err = s.GetLatestGitStateBySession(ctx, sid)
+	require.NoError(t, err)
+	check("by session", g.Branch, g.CommitSubject)
+	list, err := s.GetGitSnapshots(ctx, "old-repo", 5)
+	require.NoError(t, err)
+	require.Len(t, list, 1)
+	check("list", list[0].Branch, list[0].CommitSubject)
+	list, err = s.GetRecentGitSnapshots(ctx, "", 5)
+	require.NoError(t, err)
+	require.Len(t, list, 1)
+	check("recent", list[0].Branch, list[0].CommitSubject)
+	list, err = s.GetGitSnapshotsForSession(ctx, sid, 5)
+	require.NoError(t, err)
+	require.Len(t, list, 1)
+	check("for session", list[0].Branch, list[0].CommitSubject)
+	all, err := s.GetAllLatestGitState(ctx)
+	require.NoError(t, err)
+	check("all latest", all[sid].Branch, all[sid].CommitSubject)
+	live, err := s.GetLiveGitState(ctx, map[string]string{sid: "old-repo"})
+	require.NoError(t, err)
+	check("live", live[sid].Branch, live[sid].CommitSubject)
+}

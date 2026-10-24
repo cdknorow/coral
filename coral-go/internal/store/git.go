@@ -131,6 +131,23 @@ func (s *GitStore) UpsertGitSnapshot(ctx context.Context, snap *GitSnapshot) err
 	})
 }
 
+// sanitize takes the control sequences and the text-reordering characters out of what the repository wrote (a commit subject, a branch name): the write path does it for every new row (UpsertGitSnapshot), this for
+// the rows stored before it did and as every getter hands them out, so no route can show an old row raw (#6832, Security's #6836 SHOULD).
+func (g *GitSnapshot) sanitize() *GitSnapshot {
+	if g != nil {
+		g.CommitSubject = clitext.Clean(g.CommitSubject)
+		g.Branch = clitext.CleanName(g.Branch)
+	}
+	return g
+}
+
+func sanitizeAll(snaps []GitSnapshot, err error) ([]GitSnapshot, error) {
+	for i := range snaps {
+		snaps[i].sanitize()
+	}
+	return snaps, err
+}
+
 // GetRecentGitSnapshots returns recent snapshots across all agents, optionally filtered by time.
 func (s *GitStore) GetRecentGitSnapshots(ctx context.Context, since string, limit int) ([]GitSnapshot, error) {
 	var snaps []GitSnapshot
@@ -147,7 +164,7 @@ func (s *GitStore) GetRecentGitSnapshots(ctx context.Context, since string, limi
 			 FROM git_snapshots ORDER BY recorded_at DESC, id DESC LIMIT ?`,
 			limit)
 	}
-	return snaps, err
+	return sanitizeAll(snaps, err)
 }
 
 // GetGitSnapshots returns recent snapshots for an agent.
@@ -158,7 +175,7 @@ func (s *GitStore) GetGitSnapshots(ctx context.Context, agentName string, limit 
 		 FROM git_snapshots WHERE agent_name = ?
 		 ORDER BY recorded_at DESC, id DESC LIMIT ?`,
 		agentName, limit)
-	return snaps, err
+	return sanitizeAll(snaps, err)
 }
 
 // GetLatestGitState returns the most recent snapshot for an agent.
@@ -172,7 +189,7 @@ func (s *GitStore) GetLatestGitState(ctx context.Context, agentName string) (*Gi
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
-	return &snap, err
+	return snap.sanitize(), err
 }
 
 // GetLatestGitStateBySession returns the most recent snapshot for a session.
@@ -186,7 +203,7 @@ func (s *GitStore) GetLatestGitStateBySession(ctx context.Context, sessionID str
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
-	return &snap, err
+	return snap.sanitize(), err
 }
 
 // GetAllLatestGitState returns the latest snapshot per agent/session, keyed by session_id and agent_name.
@@ -211,7 +228,7 @@ func (s *GitStore) GetAllLatestGitState(ctx context.Context) (map[string]*GitSna
 
 	result := make(map[string]*GitSnapshot, len(snaps))
 	for i := range snaps {
-		snap := &snaps[i]
+		snap := snaps[i].sanitize()
 		if snap.SessionID != nil {
 			result[*snap.SessionID] = snap
 		}
@@ -232,7 +249,7 @@ func (s *GitStore) GetGitSnapshotsForSession(ctx context.Context, sessionID stri
 		return nil, err
 	}
 	if len(snaps) > 0 {
-		return snaps, nil
+		return sanitizeAll(snaps, nil)
 	}
 
 	// Fallback: match by time range from session_index
@@ -253,7 +270,7 @@ func (s *GitStore) GetGitSnapshotsForSession(ctx context.Context, sessionID stri
 		 WHERE commit_timestamp >= ? AND commit_timestamp <= ?
 		 ORDER BY commit_timestamp ASC, id ASC LIMIT ?`,
 		*idx.FirstTS, *idx.LastTS, limit)
-	return snaps, err
+	return sanitizeAll(snaps, err)
 }
 
 // ReplaceChangedFiles replaces changed-file records for an agent/session and diff mode.

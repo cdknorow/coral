@@ -2,7 +2,6 @@ package routes
 
 import (
 	"encoding/json"
-	"github.com/subgentic/coral/internal/clitext"
 	"slices"
 
 	"github.com/subgentic/coral/internal/gitutil"
@@ -33,7 +32,7 @@ func gitListFields(git *store.GitSnapshot) (branch, repoName, gitState any) {
 	if git == nil {
 		return nil, nil, nil
 	}
-	branch = clitext.CleanName(git.Branch) // rows stored before the store cleaned them are cleaned as they are shown (#6832)
+	branch = git.Branch // clean: the store hands out only cleaned text (#6832)
 	if git.Worktree || git.BaseBranch != "" {
 		gitState = map[string]any{
 			"is_worktree": git.Worktree,
