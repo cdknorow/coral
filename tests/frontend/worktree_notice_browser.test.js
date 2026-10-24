@@ -56,6 +56,8 @@ const BASE = require('./test_base').BASE;
             check(`${tag}: Copy path copies the path and leaves the notice open (the button says Copied)`, (await ev(`window.__copied`)) === PATH && !!t && t.button === 'Copied', JSON.stringify(t));
             await ev(`[...document.querySelectorAll('.toast')].find(x => /worktree/.test(x.textContent)).querySelector('.toast-close').click(); true`);
             check(`${tag}: the close dismisses it`, (await toast()) === null);
+            await waitFor(`document.activeElement && document.activeElement !== document.body`, 'the focus to come back after the notice closed', 3000);
+            check(`${tag}: and the focus does not fall to the page: it goes back to the Agents list or the message box`, await ev(`(() => { const a = document.activeElement; return !!a && a !== document.body && !!(a.matches('input.sidebar-search-input, #command-input') || a.closest('#live-sessions-list')); })()`), await ev(`(() => { const a = document.activeElement; return a ? (a.id || a.className || a.tagName) : 'none'; })()`));
 
             console.log(`${tag}: could not be removed, removed, and one agent`);
             await stop({ ok: true, sessions_killed: 1, worktree: { state: 'failed', path: PATH, branch: 'coral-team/team-k', reason: 'the worktree is locked' } });

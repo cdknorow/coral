@@ -31,5 +31,21 @@ export function showWorktreeNotice(w, subject = 'team') {
     // (focus on the page itself, or still on the closed confirmation, is not "something else")
     const a = document.activeElement;
     if (!a || a === document.body || a.closest('#confirm-modal') || !a.isConnected) { const b = toast.querySelector('.toast-action'); if (b) b.focus(); }
+    // dismissed (its x or Escape) while it holds the focus: the focus must not fall to the page, so it goes back to where the person works (#6837): the first agent in the Agents list (the team's own row
+    // went with its stop), else the message box, else the list's search box
+    const giveBack = () => {
+        if (!toast.contains(document.activeElement)) return;
+        setTimeout(() => {
+            const a = document.activeElement;
+            if (a && a !== document.body && a.isConnected) return; // the person is already somewhere
+            const row = [...document.querySelectorAll('#live-sessions-list [tabindex="0"], #live-sessions-list button, #live-sessions-list a[href]')].find(e => e.getClientRects().length);
+            const box = document.getElementById('command-input');
+            const search = [...document.querySelectorAll('input.sidebar-search-input')].find(e => e.getClientRects().length); // the sidebar's, or the phone's own list's
+            const target = row || (box && box.getClientRects().length ? box : null) || search;
+            if (target) target.focus();
+        }, 0);
+    };
+    toast.addEventListener('click', e => { if (e.target.closest('.toast-close')) giveBack(); }, true);
+    toast.addEventListener('keydown', e => { if (e.key === 'Escape') giveBack(); }, true);
     return toast;
 }
