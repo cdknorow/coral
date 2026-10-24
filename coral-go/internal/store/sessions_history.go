@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"github.com/subgentic/coral/internal/clitext"
 	"strings"
 	"time"
 
@@ -288,7 +289,7 @@ func (s *SessionStore) sessionLatestBranches(ctx context.Context, sessionIDs []s
 	}
 	if err := s.reader().SelectContext(ctx, &branchRows, branchQuery, branchArgs...); err == nil {
 		for _, r := range branchRows {
-			out[r.SessionID] = r.Branch
+			out[r.SessionID] = clitext.CleanName(r.Branch) // a row stored before the write path cleaned it (#6832)
 		}
 	}
 	return out
