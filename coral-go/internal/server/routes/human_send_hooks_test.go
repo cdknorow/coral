@@ -46,11 +46,11 @@ func setupHooksGone(t *testing.T, hookDir string) hookHarness {
 	require.NoError(t, err)
 	term := &agentTerm{mockSessionTerminal: mock}
 	handler.terminal = term
-	old := []time.Duration{humanSendReadyWait, humanSendPollEvery, humanSendEnterWait, humanSendConfirmWait}
-	humanSendReadyWait, humanSendPollEvery, humanSendEnterWait, humanSendConfirmWait = 400*time.Millisecond, 5*time.Millisecond, 30*time.Millisecond, 80*time.Millisecond
+	handler.sendGate.set(func(tm *humanSendTimings) {
+		tm.ReadyWait, tm.PollEvery, tm.EnterWait, tm.ConfirmWait = 400*time.Millisecond, 5*time.Millisecond, 30*time.Millisecond, 80*time.Millisecond
+	})
 	prevReader := sendTranscriptReader
 	t.Cleanup(func() {
-		humanSendReadyWait, humanSendPollEvery, humanSendEnterWait, humanSendConfirmWait = old[0], old[1], old[2], old[3]
 		sendTranscriptReader = prevReader
 	})
 	r := chi.NewRouter()

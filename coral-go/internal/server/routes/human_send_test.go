@@ -96,6 +96,7 @@ func TestHumanSendIsSubmittedOrSaysSo(t *testing.T) {
 		submit func()
 		event  func(typ string) // any event of the agent's (a /clear's SessionStart records session_reset)
 		hints  *promptHints
+		gate   *humanSendGate
 		sid    string
 	}
 	setup := func(t *testing.T, agentType string, withEvent bool) harness {
@@ -113,14 +114,12 @@ func TestHumanSendIsSubmittedOrSaysSo(t *testing.T) {
 		}
 		term := &agentTerm{mockSessionTerminal: mock}
 		handler.terminal = term
-		old := []any{humanSendReadyWait, humanSendPollEvery, humanSendEnterWait, humanSendConfirmWait, humanSendSlowCommandWait}
-		humanSendReadyWait, humanSendPollEvery, humanSendEnterWait, humanSendConfirmWait, humanSendSlowCommandWait = 400*time.Millisecond, 5*time.Millisecond, 30*time.Millisecond, 80*time.Millisecond, 400*time.Millisecond
-		t.Cleanup(func() {
-			humanSendReadyWait, humanSendPollEvery, humanSendEnterWait, humanSendConfirmWait, humanSendSlowCommandWait = old[0].(time.Duration), old[1].(time.Duration), old[2].(time.Duration), old[3].(time.Duration), old[4].(time.Duration)
+		handler.sendGate.set(func(tm *humanSendTimings) {
+			tm.ReadyWait, tm.PollEvery, tm.EnterWait, tm.ConfirmWait, tm.SlowCommandWait = 400*time.Millisecond, 5*time.Millisecond, 30*time.Millisecond, 80*time.Millisecond, 400*time.Millisecond
 		})
 		r := chi.NewRouter()
 		r.Post("/api/sessions/live/{name}/send", handler.Send)
-		return harness{term: term, hints: &handler.hints, sid: sid, submit: func() { event("prompt_submit") }, event: event, send: func(text string) *httptest.ResponseRecorder {
+		return harness{term: term, hints: &handler.hints, gate: &handler.sendGate, sid: sid, submit: func() { event("prompt_submit") }, event: event, send: func(text string) *httptest.ResponseRecorder {
 			b, _ := json.Marshal(map[string]any{"command": text, "agent_type": agentType, "session_id": sid})
 			req := httptest.NewRequest(http.MethodPost, "/api/sessions/live/"+name+"/send", bytes.NewReader(b))
 			req = req.WithContext(context.WithValue(req.Context(), callerKindKey{}, callerDashCookie))
@@ -157,7 +156,7 @@ func TestHumanSendIsSubmittedOrSaysSo(t *testing.T) {
 		assert.Equal(t, http.StatusConflict, rec.Code)
 		assert.Equal(t, "not_submitted", code(rec))
 		_, enters := term.counts()
-		assert.Equal(t, humanSendExtraEnters, enters, "Enter pressed again a bounded number of times")
+		assert.Equal(t, defaultHumanSendTimings.ExtraEnters, enters, "Enter pressed again a bounded number of times")
 	})
 	t.Run("a command stuck in the box is not 'sent' because the agent recorded some other event, and nothing is typed after it", func(t *testing.T) {
 		h := setup(t, "codex", true)
@@ -241,7 +240,7 @@ func TestHumanSendIsSubmittedOrSaysSo(t *testing.T) {
 		assert.Equal(t, http.StatusConflict, rec.Code)
 		assert.Equal(t, "not_confirmed", code(rec))
 		typed, enters := h.term.counts()
-		assert.Len(t, typed, 1+humanSendRetypes)
+		assert.Len(t, typed, 1+defaultHumanSendTimings.Retypes)
 		assert.Zero(t, enters)
 	})
 	t.Run("codex: a running agent that shows nothing and says nothing: not 'sent', and not typed again", func(t *testing.T) {
@@ -411,7 +410,7 @@ func TestHumanSendIsSubmittedOrSaysSo(t *testing.T) {
 		})
 		t.Run(c.name+": /clear: its SessionStart is the evidence, at once", func(t *testing.T) {
 			h := setup(t, c.agentType, true)
-			humanSendConfirmWait = 2 * time.Second // what a command with no evidence waits: this one doesn't
+			h.gate.set(func(tm *humanSendTimings) { tm.ConfirmWait = 2 * time.Second }) // what a command with no evidence waits: this one doesn't
 			h.term.show(c.ready(t, ""))
 			h.term.onType = func(string) { h.event("session_reset") }
 			start := time.Now()
@@ -426,7 +425,7 @@ func TestHumanSendIsSubmittedOrSaysSo(t *testing.T) {
 			// #5488: /model <name> on a conversation that has a cache opens a confirmation dialog, which sends no hook event: the chat must read the screen for it for a while, and the dialog is a numbered prompt the chat can answer.
 			t.Run(c.name+": /model <name> opens its Switch model? dialog: sent at once, and the prompt is looked for on the screen", func(t *testing.T) {
 				h := setup(t, c.agentType, true)
-				humanSendConfirmWait = 2 * time.Second
+				h.gate.set(func(tm *humanSendTimings) { tm.ConfirmWait = 2 * time.Second })
 				h.term.show(c.ready(t, ""))
 				const dialog = "\n Switch model?\n Your next response will be slower and use more tokens\n\n This conversation is cached for the current model. Switching to Sonnet 4.5 means the full history gets re-read on your next message.\n\n ❯ 1. Yes, switch to Sonnet 4.5\n   2. No, go back\n"
 				h.term.onType = func(string) { h.term.show(dialog) }
@@ -454,7 +453,7 @@ func TestHumanSendIsSubmittedOrSaysSo(t *testing.T) {
 		}
 		t.Run(c.name+": /model opens its picker: sent at once, and no Enter into the picker", func(t *testing.T) {
 			h := setup(t, c.agentType, true)
-			humanSendConfirmWait = 2 * time.Second
+			h.gate.set(func(tm *humanSendTimings) { tm.ConfirmWait = 2 * time.Second })
 			h.term.show(c.ready(t, ""))
 			h.term.onType = func(string) { h.term.show(picker) }
 			start := time.Now()
@@ -473,7 +472,7 @@ func TestHumanSendIsSubmittedOrSaysSo(t *testing.T) {
 			assert.Equal(t, http.StatusConflict, rec.Code, rec.Body.String())
 			assert.Equal(t, "not_submitted", code(rec))
 			_, enters := h.term.counts()
-			assert.Equal(t, humanSendExtraEnters, enters)
+			assert.Equal(t, defaultHumanSendTimings.ExtraEnters, enters)
 		})
 	}
 	t.Run("a command to an agent still starting whose keystrokes are lost: never typed again, not confirmed", func(t *testing.T) {
@@ -508,7 +507,7 @@ func TestHumanSendIsSubmittedOrSaysSo(t *testing.T) {
 		assert.Equal(t, http.StatusConflict, rec.Code, rec.Body.String())
 		assert.Equal(t, "not_confirmed", code(rec))
 		typed, _ := h.term.counts()
-		assert.Len(t, typed, 1+humanSendRetypes)
+		assert.Len(t, typed, 1+defaultHumanSendTimings.Retypes)
 	})
 	t.Run("no hook events, the first typing is lost behind a spinner and the second lands: sent after one retype", func(t *testing.T) {
 		h := setup(t, "codex", false)
@@ -556,7 +555,7 @@ func TestHumanSendIsSubmittedOrSaysSo(t *testing.T) {
 		rec := h.send("please fix the build")
 		assert.Equal(t, http.StatusConflict, rec.Code, rec.Body.String())
 		typed, _ := h.term.counts()
-		assert.Len(t, typed, 1+humanSendRetypes)
+		assert.Len(t, typed, 1+defaultHumanSendTimings.Retypes)
 	})
 	t.Run("no hook events, a text too short to search for: a screen that moved is taken as sent", func(t *testing.T) {
 		h := setup(t, "codex", false)
@@ -629,16 +628,17 @@ func TestHumanSendIsSubmittedOrSaysSo(t *testing.T) {
 
 	// #4794: a Chat send with attached images is "<upload path> ... <text>". The CLI may show each image as its own
 	// placeholder in the box, read the images before its UserPromptSubmit hook, or queue the message behind its turn.
-	attach := func(t *testing.T) (img func(name string) string) {
-		old, oldWait := uploadDir, humanSendAttachConfirmWait
-		uploadDir, humanSendAttachConfirmWait = t.TempDir()+"/Coral Data/uploads", 600*time.Millisecond // a space in the data dir's path
-		t.Cleanup(func() { uploadDir, humanSendAttachConfirmWait = old, oldWait })
+	attach := func(t *testing.T, h harness) (img func(name string) string) {
+		old := uploadDir
+		uploadDir = t.TempDir() + "/Coral Data/uploads" // a space in the data dir's path
+		h.gate.set(func(tm *humanSendTimings) { tm.AttachConfirmWait = 600 * time.Millisecond })
+		t.Cleanup(func() { uploadDir = old })
 		return func(name string) string { return filepath.ToSlash(uploadDir) + "/" + name }
 	}
 	ready := func(string) string { return claudeUnnumbered(t, "ready.txt") } // the empty box, with its placeholder
 	t.Run("claude: an image alone, its hook after the image is read: sent", func(t *testing.T) {
 		h := setup(t, "claude", true)
-		img := attach(t)
+		img := attach(t, h)
 		h.term.show(ready(""))
 		h.term.onType = func(string) {
 			h.term.show(claude("[Image #1]"))
@@ -649,7 +649,7 @@ func TestHumanSendIsSubmittedOrSaysSo(t *testing.T) {
 	})
 	t.Run("claude: one image and text, its hook after the image is read: sent", func(t *testing.T) {
 		h := setup(t, "claude", true)
-		img := attach(t)
+		img := attach(t, h)
 		text := img("1a2b3c4d_shot.png") + " lets look at this"
 		h.term.show(ready(""))
 		h.term.onType = func(string) { go func() { time.Sleep(300 * time.Millisecond); h.submit() }() } // taken at once
@@ -661,7 +661,7 @@ func TestHumanSendIsSubmittedOrSaysSo(t *testing.T) {
 	})
 	t.Run("claude: two images and text: sent", func(t *testing.T) {
 		h := setup(t, "claude", true)
-		img := attach(t)
+		img := attach(t, h)
 		h.term.show(ready(""))
 		h.term.onType = func(string) { go func() { time.Sleep(400 * time.Millisecond); h.submit() }() }
 		rec := h.send(img("aaaa1111_a.png") + " " + img("bbbb2222_b.png") + " which one is right")
@@ -670,7 +670,7 @@ func TestHumanSendIsSubmittedOrSaysSo(t *testing.T) {
 	t.Run("claude: an image and text to an agent in the middle of a turn: queued, sent", func(t *testing.T) {
 		h := setup(t, "claude", true)
 		h.event("tool_use") // working
-		img := attach(t)
+		img := attach(t, h)
 		h.term.show(ready("")) // the CLI takes it at once and holds it for the turn's end: never in the box, no hook yet
 		rec := h.send(img("cccc3333_c.png") + " also this")
 		assert.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
@@ -680,7 +680,7 @@ func TestHumanSendIsSubmittedOrSaysSo(t *testing.T) {
 	t.Run("claude: a message to an agent in the middle of a turn, with a menu over its box: not confirmed", func(t *testing.T) {
 		h := setup(t, "claude", true)
 		h.event("tool_use")
-		img := attach(t)
+		img := attach(t, h)
 		h.term.show(ready(""))
 		h.term.onType = func(string) { h.term.show(picker) } // no box to have queued it from: nothing says it was taken
 		rec := h.send(img("eeee5555_e.png") + " and this")
@@ -690,7 +690,7 @@ func TestHumanSendIsSubmittedOrSaysSo(t *testing.T) {
 	t.Run("claude: a mid-turn agent whose box still holds the message (an image chip and the text): not confirmed (#4794, Security)", func(t *testing.T) {
 		h := setup(t, "claude", true)
 		h.event("tool_use")
-		img := attach(t)
+		img := attach(t, h)
 		h.term.show(ready(""))
 		h.term.onType = func(string) { h.term.show(claude("[Image #1] and this")) } // typed, its Enter lost: still sitting in the box, not found as typed
 		rec := h.send(img("ffff6666_f.png") + " and this")
@@ -699,7 +699,7 @@ func TestHumanSendIsSubmittedOrSaysSo(t *testing.T) {
 	})
 	t.Run("claude: an image and text an idle agent never takes: not confirmed", func(t *testing.T) {
 		h := setup(t, "claude", true)
-		img := attach(t)
+		img := attach(t, h)
 		h.term.show(ready(""))
 		rec := h.send(img("dddd4444_d.png") + " are you there")
 		assert.Equal(t, http.StatusConflict, rec.Code, rec.Body.String())
@@ -707,8 +707,8 @@ func TestHumanSendIsSubmittedOrSaysSo(t *testing.T) {
 	})
 	t.Run("a path that isn't an upload is part of the message, and waits only the usual time", func(t *testing.T) {
 		h := setup(t, "claude", true)
-		attach(t)
-		humanSendAttachConfirmWait = 5 * time.Second
+		attach(t, h)
+		h.gate.set(func(tm *humanSendTimings) { tm.AttachConfirmWait = 5 * time.Second })
 		h.term.show(ready(""))
 		start := time.Now()
 		rec := h.send("/tmp/build.png is missing")
@@ -735,7 +735,7 @@ func TestHumanSendIsSubmittedOrSaysSo(t *testing.T) {
 				h.term.show(c.ready(t, ""))
 				h.term.onType = func(string) {
 					go func() {
-						time.Sleep(3 * humanSendConfirmWait)
+						time.Sleep(3 * h.gate.t().ConfirmWait)
 						h.term.show(c.ready(t, "") + "\n✻ Compacting conversation… (6s)")
 					}()
 				}
@@ -748,7 +748,7 @@ func TestHumanSendIsSubmittedOrSaysSo(t *testing.T) {
 			t.Run(c.name+": an event after the ordinary wait: sent", func(t *testing.T) {
 				h := setup(t, c.agentType, false) // an agent whose hooks send no event for a command (Codex's, untrusted): the case that was 409
 				h.term.show(c.ready(t, ""))
-				h.term.onType = func(string) { go func() { time.Sleep(3 * humanSendConfirmWait); h.event("session_reset") }() }
+				h.term.onType = func(string) { go func() { time.Sleep(3 * h.gate.t().ConfirmWait); h.event("session_reset") }() }
 				rec := h.send("/compact")
 				assert.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 			})
@@ -759,7 +759,7 @@ func TestHumanSendIsSubmittedOrSaysSo(t *testing.T) {
 				rec := h.send("/compact")
 				assert.Equal(t, http.StatusConflict, rec.Code, rec.Body.String())
 				assert.Equal(t, "not_confirmed", code(rec))
-				assert.GreaterOrEqual(t, time.Since(start), humanSendConfirmWait+humanSendSlowCommandWait-50*time.Millisecond, "a slow command waits longer than an ordinary message before it is called not confirmed")
+				assert.GreaterOrEqual(t, time.Since(start), h.gate.t().ConfirmWait+h.gate.t().SlowCommandWait-50*time.Millisecond, "a slow command waits longer than an ordinary message before it is called not confirmed")
 				typed, _ := h.term.counts()
 				assert.Equal(t, []string{"/compact"}, typed)
 			})
@@ -770,7 +770,7 @@ func TestHumanSendIsSubmittedOrSaysSo(t *testing.T) {
 			start := time.Now()
 			rec := h.send("/status")
 			_ = rec
-			assert.Less(t, time.Since(start), humanSendConfirmWait+humanSendSlowCommandWait-100*time.Millisecond)
+			assert.Less(t, time.Since(start), h.gate.t().ConfirmWait+h.gate.t().SlowCommandWait-100*time.Millisecond)
 		})
 	})
 }
@@ -821,11 +821,15 @@ func TestHumanSendGateBoundsAndCancel(t *testing.T) {
 		leave func()
 		err   error
 	}
-	waiting := make(chan result, humanSendMaxWaiting)
-	for i := 0; i < humanSendMaxWaiting; i++ {
+	waiting := make(chan result, defaultHumanSendTimings.MaxWaiting)
+	for i := 0; i < defaultHumanSendTimings.MaxWaiting; i++ {
 		go func() { l, err := g.enter(ctx, "a"); waiting <- result{l, err} }()
 	}
-	require.Eventually(t, func() bool { g.mu.Lock(); defer g.mu.Unlock(); return g.agents["a"].count == 1+humanSendMaxWaiting }, time.Second, time.Millisecond)
+	require.Eventually(t, func() bool {
+		g.mu.Lock()
+		defer g.mu.Unlock()
+		return g.agents["a"].count == 1+defaultHumanSendTimings.MaxWaiting
+	}, time.Second, time.Millisecond)
 	_, err = g.enter(ctx, "a")
 	assert.ErrorIs(t, err, errSendBusy, "a fifth waiter for one agent is refused at once")
 	l2, err := g.enter(ctx, "b")
@@ -839,14 +843,18 @@ func TestHumanSendGateBoundsAndCancel(t *testing.T) {
 	require.NoError(t, r.err)
 	got := make(chan error, 1)
 	go func() { _, err := g.enter(cctx, "a"); got <- err }()
-	require.Eventually(t, func() bool { g.mu.Lock(); defer g.mu.Unlock(); return g.agents["a"].count == 1+humanSendMaxWaiting }, time.Second, time.Millisecond)
+	require.Eventually(t, func() bool {
+		g.mu.Lock()
+		defer g.mu.Unlock()
+		return g.agents["a"].count == 1+defaultHumanSendTimings.MaxWaiting
+	}, time.Second, time.Millisecond)
 	cancel()
 	assert.ErrorIs(t, <-got, context.Canceled)
 	g.mu.Lock()
-	assert.Equal(t, humanSendMaxWaiting, g.agents["a"].count, "its place is given back")
+	assert.Equal(t, defaultHumanSendTimings.MaxWaiting, g.agents["a"].count, "its place is given back")
 	g.mu.Unlock()
 	r.leave()
-	for i := 0; i < humanSendMaxWaiting-1; i++ {
+	for i := 0; i < defaultHumanSendTimings.MaxWaiting-1; i++ {
 		r := <-waiting
 		require.NoError(t, r.err)
 		r.leave()
@@ -856,9 +864,9 @@ func TestHumanSendGateBoundsAndCancel(t *testing.T) {
 	assert.Zero(t, g.inFlight)
 	g.mu.Unlock()
 
-	// In all: humanSendMaxInFlight under way across agents, then refused.
+	// In all: defaultHumanSendTimings.MaxInFlight under way across agents, then refused.
 	var leaves []func()
-	for i := 0; i < humanSendMaxInFlight; i++ {
+	for i := 0; i < defaultHumanSendTimings.MaxInFlight; i++ {
 		l, err := g.enter(ctx, fmt.Sprintf("agent-%d", i))
 		require.NoError(t, err)
 		leaves = append(leaves, l)

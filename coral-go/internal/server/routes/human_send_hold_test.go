@@ -82,13 +82,12 @@ func newHoldRig(t *testing.T, withSignals bool) *holdRig {
 		r.post(`{"event_type":"session_end","summary":"Session ended: other","detail_json":{"reason":"other"}}`)
 		require.Eventually(t, func() bool { return !r.h.holds.waiting(personKey(name, sid)) }, 5*time.Second, 10*time.Millisecond, "the holds ended")
 	})
-	oldS, oldP, oldHS := personHoldSettle, personHoldPoll, [5]time.Duration{humanSendReadyWait, humanSendPollEvery, humanSendEnterWait, humanSendConfirmWait, humanSendSlowCommandWait}
+	oldS, oldP := personHoldSettle, personHoldPoll
 	personHoldSettle, personHoldPoll = 150*time.Millisecond, 10*time.Millisecond
-	humanSendReadyWait, humanSendPollEvery, humanSendEnterWait, humanSendConfirmWait, humanSendSlowCommandWait = 400*time.Millisecond, 5*time.Millisecond, 30*time.Millisecond, 400*time.Millisecond, 400*time.Millisecond
-	t.Cleanup(func() {
-		personHoldSettle, personHoldPoll = oldS, oldP
-		humanSendReadyWait, humanSendPollEvery, humanSendEnterWait, humanSendConfirmWait, humanSendSlowCommandWait = oldHS[0], oldHS[1], oldHS[2], oldHS[3], oldHS[4]
+	r.h.sendGate.set(func(tm *humanSendTimings) {
+		tm.ReadyWait, tm.PollEvery, tm.EnterWait, tm.ConfirmWait, tm.SlowCommandWait = 400*time.Millisecond, 5*time.Millisecond, 30*time.Millisecond, 400*time.Millisecond, 400*time.Millisecond
 	})
+	t.Cleanup(func() { personHoldSettle, personHoldPoll = oldS, oldP })
 	return r
 }
 
