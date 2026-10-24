@@ -176,3 +176,36 @@ func TestLiveFeedThroughTheConnectorDropsWaitingSummaryForAViewer(t *testing.T) 
 	mode = TierView
 	assert.NotContains(t, first("launch"), "rm -rf", "the computer's mode lowered to View caps the viewer")
 }
+
+// #7116: the boards' goal counts are nulled for a viewer who can only look, wherever the feed or the projects list carries them; a route that is not one of those (the goals' own list) is not touched here.
+func TestGoalsSummaryIsNulledForAViewOnlyViewer(t *testing.T) {
+	assert.True(t, dropsFor(http.MethodGet, "/api/board/projects"), "the projects list carries each board's brief")
+	assert.False(t, dropsFor(http.MethodGet, "/api/board/team/goals"), "the goals' own list is its own route, redacted like task text")
+
+	for name, in := range map[string]string{
+		"the projects list": `[{"project":"team","goals_brief":{"open":2,"seq":9},"subscriber_count":3}]`,
+		"a full frame":      `{"type":"coral_update","sessions":[],"goals_brief":{"team":{"open":2,"seq":9}},"goals_open":2,"goals_seq":9}`,
+		"a diff frame":      `{"type":"coral_diff","goals_brief":{"team":{"open":1,"seq":10}},"goals_open":1,"goals_seq":10}`,
+	} {
+		out, ok := stripViewDropped([]byte(in))
+		require.True(t, ok, name)
+		var v any
+		require.NoError(t, json.Unmarshal(out, &v), name)
+		raw := string(out)
+		assert.NotContains(t, raw, `"open"`, name+": no count survives")
+		assert.NotContains(t, raw, `"seq"`, name)
+		assert.True(t, strings.Contains(raw, `"goals_brief":null`), name+": nulled, not removed: "+raw)
+		if strings.Contains(in, "goals_open") {
+			assert.Contains(t, raw, `"goals_open":null`, name)
+			assert.Contains(t, raw, `"goals_seq":null`, name)
+		}
+	}
+	// The goals list's own answer has a goals key and keeps its goals: the brief is goals_brief, not goals.
+	list, ok := stripViewDropped([]byte(`{"goals":[{"id":1,"title":"Ship","rollup":{"open":1}}]}`))
+	require.True(t, ok)
+	assert.JSONEq(t, `{"goals":[{"id":1,"title":"Ship","rollup":{"open":1}}]}`, string(list))
+	// What is not a goal count is as it was.
+	out, ok := stripViewDropped([]byte(`[{"project":"team","subscriber_count":3}]`))
+	require.True(t, ok)
+	assert.JSONEq(t, `[{"project":"team","subscriber_count":3}]`, string(out))
+}

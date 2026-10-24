@@ -88,6 +88,10 @@ type Hello struct {
 	StartedAt string `json:"started_at,omitempty"`
 }
 
+// CapGoals is "goals/1" (#7116): this Coral keeps boards' goals (the table, routes, CLI, the require-a-goal setting and the feed's goals summary). Only a build with every part says it, so an older Coral never gets
+// half-working goal buttons. Later goal features have their own flags.
+const CapGoals = "goals/1"
+
 // CapCrossTeamAllowlist is this Coral's list-of-senders capability, version 1 (see Hello.Capabilities).
 const CapCrossTeamAllowlist = "cross_team_allowlist/1"
 

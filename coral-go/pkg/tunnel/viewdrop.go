@@ -16,7 +16,11 @@ import (
 //
 // A blocked goal's blocked_on, decision, recommendation and if_silent (#7087) are what a person is asked to decide and what is recommended: the same rule, so a view-only viewer sees the goal
 // (title, outcome, done_when, state, driver, rollup) and not what it waits for.
-var viewDroppedFields = map[string]bool{"waiting_summary": true, "held_messages": true, "blocked_on": true, "decision": true, "recommendation": true, "if_silent": true}
+//
+// goals_brief, goals_open and goals_seq are the boards' goal counts and change counter the feed and the projects list carry (#7116): counts are no secret, but a viewer who can only look does not see
+// what work is going on, so they are nulled (not removed) like the others. The key is goals_brief and not goals because this set nulls a key wherever it is: the goals list's own answer is {"goals": [...]}.
+var viewDroppedFields = map[string]bool{"waiting_summary": true, "held_messages": true, "blocked_on": true, "decision": true, "recommendation": true, "if_silent": true,
+	"goals_brief": true, "goals_open": true, "goals_seq": true}
 
 // viewDropRoutes are the View routes whose JSON replies carry a live row (or part of one).
 var viewDropRoutes = map[string]bool{
@@ -26,6 +30,7 @@ var viewDropRoutes = map[string]bool{
 	// A board's goals (#7087): the list answers {"goals": [...]}, the other one goal.
 	"GET /api/board/{project}/goals":      true,
 	"GET /api/board/{project}/goals/{id}": true,
+	"GET /api/board/projects":             true, // each board's goals brief (#7116)
 }
 
 // viewDropMax is the largest reply read whole to drop a field (a live list is a few hundred KiB at most).

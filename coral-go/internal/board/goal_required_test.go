@@ -2,6 +2,7 @@ package board
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -132,4 +133,33 @@ func TestRequireGoalFailsClosedWhenTheSettingCannotBeRead(t *testing.T) {
 	require.Error(t, err)
 	assert.NotErrorIs(t, err, ErrGoalRequired)
 	assert.Zero(t, taskCount(t, s))
+}
+
+// #7116: the projects list carries each board's goals as a count of the open ones and the change counter, no text.
+func TestProjectsListCarriesTheGoalsBrief(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	_, err := s.PostMessage(ctx, "team", "Operator", "hello", nil)
+	require.NoError(t, err)
+	list, err := s.ListProjects(ctx)
+	require.NoError(t, err)
+	require.Len(t, list, 1)
+	require.NotNil(t, list[0].Goals)
+	assert.Equal(t, GoalsBrief{}, *list[0].Goals, "no goals: 0 and 0")
+	g := newGoal(t, s, "team", "Ship")
+	h := newGoal(t, s, "team", "Later")
+	_, _, err = s.CloseGoal(ctx, "team", h.ID, "no longer needed", "dropped")
+	require.NoError(t, err)
+	_ = g
+	list, _ = s.ListProjects(ctx)
+	open, seq, err := s.GoalSummary(ctx, "team")
+	require.NoError(t, err)
+	assert.Equal(t, GoalsBrief{Open: open, Seq: seq}, *list[0].Goals)
+	assert.Equal(t, 1, list[0].Goals.Open)
+	assert.Positive(t, list[0].Goals.Seq)
+	raw, err := json.Marshal(list[0])
+	require.NoError(t, err)
+	assert.Contains(t, string(raw), `"goals_brief":{"open":1,"seq":`)
+	assert.NotContains(t, string(raw), "Ship", "no text")
+	assert.NotContains(t, string(raw), "goals_open")
 }

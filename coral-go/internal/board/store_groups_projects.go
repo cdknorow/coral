@@ -87,7 +87,9 @@ func (s *Store) ListProjects(ctx context.Context) ([]ProjectInfo, error) {
 		`SELECT project,
 		        COALESCE((SELECT b.created_at FROM boards b WHERE b.id = p.project), '') as created_at,
 		        (SELECT COUNT(*) FROM board_subscribers s WHERE s.project = p.project AND s.is_active = 1) as subscriber_count,
-		        (SELECT COUNT(*) FROM board_messages m WHERE m.project = p.project) as message_count
+		        (SELECT COUNT(*) FROM board_messages m WHERE m.project = p.project) as message_count,
+		        (SELECT COUNT(*) FROM board_goals g WHERE g.board_id = p.project AND g.state IN ('proposed', 'active', 'blocked')) as goals_open,
+		        COALESCE((SELECT seq FROM board_goal_meta gm WHERE gm.board_id = p.project), 0) as goals_seq
 		 FROM (
 		     SELECT DISTINCT project FROM board_subscribers WHERE is_active = 1
 		     UNION
@@ -102,6 +104,7 @@ func (s *Store) ListProjects(ctx context.Context) ([]ProjectInfo, error) {
 		for i := range projects {
 			projects[i].BoardLabel = labels[projects[i].Project]
 			projects[i].BoardID = projects[i].Project
+			projects[i].Goals = &GoalsBrief{Open: projects[i].GoalsOpen, Seq: projects[i].GoalsSeq}
 		}
 	}
 	return projects, err
