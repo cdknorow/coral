@@ -23,7 +23,7 @@ const fileName = "restart-after-install"
 // folder is this user's %LOCALAPPDATA%\Coral: Windows' known folder for the user, not the LOCALAPPDATA variable (which an installer's process
 // may not carry over); Windows may still expand %USERPROFILE% in it. A variable so a test can put it elsewhere.
 var folder = func() (string, error) {
-	local, err := windows.KnownFolderPath(windows.FOLDERID_LocalAppData, windows.KF_FLAG_DEFAULT)
+	local, err := windows.KnownFolderPath(windows.FOLDERID_LocalAppData, windows.KF_FLAG_DONT_VERIFY) // Mark makes it when missing
 	if err != nil {
 		return "", err
 	}

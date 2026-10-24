@@ -38,7 +38,6 @@ var (
 	procGetMessageW              = user32.NewProc("GetMessageW")
 	procTranslateMessage         = user32.NewProc("TranslateMessage")
 	procDispatchMessageW         = user32.NewProc("DispatchMessageW")
-	procDestroyWindow            = user32.NewProc("DestroyWindow")
 	procPostQuitMessage          = user32.NewProc("PostQuitMessage")
 	procInSendMessageEx          = user32.NewProc("InSendMessageEx")
 	procEnumWindows              = user32.NewProc("EnumWindows")
@@ -122,7 +121,8 @@ func wndProc(hwnd windows.Handle, message uint32, wParam, lParam uintptr) uintpt
 	}
 	switch message {
 	case wmClose:
-		procDestroyWindow.Call(uintptr(hwnd))
+		// Never destroyed on request: any program can post WM_CLOSE, and without the window a later Restart Manager close couldn't
+		// reach this process (QA on #155). It goes when the process ends.
 		return 0
 	case wmDestroy:
 		procPostQuitMessage.Call(0)

@@ -71,6 +71,11 @@ func TestWatchMakesAHiddenTopLevelWindowThatRunsTheStop(t *testing.T) {
 	case <-time.After(300 * time.Millisecond):
 	}
 	assert.False(t, InstallerAsked())
+	// A posted WM_CLOSE leaves the window, so Restart Manager can still reach the process (QA on #155).
+	post.Call(h, wmClose, 0, 0)
+	time.Sleep(200 * time.Millisecond) // sleep-ok: the posted message is handled on the window's thread
+	isWindow, _, _ := user32.NewProc("IsWindow").Call(h)
+	assert.NotZero(t, isWindow, "WM_CLOSE did not destroy the window")
 
 	send := user32.NewProc("SendMessageW")
 	r, _, _ := send.Call(h, wmQueryEndSession, 0, EndSessionCloseApp)

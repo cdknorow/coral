@@ -48,7 +48,7 @@ func TestARecentMarkStartsCoralOnceAndNothingElseDoes(t *testing.T) {
 func TestTheMarkLivesInThisUsersLocalAppData(t *testing.T) {
 	dir, err := folder()
 	require.NoError(t, err)
-	local, err := windows.KnownFolderPath(windows.FOLDERID_LocalAppData, windows.KF_FLAG_DEFAULT)
+	local, err := windows.KnownFolderPath(windows.FOLDERID_LocalAppData, windows.KF_FLAG_DONT_VERIFY) // a scratch profile may have none yet
 	require.NoError(t, err)
 	assert.Equal(t, filepath.Join(local, "Coral"), dir)
 }
