@@ -80,6 +80,27 @@ func gitPollInterval(ctx context.Context, ss *store.SessionStore, defaultSeconds
 	return background.GitPollInterval(settings, defaultSeconds)
 }
 
+// eventReader is the part of the task store that says what an agent last did.
+type eventReader interface {
+	GetLatestEventTypes(ctx context.Context, sessionIDs []string) (map[string][2]string, error)
+	LatestStopFailure(ctx context.Context, sessionID string) (text string, ok bool, err error)
+}
+
+// lastEventOfRun is the type of the agent's last event and whether that event is a stop that was a failed turn. A run is recorded finished only on a stop that did not fail, so a read that fails is reported as a
+// failed stop (or no event): an unknown result never becomes a success nobody saw (#6928).
+func lastEventOfRun(ctx context.Context, r eventReader, sessionID string) (string, bool) {
+	last, err := r.GetLatestEventTypes(ctx, []string{sessionID})
+	if err != nil {
+		return "", true
+	}
+	typ := last[sessionID][0]
+	if typ != "stop" {
+		return typ, false
+	}
+	_, failed, err := r.LatestStopFailure(ctx, sessionID)
+	return typ, failed || err != nil
+}
+
 func safeGo(ctx context.Context, name string, fn func()) {
 	// A background service restarts after a panic, with a backoff (#3998: the one helper now).
 	safego.Loop(ctx, name, fn)
@@ -165,16 +186,7 @@ func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Conf
 	scheduler.SetLaunchFn(launcher.BuildSchedulerLaunchFn(schedStore))
 	scheduler.SetSessionStore(sessStore)
 	scheduler.SetLastEventType(func(ctx context.Context, sessionID string) (string, bool) { // what a run's agent last did, for a run that ended while Coral was down (#6898)
-		last, err := taskStore.GetLatestEventTypes(ctx, []string{sessionID})
-		if err != nil {
-			return "", false
-		}
-		typ := last[sessionID][0]
-		if typ != "stop" {
-			return typ, false
-		}
-		_, failed, err := taskStore.LatestStopFailure(ctx, sessionID)
-		return typ, failed && err == nil
+		return lastEventOfRun(ctx, taskStore, sessionID)
 	})
 	scheduler.SetEventCheck(func(ctx context.Context, sessionID string) bool { // a run whose agent ended within seconds without a single event is recorded failed (#6842)
 		got, err := taskStore.SessionsWithAnyEvent(ctx, []string{sessionID})
