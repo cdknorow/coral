@@ -1,0 +1,52 @@
+name: Windows routes package (trial)
+
+# #7048: the two fixed tests, then the whole internal/server/routes package on Windows, to see which tests fail there and how long it takes (windows-tests.yml runs only a filtered part of it).
+on:
+  workflow_dispatch:
+  push:
+    branches: ["trial/win-routes7048-*"]
+
+permissions:
+  contents: read
+
+env:
+  CORAL_TELEMETRY_DISABLED: "1"
+
+jobs:
+  routes:
+    name: routes (windows-latest)
+    runs-on: windows-latest
+    timeout-minutes: 50
+    defaults:
+      run:
+        shell: bash
+        working-directory: coral-go
+    env:
+      CGO_ENABLED: "0"
+    steps:
+      - name: Check out LF line endings
+        shell: bash
+        working-directory: ${{ runner.temp }}
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: coral-go/go.mod
+          cache: false
+      - name: Sync agent docs
+        run: bash ../tools/sync-agent-docs.sh
+      - name: the two fixed tests
+        run: |
+          set +e +o pipefail
+          go test -count=1 -tags fts5 -run 'TestTeamLaunchWithAWorktreeInARepositoryNotOnMain|TestTeamWorktreeForABoardNameGitRefusesInABranch' -v ./internal/server/routes 2>&1 | grep -E "^(--- |ok|FAIL|PASS)|Error:|Messages|unexpected" | cut -c1-300
+          exit ${PIPESTATUS[0]}
+      - name: the whole routes package
+        if: ${{ !cancelled() }}
+        run: |
+          set +e +o pipefail
+          start=$(date +%s)
+          go test -count=1 -timeout 40m -tags fts5 ./internal/server/routes 2>&1 | tee "$RUNNER_TEMP/routes.log" | grep -E "^(--- FAIL|ok|FAIL|panic)" | cut -c1-200
+          echo "ROUTES WALL SECONDS: $(( $(date +%s) - start ))"
+          echo "FAILED TESTS: $(grep -c '^--- FAIL' "$RUNNER_TEMP/routes.log")"
