@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -340,7 +341,7 @@ func TestRefusedTeamLaunchLeavesNoBoardAndTheRetryGoesThrough(t *testing.T) {
 // UI Accessibility's #6806 (#6817): a freshly launched worktree team's live rows carry the branch and the worktree state at once, not after the git poller's next pass, so the Kill Team confirmation can name the
 // worktree.
 func TestLaunchedWorktreeTeamRowsCarryTheirBranchAtOnce(t *testing.T) {
-	url, cfg := teamServer(t)
+	url, cfg, h := teamServerH(t)
 	_, id, wt := launchWorktreeTeam(t, url, cfg, "rowsbranch")
 	resp, err := http.Get(url + "/api/sessions/live")
 	require.NoError(t, err)
@@ -354,6 +355,12 @@ func TestLaunchedWorktreeTeamRowsCarryTheirBranchAtOnce(t *testing.T) {
 		require.NotNil(t, state, "the worktree state is there too")
 		assert.Equal(t, true, state["is_worktree"])
 		_ = wt
+		snap, err := h.gs.GetLatestGitStateBySession(t.Context(), r["session_id"].(string))
+		require.NoError(t, err)
+		require.NotNil(t, snap)
+		require.NotNil(t, snap.CommitTimestamp, "the commit's time, as the poller records it (%aI)")
+		_, perr := time.Parse(time.RFC3339, *snap.CommitTimestamp)
+		assert.NoError(t, perr, *snap.CommitTimestamp)
 	}
 }
 
