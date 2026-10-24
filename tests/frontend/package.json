@@ -13,11 +13,11 @@
     "test:runner-folder-loss": "node run_runner_folder_loss.mjs"
   },
   "dependencies": {
-    "chrome-remote-interface": "^0.33.0"
+    "chrome-remote-interface": "^0.34.0"
   },
   "devDependencies": {
-    "jsdom": "^26.1.0",
-    "eslint": "9.39.5",
+    "jsdom": "^30.1.3",
+    "eslint": "10.13.0",
     "globals": "17.13.0"
   }
 }
