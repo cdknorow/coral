@@ -16,7 +16,7 @@ const BASE = require('./test_base').BASE;
             const m = await import((window.__coralStatic || '/static/') + 'scheduler.js'); m.initScheduler();
             for (let i = 0; i < 100 && document.querySelectorAll('#scheduled-jobs-list .sched-dot').length < 5; i++) await new Promise(r => setTimeout(r, 50)); // sleep-ok: waiting for the render the call above started
             return [...document.querySelectorAll('#scheduled-jobs-list li')].map(li => { const d = li.querySelector('.sched-dot'); return { name: li.querySelector('.sched-row-name').textContent.trim(), role: d.getAttribute('role'), label: d.getAttribute('aria-label'), title: d.getAttribute('title') }; }); })()`);
-        const want = { done: 'Last run completed', going: 'Last run running', broke: 'Last run failed', stopped: 'Last run killed', fresh: 'Not run yet' };
+        const want = { done: 'Last run passed', going: 'Last run running', broke: 'Last run failed', stopped: 'Last run stopped', fresh: 'Not run yet' };
         assert.equal(got.length, 5, 'five jobs listed: ' + JSON.stringify(got));
         for (const g of got) {
             assert.equal(g.role, 'img', g.name + ': the dot is an image with a name');
