@@ -64,6 +64,11 @@ func (r *PTYRuntime) SendEnter(_ context.Context, name, _, _ string) error {
 	return r.backend.SendInput(terminalinput.Internal, name, []byte("\r"))
 }
 
+// SendRawInput implements ptymanager.RawInputSender: single keys typed into the agent's terminal, as the dashboard's session terminal does. The gate dismisses Claude's session survey with a 0 through it (#6974).
+func (r *PTYRuntime) SendRawInput(ctx context.Context, o terminalinput.Origin, name string, keys []string, agentType, sessionID string) error {
+	return ptymanager.NewPTYSessionTerminal(r.backend).SendRawInput(ctx, o, name, keys, agentType, sessionID)
+}
+
 func (r *PTYRuntime) KillAgent(ctx context.Context, name string) error {
 	ptymanager.DropHeld(name, "killed") // nothing held for the old process is typed into a new one (#3431)
 	return r.backend.Kill(name)
