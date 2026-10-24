@@ -49,6 +49,9 @@ func (h *BoardHandler) dispatchWaitTimeouts(ctx context.Context) {
 		}
 		agentType, sessionID, err := h.noticeTarget(passCtx, w.Project, w.SessionName)
 		if err != nil {
+			if errors.Is(err, errNoticeTarget) {
+				return nil
+			} // retired: the original live identity is gone
 			return err
 		}
 		text := fmt.Sprintf("[Wait timed out] Registered wait #%d on '%s' for %s expired. Review your task and choose the next step.", w.ID, w.Project, w.TargetLabel())
@@ -69,7 +72,9 @@ func (h *BoardHandler) dispatchWaitTimeouts(ctx context.Context) {
 			}
 			return nil
 		})
-		if errors.Is(err, ptymanager.ErrNotWanted) {
+		// Permanent refusals retire this wait; retrying them each second can
+		// neither wake the old agent nor safely type into its shell.
+		if errors.Is(err, ptymanager.ErrNotWanted) || errors.Is(err, errAgentExited) || errors.Is(err, ptymanager.ErrTerminalGone) {
 			return nil
 		}
 		return err
