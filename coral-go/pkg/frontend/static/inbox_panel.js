@@ -12,6 +12,7 @@
  * through safe_markdown.js (the shared DOM-built renderer); it imports only same-origin modules and uses no eval or dynamic import; a path an adapter returns is used only if it is a same-origin path;
  * a reply draft is kept in memory only (never localStorage or sessionStorage) and dropped by clearInboxDrafts() (sign-out). inbox_no_html_census.test.js holds the first two to account. */
 import { renderSafe } from './safe_markdown.js';
+import { whenText } from './when_text.js';
 
 /** The contract version of the adapter and of mountInbox: a breaking change bumps it, and is a line in the release notes (the hub adapts when it takes the new pin). */
 export const INBOX_CONTRACT = 1;
@@ -38,15 +39,9 @@ export function safePath(p) {
     return typeof p === 'string' && p.length > 0 && p.length <= 2048 && p.charAt(0) === '/' && p.charAt(1) !== '/' && !/[\\\s\u0000-\u001F\u007F]/.test(p) ? p : '';
 }
 
+// When a task was last touched: the one format of every list (when_text.js, #6961); the adapter's clock (a number of ms) is the "now" it is told against.
 function ago(iso, now) {
-    const t = Date.parse(iso);
-    if (!t) return '';
-    const s = Math.max(0, ((now ? now() : Date.now()) - t) / 1000);
-    if (s < 60) return 'just now';
-    const unit = (n, w) => `${n} ${w}${n === 1 ? '' : 's'} ago`;
-    if (s < 3600) return unit(Math.floor(s / 60), 'minute');
-    if (s < 86400) return unit(Math.floor(s / 3600), 'hour');
-    return unit(Math.floor(s / 86400), 'day');
+    return whenText(iso, new Date(now ? now() : Date.now()));
 }
 
 function checkAdapter(a) {

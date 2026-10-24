@@ -5,7 +5,7 @@
  * request of its own). */
 
 import { state } from './state.js';
-import { isCloud, sessionServer, splitKey } from './server_base.js';
+import { isCloud, sessionServer, keyLabel, identityKey } from './server_base.js';
 import { importOnce } from './import_once.js';
 import { browserLocal } from './safe_storage.js';
 import { resolveSessionIdentity, sessionStateInfo } from './session_state.js';
@@ -85,7 +85,7 @@ function renderNeedsYou(force = false) {
     const list = document.getElementById('inbox-needs-list');
     if (!local || local.hidden || !list) return;
     const rows = (state.liveSessions || []).filter(s => s && s.waiting_for_input);
-    const key = JSON.stringify(rows.map(s => [sessionServer(s), s.session_id, s.name, s.display_name, s.waiting_kind, s.board_project, askOf(s)]));
+    const key = JSON.stringify(rows.map(s => [sessionServer(s), s.session_id, s.name, s.display_name, s.waiting_kind, s.board_project, s.board_project ? keyLabel(identityKey(sessionServer(s), s.board_project)) : '', askOf(s)])); // the team's name is in the key: a label that arrives later redraws the row (#6961)
     if (!force && key === _needsKey) return;
     _needsKey = key;
     const empty = document.getElementById('inbox-needs-empty');
@@ -102,7 +102,7 @@ function renderNeedsYou(force = false) {
         const name = document.createElement('span'); name.className = 'inbox-needs-name'; name.textContent = resolveSessionIdentity(s);
         const why = document.createElement('span'); why.className = 'inbox-needs-why'; why.textContent = sessionStateInfo(s).label;
         const head = document.createElement('span'); head.className = 'inbox-needs-head'; head.append(lead, name, why);
-        if (s.board_project) { const t = document.createElement('span'); t.className = 'inbox-needs-team'; t.textContent = splitKey(s.board_project).name; head.append(t); }
+        if (s.board_project) { const t = document.createElement('span'); t.className = 'inbox-needs-team'; t.textContent = keyLabel(identityKey(sessionServer(s), s.board_project)); head.append(t); }
         b.append(head);
         const ask = askOf(s); // the agent's own request, as text (never markup): one line, cut by the CSS to the row's width
         if (ask && ask !== why.textContent) { const a = document.createElement('span'); a.className = 'inbox-needs-ask'; a.textContent = ask; a.title = ask; b.append(a); }

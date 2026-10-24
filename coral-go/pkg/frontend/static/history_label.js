@@ -5,5 +5,5 @@ export function historyLabel(s) {
     const first = String((s && (s.first_user_message || s.summary)) || '').replace(/`/g, '').replace(/\s+/g, ' ').trim()
         .replace(/(?:\/[\w.@~+-]+){2,}\/?/g, m => m.replace(/\/+$/, '').split('/').pop()) // a path is its last folder
         .replace(/\b[A-Za-z]:\\(?:[^\\\s]+\\)*([^\\\s]+)/g, '$1');
-    return first || 'Chat';
+    return first || (s && s.session_id ? `Chat ${String(s.session_id).replace(/^board:/, '').slice(0, 6)}` : 'Chat'); // an untitled chat still tells its row from the next one's (#6961)
 }

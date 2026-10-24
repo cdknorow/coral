@@ -26,21 +26,14 @@
     gap: 2px;
 }
 
-.session-row-top {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: var(--fs-base);
-}
-
 .session-row-mid {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
-.chat-row-title { display: flex; align-items: center; gap: 6px; }
-.chat-row-title .session-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.chat-row-title { display: flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; } /* the row, not the title's own length, sets the width: a long title was 720 px in a 300 px row and the agent badge went off its edge (#6961) */
+.chat-row-title .session-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chat-row-title .badge, .chat-row-title .agent-reminder-icon { flex: none; }
 .session-row-bottom.chat-row-facts { flex-direction: row; flex-wrap: wrap; align-items: baseline; column-gap: 0; font-size: var(--fs-base); color: var(--text-secondary); }
 .chat-row-facts .sidebar-agent-name, .chat-row-facts .sidebar-branch, .chat-row-facts .session-time { display: inline; margin: 0; white-space: normal; overflow: visible; overflow-wrap: anywhere; }
