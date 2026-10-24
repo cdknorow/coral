@@ -91,6 +91,7 @@ import { fileURLToPath } from 'node:url';
 import { classifySuites, problems } from './suites.mjs';
 import { loadDurations, orderLongestFirst, partsByDuration } from './suite_order.mjs';
 import { failingOutput } from './failing_output.mjs';
+import { pruneOldRunFolders, liveRunFolders, KEEP_RUNS, KEEP_HOURS } from './helpers/run_folders.mjs';
 import { sqliteAvailable, sqliteExec } from './helpers/sqlite.js';
 import { redactEvidence as redactEvidenceText } from './helpers/redact_evidence.mjs';
 import { snapshot as serverSnapshot, diff as serverDiff, rowLeaks, restoreSettings, leftovers, cleanup as cleanupLeftovers } from './helpers/server_state.mjs';
@@ -279,6 +280,12 @@ function sweepLeftovers() {
 sweepLeftovers();
 
 const tmp = fs.mkdtempSync(path.join(tempRoot, 'coral-cdp-'));
+// Old run folders (#6967): a run that did not pass keeps its folder for diagnosis and nothing removed them (38 GB in three days). Keep the newest CORAL_CDP_KEEP_RUNS (10) and any from the last
+// CORAL_CDP_KEEP_HOURS (24) hours; remove the rest, but never this run's own or one a live runner's file names.
+{
+  const gone = pruneOldRunFolders(tempRoot, { own: tmp, live: liveRunFolders(tempRoot, isAlive), keep: Number(process.env.CORAL_CDP_KEEP_RUNS || KEEP_RUNS), hours: Number(process.env.CORAL_CDP_KEEP_HOURS || KEEP_HOURS) });
+  if (gone.length) console.log(`removed ${gone.length} old run folder(s) from ${tempRoot} (keeping the newest ${process.env.CORAL_CDP_KEEP_RUNS || KEEP_RUNS} and any from the last ${process.env.CORAL_CDP_KEEP_HOURS || KEEP_HOURS} h)`);
+}
 // Windows: a folder made under the runner's temp inherits an access list that lets other accounts change it (BUILTIN\\Users here), which Coral warns about in the
 // dashboard of every shard server: a "Security warning" toast over the page's bottom controls at phone width (sleeping_agent_view's Wake, ui_audit_batch4's Cancel) and
 // the writable-tools-folder text in Settings > Terminal (settings_text_budget's 102 words). Owner only, as Coral's own data folder is; everything below inherits it.
