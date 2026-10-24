@@ -10,6 +10,7 @@
 const assert = require('node:assert/strict');
 const CDP = require('chrome-remote-interface');
 const BASE = require('./test_base').BASE;
+const { TOUCH_AFTER } = require('./helpers/phone_scan');
 
 const LAZY = ['settings-modal', 'launch-modal', 'job-modal', 'create-task-modal', 'info-modal', 'default-prompts-modal', 'custom-view-modal', 'top-bar-settings-menu'];
 
@@ -23,6 +24,7 @@ const undersized = sel => `(() => {
         if (!r.width || !r.height || cs.visibility === 'hidden' || cs.display === 'none') continue;
         if (r.bottom < 0 || r.top > innerHeight || r.right < 0 || r.left > innerWidth) continue;
         if (r.width >= 44 && r.height >= 44) continue;
+        if (${TOUCH_AFTER}(el)) continue; // the (i) is 24 px with a 44 px ::after (#6750)
         out.push(Math.round(r.width) + 'x' + Math.round(r.height) + ' ' + (el.id ? '#' + el.id : el.className) + ' [' + (el.getAttribute('aria-label') || el.title || el.textContent.trim()).slice(0, 30) + ']');
     }
     return out;

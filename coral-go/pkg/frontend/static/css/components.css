@@ -4438,7 +4438,7 @@ a.ibx-open, a.ibx-open:visited { color: var(--link-text); }
     .settings-row:has(> dd > .check-hit) { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
     .settings-row:has(> dd > .check-hit) > dd { display: contents; } /* the toggle takes the second column and the hint spans the row: while the hint sat inside the cell, a long one squeezed the label to 46 px (#5057) */
     .settings-row:has(> dd > .check-hit) .settings-hint { grid-column: 1 / -1; text-align: left; }
-    .settings-row:has(> dd > .check-hit) .check-hit { display: inline-flex; align-items: center; justify-content: flex-start; align-self: center; margin: .35rem 0 0; } /* level with the (i): the box was at the top of its 44 px area (the cell is a label: its generic 12 px bottom margin was part of the box that got centred, and the visible box sat at its top, about 17 px above the (i)'s centre); the top margin matches the label's first padding (.35rem) that the (i) is centred below (#5109) */
+    .settings-row:has(> dd > .check-hit) .check-hit { display: inline-flex; align-items: center; justify-content: flex-start; align-self: start; margin: calc(.35rem + (1lh - var(--control-touch-height, 44px)) / 2) 0 0; } /* centred on the label's first line (the dt's .35rem top padding plus half its line; #6772), and level with the (i): the box was at the top of its 44 px area (the cell is a label: its generic 12 px bottom margin was part of the box that got centred, and the visible box sat at its top, about 17 px above the (i)'s centre); the top margin matches the label's first padding (.35rem) that the (i) is centred below (#5109) */
 }
 /* The sectioned dialogs (#4950: Restart, New Agent, Agent Team, the team's agent dialog) are the Settings shell in a smaller dialog: the same list, panes, heading and footer. They switch to the selector at the top
    under 40rem of their own width (Settings does at 50rem, as it is wider). One more thing the shell has here: a sub-line in the header, and a dot on a section that holds a problem. */
@@ -4517,7 +4517,7 @@ a.ibx-open, a.ibx-open:visited { color: var(--link-text); }
     .settings-group-pick select { width: 100%; min-height: 44px; }
     .settings-panes { padding: .8rem 1rem 1.2rem; }
     /* the (i) stays a 1.5rem circle at every size (#6042, #6750); its 44 px touch target is the invisible ::after below */
-    .settings-row > dt > label { flex: 1 1 0; min-width: 0; } /* the label wraps so its (i) button stays beside it, not on a row of its own (#5057) */
+    .settings-row > dt > label { flex: 0 1 auto; min-width: 0; } /* the label wraps so its (i) button stays beside it, not on a row of its own (#5057) */
     .settings-modal-body select, .settings-modal-body input[type="text"], .settings-modal-body input[type="number"], .settings-modal-body input[type="password"], .settings-modal-body .btn { min-height: 44px; }
 }
 

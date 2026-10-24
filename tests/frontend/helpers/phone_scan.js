@@ -15,4 +15,6 @@ const SCAN = `(() => { const vw = innerWidth; const sel = e => (e.id ? '#' + e.i
             if (e.children.length === 0 && e.textContent.trim() && b.width > 2 && e.scrollWidth > e.clientWidth + 1 && /(hidden|clip)/.test(cs.overflowX) && cs.textOverflow !== 'ellipsis') clipped.push(sel(e) + ' ' + e.scrollWidth + '>' + e.clientWidth + ' "' + e.textContent.trim().slice(0, 24) + '"');
         }
         const de = document.documentElement; return { docOver: de.scrollWidth - de.clientWidth, wide: wide.slice(0, 8), nWide: wide.length, small: small.slice(0, 40), nSmall: small.length, clipped: clipped.slice(0, 8), nClipped: clipped.length }; })()`;
-module.exports = { SCAN };
+// The one rule for "an invisible ::after of 44 px or more is this control's touch target" (the (i) buttons, #6750), as a page expression (e => boolean) the phone suites that measure for themselves share.
+const TOUCH_AFTER = `(e => { const ps = getComputedStyle(e, '::after'); return ps.content !== 'none' && ps.position === 'absolute' && parseFloat(ps.width) >= 43.5 && parseFloat(ps.height) >= 43.5; })`;
+module.exports = { SCAN, TOUCH_AFTER };

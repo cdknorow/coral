@@ -14,9 +14,12 @@ const MEASURE = `(() => {
         const cs = getComputedStyle(b, '::after');
         // the label's first line: the first text rectangle of the sibling label (or the text in front of the button)
         let label = [...b.parentElement.children].find(c => c !== b && /^(LABEL|SPAN|STRONG|LEGEND|H4|P)$/.test(c.tagName) && c.textContent.trim() && !c.classList.contains('material-icons') && c.getClientRects().length && !c.hidden);
-        let first = null;
-        if (label) { const range = document.createRange(); range.selectNodeContents(label); const rects = [...range.getClientRects()].filter(x => x.width > 1 && x.height > 1); first = rects.length ? rects[0] : null; }
+        let first = null, last = null;
+        if (label) { const range = document.createRange(); range.selectNodeContents(label); const rects = [...range.getClientRects()].filter(x => x.width > 1 && x.height > 1); first = rects.length ? rects[0] : null; last = rects.length ? rects.reduce((m, x) => x.right > m.right ? x : m) : null; /* a wrapped label: beside its widest line */ }
+        // the switch of the same row (Settings rows with a toggle): its centre against the label's first line
+        const row = b.closest('.settings-row, .net-group-head'); const tog = row && row.querySelector('input[type=checkbox]'); const tr = tog && tog.getBoundingClientRect();
         out.push({ about: (b.getAttribute('aria-label') || '').slice(0, 40), w: Math.round(r.width * 10) / 10, h: Math.round(r.height * 10) / 10, cy: r.top + r.height / 2, first: first ? { top: first.top, bottom: first.bottom, cy: first.top + first.height / 2 } : null,
+            gap: last ? Math.round((r.left - last.right) * 10) / 10 : null, tog: tr && tr.width && first ? Math.round((tr.top + tr.height / 2 - (first.top + first.height / 2)) * 10) / 10 : null,
             hit: cs.content !== 'none' && cs.position === 'absolute' ? { w: parseFloat(cs.width), h: parseFloat(cs.height) } : null });
     }
     return out; })()`;
@@ -49,6 +52,10 @@ const MEASURE = `(() => {
             check(`${tag}: every (i) is a circle of at most 24 px`, big.length === 0, JSON.stringify(big.slice(0, 4)));
             const off = seen.filter(x => x.first && Math.abs(x.cy - x.first.cy) > 5);
             check(`${tag}: every (i) is centred on its label's first line (within 5 px)`, off.length === 0, JSON.stringify(off.slice(0, 4).map(x => [x.g, x.about, Math.round(x.cy - x.first.cy)])));
+            const far = seen.filter(x => x.gap !== null && x.gap > 20);
+            check(`${tag}: every (i) comes right after its label text (within 20 px), not at the row's far edge`, far.length === 0, JSON.stringify(far.slice(0, 4).map(x => [x.g, x.about, x.gap])));
+            const sw = seen.filter(x => x.tog !== null && Math.abs(x.tog) > 3);
+            check(`${tag}: every switch is centred on its label's first line (within 3 px)`, sw.length === 0, JSON.stringify(sw.slice(0, 4).map(x => [x.g, x.about, x.tog])));
             if (mobile) {
                 const small = seen.filter(x => !x.hit || x.hit.w < 43.5 || x.hit.h < 43.5);
                 check(`${tag}: every (i) has an invisible touch target of 44 px or more around it`, small.length === 0, JSON.stringify(small.slice(0, 4).map(x => [x.g, x.about, x.hit])));
@@ -78,6 +85,10 @@ const MEASURE = `(() => {
                 check(`${tag}: every (i) is a circle of at most 24 px`, big.length === 0, JSON.stringify(big.slice(0, 4)));
                 const off = seen.filter(x => x.first && Math.abs(x.cy - x.first.cy) > 5);
                 check(`${tag}: every (i) is centred on its label's first line (within 5 px)`, off.length === 0, JSON.stringify(off.slice(0, 4).map(x => [x.g, x.about, Math.round(x.cy - x.first.cy)])));
+                const far = seen.filter(x => x.gap !== null && x.gap > 20);
+                check(`${tag}: every (i) comes right after its label text (within 20 px), not at the row's far edge`, far.length === 0, JSON.stringify(far.slice(0, 4).map(x => [x.g, x.about, x.gap])));
+                const sw = seen.filter(x => x.tog !== null && Math.abs(x.tog) > 3);
+                check(`${tag}: every switch is centred on its label's first line (within 3 px)`, sw.length === 0, JSON.stringify(sw.slice(0, 4).map(x => [x.g, x.about, x.tog])));
                 if (mobile) {
                     const small = seen.filter(x => !x.hit || x.hit.w < 43.5 || x.hit.h < 43.5);
                     check(`${tag}: every (i) has an invisible touch target of 44 px or more around it`, small.length === 0, JSON.stringify(small.slice(0, 4).map(x => [x.g, x.about, x.hit])));

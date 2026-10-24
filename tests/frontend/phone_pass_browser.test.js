@@ -6,6 +6,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { connect } = require('./agent_view_harness');
+const { TOUCH_AFTER } = require('./helpers/phone_scan');
 const { setTheme } = require('./helpers/contrast');
 const { removeBoards } = require('./helpers/board_cleanup');
 const BASE = require('./test_base').BASE;
@@ -60,7 +61,7 @@ const LONG = 'worktree-agent-a1b2c3d4e5f60718/feature/calm-the-dashboard-remove-
         const inView = r => r.bottom > 0 && r.top < innerHeight;
         for (const e of R.querySelectorAll('*')) { if (!vis(e)) continue; const r = e.getBoundingClientRect(); if (!inView(r)) continue;
             if ((r.right > innerWidth + 1 || r.left < -1) && !clipX(e)) wide.push(label(e) + ' [' + Math.round(r.left) + '..' + Math.round(r.right) + ']');
-            if (e.matches('button, a[href], select, summary, [role=button], [role=tab], input:not([type=hidden]):not([type=checkbox]):not([type=radio]), textarea') && !e.disabled && Math.min(r.width, r.height) < 44 - 0.5) small.push(label(e) + ' ' + Math.round(r.width) + 'x' + Math.round(r.height)); }
+            if (e.matches('button, a[href], select, summary, [role=button], [role=tab], input:not([type=hidden]):not([type=checkbox]):not([type=radio]), textarea') && !e.disabled && Math.min(r.width, r.height) < 44 - 0.5 && !${TOUCH_AFTER}(e)) small.push(label(e) + ' ' + Math.round(r.width) + 'x' + Math.round(r.height)); }
         return { over: document.documentElement.scrollWidth - document.documentElement.clientWidth, wide: wide.slice(0, 12), small: small.slice(0, 20), nSmall: small.length }; }`;
     const settle = (ms, quietMs = 120) => require('./helpers/wait').settle(ev, ms, quietMs); // the page's geometry still for quietMs, or ms at most (helpers/wait.js); not a fixed sleep
     const shot = async name => { const d = process.env.CORAL_SCREENSHOT_DIR; if (!d) return; fs.mkdirSync(d, { recursive: true }); fs.writeFileSync(path.join(d, name.replace(/[^a-z0-9-]+/gi, '-') + '.png'), Buffer.from((await Page.captureScreenshot({ format: 'png' })).data, 'base64')); };
