@@ -133,16 +133,11 @@ func isPathWordByte(c byte) bool {
 	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_' || c == '-' || c == '.'
 }
 
-// waitingSince is when the agent's request to the user began (the state's Since, from the event that raised it), as a UTC time; null when it waits for nothing or the start is not known. The Inbox says how long an agent
-// has waited from it (#6981). A plain time, not the agent's words: it is not in the fields a viewer who can only look is denied.
+// waitingSince is when the agent's own request to the user began (State.WaitingSince, from the event that raised it), as a UTC time; null when it waits for nothing, only on Coral's held notice, a sign-in or a launch prompt, or the
+// start is not known. The Inbox says how long an agent has waited from it (#6981). A plain time, not the agent's words: it is not in the fields a viewer who can only look is denied.
 func waitingSince(s sessionstate.State) any {
-	if !s.NeedsInput || s.Since.IsZero() {
+	if !s.NeedsInput || s.WaitingSince.IsZero() {
 		return nil
 	}
-	// A login or launch-prompt wait is raised from the screen, not from an event: Since is when the event-derived phase began (a stop hours ago), so it would say "waiting 3 h" for a screen that just appeared (Security
-	// Reviewer Windows's #6984). Those say nothing; Since itself is left alone, the paste gate reads it.
-	if s.NeedsLogin || s.WaitingKind == sessionstate.KindLogin || s.WaitingKind == sessionstate.KindStartup {
-		return nil
-	}
-	return s.Since.UTC().Format(time.RFC3339)
+	return s.WaitingSince.UTC().Format(time.RFC3339)
 }
