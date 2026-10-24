@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	neturl "net/url"
 	"time"
@@ -26,19 +27,46 @@ type RemoteBoardPoller struct {
 	discoverFn func(ctx context.Context) ([]AgentInfo, error)
 	// validateURL is the check that a remote server's URL does not resolve to an internal address (a test replaces it: its servers are on the loopback).
 	validateURL func(rawURL string) (string, error)
+	// validateAddr is the same check made again at dial time, on the address the connection is really made to, and returns the IP to dial: a DNS answer that changes between the check above and the
+	// connect cannot reach a refused address (#7109). A test replaces it.
+	validateAddr func(addr string) (string, error)
 }
 
 // NewRemoteBoardPoller creates a new RemoteBoardPoller.
 func NewRemoteBoardPoller(rbStore *store.RemoteBoardStore, runtime AgentRuntime, interval time.Duration) *RemoteBoardPoller {
-	return &RemoteBoardPoller{
-		store:   rbStore,
-		runtime: runtime,
-		// Redirects are not followed: the URL was checked above, and a redirect would send the poll to an address that was not (#7053).
-		client:      &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
+	p := &RemoteBoardPoller{
+		store:       rbStore,
+		runtime:     runtime,
 		interval:    interval,
 		logger:      slog.Default().With("service", "remote_board_poller"),
 		validateURL: httputil.ResolveAndValidateURL,
+		validateAddr: func(addr string) (string, error) {
+			return httputil.ResolveAndValidateURL("http://" + addr)
+		},
 	}
+	dialer := &net.Dialer{Timeout: 5 * time.Second}
+	p.client = &http.Client{
+		Timeout: 10 * time.Second,
+		// Redirects are not followed: the URL was checked above, and a redirect would send the poll to an address that was not (#7053).
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		Transport: &http.Transport{
+			Proxy: nil,
+			// The address is resolved and checked again here, and the connection is made to the IP that passed, so the check and the connect see one answer (#7109).
+			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+				_, port, err := net.SplitHostPort(addr)
+				if err != nil {
+					return nil, err
+				}
+				ip, err := p.validateAddr(addr)
+				if err != nil {
+					return nil, err
+				}
+				return dialer.DialContext(ctx, network, net.JoinHostPort(ip, port))
+			},
+			DisableKeepAlives: true,
+		},
+	}
+	return p
 }
 
 // SetDiscoverFn sets a custom agent discovery function.
