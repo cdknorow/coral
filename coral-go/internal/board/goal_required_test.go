@@ -3,6 +3,7 @@ package board
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -117,10 +118,9 @@ func TestRequireGoalRetriesInheritAndReviewTasksAreExempt(t *testing.T) {
 	_, err = s.CreateTaskWithOpts(ctx, "team", "Build retry 2", "", "medium", "Lead", &CreateTaskOpts{Workflow: TaskWorkflow{RetryOf: build.ID}})
 	require.ErrorIs(t, err, ErrGoalRequired, "a closed goal is not inherited: the retry has none")
 
-	// A review task is Coral's own: exempt.
-	rt, err := s.CreateTaskWithOpts(ctx, "team", "Review #1: x", "", "medium", "Lead", &CreateTaskOpts{Workflow: TaskWorkflow{ReviewOf: build.ID, ReviewRound: 1}}, "QA")
-	require.NoError(t, err)
-	assert.Nil(t, rt.GoalID)
+	// A review_of a CALLER sets is no exemption: it is a field of the request, not of Coral's flow.
+	_, err = s.CreateTaskWithOpts(ctx, "team", "Pretend review", "", "medium", "Lead", &CreateTaskOpts{Workflow: TaskWorkflow{ReviewOf: build.ID, ReviewRound: 1}}, "QA")
+	require.ErrorIs(t, err, ErrGoalRequired)
 }
 
 // A setting that cannot be read is an error, never "off": the check fails closed.
@@ -162,4 +162,35 @@ func TestProjectsListCarriesTheGoalsBrief(t *testing.T) {
 	assert.Contains(t, string(raw), `"goals_brief":{"open":1,"seq":`)
 	assert.NotContains(t, string(raw), "Ship", "no text")
 	assert.NotContains(t, string(raw), "goals_open")
+}
+
+// The review task Coral itself makes (the orchestrator delegating a task in review) is exempt from the rule, or a board that requires goals could not review its work; and it is the flow that is
+// exempt, not a field of the request.
+func TestReviewTasksCoralMakesAreExemptFromRequireGoal(t *testing.T) {
+	e := newVerEnv(t)
+	id := e.inReviewNoDelegate("work", "rev1")
+	setRequireGoal(t, e.s, "team", true)
+	_, made, err := e.s.DelegateReview(e.ctx, "team", id, "lead", []string{"rev1"})
+	require.NoError(t, err, "the review task is made on a board that requires goals")
+	require.Len(t, made, 1)
+	assert.Nil(t, made[0].GoalID)
+	assert.True(t, strings.HasPrefix(made[0].Title, "Review #"))
+	// And a task of the same shape made by a caller is refused.
+	_, err = e.s.CreateTaskWithOpts(e.ctx, "team", "Pretend review", "", "medium", "lead",
+		&CreateTaskOpts{Workflow: TaskWorkflow{ReviewOf: id, ReviewRound: 1}}, "rev1")
+	require.ErrorIs(t, err, ErrGoalRequired)
+}
+
+// inReviewNoDelegate takes a task to the orchestrator's hand with nothing delegated yet.
+func (e *verEnv) inReviewNoDelegate(name string, reviewer string) int64 {
+	e.t.Helper()
+	task, err := e.s.CreateTask(e.ctx, "team", name, "", "medium", "lead", "worker")
+	require.NoError(e.t, err)
+	_, err = e.s.ClaimTask(e.ctx, "team", "worker", task.ID)
+	require.NoError(e.t, err)
+	_, err = e.s.SubmitCompletionReview(e.ctx, "team", task.ID, "worker", "built", "success", "needs review", []TaskArtifact{patchRow("fix", "d1")})
+	require.NoError(e.t, err)
+	_, _, err = e.s.HandToOrchestrator(e.ctx, "team", task.ID, "worker")
+	require.NoError(e.t, err)
+	return task.ID
 }

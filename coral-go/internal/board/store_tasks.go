@@ -44,6 +44,9 @@ type CreateTaskOpts struct {
 	Workflow  TaskWorkflow
 	// GoalID links the new task to a goal of its board (#7087); a goal of another board or a closed one refuses the task. A retry of a task that has a goal, with none given, continues under it.
 	GoalID *int64
+	// reviewTask is set only by Coral's own review flow (review_flow.go) for a review task it makes: such a task is exempt from a board's require-a-goal rule (#7116). It is unexported on purpose: no
+	// caller outside this package, and nothing a request carries (the workflow's review_of is a field the caller sets), can claim the exemption.
+	reviewTask bool
 }
 
 // CreateTask inserts a task and returns it.
@@ -89,7 +92,7 @@ func (s *Store) CreateTaskWithOpts(ctx context.Context, project, title, body, pr
 	}
 	// A board that requires a goal refuses a task with none, before anything is stored (#7116). A review task Coral makes for a task in review is not the person's to give a goal: it is exempt, or
 	// a board that requires goals could not review its own work.
-	if goalID == nil && w.ReviewOf == 0 {
+	if goalID == nil && (opts == nil || !opts.reviewTask) {
 		if on, err := s.requiresGoal(ctx, project); err != nil {
 			return nil, err
 		} else if on {
