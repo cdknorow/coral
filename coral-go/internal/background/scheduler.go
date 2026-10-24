@@ -123,7 +123,8 @@ func (e *ConcurrencyLimitError) Error() string {
 type JobScheduler struct {
 	store          *store.ScheduleStore
 	sessionStore   *store.SessionStore
-	hasEvents      func(ctx context.Context, sessionID string) bool // whether the agent's CLI reported anything (its hook events); nil: a run is never judged by it (#6842)
+	lastEventType  func(ctx context.Context, sessionID string) string // the type of the agent's last event (stop, tool_use...), "" for none; nil: not known (#6898)
+	hasEvents      func(ctx context.Context, sessionID string) bool   // whether the agent's CLI reported anything (its hook events); nil: a run is never judged by it (#6842)
 	runtime        AgentRuntime
 	maxConcurrent  int
 	interval       time.Duration
@@ -281,8 +282,9 @@ func (s *JobScheduler) reapStaleRuns(ctx context.Context) {
 		switch {
 		case hasStart && now.Sub(started) > maxDur*2: // generous 2x buffer
 			s.logger.Warn("reaping stale run", "run_id", run.ID, "elapsed", now.Sub(started))
-			s.killRunSession(ctx, &run, job.AgentType)
+			s.killRunSession(ctx, &run, s.runAgentType(ctx, run, job.AgentType))
 			finish("killed", "timeout_reap", "")
+			s.cleanupSettledWorktree(ctx, run, *job)
 		case !hasSession:
 			s.logger.Warn("a run left over from before Coral restarted never launched its agent", "run_id", run.ID)
 			finish("failed", "interrupted_by_restart", "Coral restarted before this run launched its agent")
@@ -290,11 +292,38 @@ func (s *JobScheduler) reapStaleRuns(ctx context.Context) {
 			continue
 		case !s.agentAlive(ctx, run, job.AgentType):
 			s.logger.Info("a run's agent ended while Coral was down", "run_id", run.ID)
-			finish("completed", "agent_done", "")
+			// "agent_done" only when its last event shows it finished: it may have crashed while Coral was down, and the run history must not claim a success it never saw.
+			reason := "agent_done"
+			if s.lastEventType != nil {
+				if last := s.lastEventType(ctx, *run.SessionID); last != "stop" && last != "session_end" {
+					reason = "ended_while_coral_was_down"
+				}
+			}
+			finish("completed", reason, "")
+			s.cleanupSettledWorktree(ctx, run, *job)
 		default:
 			s.adoptRun(ctx, run, *job, started.Add(maxDur))
 		}
 	}
+}
+
+// cleanupSettledWorktree removes the worktree of a run settled or adopted at startup, as a run that ended in-process has its removed: by the same no-force rule (a worktree with unsaved work stays, with its branch),
+// and only for a job that asks for cleanup and only the folder the scheduler makes for that run (IsRunWorktreeFolder: never the job's own repository). A one-shot's cleanup flag is not stored, so a one-shot
+// run's worktree stays (and shows in the kept-worktrees list). Without it a job every 5 minutes, restarted once, would leave one stale worktree.
+func (s *JobScheduler) cleanupSettledWorktree(ctx context.Context, run store.ScheduledRun, job store.ScheduledJob) {
+	fresh, err := s.store.GetScheduledRun(ctx, run.ID)
+	if err != nil || fresh == nil || fresh.WorktreePath == nil || job.CleanupWorktree != 1 || job.RepoPath == "" {
+		return
+	}
+	path := *fresh.WorktreePath
+	if !IsRunWorktreeFolder(s.worktreeRoot, job.RepoPath, run.ID, path) {
+		return
+	}
+	base, err := gitutil.ResolveBase(ctx, job.RepoPath, job.BaseBranch)
+	if err != nil {
+		base = "" // the run's branch is then kept: it cannot be compared with a base
+	}
+	s.cleanupWorktree(job.RepoPath, path, fmt.Sprintf("coral/job-run-%d", run.ID), base)
 }
 
 // agentAlive reports whether the run's agent session still exists; with no runtime to ask it is taken as alive (the run is then watched, not finished on a guess).
@@ -302,10 +331,21 @@ func (s *JobScheduler) agentAlive(ctx context.Context, run store.ScheduledRun, a
 	if s.runtime == nil || run.SessionID == nil {
 		return true
 	}
-	if agentType == "" {
-		agentType = at.Claude
+	return s.runtime.IsAlive(ctx, s.runAgentType(ctx, run, agentType)+"-"+*run.SessionID)
+}
+
+// runAgentType is the agent type the run's session was started as: the type on its session row, else the job's (else Claude). A job's agent type edited since the run started would otherwise name a session that
+// never existed, and a live agent would be read as gone (Security's LOW on #6904).
+func (s *JobScheduler) runAgentType(ctx context.Context, run store.ScheduledRun, jobType string) string {
+	if s.sessionStore != nil && run.SessionID != nil {
+		if ls, err := s.sessionStore.GetLiveSession(ctx, *run.SessionID); err == nil && ls != nil && ls.AgentType != "" {
+			return ls.AgentType
+		}
 	}
-	return s.runtime.IsAlive(ctx, agentType+"-"+*run.SessionID)
+	if jobType == "" {
+		return at.Claude
+	}
+	return jobType
 }
 
 // adoptRun watches a run whose agent outlived the previous Coral, as launchAndWatch's launch function does for a run it started: until the agent ends (completed) or deadline passes (killed, timeout). A shutdown
@@ -325,10 +365,12 @@ func (s *JobScheduler) adoptRun(ctx context.Context, run store.ScheduledRun, job
 			case <-ticker.C:
 				if !s.agentAlive(ctx, run, job.AgentType) {
 					s.finishRun(ctx, run.ID, job, "completed", "agent_done", false)
+					s.cleanupSettledWorktree(ctx, run, job)
 					return
 				}
 				if time.Now().After(deadline) {
 					s.finishRun(ctx, run.ID, job, "killed", "timeout", false) // finishRun ends its agent
+					s.cleanupSettledWorktree(ctx, run, job)
 					return
 				}
 			}
@@ -779,6 +821,12 @@ func (s *JobScheduler) SetEventCheck(fn func(ctx context.Context, sessionID stri
 	s.hasEvents = fn
 }
 
+// SetLastEventType tells the scheduler how to read the type of an agent's last stored event (the startup passes the task store's read): a run whose agent ended while Coral was down is recorded finished only
+// when that event shows the agent ended its work (stop, session_end).
+func (s *JobScheduler) SetLastEventType(fn func(ctx context.Context, sessionID string) string) {
+	s.lastEventType = fn
+}
+
 // agentExitedEarlyWindow is how short a run must be, from its start to the agent's exit, to be judged by whether the agent ever reported anything.
 var agentExitedEarlyWindow = 15 * time.Second
 
@@ -931,7 +979,7 @@ func (s *JobScheduler) finishRun(ctx context.Context, runID int64, job store.Sch
 	if run, err := s.store.GetScheduledRun(ctx, runID); err == nil && run != nil {
 		userKilled = run.Status == "killed"
 		if !userKilled && ctx.Err() == nil && (status == "killed" || launchFailed) {
-			s.killRunSession(ctx, run, job.AgentType)
+			s.killRunSession(ctx, run, s.runAgentType(ctx, *run, job.AgentType))
 		}
 	}
 	if !userKilled {

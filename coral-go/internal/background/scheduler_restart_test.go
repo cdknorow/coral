@@ -2,6 +2,10 @@ package background
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -141,4 +145,97 @@ func TestAnAdoptedRunIsLeftAloneWhenCorlShutsDown(t *testing.T) {
 	cancel()
 	e.s.waitWatchers()
 	assert.Equal(t, "running", e.runOf(t, live).Status)
+}
+
+// Orchestrator's point 3 (#6898): a run whose agent ended while Coral was down is "agent_done" only when its last event shows it finished; otherwise it is recorded with its own reason, not a success nobody saw.
+func TestARunWhoseAgentEndedWhileCoralWasDownClaimsSuccessOnlyWithProof(t *testing.T) {
+	ctx := context.Background()
+	for _, c := range []struct {
+		name, last, want string
+		fn               bool
+	}{
+		{"its last event is a stop", "stop", "agent_done", true},
+		{"its last event is the session's end", "session_end", "agent_done", true},
+		{"its last event is a tool call", "tool_use", "ended_while_coral_was_down", true},
+		{"it reported nothing", "", "ended_while_coral_was_down", true},
+		{"the last event is not known here", "", "agent_done", false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			e, _ := restartEnv(t, "left-proof-"+c.last)
+			if c.fn {
+				e.s.SetLastEventType(func(context.Context, string) string { return c.last })
+			}
+			id := e.leftRun(t, time.Minute, "sid-proof")
+			e.s.reapStaleRuns(ctx)
+			r := e.runOf(t, id)
+			assert.Equal(t, "completed", r.Status)
+			require.NotNil(t, r.ExitReason)
+			assert.Equal(t, c.want, *r.ExitReason)
+		})
+	}
+}
+
+// Orchestrator's point 2 (#6898): the worktree of a run settled at startup is removed as an in-process run's is (no --force): clean, it goes with its empty branch; with unsaved work it stays.
+func TestTheWorktreeOfARunSettledAtStartupIsRemovedWithoutForce(t *testing.T) {
+	ctx := context.Background()
+	for _, dirty := range []bool{false, true} {
+		e, _ := restartEnv(t, fmt.Sprintf("left-wt-%v", dirty))
+		repo := exitGitRepo(t)
+		id := e.leftRun(t, time.Minute, "sid-wt")
+		jobID := e.runOf(t, id).JobID
+		_, err := e.ss.UpdateScheduledJob(ctx, jobID, map[string]interface{}{"repo_path": repo, "cleanup_worktree": 1})
+		require.NoError(t, err)
+		wt := filepath.Join(e.s.worktreeRoot, fmt.Sprintf("job-run-%d-%s", id, filepath.Base(repo)))
+		out, err := exec.Command("git", "-C", repo, "worktree", "add", "-b", fmt.Sprintf("coral/job-run-%d", id), "--", wt, "main").CombinedOutput()
+		require.NoError(t, err, string(out))
+		require.NoError(t, e.ss.UpdateScheduledRun(ctx, id, map[string]interface{}{"worktree_path": wt}))
+		if dirty {
+			require.NoError(t, os.WriteFile(filepath.Join(wt, "unsaved.txt"), []byte("work"), 0o644))
+		}
+
+		e.s.reapStaleRuns(ctx)
+
+		assert.Equal(t, "completed", e.runOf(t, id).Status)
+		if dirty {
+			assert.FileExists(t, filepath.Join(wt, "unsaved.txt"), "unsaved work: the worktree stays")
+			continue
+		}
+		assert.NoDirExists(t, wt, "a clean worktree goes")
+		branches, err := exec.Command("git", "-C", repo, "branch", "--list", fmt.Sprintf("coral/job-run-%d", id)).CombinedOutput()
+		require.NoError(t, err)
+		assert.Empty(t, string(branches), "with its empty branch")
+	}
+}
+
+// A run that is not the folder the scheduler makes for it (the job's own repository as its worktree path, a plain run) is never removed.
+func TestASettledRunNeverRemovesTheJobsOwnRepository(t *testing.T) {
+	ctx := context.Background()
+	e, _ := restartEnv(t, "left-own")
+	repo := exitGitRepo(t)
+	id := e.leftRun(t, time.Minute, "sid-own")
+	_, err := e.ss.UpdateScheduledJob(ctx, e.runOf(t, id).JobID, map[string]interface{}{"repo_path": repo, "cleanup_worktree": 1})
+	require.NoError(t, err)
+	require.NoError(t, e.ss.UpdateScheduledRun(ctx, id, map[string]interface{}{"worktree_path": repo}))
+	e.s.reapStaleRuns(ctx)
+	assert.DirExists(t, repo)
+	assert.DirExists(t, filepath.Join(repo, ".git"))
+}
+
+// Security's LOW on #6904: the run's agent type is the one its session row says, not the job's current one: a job edited from claude to codex since the run started must not make a live agent look gone.
+func TestALiveAgentIsNotReadAsGoneWhenTheJobsAgentTypeWasEdited(t *testing.T) {
+	ctx := context.Background()
+	e, rt := restartEnv(t, "left-typed")
+	adoptedRunPoll = time.Hour
+	defer func() { adoptedRunPoll = 30 * time.Second }()
+	id := e.leftRun(t, time.Minute, "sid-typed")
+	require.NoError(t, e.sess.RegisterLiveSession(ctx, &store.LiveSession{SessionID: "sid-typed", AgentType: "claude", AgentName: "job", WorkingDir: "/tmp"}))
+	_, err := e.ss.UpdateScheduledJob(ctx, e.runOf(t, id).JobID, map[string]interface{}{"agent_type": "codex"}) // edited since the run started
+	require.NoError(t, err)
+	rt.set("claude-sid-typed", true) // the session that really exists
+
+	wctx, cancel := context.WithCancel(ctx)
+	e.s.reapStaleRuns(wctx)
+	assert.Equal(t, "running", e.runOf(t, id).Status, "alive, found by its own agent type: adopted, not finished as gone")
+	cancel() // the adopted run's watcher ends with the context
+	e.s.waitWatchers()
 }
