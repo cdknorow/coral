@@ -1,0 +1,44 @@
+name: Windows worktree remove test (trial)
+
+# #7042 (#7035): the worktree list and Remove tests on Windows (a job-run worktree is removed only when its repository lists it: path forms, short names, junctions).
+# A trial run on a push to a trial/win-wt7035-* branch or by hand.
+on:
+  workflow_dispatch:
+  push:
+    branches: ["trial/win-wt7035-*"]
+
+permissions:
+  contents: read
+
+env:
+  CORAL_TELEMETRY_DISABLED: "1"
+
+jobs:
+  wt7035:
+    name: wt7035 (windows-latest)
+    runs-on: windows-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out LF line endings
+        working-directory: ${{ runner.temp }}
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: coral-go/go.mod
+          cache: false
+      - name: A C compiler for the dev build
+        shell: pwsh
+        run: |
+          if (-not (Get-Command gcc -ErrorAction SilentlyContinue)) { choco install mingw --version=16.1.0 -y --no-progress; if ($LASTEXITCODE -ne 0) { throw "choco install mingw failed" } }
+      - name: the worktree tests
+        working-directory: coral-go
+        run: |
+          git --version
+          go test -count=1 -tags "dev fts5" -run 'Worktree|JobRun|Remove|Stall|Resurrect' -v ./internal/server/routes 2>&1 | tee "$RUNNER_TEMP/wt7035.log" | grep -E "^(--- |ok|FAIL|PASS)|panic|Error"
+          exit ${PIPESTATUS[0]}
