@@ -19,8 +19,8 @@ func TestOldRawBranchesAreCleanedInTheHistoryListAndTheCostRollup(t *testing.T) 
 			VALUES ('repo', 'claude', '/tmp/r', ?, ?, 's', '2026-10-01T10:00:00Z', ?, '2026-10-01T10:00:00Z')`, branch, "hash-"+sid, sid)
 		require.NoError(t, err)
 	}
-	insert("s1", "feature/‮x\x1b[31m") // two raw spellings of one branch, written before the write path cleaned
-	insert("s2", "feature/​x")
+	insert("s1", "feature/\u202ex\x1b[31m") // two raw spellings of one branch, written before the write path cleaned
+	insert("s2", "feature/\u200bx")
 	insert("s3", "main")
 	for sid, cost := range map[string]float64{"s1": 3, "s2": 4, "s3": 1} {
 		require.NoError(t, usage.RecordUsage(ctx, &TokenUsage{SessionID: sid, AgentName: "a", AgentType: "claude", RecordedAt: "2026-10-01T10:00:00Z", InputTokens: 10, TotalTokens: 10, CostUSD: cost}))
