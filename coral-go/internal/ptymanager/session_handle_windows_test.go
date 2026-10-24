@@ -30,35 +30,26 @@ func handleCount(t *testing.T) int {
 const exitNow = "powershell.exe -NoProfile -Command exit"
 
 // #6821 on Windows (measured on a Windows runner, #6827): a session whose process ends on its own must be closed like a killed one, or each leaves a pseudo console, its pipes and the job object open
-// (80 handles for 8 sessions without the fix, none with it). The absolute count is not flat: the first batch of ConPTY sessions costs the process a one-time ~9 handles a session (runtime threads
-// and their events), so this compares: 8 sessions killed first (which pays that cost), then 8 that end on their own, which may hold no more than the killed ones plus one a session.
-func TestSessionsThatEndOnTheirOwnHoldNoMoreHandlesThanAKilledOne(t *testing.T) {
+// (about 10 handles a session without the fix, none with it). The count is not flat from the first session: the first batch of ConPTY sessions costs the process a one-time ~9 handles a session (runtime
+// threads and their events), so a first batch of sessions that end on their own warms the process up, and the second batch of the same kind may add no more than one handle a session.
+func TestASecondBatchOfSessionsThatEndOnTheirOwnAddsNoHandles(t *testing.T) {
 	naming.SetDefaultLogDir(t.TempDir())
 	const runs = 8
 	settle := func() { time.Sleep(exitDrain + 6*time.Second) }
 	backend := NewPTYBackend()
 	defer backend.Close()
-	require.NoError(t, backend.Spawn("hd-warm", "test", t.TempDir(), "sid-hd-warm", exitNow, 120, 40))
-	settle()
-
-	base := handleCount(t)
-	for i := 0; i < runs; i++ {
-		require.NoError(t, backend.Spawn(fmt.Sprintf("hd-k%d", i), "test", t.TempDir(), fmt.Sprintf("sid-hd-k%d", i), "powershell.exe -NoProfile -NoExit -Command Start-Sleep 600", 120, 40))
+	batch := func(tag string) {
+		for i := 0; i < runs; i++ {
+			require.NoError(t, backend.Spawn(fmt.Sprintf("hd-%s%d", tag, i), "test", t.TempDir(), fmt.Sprintf("sid-hd-%s%d", tag, i), exitNow, 120, 40))
+		}
+		settle()
 	}
-	for i := 0; i < runs; i++ {
-		require.NoError(t, backend.Kill(fmt.Sprintf("hd-k%d", i)))
-	}
-	settle()
-	afterKills := handleCount(t)
-	killed := afterKills - base
-
-	for i := 0; i < runs; i++ {
-		require.NoError(t, backend.Spawn(fmt.Sprintf("hd-n%d", i), "test", t.TempDir(), fmt.Sprintf("sid-hd-n%d", i), exitNow, 120, 40))
-	}
-	settle()
-	natural := handleCount(t) - afterKills
-	t.Logf("handles left by %d killed sessions: %d; by %d sessions that ended on their own: %d", runs, killed, runs, natural)
-	assert.LessOrEqual(t, natural, killed+runs, "sessions that end on their own hold more handles than killed ones (%d against %d for %d sessions)", natural, killed, runs)
+	batch("a") // the first batch pays the one-time cost
+	before := handleCount(t)
+	batch("b")
+	added := handleCount(t) - before
+	t.Logf("handles added by a second batch of %d sessions that ended on their own: %d", runs, added)
+	assert.LessOrEqual(t, added, runs, "a second batch of %d sessions that ended on their own added %d handles: something is left open for each", runs, added)
 }
 
 // The shell exits but a program it started keeps running: the exit watcher still closes the pseudo console after the drain, while that program lives (a pseudo console's output pipe only ends when it is
