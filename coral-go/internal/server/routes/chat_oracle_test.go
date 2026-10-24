@@ -209,9 +209,9 @@ func TestChatAgreesWithBefore4713(t *testing.T) {
 	// moments, so on a loaded host a window ran out for one of them mid-seed and not for the other: one took a fresh read (after the session's row
 	// changed under it) and one reused the earlier answer, and their replies differed by prompt_options alone (#4911). The window never runs out
 	// here; resetChatCaches starts each seed with no read.
-	keepTTL := promptReadTTL
-	promptReadTTL = time.Hour
-	t.Cleanup(func() { promptReadTTL = keepTTL })
+	for _, h := range handlers {
+		h.hints.ttl = time.Hour
+	}
 	db := handlers[0].db
 	ctx := context.Background()
 	kinds := map[string]int{}

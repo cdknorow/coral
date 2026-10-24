@@ -14,12 +14,10 @@ import (
 // The deadline is rolling: a reply written in ONE Write call (a changes.diff, a media preview, a JSON body to a client that does
 // not take gzip) to a client that reads steadily but slower than the deadline would allow for the whole buffer is not cut.
 func TestWriteDeadlineRollsAcrossOneBigWrite(t *testing.T) {
-	old := plainWriteTimeout
-	plainWriteTimeout = 300 * time.Millisecond
-	t.Cleanup(func() { plainWriteTimeout = old })
+	const limit = 300 * time.Millisecond
 	const size = 48 << 20
 	var writeErr error
-	srv := httptest.NewServer(WriteDeadline(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(WriteDeadlineAfter(limit)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, writeErr = w.Write(make([]byte, size)) // one call
 	})))
 	t.Cleanup(srv.Close)
@@ -37,7 +35,7 @@ func TestWriteDeadlineRollsAcrossOneBigWrite(t *testing.T) {
 		}
 		time.Sleep(time.Millisecond) // steady, but the whole buffer takes far longer than the deadline
 	}
-	assert.Greater(t, time.Since(start), 2*plainWriteTimeout, "the transfer outlasted the per-write deadline")
+	assert.Greater(t, time.Since(start), 2*limit, "the transfer outlasted the per-write deadline")
 	assert.Equal(t, size, got, "all of it arrived")
 	assert.NoError(t, writeErr)
 }

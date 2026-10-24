@@ -158,9 +158,6 @@ var resumeOutcomes = map[string]int{
 // Restart's step: a live tmux pane whose respawn or rename fails is refused (the old Resume typed the command into
 // it anyway), and a tmux terminal's title is set. Those are checked as the new rule, not compared.
 func TestResumeAgreesWithBefore4809(t *testing.T) {
-	prevSettle := paneRespawnSettle
-	t.Cleanup(func() { paneRespawnSettle = prevSettle })
-	paneRespawnSettle = 0
 	prevOut := log.Writer()
 	log.SetOutput(&bytes.Buffer{})
 	t.Cleanup(func() { log.SetOutput(prevOut) })
@@ -246,6 +243,8 @@ func runResumeOracle(t *testing.T, seed int64, counts map[string]int) {
 	var results [2]string
 	for i := range sides {
 		_, h, mock, ss := setupSessionsTestServer(t)
+		noSettle := time.Duration(0) // a respawned pane is not waited for (each handler's own paneSettle, #6991)
+		h.paneSettle = &noSettle
 		term := &resumeTerm{mockSessionTerminal: mock, fail: fail}
 		back := &resumeBackend{spawnErr: spawnErr, killErr: killErr}
 		h.terminal, h.backend = term, back
@@ -613,7 +612,7 @@ func (h *SessionsHandler) resumeBefore4809(w http.ResponseWriter, r *http.Reques
 		h.terminal.StopLogging(ctx, pane.Target)
 		h.terminal.RestartPane(ctx, pane.Target, pane.CurrentPath)
 		h.terminal.RenameSession(ctx, pane.SessionName, newSessionName)
-		time.Sleep(paneRespawnSettle) // the copy uses the same seam as the new code
+		time.Sleep(h.respawnSettle()) // the copy uses the same seam as the new code
 		h.terminal.ClearHistory(ctx, target)
 		ptymanager.ResetAgentLog(newLogPath) // 0600, never through a link (#3601, W17)
 		h.terminal.StartLogging(ctx, target, newLogPath)

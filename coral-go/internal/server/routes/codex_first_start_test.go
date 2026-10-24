@@ -93,10 +93,8 @@ func TestTheStartPathDefersTheSecondCodexStartOnANewHome(t *testing.T) {
 	freshCodexHome(t)
 	var mu sync.Mutex
 	var deferred []time.Duration
-	prev := afterTeamSlot
-	afterTeamSlot = func(d time.Duration, f func()) { mu.Lock(); deferred = append(deferred, d); mu.Unlock(); f() }
-	t.Cleanup(func() { afterTeamSlot = prev })
 	_, h, term, _ := setupSessionsTestServer(t)
+	h.afterTeamSlotFn = func(d time.Duration, f func()) { mu.Lock(); deferred = append(deferred, d); mu.Unlock(); f() }
 
 	require.NoError(t, h.startAgentCLI(context.Background(), "", "codex", "codex-a", "codex"))
 	assert.Empty(t, deferred, "the first Codex start is typed at once")
@@ -126,10 +124,8 @@ func TestTheStartPathSpacesCodexStartsWithoutBlockingTheRequest(t *testing.T) {
 	t.Cleanup(func() { agent.SharedHomeStartGap = oldGap; agent.SetStartStagger(false); codexFirstStartGap = oldFirst })
 	var mu sync.Mutex
 	var deferred []time.Duration
-	prev := afterTeamSlot
-	afterTeamSlot = func(d time.Duration, f func()) { mu.Lock(); deferred = append(deferred, d); mu.Unlock() } // not typed here: only what was asked for
-	t.Cleanup(func() { afterTeamSlot = prev })
 	_, h, _, _ := setupSessionsTestServer(t)
+	h.afterTeamSlotFn = func(d time.Duration, f func()) { mu.Lock(); deferred = append(deferred, d); mu.Unlock() } // not typed here: only what was asked for
 
 	start := time.Now()
 	for _, name := range []string{"codex-a", "codex-b", "codex-c"} {

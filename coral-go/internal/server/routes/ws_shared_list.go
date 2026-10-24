@@ -181,10 +181,6 @@ func (h *SessionsHandler) buildSharedWSTick(r *http.Request, done chan struct{},
 	return tick, local.err
 }
 
-// wsLocalBuildHook, when set by a test before any connection, runs at the start
-// of every shared local build.
-var wsLocalBuildHook func()
-
 // buildWSLocalPart builds this server's part of the list. prev is the part built before it (nil for
 // the first): a row that comes out exactly as it did then keeps the string it was serialized to
 // (#4308). The row is still built from scratch every tick, from every input, so nothing can go stale;
@@ -192,8 +188,8 @@ var wsLocalBuildHook func()
 // "Exactly as it did" is sameJSONValue over the whole built row: any value that is not a type it
 // knows counts as changed, and the row is serialized again.
 func (h *SessionsHandler) buildWSLocalPart(r *http.Request, hasRemotes bool, prev *wsLocalPart) *wsLocalPart {
-	if wsLocalBuildHook != nil {
-		wsLocalBuildHook()
+	if h.wsBuildHook != nil {
+		h.wsBuildHook()
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), wsListBuildTimeout)
 	defer cancel()

@@ -165,7 +165,7 @@ func TestPromptHintsAreBounded(t *testing.T) {
 	assert.True(t, p.mayBeOpen("gone"), "an ended session is forgotten, so unknown again")
 }
 
-// #3745: one read of a session's prompt options answers its polls for promptReadTTL. A session whose hook
+// #3745: one read of a session's prompt options answers its polls for the read window (promptHints.ttl). A session whose hook
 // state is unknown (or with no prompt hooks) was read on every poll, a pane capture each.
 func TestChatReplyReadsThePaneOncePerWindow(t *testing.T) {
 	server, handler, terminal, ss := setupSessionsTestServer(t)
@@ -175,9 +175,7 @@ func TestChatReplyReadsThePaneOncePerWindow(t *testing.T) {
 	terminal.mu.Lock()
 	terminal.outputs["claude-win"] = screenPermission
 	terminal.mu.Unlock()
-	keep := promptReadTTL
-	promptReadTTL = 300 * time.Millisecond
-	t.Cleanup(func() { promptReadTTL = keep })
+	handler.hints.ttl = 300 * time.Millisecond
 	base := server.URL + "/api/sessions/live/claude-win"
 	q := url.Values{"session_id": {sid}, "agent_type": {"claude"}, "after": {"1"}}
 	captures := func() int { terminal.mu.Lock(); defer terminal.mu.Unlock(); return len(terminal.captures) }
@@ -197,7 +195,7 @@ func TestChatReplyReadsThePaneOncePerWindow(t *testing.T) {
 	assert.Equal(t, before+1, captures(), "five polls inside the window: one capture")
 
 	// Concurrent polls in a new window share one read.
-	time.Sleep(promptReadTTL + 50*time.Millisecond) // sleep-ok: the window has to run out
+	time.Sleep(handler.hints.ttl + 50*time.Millisecond) // sleep-ok: the window has to run out
 	before = captures()
 	var wg sync.WaitGroup
 	for i := 0; i < 8; i++ {

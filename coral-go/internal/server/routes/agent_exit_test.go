@@ -266,9 +266,7 @@ func TestTeamLaunchOf15AnswersAtOnceAndStartsAllLater(t *testing.T) {
 	terminal := r.h.terminal.(*mockSessionTerminal)
 	var mu sync.Mutex
 	var later []timer
-	prev := afterTeamSlot
-	afterTeamSlot = func(d time.Duration, f func()) { mu.Lock(); later = append(later, timer{d, f}); mu.Unlock() }
-	t.Cleanup(func() { afterTeamSlot = prev })
+	r.h.afterTeamSlotFn = func(d time.Duration, f func()) { mu.Lock(); later = append(later, timer{d, f}); mu.Unlock() }
 
 	team := fmt.Sprintf("launch15-%d", time.Now().UnixNano()) // a team the spacer hasn't seen
 	agents := make([]map[string]any, 15)

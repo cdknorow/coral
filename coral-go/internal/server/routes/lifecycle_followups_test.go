@@ -35,9 +35,7 @@ func TestLaunchRunsToItsEndWhenTheRequestIsDropped(t *testing.T) {
 }
 
 func TestLaunchTeamRunsToItsEndWhenTheRequestIsDropped(t *testing.T) {
-	prev := afterTeamSlot
-	afterTeamSlot = func(_ time.Duration, f func()) { f() } // the spaced starts at once
-	t.Cleanup(func() { afterTeamSlot = prev })
+	// the spaced starts are typed at once: the package default (main_test.go)
 	for _, at := range []string{"CreateSession", "StartLogging", "SendToTarget"} {
 		t.Run(at, func(t *testing.T) {
 			_, h, term, _ := setupSessionsTestServer(t)

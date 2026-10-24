@@ -274,8 +274,17 @@ func refuseRestartBusy(w http.ResponseWriter) {
 	writeJSON(w, http.StatusConflict, map[string]any{"ok": false, "error": "this agent is already being restarted; wait for it to finish", "in_progress": true})
 }
 
-// afterTeamSlot runs f once d has passed (tests replace it).
-var afterTeamSlot = func(d time.Duration, f func()) { time.AfterFunc(d, f) }
+// defaultAfterTeamSlot runs f once d has passed. A test replaces it for the whole package once, before any test runs (main_test.go); a test about the spacing sets the handler's own afterTeamSlotFn (#6991).
+var defaultAfterTeamSlot = func(d time.Duration, f func()) { time.AfterFunc(d, f) }
+
+// teamSlot runs f once d has passed, as this handler's afterTeamSlotFn says, else the default.
+func (h *SessionsHandler) teamSlot(d time.Duration, f func()) {
+	if h.afterTeamSlotFn != nil {
+		h.afterTeamSlotFn(d, f)
+		return
+	}
+	defaultAfterTeamSlot(d, f)
+}
 
 // codexFirstStartGap is how long the first Codex start on a Codex home that has never completed a turn protects itself (#6364): Codex migrates its memories database when it starts, and a second
 // Codex started on the same new home in the middle of that migration exits with "failed to migrate memories DB ... table stage1_outputs already exists". A var so a test can set it (the package's
@@ -334,7 +343,7 @@ func (h *SessionsHandler) startAgentCLI(ctx context.Context, team, agentType, ta
 		return sendLaunchCommand(ctx, h.terminal, target, cmd)
 	}
 	log.Printf("[launch] %s: its start is typed in %s (the team's starts are spaced)", target, d.Round(100*time.Millisecond))
-	afterTeamSlot(d, func() {
+	h.teamSlot(d, func() {
 		bg, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		if err := sendLaunchCommand(bg, h.terminal, target, cmd); err != nil {
@@ -754,7 +763,7 @@ func (h *SessionsHandler) restartTerminal(ctx context.Context, p *restartPlan) (
 			return "", fail(err.Error())
 		}
 		target = fmt.Sprintf("%s:0.0", p.newSessionName)
-		time.Sleep(paneRespawnSettle)
+		time.Sleep(h.respawnSettle())
 		// Clear scrollback, create log, setup pipe-pane
 		h.terminal.ClearHistory(ctx, target)
 		ptymanager.ResetAgentLog(p.newLogPath) // 0600, never through a link (#3601, W17)
@@ -775,20 +784,34 @@ func (p *restartPlan) verb() string {
 	return "restart"
 }
 
-// paneRespawnSettle is how long a respawned pane is given before its history is cleared and its log started.
-var paneRespawnSettle = 500 * time.Millisecond
+// defaultPaneRespawnSettle is how long a respawned pane is given before its history is cleared and its log started; a handler's paneSettle replaces it (tests, #6991).
+const defaultPaneRespawnSettle = 500 * time.Millisecond
+
+func (h *SessionsHandler) respawnSettle() time.Duration {
+	if h.paneSettle != nil {
+		return *h.paneSettle
+	}
+	return defaultPaneRespawnSettle
+}
 
 // restartKillGrace is how long a restart or resume gives the old pty terminal to exit on SIGTERM before it is force-killed. The new terminal
 // already runs, the conversation continues from the agent's transcript, and tmux's respawn is immediate: an agent that ignores SIGTERM held
 // every pty restart for Kill's full 5 s (#4842). A var for the tests.
-var restartKillGrace = time.Second
+const defaultRestartKillGrace = time.Second // a handler's killGrace replaces it (tests, #6991)
+
+func (h *SessionsHandler) restartGrace() time.Duration {
+	if h.killGrace != nil {
+		return *h.killGrace
+	}
+	return defaultRestartKillGrace
+}
 
 // endOldTerminal ends the old terminal of a restart or resume: a pty one with the short grace, any other backend as Kill does.
 func (h *SessionsHandler) endOldTerminal(name string) error {
 	if k, ok := h.backend.(interface {
 		KillWithin(name string, grace time.Duration) error
 	}); ok {
-		return k.KillWithin(name, restartKillGrace)
+		return k.KillWithin(name, h.restartGrace())
 	}
 	return h.backend.Kill(name)
 }

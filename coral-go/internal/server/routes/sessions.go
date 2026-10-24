@@ -47,6 +47,12 @@ type SessionsHandler struct {
 	// boardStatus shares one computation of a board's status among the requests that arrive
 	// together (#3721); it keeps nothing, so a status is never stale.
 	boardStatus *replyCache
+	// Timings and seams of a restart, resume and team launch, per handler, so a test sets one without touching a process-wide variable and can run in parallel (#6991, as newUUID). nil: the default of sessions_lifecycle.go.
+	afterTeamSlotFn func(d time.Duration, f func())
+	// wsBuildHook, when set by a test before any connection, runs at the start of every shared local build of the websocket list (#6991).
+	wsBuildHook func()
+	paneSettle  *time.Duration
+	killGrace   *time.Duration
 	// sendGate lets a person's messages through to each agent one at a time (#4587, human_send.go).
 	sendGate humanSendGate
 	// holds are the person's chat messages held while their agent waits on a box (#6610, human_send_hold.go).
