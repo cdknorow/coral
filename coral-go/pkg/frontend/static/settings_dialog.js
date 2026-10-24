@@ -695,6 +695,13 @@ function _fillApiKey() {
     }
 }
 
+/** The CLI paths are the way out of "command not found": when Coral cannot find the default agent's CLI the disclosure is already open, with the fields on screen (#7041). Silent on any failure. */
+function openCliPathsWhenMissing(type) {
+    const details = document.querySelector('#settings-modal .settings-cli-details');
+    if (!details || details.open) return;
+    fetch(`/api/system/cli-check?type=${encodeURIComponent(type)}`).then(r => r.ok ? r.json() : null).then(d => { if (d && d.found === false) details.open = true; }).catch(() => {});
+}
+
 // The CLI paths and the default models (and their datalists, from the model catalog; not on the hub).
 function _fillCliAndModels(s) {
     // CLI paths
@@ -709,6 +716,7 @@ function _fillCliAndModels(s) {
     if (cliPi) cliPi.value = s.cli_path_pi || "";
     for (const id of Object.values(CLI_PATH_FIELDS)) { const el = document.getElementById(id); if (el) el.dataset.filled = '1'; }
     refreshCLIPathFields();
+    openCliPathsWhenMissing(s.default_agent_type || 'claude');
 
     // Default Models — populate combo inputs + datalists from /api/agent-models
     const defClaude = document.getElementById("settings-default-model-claude");
