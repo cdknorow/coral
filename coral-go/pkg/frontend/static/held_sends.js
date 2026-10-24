@@ -12,6 +12,10 @@ const byComposer = new Map(); // `${sid}|${composer frame id}` -> held id: the a
 const cancelling = new Set(); // `${sid}|${id}` whose cancel is under way: its refusal is the person's own doing, not an error
 const key = (sid, id) => `${sid}|${id}`;
 const WORDS = 40; // a long message stays on one line with its Cancel at the end
+const open = new Set();      // `${sid}|${held id}` of the queued lines the person has tapped open to read whole (#6794); a line leaves it when it is sent or cancelled
+
+/** The whole message on one line of words (what a tap on a clipped line shows). */
+const wholeText = text => String(text || '').replace(/\s+/g, ' ').trim();
 
 /** First words of a message, for the line and for Cancel's name. */
 export function firstWords(text) {
@@ -44,6 +48,7 @@ export function noteDone(sid, id, how) {
     const heldId = byComposer.has(k) ? byComposer.get(k) : id;
     byComposer.delete(k);
     const m = queued.get(sid);
+    open.delete(key(sid, heldId));
     if (m && m.delete(heldId)) {
         if (!m.size) queued.delete(sid);
         if (how === 'sent') say('Sent.'); // the message that waited was typed: the line going is not left unsaid
@@ -111,7 +116,7 @@ export function paint() {
     if (!box) return;
     const sid = state.currentSession && state.currentSession.session_id;
     const items = sid && queued.get(sid) ? [...queued.get(sid).values()] : [];
-    const sig = sid + '|' + said + '|' + items.map(i => `${i.id}:${i.sending ? 1 : 0}:${i.text}`).join('\u0001');
+    const sig = sid + '|' + said + '|' + items.map(i => `${i.id}:${i.sending ? 1 : 0}:${open.has(key(sid, i.id)) ? 1 : 0}:${i.text}`).join('\u0001');
     if (sig === lastShown) return;
     lastShown = sig;
     const kids = [...box.children];
@@ -122,11 +127,12 @@ export function paint() {
     if (waiting && !head) { const h = document.createElement('div'); h.className = 'composer-queued-head'; h.textContent = 'Queued. Sends after you answer the question above:'; box.prepend(h); }
     if (!waiting && head) head.remove();
     const want = new Set(items.map(i => String(i.id)));
-    for (const [k, el] of rows) if (!want.has(k)) el.remove();
+    for (const [k, el] of rows) if (!want.has(k)) { el.remove(); open.delete(key(sid, k)); }
     let after = box.querySelector('.composer-queued-head');
     for (const i of items) {
         let el = rows.get(String(i.id));
-        const text = `${i.sending ? 'Sending: ' : ''}“${firstWords(i.text)}”`;
+        const clipped = [...wholeText(i.text)].length > WORDS, isOpen = clipped && open.has(key(sid, i.id));
+        const text = `${i.sending ? 'Sending: ' : ''}“${isOpen ? wholeText(i.text) : firstWords(i.text)}”`;
         if (!el) {
             el = document.createElement('div'); el.className = 'composer-queued-item'; el.dataset.key = String(i.id);
             const t = document.createElement('span'); t.className = 'composer-queued-text'; el.append(t);
@@ -134,6 +140,15 @@ export function paint() {
         }
         const t = el.querySelector('.composer-queued-text');
         if (t.textContent !== text) t.textContent = text;
+        // a line clipped to its first words opens on a tap or Enter/Space to the whole message, and closes the same way; a short one is plain text
+        if (clipped && !t.hasAttribute('role')) {
+            t.setAttribute('role', 'button'); t.tabIndex = 0;
+            const flip = () => { const k = key(sid, i.id); if (open.has(k)) open.delete(k); else open.add(k); paint(); };
+            t.addEventListener('click', flip);
+            t.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flip(); } });
+        }
+        if (clipped) t.setAttribute('aria-expanded', String(isOpen));
+        else if (t.hasAttribute('role')) { t.removeAttribute('role'); t.removeAttribute('aria-expanded'); t.removeAttribute('tabindex'); }
         const cancel = el.querySelector('.composer-queued-cancel');
         if (i.sending && cancel) cancel.remove(); // once it is being typed there is nothing left to cancel
         if (!i.sending && !cancel) {

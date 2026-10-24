@@ -2203,6 +2203,9 @@
 .composer-queued-head { margin-bottom: 2px; }
 .composer-queued:empty { position: absolute; width: 1px; height: 1px; margin: 0; padding: 0; border: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; } /* in the page with nothing to say: out of the layout (no room, no flex gap), still a live region (#6679) */ /* always in the page, so what is put into it is read (#6611); nothing queued takes no room */
 .composer-queued-note { color: var(--text-primary); }
+.composer-queued-text[role=button] { cursor: pointer; }
+.composer-queued-text[role=button]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (pointer: coarse) { .composer-queued-text[role=button] { min-height: 44px; display: inline-flex; align-items: center; } }
 @media (pointer: coarse) { .composer-queued-cancel { min-height: 44px; min-width: 44px; display: inline-flex; align-items: center; } }
 
 /* A small phone (up to 400 px): the header's 44 px targets (the view toggle, Find, Open Agent Tab, the side panel) left the agent name 46 px at 320 and 35 px at 370 beside the branch (#6756). The header's side padding is 2 px and the branch is cut to 3 em
