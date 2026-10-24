@@ -53,6 +53,23 @@ func (t *turns) read(_ context.Context, sid string) (store.RunTurn, error) {
 	return t.m[sid], nil
 }
 
+// setTurnTimings sets the package timings a test needs and restores them when the test is over. Register it BEFORE the cleanup that stops the scheduler's watchers: cleanups run last-in first-out, so the
+// watchers are gone (and no longer reading the variables) when they are restored (QA's race on #7090).
+func setTurnTimings(t *testing.T, adopt, poll, settle time.Duration) {
+	t.Helper()
+	oa, op, os := adoptedRunPoll, turnPoll, turnSettle
+	t.Cleanup(func() { adoptedRunPoll, turnPoll, turnSettle = oa, op, os })
+	if adopt > 0 {
+		adoptedRunPoll = adopt
+	}
+	if poll > 0 {
+		turnPoll = poll
+	}
+	if settle >= 0 {
+		turnSettle = settle
+	}
+}
+
 func longAgo() string { return time.Now().Add(-time.Minute).UTC().Format(store.ISOFormat) }
 
 func turnEnv(t *testing.T, name string) (*exitEnv, *endingRuntime, *turns) {
@@ -74,6 +91,7 @@ func reasonOf(t *testing.T, r *store.ScheduledRun) string {
 // An adopted run whose agent is alive and whose turn ended normally is completed (turn_complete), its agent ended, and the next slot is free; a turn still going stays adopted; one that ended in an error is
 // failed; a second look changes nothing.
 func TestAdoptedRunFinishesOnItsAcceptedTurnEnd(t *testing.T) {
+	setTurnTimings(t, time.Hour, 0, -1)
 	ctx, cancel := context.WithCancel(context.Background())
 	e, rt, tr := turnEnv(t, "turn-adopt")
 	t.Cleanup(func() { cancel(); e.s.waitWatchers() })
@@ -87,8 +105,6 @@ func TestAdoptedRunFinishesOnItsAcceptedTurnEnd(t *testing.T) {
 	tr.set("sid-done", store.RunTurn{State: store.TurnDone, At: longAgo()})
 	tr.set("sid-working", store.RunTurn{State: store.TurnWorking})
 	tr.set("sid-failed", store.RunTurn{State: store.TurnFailed, At: longAgo()})
-	defer func(p time.Duration) { adoptedRunPoll = p }(adoptedRunPoll)
-	adoptedRunPoll = time.Hour
 
 	e.s.reapStaleRuns(ctx)
 
@@ -101,6 +117,9 @@ func TestAdoptedRunFinishesOnItsAcceptedTurnEnd(t *testing.T) {
 	assert.Equal(t, "turn_failed", reasonOf(t, f))
 	require.NotNil(t, f.ErrorMsg)
 	assert.Contains(t, *f.ErrorMsg, "turn ended with an error")
+	require.NotNil(t, f.ErrorCode)
+	assert.Equal(t, "agent_turn_failed", *f.ErrorCode, "a fixed code, like the other failure reasons")
+	assert.Nil(t, d.ErrorCode, "a turn that ended well has none")
 	assert.Equal(t, "running", e.runOf(t, working).Status, "a turn still going stays adopted")
 	assert.Equal(t, "running", e.runOf(t, never).Status, "no turn started: nothing to finish")
 	assert.ElementsMatch(t, []string{"claude-sid-done", "claude-sid-failed"}, rt.kills(), "only the finished runs' agents are ended")
@@ -115,14 +134,13 @@ func TestAdoptedRunFinishesOnItsAcceptedTurnEnd(t *testing.T) {
 
 // A stop that is not yet old enough is not an end: the stop hook that stored it may still send the agent on (turnSettle).
 func TestAStopStillSettlingIsNotYetTheEnd(t *testing.T) {
+	setTurnTimings(t, time.Hour, 0, time.Hour)
 	ctx, cancel := context.WithCancel(context.Background())
 	e, rt, tr := turnEnv(t, "turn-settle")
 	t.Cleanup(func() { cancel(); e.s.waitWatchers() })
 	id := e.leftRun(t, time.Minute, "sid-s")
 	rt.set("claude-sid-s", true)
 	tr.set("sid-s", store.RunTurn{State: store.TurnDone, At: time.Now().UTC().Format(store.ISOFormat)})
-	defer func(p time.Duration) { adoptedRunPoll = p; turnSettle = 3 * time.Second }(adoptedRunPoll)
-	adoptedRunPoll, turnSettle = time.Hour, time.Hour
 	e.s.reapStaleRuns(ctx)
 	assert.Equal(t, "running", e.runOf(t, id).Status)
 	assert.Empty(t, rt.kills())
@@ -204,10 +222,10 @@ func TestAFinishedRunWhoseAgentWontEndKeepsItsWorktreeSignal(t *testing.T) {
 // The live path: the launch blocks as the interactive CLI does; the agent's turn ends (stored as a stop after a prompt); the run is completed at once, the launch is released, the agent is ended, and a
 // deadline that comes later changes nothing.
 func TestLiveRunFinishesOnItsTurnEndWithoutWaitingForTheCLI(t *testing.T) {
+	setTurnTimings(t, 0, 20*time.Millisecond, 0)
 	e, rt, tr := turnEnv(t, "turn-live")
+	t.Cleanup(e.s.waitWatchers)
 	rt.set("claude-turn-live", true)
-	defer func(p, s time.Duration) { turnPoll, turnSettle = p, s }(turnPoll, turnSettle)
-	turnPoll, turnSettle = 20*time.Millisecond, 0
 	released := make(chan struct{})
 	e.launch(t, func(ctx context.Context) error {
 		go func() {
@@ -233,19 +251,22 @@ func TestLiveRunFinishesOnItsTurnEndWithoutWaitingForTheCLI(t *testing.T) {
 
 // A live run's turn that ended in an error is failed, and a run of a task (tag "task") is not watched for a turn at all.
 func TestLiveRunFailedTurnAndTaskRunsAreNotFinishedByOne(t *testing.T) {
+	setTurnTimings(t, 0, 20*time.Millisecond, 0)
 	e, rt, tr := turnEnv(t, "turn-fail")
+	t.Cleanup(e.s.waitWatchers)
 	rt.set("claude-turn-fail", true)
-	defer func(p, s time.Duration) { turnPoll, turnSettle = p, s }(turnPoll, turnSettle)
-	turnPoll, turnSettle = 20*time.Millisecond, 0
 	tr.set("turn-fail", store.RunTurn{State: store.TurnFailed, At: longAgo()})
 	e.launch(t, func(ctx context.Context) error { <-ctx.Done(); return ctx.Err() })
 	e.s.launchAndWatch(e.runID, store.ScheduledJob{Name: "n", AgentType: "claude"}, runConfig{tag: "scheduled", maxDurationS: 60})
 	r := e.run(t)
 	assert.Equal(t, "failed", r.Status)
 	assert.Equal(t, "turn_failed", reasonOf(t, r))
+	require.NotNil(t, r.ErrorCode)
+	assert.Equal(t, "agent_turn_failed", *r.ErrorCode)
 
 	// A one-shot task run ends as before, by its deadline here.
 	e2, rt2, tr2 := turnEnv(t, "turn-task")
+	t.Cleanup(e2.s.waitWatchers)
 	rt2.set("claude-turn-task", true)
 	tr2.set("turn-task", store.RunTurn{State: store.TurnDone, At: longAgo()})
 	e2.launch(t, func(ctx context.Context) error { <-ctx.Done(); return ctx.Err() })
@@ -257,11 +278,10 @@ func TestLiveRunFailedTurnAndTaskRunsAreNotFinishedByOne(t *testing.T) {
 
 // An adopted run whose turn ends after it was adopted is finished by the watcher's own check, not at the next restart.
 func TestAdoptedRunWatcherFinishesWhenTheTurnEndsLater(t *testing.T) {
+	setTurnTimings(t, 20*time.Millisecond, 0, -1)
 	ctx, cancel := context.WithCancel(context.Background())
 	e, rt, tr := turnEnv(t, "turn-later")
 	t.Cleanup(func() { cancel(); e.s.waitWatchers() })
-	defer func(p time.Duration) { adoptedRunPoll = p }(adoptedRunPoll)
-	adoptedRunPoll = 20 * time.Millisecond
 	id := e.leftRun(t, time.Minute, "sid-later")
 	rt.set("claude-sid-later", true)
 	tr.set("sid-later", store.RunTurn{State: store.TurnWorking})
@@ -272,6 +292,8 @@ func TestAdoptedRunWatcherFinishesWhenTheTurnEndsLater(t *testing.T) {
 	tr.set("sid-later", store.RunTurn{State: store.TurnDone, At: longAgo()})
 	require.Eventually(t, func() bool { return e.runOf(t, id).Status == "completed" }, 3*time.Second, 20*time.Millisecond)
 	assert.Equal(t, "turn_complete", reasonOf(t, e.runOf(t, id)))
+	// The run is claimed first and its agent ended right after: the kill may land a moment later than the status.
+	require.Eventually(t, func() bool { return len(rt.kills()) == 1 }, 3*time.Second, 10*time.Millisecond)
 	assert.Equal(t, []string{"claude-sid-later"}, rt.kills())
 }
 

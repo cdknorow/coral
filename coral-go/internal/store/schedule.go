@@ -199,15 +199,18 @@ func (s *ScheduleStore) UpdateScheduledRun(ctx context.Context, runID int64, fie
 }
 
 // FinishScheduledRunIfActive records a run's outcome only while it is still pending or running, and reports whether it did: the one claim every way a run can end (the agent's accepted turn end, its
-// deadline, a user's kill, the agent exiting) makes, so that exactly one of them settles it and none overwrites another's outcome (#7090). errorMsg is kept when not empty.
-func (s *ScheduleStore) FinishScheduledRunIfActive(ctx context.Context, runID int64, status, exitReason, errorMsg, finishedAt string) (bool, error) {
-	var msg any
+// deadline, a user's kill, the agent exiting) makes, so that exactly one of them settles it and none overwrites another's outcome (#7090). errorMsg and errorCode are kept when not empty.
+func (s *ScheduleStore) FinishScheduledRunIfActive(ctx context.Context, runID int64, status, exitReason, errorMsg, errorCode, finishedAt string) (bool, error) {
+	var msg, code any
 	if errorMsg != "" {
 		msg = errorMsg
 	}
+	if errorCode != "" {
+		code = errorCode
+	}
 	res, err := s.db.ExecContext(ctx,
-		`UPDATE scheduled_runs SET status = ?, exit_reason = ?, error_msg = COALESCE(?, error_msg), finished_at = ? WHERE id = ? AND status IN ('pending', 'running')`,
-		status, exitReason, msg, finishedAt, runID)
+		`UPDATE scheduled_runs SET status = ?, exit_reason = ?, error_msg = COALESCE(?, error_msg), error_code = COALESCE(?, error_code), finished_at = ? WHERE id = ? AND status IN ('pending', 'running')`,
+		status, exitReason, msg, code, finishedAt, runID)
 	if err != nil {
 		return false, err
 	}

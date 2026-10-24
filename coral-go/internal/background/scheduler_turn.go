@@ -23,6 +23,8 @@ const (
 	exitTurnComplete = "turn_complete"
 	exitTurnFailed   = "turn_failed"
 	turnFailedMsg    = "the agent's turn ended with an error"
+	// turnFailedCode is the fixed error_code of a run whose turn ended in an error, like the other failure reasons' (agent_exited_before_start, the sign-in codes): a script matches on it.
+	turnFailedCode = "agent_turn_failed"
 )
 
 var (
@@ -65,22 +67,23 @@ func (s *JobScheduler) turnEnd(ctx context.Context, run store.ScheduledRun, now 
 // that path recorded it. The run's own agent (its session by name, with the input held for it) is then ended, the live watcher stopped, and the worktree cleanup left to the caller, which does it only when
 // the agent is gone: a folder a live process still works in is never removed under it.
 func (s *JobScheduler) settleOnTurn(ctx context.Context, run store.ScheduledRun, job store.ScheduledJob, failed bool) (settled, agentGone bool) {
-	status, reason, msg := "completed", exitTurnComplete, ""
+	status, reason, msg, code := "completed", exitTurnComplete, "", ""
 	if failed {
-		status, reason, msg = "failed", exitTurnFailed, turnFailedMsg
+		status, reason, msg, code = "failed", exitTurnFailed, turnFailedMsg, turnFailedCode
 	}
-	won, err := s.store.FinishScheduledRunIfActive(ctx, run.ID, status, reason, msg, time.Now().UTC().Format(store.ISOFormat))
+	won, err := s.store.FinishScheduledRunIfActive(ctx, run.ID, status, reason, msg, code, time.Now().UTC().Format(store.ISOFormat))
 	if err != nil || !won {
 		return false, false
 	}
 	s.logger.Info("a scheduled run finished on its agent's accepted turn end", "run_id", run.ID, "job", job.Name, "status", status)
 	agentGone = s.endRunSession(ctx, run, job)
+	// Recorded before the live watcher is released: the launch function returns on the cancel, and launchAndWatch must find the run already settled (and its agent already ended), not end it again.
+	s.turnEnded.Store(run.ID, agentGone)
 	s.runningMu.Lock()
 	if cancel, ok := s.running[run.ID]; ok {
-		cancel() // the live watcher's launch function returns; launchAndWatch finds the run already settled
+		cancel()
 	}
 	s.runningMu.Unlock()
-	s.turnEnded.Store(run.ID, agentGone)
 	return true, agentGone
 }
 
