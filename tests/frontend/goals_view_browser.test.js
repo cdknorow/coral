@@ -101,9 +101,15 @@ const { GOALS, GOALS_STUB } = require('./helpers/goals_stub');
             assert.equal(await ev(`document.activeElement.classList.contains('goal-task') && document.activeElement.querySelector('.goal-task-id').textContent`), '#1050', `${at}: focus goes to the first task that was added`);
             assert.equal((await texts('.goals-status'))[0], 'Showing 100 of 120 tasks', `${at}: said once`);
             assert.deepEqual(await texts('.goals-more'), ['Show 20 more']);
+            await ev(`window.__tasksReads = 0; (async () => { (await import(${S} + 'goals_view.js')).loadGoals(); return true; })()`); // a refresh of the open goal
+            await waitFor(`window.__tasksReads >= 1`, 'the refresh to read the tasks again', 6000);
+            await ev(`new Promise(r => setTimeout(r, 150))`); // sleep-ok: the redraw after the read
+            assert.equal(await ev(`document.querySelectorAll('#mb-goals .goal-task').length`), 100, `${at}: a refresh keeps how many tasks were shown (it went back to 50)`);
             await ev(`document.querySelector('.goals-more').click(); true`);
             await waitFor(`document.querySelectorAll('#mb-goals .goal-task').length === 120`, 'all 120', 4000);
             assert.equal(await ev(`document.querySelectorAll('.goals-more').length`), 0, `${at}: nothing more to show, no button`);
+            assert.equal(await ev(`document.querySelectorAll('#mb-goals .goal-open-agent, #mb-goals .goal-task-why').length`), 0, `${at}: a finished task draws no Open the agent or Not running here`);
+            assert.equal(await ev(`document.querySelectorAll('#mb-goals .goal-open-task').length`), 120, `${at}: it still has Open task`);
             assert.equal((await texts('.goals-note')).filter(t => /Showing/.test(t)).length, 0);
             console.log(`${at}: a route that sent fewer tasks than the goal counts says so`);
             if (mobile) await ev(`document.querySelector('.goals-back').click(); true`);
@@ -188,6 +194,12 @@ const { GOALS, GOALS_STUB } = require('./helpers/goals_stub');
         await ev(`window.__goalsMode = 'ok'; (() => { const b = [...document.querySelectorAll('.goals-failed .btn')].find(b => /Try again/.test(b.textContent)); b.focus(); b.click(); })(); true`);
         await waitFor(`!document.querySelector('.goals-failed')`, 'Try again to work', 4000);
         assert.ok(await ev(`document.activeElement !== document.body && !!document.activeElement.closest('#mb-goals')`), 'Try again goes away when it works: focus stays in the Goals page');
+        console.log('a failed task list: Try again leaves the focus on the goal\'s heading');
+        await ev(`window.__tasksFail = true; document.querySelector('.goal-card[data-goal-id="1"]').click(); true`);
+        await waitFor(`!!document.querySelector('.goals-detail-col .goals-failed')`, 'the task list failure', 6000);
+        await ev(`(() => { const b = [...document.querySelectorAll('.goals-detail-col .goals-failed .btn')].find(b => /Try again/.test(b.textContent)); b.focus(); window.__tasksFail = false; b.click(); })(); true`);
+        await waitFor(`!document.querySelector('.goals-detail-col .goals-failed') && document.querySelectorAll('.goals-detail-col .goal-task').length === 3`, 'Try again to work in the detail', 6000);
+        assert.equal(await ev(`document.activeElement.id`), 'goals-detail-title', 'Try again went away: focus is on the goal\'s heading, not the page');
         await ev(`window.__requireGoal = true; (async () => { (await import(${S} + 'goals_view.js')).loadGoals(); return true; })()`);
         await waitFor(`!!document.querySelector('.goals-require')`, 'the require-a-goal note', 4000);
         assert.equal((await texts('.goals-require'))[0], 'Tasks without a goal are refused on this board (require a goal is on).');

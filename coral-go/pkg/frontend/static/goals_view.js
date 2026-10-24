@@ -55,7 +55,8 @@ export async function loadGoals() {
 async function loadTasks(id) {
     try {
         const page = toTaskPage(await readJson(`/tasks?goal=${encodeURIComponent(id)}`));
-        model.tasks.set(id, { rows: page.rows, cursor: page.cursor, shown: PAGE, moreFailed: '' });
+        const before = model.tasks.get(id);
+        model.tasks.set(id, { rows: page.rows, cursor: page.cursor, shown: before && before.rows ? Math.max(before.shown, PAGE) : PAGE, moreFailed: '' }); // a refresh keeps how many were shown (#7142)
     } catch (e) {
         model.tasks.set(id, { failed: String((e && e.message) || '') });
     }
@@ -195,6 +196,7 @@ function taskRow(t) {
     const acts = el('span', 'goal-task-actions');
     const openT = btn('btn btn-small goal-open-task', 'Open task', () => openTask(t)); openT.setAttribute('aria-label', `Open task #${t.id}: ${t.title}`); // three rows, three names (the visible words start the name)
     acts.append(openT);
+    if (W.taskStateWord(t.state) === 'Done') { li.append(acts); return li; } // a finished task has no agent to open: a long done list is not 120 repeats of "Not running here" (#7142)
     const session = agentFor(t);
     const ob = btn('btn btn-small goal-open-agent', 'Open the agent', session ? () => openAgent(session) : null); ob.setAttribute('aria-label', `Open the agent for task #${t.id}`);
     if (!session) { ob.setAttribute('aria-disabled', 'true'); ob.classList.add('is-off'); const why = el('span', 'goal-task-why', 'Not running here'); ob.setAttribute('aria-describedby', (why.id = `goal-why-${t.id}`)); acts.append(ob, why); } else acts.append(ob);
@@ -258,7 +260,7 @@ function keepFocus(col, redraw) {
     if (!held) return;
     const all = [...col.querySelectorAll('button, [tabindex]')];
     const same = held.filter ? col.querySelector(`.goals-chip[data-filter="${CSS.escape(held.filter)}"]`) : held.goal ? col.querySelector(`.goal-card[data-goal-id="${CSS.escape(held.goal)}"]`) : held.id ? col.querySelector(`#${CSS.escape(held.id)}`) : all.find(e => e.className === held.cls && e.textContent === held.text);
-    (same || col.querySelector('.goals-chip[aria-pressed="true"]'))?.focus({ preventScroll: true });
+    (same || col.querySelector('.goals-chip[aria-pressed="true"]') || col.querySelector('#goals-detail-title'))?.focus({ preventScroll: true }); // gone because it worked: the pressed chip in the list, the goal's heading in the detail
 }
 
 const drawList = () => keepFocus(root && root.querySelector('.goals-list-col'), drawListRaw);

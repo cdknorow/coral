@@ -20,7 +20,7 @@ const GOALS_STUB = `(() => { const real = window.fetch; window.__goalsMode = 'ok
             if (window.__goalsMode === 'fail') return json({ error: 'boom' }, 500);
             window.__goalsListQuery = url.search; return json({ goals: window.__goals, require_goal: window.__requireGoal === true }); }
         if (/^\\/api\\/board\\/[^/]+\\/subscribers$/.test(url.pathname)) return json([{ subscriber_id: 'qa-eng', job_title: 'QA' }, { subscriber_id: 'orch', job_title: 'Orchestrator' }, { subscriber_id: 'orch', job_title: 'Orchestrator' }]);
-        const t = /^\\/api\\/board\\/[^/]+\\/tasks$/.exec(url.pathname); if (t && url.searchParams.get('goal')) { const g = url.searchParams.get('goal'); if (url.searchParams.get('cursor')) return json({ tasks: (window.__page2 || {})[g] || [], next_cursor: '' }); return json({ tasks: window.__tasks[g] || [], next_cursor: (window.__cursors || {})[g] || '', totals: {} }); }
+        const t = /^\\/api\\/board\\/[^/]+\\/tasks$/.exec(url.pathname); if (t && url.searchParams.get('goal')) window.__tasksReads = (window.__tasksReads || 0) + 1; if (t && url.searchParams.get('goal') && window.__tasksFail) return json({ error: 'tasks boom' }, 500); if (t && url.searchParams.get('goal')) { const g = url.searchParams.get('goal'); if (url.searchParams.get('cursor')) return json({ tasks: (window.__page2 || {})[g] || [], next_cursor: '' }); return json({ tasks: window.__tasks[g] || [], next_cursor: (window.__cursors || {})[g] || '', totals: {} }); }
         return real(u, o); }; return true; })()`;
 
 module.exports = { GOALS, TASKS, GOALS_STUB };
