@@ -312,6 +312,7 @@
 1	history_list.js	typeTag
 1	history_tabs.js	icon
 1	history_tabs.js	statusClass
+2	knowledge_fallback.js	label
 1	launch_core.js	failList
 1	launch_core.js	started
 1	list_card_parts.js	PIN_ICON
@@ -603,7 +604,7 @@
 1	task_verify_marks.js	v.state
 1	team_artifacts.js	_SPIN
 1	team_artifacts.js	agent
-1	team_artifacts.js	html
+1	team_artifacts.js	knowledgeFallbackHtml(text, slugToName)
 1	team_artifacts.js	pct
 1	team_artifacts.js	renderKnowledgeMD(content, agentNames)
 1	team_artifacts.js	renderKnowledgeMD(indexContent, agentNames)

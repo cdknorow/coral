@@ -8,6 +8,7 @@ import { inlineArtifactPath } from './artifact_paths.js';
 import { isSvg, svgDataUrl } from './image_source.js';
 import { wireDownloads } from './artifact_download.js';
 import { lockFrame, sandboxedDoc } from './sandbox_frame.js';
+import { responseFilename as contentDispositionName } from './content_disposition.js'; // Content-Disposition describes the stored file; the artifact label may be extensionless or entirely different. Keep it independent of the UI title.
 
 const MAX_ARTIFACT_PREVIEW_BYTES = 2 * 1024 * 1024;
 const MAX_ARTIFACT_MANIFEST_ENTRIES = 200;
@@ -153,17 +154,6 @@ function _renderSandboxed(body, { url, content, name, isStale }) {
     body.replaceChildren(wrapper);
 }
 
-// Content-Disposition describes the stored file; the artifact label may be
-// extensionless or entirely different. Keep it independent of the UI title.
-function _responseFilename(disposition) {
-    const encoded = /(?:^|;)\s*filename\*\s*=\s*UTF-8'[^']*'([^;\s]+)/i.exec(disposition);
-    if (encoded) {
-        try { return decodeURIComponent(encoded[1]); } catch { /* Use ordinary filename below. */ }
-    }
-    const match = /(?:^|;)\s*filename\s*=\s*(?:"((?:\\.|[^"])*)"|([^;]+))/i.exec(disposition);
-    return match ? (match[1] !== undefined ? match[1].replace(/\\(.)/g, '$1') : match[2].trim()) : '';
-}
-
 /** Resolve where an artifact's bytes come from; null when the source is unusable. */
 export function resolveArtifactSource(uri, options = {}) {
     const match = CORAL_ARTIFACT_URI_RE.exec(uri);
@@ -206,8 +196,8 @@ export async function renderArtifact(body, uri, options, ctx) {
         const declaredType = (options.mediaType || '').split(';')[0].trim().toLowerCase();
         const isHTML = type === 'text/html' || type === 'application/xhtml+xml' || declaredType === 'text/html' || declaredType === 'application/xhtml+xml'
             // The hub always answers octet-stream for HTML, so there the declared type (above) or the name decides.
-            || (isCloud() && [options.filename || '', _responseFilename(resp.headers.get('Content-Disposition') || '')].some(n => /\.x?html?$/i.test(n)));
-        const responseFilename = _responseFilename(resp.headers.get('Content-Disposition') || '');
+            || (isCloud() && [options.filename || '', contentDispositionName(resp.headers.get('Content-Disposition') || '')].some(n => /\.x?html?$/i.test(n)));
+        const responseFilename = contentDispositionName(resp.headers.get('Content-Disposition') || '');
         const filename = options.filename || responseFilename;
         const filenameHints = [options.filename || '', responseFilename];
         const isMarkdown = [type, declaredType].some(value => value === 'text/markdown' || value === 'text/x-markdown') || filenameHints.some(name => /\.(?:md|markdown|mdown)$/i.test(name));

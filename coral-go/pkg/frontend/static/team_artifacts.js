@@ -4,6 +4,7 @@ import { isOwnerLabelRefusal, OWNER_LABEL_TEXT } from './owner_label.js';
 import { inlineArtifactPath } from './artifact_paths.js';
 import { boardOfPage } from './dock_page.js';
 import { escapeHtml, escapeAttr, sanitizeHtml, refusedTooLarge } from './utils.js';
+import { knowledgeFallbackHtml } from './knowledge_fallback.js';
 import { registerActions, textOf } from './actions.js';
 import { bindDownload } from './artifact_download.js';
 import { readersAllowed, readersDisclosure } from './artifact_readers.js';
@@ -917,6 +918,8 @@ function renderKnowledgeMD(md, agentNames = []) {
     // Use marked.js if available for better rendering
     let text = md.replace(/^---[\s\S]*?^---\n*/m, '');
 
+    if (typeof marked === 'undefined') return `<div class="knowledge-md">${knowledgeFallbackHtml(text, slugToName)}</div>`; // escaped first (#7045)
+
     // Rewrite internal links before marked processes them
     text = text.replace(/\[([^\]]+)\]\(\.\/([^)]+)\.md\)/g, (_, label, slug) => {
         const target = slugToName[slug];
@@ -924,23 +927,9 @@ function renderKnowledgeMD(md, agentNames = []) {
         return `<span class="knowledge-link-dead">${escapeHtml(label)}</span>`;
     });
 
-    if (typeof marked !== 'undefined') {
-        const html = marked.parse(text);
-        const sanitized = sanitizeHtml(html, { ADD_ATTR: ['data-knowledge-link'] }, { links: 'board', knowledgeLinks: true }); // distilled from agents' text (#3542)
-        return `<div class="knowledge-md notes-rendered">${sanitized}</div>`;
-    }
-
-    let html = text
-        .replace(/^### (.+)$/gm, '<h4 class="knowledge-h4">$1</h4>')
-        .replace(/^## (.+)$/gm, '<h3 class="knowledge-h3">$1</h3>')
-        .replace(/^# (.+)$/gm, '<h2 class="knowledge-h2">$1</h2>')
-        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-        .replace(/`([^`]+)`/g, '<code class="knowledge-code">$1</code>')
-        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="knowledge-link-ext" target="_blank" rel="noopener">$1</a>')
-        .replace(/^- (.+)$/gm, '<div class="knowledge-li">&#8226; $1</div>')
-        .replace(/\n\n/g, '<div class="knowledge-spacer"></div>')
-        .replace(/\n/g, '<br>');
-    return `<div class="knowledge-md">${html}</div>`;
+    const html = marked.parse(text);
+    const sanitized = sanitizeHtml(html, { ADD_ATTR: ['data-knowledge-link'] }, { links: 'board', knowledgeLinks: true }); // distilled from agents' text (#3542)
+    return `<div class="knowledge-md notes-rendered">${sanitized}</div>`;
 }
 
 export async function distillKnowledgeInTab(boardName) {
