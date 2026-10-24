@@ -66,13 +66,23 @@ export function reasonWords(run) {
     return run && run.error_msg ? stepWords(run.error_msg).replace(/ failed: exit code (\d+)/, ' exited with $1') : '';
 }
 
+/** What a run's exit_reason says that its status does not (#6907): a run whose agent ended while Coral was stopped is "completed" without Coral having seen its result, and one interrupted by a restart never
+ *  launched its agent. The sentence for the status cell's hover and the row's details; '' for any other reason. */
+const EXIT_NOTES = {
+    ended_while_coral_was_down: "Coral was stopped when this run's agent ended, so it could not see the result.",
+    interrupted_by_restart: 'Coral restarted before this run launched its agent.',
+};
+export function exitNote(run) { const r = run && run.exit_reason; return (r && EXIT_NOTES[r]) || ''; }
+const unseen = run => !!run && run.status === 'completed' && run.exit_reason === 'ended_while_coral_was_down';
+const restarted = run => !!run && run.status === 'failed' && run.exit_reason === 'interrupted_by_restart';
+
 /** A run's result in words: "Passed", "Failed: step 2 (Test) exited with 3", "Stopped", "Running", "Waiting to start". */
 export function resultWords(run) {
     if (!run) return '';
     const why = reasonWords(run);
     switch (run.status) {
-        case 'completed': return 'Passed';
-        case 'failed': return why ? `Failed: ${why}` : 'Failed';
+        case 'completed': return unseen(run) ? 'Completed (result not seen)' : 'Passed';
+        case 'failed': return why ? `Failed: ${why}` : restarted(run) ? 'Failed (Coral restarted)' : 'Failed';
         case 'killed': return 'Stopped';
         case 'running': return 'Running';
         case 'pending': return 'Waiting to start';
@@ -83,6 +93,8 @@ export function resultWords(run) {
 /** A last result for a list row: "last run passed", "never run". */
 export function lastWords(run) {
     if (!run) return 'never run';
+    if (unseen(run)) return 'last run completed (result not seen)';
+    if (restarted(run) && !run.error_msg) return 'last run failed (Coral restarted)';
     return { completed: 'last run passed', failed: 'last run failed', killed: 'last run stopped', running: 'running now', pending: 'waiting to start' }[run.status] || `last run ${run.status}`;
 }
 

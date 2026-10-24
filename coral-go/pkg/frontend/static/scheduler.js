@@ -9,7 +9,7 @@ import { changedFields, NOTHING_TO_SAVE } from './settings_diff.js';
 import { ensureBuilt } from './lazy_dom.js';
 import { formatDuration as fmtDuration } from './format.js';
 import { runFailure, runFailureTag } from './run_failure.js';
-import { cronWords, atWords, awayWords, whenWords, resultWords, reasonWords, lastWords, limitWords } from './job_words.js';
+import { cronWords, atWords, awayWords, whenWords, resultWords, reasonWords, lastWords, limitWords, exitNote } from './job_words.js';
 import { updateJobsSectionCount } from './live_jobs.js';
 import { limitSeconds, limitParts } from './time_limit.js';
 
@@ -75,11 +75,12 @@ function renderJobsSidebar() {
     list.innerHTML = scheduledJobs.map(job => {
         const active = selectedJobId === job.id ? 'active' : '';
         const lastStatus = job.last_run ? job.last_run.status : '';
-        const dot = lastStatus === 'completed' ? 'ok'
+        const unseenRun = lastStatus === 'completed' && job.last_run.exit_reason === 'ended_while_coral_was_down'; // done, but Coral did not see the result: not the green of a pass (#6907)
+        const dot = unseenRun ? 'none' : lastStatus === 'completed' ? 'ok'
             : lastStatus === 'running' ? 'run'
             : lastStatus === 'failed' || lastStatus === 'killed' ? 'bad'
             : 'none';
-        const dotWords = lastStatus ? `Last run ${lastStatus}` : 'Not run yet'; // the dot is a coloured circle: its words say what it means
+        const dotWords = unseenRun ? 'Last run completed, result not seen' : lastStatus ? `Last run ${lastStatus}` : 'Not run yet'; // the dot is a coloured circle: its words say what it means
         const paused = job.enabled ? '' : `<span class="sched-chip">${job.paused_reason ? 'paused: failing' : 'paused'}</span>`;
         // A job whose scheduling works but whose every run fails otherwise looks identical to a healthy one here.
         const fails = job.consecutive_failures || 0;
@@ -89,11 +90,12 @@ function renderJobsSidebar() {
         const meta = [cronWords(job.cron_expr), lastWords(job.last_run), job.enabled && job.next_fire_at ? `next ${awayWords(job.next_fire_at)}` : ''].filter(Boolean).join(' · ');
         // A run that failed for its folder or branch says so on the row, in the server's plain sentence (error_code names those; other errors stay in the Runs table), not "never run" with the cause out of sight (#6707).
         const problem = job.last_run && job.last_run.status === 'failed' && job.last_run.error_code ? runError(job.last_run) : '';
+        const note = exitNote(job.last_run); // what the last run's exit_reason adds to its status (#6907): on the row as text, not only on hover
         const nextTitle = job.enabled && job.next_fire_at ? `Next run ${atWords(job.next_fire_at)} your time` : '';
         return `<li class="session-list-item sched-row ${escapeAttr(active)}" data-on-click="job-select" data-job-id="${Number(job.id)}" title="${escapeAttr(nextTitle)}">
             <span class="sched-row-head"><span class="sched-dot sched-dot-${dot}" role="img" aria-label="${escapeAttr(dotWords)}" title="${escapeAttr(dotWords)}"></span> <span class="sched-row-name">${escapeHtml(job.name)}</span> ${paused} ${failBadge}</span>
             <span class="sched-row-meta">${escapeHtml(meta)}</span>
-            ${problem ? `<span class="sched-row-problem">${escapeHtml(problem)}</span>` : ''}
+            ${problem ? `<span class="sched-row-problem">${escapeHtml(problem)}</span>` : note && !problem ? `<span class="sched-row-note">${escapeHtml(note)}</span>` : ''}
         </li>`;
     }).join('');
     updateJobsSectionCount();
@@ -224,7 +226,8 @@ const AGENT_NAMES = { claude: 'Claude', codex: 'Codex', agy: 'Antigravity', anti
 
 function resultCell(r) {
     const cls = r.status === 'completed' ? 'status-ok' : r.status === 'failed' || r.status === 'killed' ? 'status-err' : r.status === 'running' ? 'status-running' : '';
-    return `<span class="sched-status ${cls}">${escapeHtml(resultWords(r))}</span>${runFailureTag(r)}`;
+    const note = exitNote(r); // the exit_reason's sentence on hover (#6907); the status words say the short form
+    return `<span class="sched-status ${cls}"${note ? ` title="${escapeAttr(note)}"` : ''}>${escapeHtml(resultWords(r))}</span>${runFailureTag(r)}`;
 }
 const tookOf = (r) => (r.started_at && r.finished_at ? formatDuration(new Date(r.finished_at) - new Date(r.started_at)) : r.started_at ? 'running...' : '-');
 

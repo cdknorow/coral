@@ -281,6 +281,7 @@ div.job-field#sched-label { margin-bottom: 6px; }
 .sched-row-name { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
 .sched-row-meta { color: var(--text-secondary); font-size: var(--fs-md); padding-left: 14px; }
 .sched-row-problem { display: block; color: var(--error); font-size: var(--fs-md); padding-left: 14px; overflow-wrap: anywhere; } /* a run that failed for its folder or branch, in words (#6707) */
+.sched-row-note { display: block; color: var(--text-secondary); font-size: var(--fs-md); padding-left: 14px; overflow-wrap: anywhere; } /* what a run's exit_reason adds to its status: Coral was stopped when its agent ended, or restarted before it launched (#6907) */
 .sched-chip { border: 1px solid var(--border); border-radius: 999px; padding: 0 8px; font-size: .75rem; color: var(--text-secondary); white-space: nowrap; }
 .sched-header { flex-wrap: wrap; gap: 8px; }
 .sched-header h2 { margin-right: auto; overflow-wrap: anywhere; min-width: 0; }
