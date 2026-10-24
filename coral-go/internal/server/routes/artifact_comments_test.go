@@ -232,10 +232,10 @@ func TestArtifactCommentsAStampedRequestIsNeverTheOwner(t *testing.T) {
 	assert.Equal(t, 403, code, "through the hub the comments are the owner's to read: the operator's credential with the stamp but no owner marker is refused")
 	code, out = rig.do("GET", cp(cmtDoc), cmtAsHubOwner, nil)
 	require.Equal(t, 200, code)
-	assert.Equal(t, "hub", out["you"].(map[string]any)["kind"])
-	assert.Equal(t, false, out["you"].(map[string]any)["can_comment"])
-	assert.Equal(t, false, out["you"].(map[string]any)["can_lock"])
-	assert.Equal(t, false, out["comments"].([]any)[0].(map[string]any)["mine"], "the owner's comment is not mine to a stamped request")
+	assert.Equal(t, "owner", out["you"].(map[string]any)["kind"], "the Hub's owner reads as the owner (#7052 round 3)")
+	assert.Equal(t, true, out["you"].(map[string]any)["can_comment"])
+	assert.Equal(t, false, out["you"].(map[string]any)["can_lock"], "the lock is not a route of the table")
+	assert.Equal(t, true, out["comments"].([]any)[0].(map[string]any)["mine"], "the owner's own comment is theirs")
 	for _, c := range []struct{ method, path string }{
 		{"POST", cp(cmtDoc)}, {"PATCH", fmt.Sprintf("%s/%d", cp(cmtDoc), id)}, {"DELETE", fmt.Sprintf("%s/%d", cp(cmtDoc), id)},
 		{"POST", fmt.Sprintf("%s/%d/resolve", cp(cmtDoc), id)}, {"PUT", cp(cmtDoc) + "/lock"},
@@ -290,8 +290,7 @@ func TestArtifactCommentsHubViewersReadOnlyUntilTheFlagIsOn(t *testing.T) {
 	code, out = rig.do("GET", cp(cmtDoc), cmtAsHubOwner, nil)
 	require.Equal(t, 200, code)
 	assert.Len(t, out["comments"], 1)
-	assert.Equal(t, false, out["you"].(map[string]any)["can_comment"])
-	assert.Contains(t, out["you"].(map[string]any)["reason"], "not turned on")
+	assert.Equal(t, true, out["you"].(map[string]any)["can_comment"], "the Hub's owner may comment whatever the flag says (#7052)")
 	code, out = rig.do("POST", cp(cmtDoc), cmtAsHub, map[string]any{"body": "x", "anchor": anchorOf("y")})
 	assert.Equal(t, 403, code)
 	assert.Equal(t, "owner_only", out["code"], "through the Hub a write is the owner's alone (#7052): not a viewer's, whatever the flag says")
@@ -792,4 +791,58 @@ func TestArtifactCommentThroughTheHubReplaysOnItsKey(t *testing.T) {
 	require.Equal(t, http.StatusCreated, code)
 	stored, _ = rig.ss.ListArtifactComments(context.Background(), cmtDoc, "", nil)
 	assert.Len(t, stored, 2, "another key is another comment")
+}
+
+// #7052 round 3 (Security Windows's point 3, QA's #7058): the owner's READ through the Hub is the owner kind, and says exactly what the table gives the Hub: comment, reply, resolve and "mine" are on;
+// edit, delete and the lock are off; there is no asks field; a non-owner Hub read is still refused; the computer's own answer is unchanged.
+func TestArtifactCommentsOwnerReadThroughTheHubIsExactlyWhatTheHubMayDo(t *testing.T) {
+	rig := newCmtRig(t)
+	withLabel(t, cmtHubUser, nil)
+	code, out := rig.do("POST", cp(cmtDoc), cmtAsHubOwner, map[string]any{"body": "from the Hub", "anchor": anchorOf("the lock"), "board": "team-a"})
+	require.Equal(t, http.StatusCreated, code, fmt.Sprint(out))
+	rig.ownerComment("from the computer")
+
+	read := func(hdr map[string]string) (map[string]any, []map[string]any) {
+		code, out := rig.do("GET", cp(cmtDoc), hdr, nil)
+		require.Equal(t, 200, code, fmt.Sprint(out))
+		var list []map[string]any
+		for _, c := range out["comments"].([]any) {
+			list = append(list, c.(map[string]any))
+		}
+		return out, list
+	}
+	out, list := read(cmtAsHubOwner)
+	you := out["you"].(map[string]any)
+	assert.Equal(t, "owner", you["kind"])
+	assert.Equal(t, true, you["can_comment"])
+	assert.Equal(t, false, you["can_lock"], "the lock is the computer's")
+	require.Len(t, list, 2)
+	for _, c := range list {
+		assert.Equal(t, true, c["mine"], "both are the owner's: the Hub's owner and the computer's owner are one owner")
+		can := c["can"].(map[string]any)
+		assert.Equal(t, true, can["reply"])
+		assert.Equal(t, true, can["resolve"])
+		assert.Equal(t, false, can["edit"], "edit is not in the table")
+		assert.Equal(t, false, can["delete"], "delete is not in the table")
+		assert.NotContains(t, c, "asks", "never in a Hub answer")
+		assert.Equal(t, "You", c["author"].(map[string]any)["name"])
+	}
+
+	// Locked: the owner may not comment or reply through the Hub either.
+	code, _ = rig.do("PUT", cp(cmtDoc)+"/lock", cmtAsOwner, map[string]any{})
+	require.Equal(t, 200, code)
+	out, list = read(cmtAsHubOwner)
+	assert.Equal(t, false, out["you"].(map[string]any)["can_comment"])
+	assert.Equal(t, false, list[0]["can"].(map[string]any)["reply"])
+
+	// A non-owner Hub read is refused; the computer's own answer keeps its edit, delete and lock.
+	code, out = rig.do("GET", cp(cmtDoc), cmtAsHub, nil)
+	assert.Equal(t, 403, code)
+	assert.Equal(t, "owner_only", out["code"])
+	code, _ = rig.do("DELETE", cp(cmtDoc)+"/lock", cmtAsOwner, nil)
+	require.Equal(t, 200, code)
+	out, list = read(cmtAsOwner)
+	assert.Equal(t, true, out["you"].(map[string]any)["can_lock"])
+	assert.Equal(t, true, list[0]["can"].(map[string]any)["edit"])
+	assert.Equal(t, true, list[0]["can"].(map[string]any)["delete"])
 }
