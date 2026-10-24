@@ -8,6 +8,7 @@
 // failed on the Mac. Page.bringToFront restores it only until the next key; Emulation.setFocusEmulationEnabled
 // keeps it visible and focused for as long as the connection lasts, so this wraps chrome-remote-interface
 // to switch it on right after each connect (and, #6195, to keep a page load that came before loadEventFired() was asked for). CDP_KEEP_VISIBLE=0 turns it off (to see a suite without it).
+// CORAL_TEST_FAKE_NOW="2026-10-24T00:30:00" (opt-in, #6809) starts the clock of the page and of the suite's own process at that time: it moves Date only (Date, new Date() and Date.now()), not the server's clock, timers or performance.now.
 'use strict';
 
 const Module = require('node:module');
@@ -42,6 +43,20 @@ function rememberLoads(client) {
     };
 }
 
+// A fake clock for the page (opt-in, a test of the tests): CORAL_TEST_FAKE_NOW="2026-10-24T00:30" (local time, any form Date reads) makes every page the suite drives believe it is then, and the time goes on from there
+// (Date, new Date() and Date.now(); not performance.now, timers or the server's clock). A suite whose expectation depends on the hour or the day (today, yesterday, in N h, the next cron fire) fails at 00:30 or
+// 23:59 though it passes by day (artifacts_name_column "yesterday", jobs_screen "in N h": the 163 night reds, #6809). The data a suite builds in the page moves with the clock; data the server stamps does not.
+const FAKE_NOW = process.env.CORAL_TEST_FAKE_NOW ? new Date(process.env.CORAL_TEST_FAKE_NOW).getTime() : NaN;
+const FAKE_OFFSET = Number.isFinite(FAKE_NOW) ? FAKE_NOW - Date.now() : 0;
+const FAKE_CLOCK = `(() => { const Real = Date, off = ${FAKE_OFFSET};
+    class FakeDate extends Real { constructor(...a) { if (a.length === 0) super(Real.now() + off); else super(...a); } static now() { return Real.now() + off; } }
+    window.Date = FakeDate; })();`;
+
+if (Number.isFinite(FAKE_NOW)) { // the suite's own process too: the data it builds (new Date(...) in the test file) and the page it drives agree on the time
+    const Real = Date, off = FAKE_OFFSET;
+    global.Date = class FakeDate extends Real { constructor(...a) { if (a.length === 0) super(Real.now() + off); else super(...a); } static now() { return Real.now() + off; } };
+}
+
 if (process.env.CDP_KEEP_VISIBLE !== '0') {
     const load = Module._load;
     let wrapped = null;
@@ -54,6 +69,7 @@ if (process.env.CDP_KEEP_VISIBLE !== '0') {
                 if (typeof options === 'function' || typeof callback === 'function') return real(options, callback);
                 return real(options).then(async client => {
                     try { await client.Emulation.setFocusEmulationEnabled({ enabled: true }); } catch { /* not a page target: nothing to keep visible */ }
+                    if (Number.isFinite(FAKE_NOW)) { try { await client.Page.enable(); await client.Page.addScriptToEvaluateOnNewDocument({ source: FAKE_CLOCK }); } catch { /* not a page target */ } }
                     rememberLoads(client);
                     return client;
                 });
