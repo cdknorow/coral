@@ -1,0 +1,83 @@
+name: Worktree matrix (findings)
+
+# The git worktree matrix (#6693, from #6692): every way Coral makes a git worktree, through the real API of an isolated server, against repositories in the states users have
+# (tests/stress/worktree_matrix.sh). A findings run, not a gate: it prints a table of what each case answered and left behind. Runs on a push to a trial/worktree-matrix-* branch or by hand.
+# A throwaway GitHub-hosted runner; the server, data folder, repositories and agents (mock-agent) are all under the run's own temp folder.
+on:
+  workflow_dispatch:
+  push:
+    branches: ["trial/worktree-matrix-*"]
+
+permissions:
+  contents: read
+
+env:
+  CORAL_TELEMETRY_DISABLED: "1"
+
+jobs:
+  matrix:
+    name: matrix (${{ matrix.os }}, long paths ${{ matrix.lp }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest]
+        # lp: the runner as it is, and with Windows long paths switched off (LongPathsEnabled=0), the setting of most people's computers (#6717 item 5)
+        lp: [default, off]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out LF line endings
+        shell: bash
+        working-directory: ${{ runner.temp }}
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: coral-go/go.mod
+          cache: false
+      - name: A C compiler for the dev build
+        shell: pwsh
+        run: |
+          if (-not (Get-Command gcc -ErrorAction SilentlyContinue)) { choco install mingw --version=16.1.0 -y --no-progress; if ($LASTEXITCODE -ne 0) { throw "choco install mingw failed" } }
+          gcc --version
+      - name: Windows long paths (${{ matrix.lp }})
+        shell: pwsh
+        run: |
+          $k = 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem'
+          "LongPathsEnabled before: $((Get-ItemProperty $k).LongPathsEnabled)"
+          if ('${{ matrix.lp }}' -eq 'off') { Set-ItemProperty $k -Name LongPathsEnabled -Value 0 }
+          "LongPathsEnabled now: $((Get-ItemProperty $k).LongPathsEnabled)"
+      - name: run the matrix
+        env:
+          CORAL_TEST_BACKEND: pty
+          CORAL_TEST_PORT: "8476"
+          WORKTREE_MATRIX_OUT: ${{ runner.temp }}/wtm-out
+          TMPDIR: ${{ runner.temp }}
+        run: bash tests/stress/worktree_matrix.sh 2>&1 | tee "$RUNNER_TEMP/wtm.log"
+      # The table and the server's worktree lines only, with the runner's user and computer names taken out.
+      - name: Redact
+        if: always()
+        shell: pwsh
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP 'wtm-out'
+          if (Test-Path $dir) {
+            $names = @($env:USERNAME, $env:COMPUTERNAME) | Where-Object { $_ -and $_.Length -ge 4 }
+            Get-ChildItem $dir -Recurse -File | ForEach-Object {
+              $t = [IO.File]::ReadAllText($_.FullName)
+              foreach ($n in $names) { $t = $t.Replace($n, '<redacted>') }
+              [IO.File]::WriteAllText($_.FullName, $t)
+            }
+          }
+      - name: Keep the table
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: worktree-matrix-${{ matrix.os }}-lp-${{ matrix.lp }}
+          path: ${{ runner.temp }}/wtm-out
+          retention-days: 7
+          if-no-files-found: ignore
