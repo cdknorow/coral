@@ -27,6 +27,9 @@ func ValidateCLIPath(path string) error {
 	}
 	info, err := os.Stat(path)
 	if err != nil {
+		if isUntrustedMount(err) { // the saved path goes through junctions Windows no longer trusts: say that, not "no file" (#340)
+			return fmt.Errorf("%s goes through a folder Windows will not open (an untrusted mount point): use the real folder of the program, not the junction that points at it", path)
+		}
 		return fmt.Errorf("no file at %s", path)
 	}
 	if !info.Mode().IsRegular() {

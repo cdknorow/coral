@@ -307,6 +307,9 @@ func resolveLaunchCLI(agentType, cliPath string) (string, error) {
 		log.Printf("[launch] %s not on PATH, found at %s", logsafe.Path(checkBin), logsafe.Path(found))
 		return found, nil
 	}
+	if dir, bad := agent.UntrustedMountDir(checkBin); bad { // on PATH only through a folder Windows will not open: say that, not "install it" (#340)
+		return "", &agent.CLIUntrustedMountError{AgentType: agentType, Binary: checkBin, Dir: dir}
+	}
 	installCmd, installURL := "", ""
 	if info := agent.GetCLIInfo(agentType); info != nil {
 		installCmd, installURL = info.InstallCommand, info.InstallURL

@@ -238,6 +238,14 @@ func cliPathRefusal(ctx context.Context, err error) (answer, bool) {
 		msg := nf.Error()
 		return func(w http.ResponseWriter) { writeError(w, http.StatusUnprocessableEntity, "cli_not_found", msg) }, true
 	}
+	var um *agent.CLIUntrustedMountError
+	if errors.As(err, &um) { // 422 cli_untrusted_mount: the folder Windows will not open and the setting that fixes it (#340)
+		msg := um.Error()
+		if hub, _ := ctx.Value(tunneledKey{}).(bool); hub {
+			msg = um.HubText()
+		}
+		return func(w http.ResponseWriter) { writeError(w, http.StatusUnprocessableEntity, "cli_untrusted_mount", msg) }, true
+	}
 	var cpe *agent.CLIPathError
 	if !errors.As(err, &cpe) {
 		return nil, false

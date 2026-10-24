@@ -593,6 +593,10 @@ func LaunchCLI(settings map[string]string, agentType string) (string, error) {
 	if p, err := exec.LookPath(info.Binary); err == nil && filepath.IsAbs(p) {
 		return p, nil
 	}
+	// Not found on PATH because a PATH folder is an untrusted mount point (Windows): the launch line's bare name would fail in the agent's shell the same way, so say why now (#340).
+	if dir, bad := UntrustedMountDir(info.Binary); bad && FindCLIInCommonPaths(info.Binary) == "" {
+		return "", &CLIUntrustedMountError{AgentType: agentType, Binary: info.Binary, Dir: dir}
+	}
 	return "", nil
 }
 
