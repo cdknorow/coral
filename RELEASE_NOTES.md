@@ -1,5 +1,37 @@
 # Release Notes
 
+## v1.4.165 — A scheduled run survives a restart, kept worktrees you can remove, rows you can reach with the keyboard, and a board message that gets through Claude's survey
+
+### Changes
+
+- **The kept-worktree notice is one compact bar on every layout** (#6943, #6873, #6893): the panel names a team by its name, at large text the closed row is the title and the x ("Dismiss all N worktree notices" for several), and the desktop toast and the phone bar share one Copy path and one focus return. The four kill paths share one kill call, and Kill Team in the page goes through the team route (#6892).
+- **Jobs say what happened in words** (#6907, #6956): a run's result reads "Completed (result not seen)" when Coral was stopped as its agent ended, and "Failed (Coral restarted)" for an interrupted run; a failed run's reason is on its row; an unseen result is neutral with its sentence as text; any schedule is in words ("0 9,12,18 * * *" reads "At 09:00, 12:00 and 18:00"; a day of the month with a weekday reads "or" ("At 09:00, on day 15 of the month or on Mondays"), since the scheduler fires on either), the row names its zone, and Jobs is titled once.
+- **One "when" format in Chats, Groups, Saved and the Inbox's tasks** (#6961): the day word and the time as text ("today 14:32", "yesterday 23:50", "Oct 21"); a Group row looks like a chat row and a long title keeps its badge.
+- **Hovering an unreachable server's agents no longer moves the pinned + New Agent button** (#6340, coral-hub's bug).
+- **A task's diff is kept by board and id** (#6948): a repeated task id no longer shows an older task's diff or an older run's step files; the diff of a task from before the update still shows (it is read behind the older-than-task check), and a diff shared with an older task (one stored object) is still served. Through Coral Hub the two diff reads answer 404 where they used to serve an older file.
+- **Settings and the icons:** the (i) in a group's head on Settings > Network and Security is centred on its title, and a board message's header centres its items so the Save icon sits on the sender's line (#6879, #6995).
+
+### Fixes
+
+- **Both of 164's known issues are fixed** (#6898, #6918): a scheduled run under way at a restart no longer stays "running" with its job skipping its slots, and stopping or restarting Coral no longer removes the worktree of a run whose agent is still working in it.
+- **A scheduled run that is under way when Coral restarts or updates is no longer stuck "running"** (#6898): at startup a run left "running" by the previous Coral is settled (with the reason "ended while Coral was down", its worktree removed only when it is clean, never with force) or, when its agent is still alive, adopted, so the job's next slots are not skipped. A run whose last event is a failed stop (an API error) is not recorded as finished, an unreadable last event counts as a failed stop, and a second linked checkout of the repository is never removed at startup.
+- **Stopping Coral while a run is under way leaves the run and its worktree for the next start** (#6918): nothing is finished, removed or written at shutdown, and the shutdown waits briefly for the run goroutines to return. A shutdown during the worktree add rolls back only what that add made, and the add is refused when git cannot say whether the run's branch exists (#6927, #6936).
+- **A kept worktree is no longer "In use" forever, so it can be removed after Kill Team in the page** (#6942, #6959): a team's worktree is in use while a live session is in it, and while its launch can be under way; a worktree a resurrect recreates is in use until the resurrect returns.
+- **max_auto_accepts is removed, and a request that names it is refused with 400** (#6917, #6937): auto-accept is the agent's own permission flag and has no count, so POST /api/tasks/run answers 400 "not supported: auto-accept has no count" to a request that names it, and the maps nothing read are removed.
+- **The rows that open something can be reached with the keyboard** (#6976, #7006): workflow cards, job rows, chat and history rows, board rows and run rows are a list item holding a real button (Tab and Enter work), and the open one is marked current as the highlight moves.
+- **A board message to an agent behind Claude's session survey is now delivered past it** (#6974): the survey is dismissed with a single 0 and the message is delivered (the background runtimes can type one key); nothing is typed over a draft.
+- **A commit subject and a branch name are cleaned, and a team's branch slug keeps every name that could launch** (#6878): fuzz targets found two bugs, now fixed; the slug cut is 200 bytes.
+
+### Known issues
+
+- **A run whose CLI never started** (the command handoff failed and an idle shell stayed) shows "running" for minutes, and stays so until the run's maximum run time, because the idle shell keeps the session alive; Coral's check covers only an agent that exits within 15 seconds (found in QA's soak; fixed in 166).
+- **Coral's own Settings > Storage and cleanup does not refresh its kept-worktree list on its own:** after a Kill Team, reopen it to see the worktree as not in use (fixed in 166).
+
+### Internal
+
+- **Release tooling and tests:** the CDP runner removes old run folders at its start (it keeps the newest 10 and any from the last 24 hours; 38 GB of kept run folders had filled a disk); the stress summary counts a tmux or strict phase suite under its own name; flaky suites made deterministic (first_run_walkthrough, terminal_fit_width, the survey nudge test, the census leak); new censuses (every icon-only control's glyph at most 1.5 times its label's text size, 24 px at the base size, with the (i) on its label's row, position:fixed under a containing block, the rows that open something are buttons, the terminal-input senders, the joins moved into coralnames, the auto-accept guard).
+- **Code:** one package names Coral's branches and worktree folders and a test fails if a name is built anywhere else (#6891); the coralnames tests hold on Windows; a Windows test covers the rollback's retried RemoveAll.
+
 ## v1.4.164 — A phone chat with Stop and keys, a Settings view of kept worktrees, and agents that end cleanly
 
 ### Changes
