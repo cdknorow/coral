@@ -12,6 +12,7 @@ import { onBuilt } from './lazy_dom.js';
 import { isCloud } from './server_base.js';
 // What Save sends: only the fields the person changed (here so the module is loaded at startup, import_hygiene).
 export { changedSettings } from './settings_diff.js';
+export { savedWords } from './settings_saved_words.js'; // the Save toast's words, here for the same reason
 
 export function settingBool(value, fallback = true) {
     if (typeof value === 'boolean') return value;

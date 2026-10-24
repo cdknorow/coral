@@ -13,7 +13,7 @@ import { applyCloudSettingsDialog, filterSettingsPayload } from './cloud_setting
 import { isCloud } from './server_base.js';
 import { requestJson } from './api.js';
 import { NOTHING_TO_SAVE } from './settings_diff.js';
-import { settingBool, changedSettings, renderRemoteAccessStatus, renderDebugInputLogStatus, renderToolsFolderStatus, applyTheme, clearCustomThemeVars, applyCustomThemeByName, defaultThemeChoice } from './settings_core.js';
+import { settingBool, changedSettings, savedWords, renderRemoteAccessStatus, renderDebugInputLogStatus, renderToolsFolderStatus, applyTheme, clearCustomThemeVars, applyCustomThemeByName, defaultThemeChoice } from './settings_core.js';
 import { attachDialogFocus } from './dialog_focus.js';
 import { browserLocal } from './safe_storage.js';
 import { openSettingsGroup } from './settings_nav.js';
@@ -835,7 +835,11 @@ function _fillFilesAndGit(s) {
 
 /** The "Unsaved changes" note in Settings' footer (UI audit #5589, finding 27): shown while the form differs from what it held when it finished opening (or was last saved), or a database encryption or terminal backend or wake choice is pending. The baseline is the form's own payload, not the saved settings: a new install has no saved settings, so everything would differ. Changes to the custom models and the update switches are saved too but are not counted here. */
 let _formAtOpen = null;
+let _payloadAtOpen = null; // the same snapshot as an object: the Save toast names only the rows that differ from it (a first Save also writes defaults the person never touched, #7041)
 const formKey = () => { try { return JSON.stringify(readSettingsForm().payload); } catch { return null; } };
+const payloadNow = () => { try { return readSettingsForm().payload; } catch { return null; } };
+/** The part of a saved payload the person changed since the dialog opened (or was last saved). */
+const changedSince = payload => Object.fromEntries(Object.entries(payload).filter(([k, v]) => !_payloadAtOpen || JSON.stringify(_payloadAtOpen[k]) !== JSON.stringify(v)));
 export async function refreshUnsavedNote() {
     const note = document.getElementById('settings-unsaved');
     if (!note) return;
@@ -894,6 +898,7 @@ export async function showSettingsModal(group) {
     const modalEl = document.getElementById('settings-modal');
     if (!modalEl._unsavedWired) { modalEl._unsavedWired = true; for (const type of ['input', 'change']) modalEl.addEventListener(type, () => { refreshUnsavedNote(); }); }
     _formAtOpen = formKey(); // the form as it finished opening
+    _payloadAtOpen = payloadNow();
     refreshUnsavedNote();
     document.getElementById("settings-modal").style.display = "flex";
 }
@@ -1120,8 +1125,10 @@ export async function applySettings() {
         const updatesSaved = updatesUiOn() ? await importOnce('./update_settings.js').then(m => m.applyUpdatePrefs()) : false; // the update switch and channel (#5275, #5558)
         const modelsSaved = isCloud() ? false : await importOnce('./custom_models.js').then(m => m.applyCustomModels()); // the custom models (#5480)
         if (modelsSaved) { _invalidateAgentModels(); (await importOnce('./model_labels.js')).clearModelsCache(); }
-        showToast(nothingToSave && !modelsSaved && !updatesSaved ? NOTHING_TO_SAVE : "Settings saved");
-        _formAtOpen = formKey(); refreshUnsavedNote();
+        // the rows by name (#7041), not "Settings saved" for every change; what was saved apart (custom models, the update choices) is named too
+        const extra = [modelsSaved && 'Custom models', updatesSaved && 'Updates'].filter(Boolean);
+        showToast(nothingToSave && !extra.length ? NOTHING_TO_SAVE : savedWords(changedSince(form.payload), { extra, restart: !!state.privacyStatus?.remote_access_restart_required }));
+        _formAtOpen = formKey(); _payloadAtOpen = payloadNow(); refreshUnsavedNote();
     } catch (e) {
         showToast(e && e.userMessage ? `Failed to save settings: ${e.userMessage}` : "Failed to save settings", true);
         return;

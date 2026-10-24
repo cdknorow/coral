@@ -66,7 +66,7 @@ const BASE = require('./test_base').BASE;
     assert.equal(s.cli_path_claude, exe1, 'and the other is untouched');
     // 5. Saving with nothing changed says so (one line for every form); a real change still says saved.
     const lastToast = () => ev(`[...document.querySelectorAll('.toast')].map(t => t.textContent).pop() || ''`);
-    assert.match(await lastToast(), /Settings saved/, 'a save of a change says saved');
+    assert.match(await lastToast(), /Saved: CLI paths/, 'a save of a change names what it saved (the CLI paths)');
     await openDialog();
     for (let i = 0; i < 60 && await value(CLAUDE) !== exe1; i++) await new Promise(r => setTimeout(r, 50));
     await ev(`document.querySelectorAll('.toast').forEach(t => t.remove()); true`);
