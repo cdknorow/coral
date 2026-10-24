@@ -6,10 +6,13 @@
 const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
 const BASE = require('./test_base').BASE;
+const { STUB: ARTIFACT_STUB, HEX } = require('./helpers/comments_scale');
+const { UPDATE_STAGED } = require('./helpers/census_world');
+const { showUpdateReady, UPDATE_DIALOG_UP } = require('./helpers/phone_targets');
 
 // [ancestor selector, fixed descendant selector, why it is meant]
 const INTENDED = [
-    ['#command-pane', '.model-chip-menu', "a phone's model and thinking menus are a bottom sheet of the composer pane (position: fixed with 8 px side and bottom offsets): the pane spans the screen's width and ends at its foot, and its container-type is what the composer's @container rules need; checked below that the open sheet is inside the screen at 844 and 464 px high"],
+    ['#command-pane', '.model-chip-menu', "a phone's model and thinking menus are a bottom sheet of the composer pane (position: fixed with 8 px side and bottom offsets): the pane spans the screen's width and the sheet lands at the pane's foot, and its container-type is what the composer's @container rules need; checked below that the open sheet is inside the screen at 844 and 464 px high"],
 ];
 
 const SCAN = `(() => { const sel = e => (e.id ? '#' + e.id : e.tagName.toLowerCase()) + (typeof e.className === 'string' && e.className.trim() ? '.' + e.className.trim().split(/\\s+/).slice(0, 3).join('.') : '');
@@ -43,7 +46,7 @@ const SCAN = `(() => { const sel = e => (e.id ? '#' + e.id : e.tagName.toLowerCa
                 const ws = await import(${S} + 'websocket.js'); ws.handleCoralMessage({ type: 'coral_diff', changed: [], servers: [{ id: 'box-b', label: 'box-b.lan', status: 'unreachable' }] });
                 T.state.liveSessions.forEach(s => { if (s.server === 'box-b') s.stale = true; }); T.render.renderLiveSessions(T.state.liveSessions); return true; })()`);
             await waitFor(`document.querySelectorAll('#live-sessions-list .session-group-item.session-stale').length >= 3 || document.querySelectorAll('#mobile-agent-list .session-group-item.session-stale').length >= 3`, 'the stale team', 8000);
-            const found = new Map(); let fixedSeen = 0;
+            const found = new Map(); let fixedSeen = 0; const visited = new Set(); const broken = [];
             const scenes = [
                 ['the agent list', 'true'],
                 ['an agent open in the chat', `window.selectLiveSession('solo', 'claude', 'solo-id', 'local'); true`],
@@ -55,24 +58,41 @@ const SCAN = `(() => { const sel = e => (e.id ? '#' + e.id : e.tagName.toLowerCa
                 ['the kebab and settings menus', `window.switchNavTab('agents'); document.querySelectorAll('.sidebar-kebab-btn').forEach(b => b.click()); const m = document.querySelector('[aria-controls="top-bar-settings-menu"]'); if (m) m.click(); true`],
                 ['toasts and the kept-worktree notice', `import(${S} + 'utils.js').then(u => { u.showToast('Saved.'); u.showToast('Could not save.', true); }); import(${S} + 'worktree_notice.js').then(m => m.showWorktreeNotice({ state: 'kept', path: '/tmp/x', branch: 'b', reason: 'r' }, 'team')); true`],
                 ['the composer with its menus', `window.selectLiveSession('solo', 'claude', 'solo-id', 'local'); const c = document.getElementById('command-input'); if (c) { c.value = '/'; c.dispatchEvent(new Event('input', { bubbles: true })); } true`],
+                ['History', async () => { await ev(`window.switchNavTab('history'); true`); await ev(`import(${S} + 'history_list.js').then(m => { m.renderHistorySessions([{ session_id: 'h1', summary_title: 'A chat to look at', source_type: 'claude', display_name: 'Ada', last_timestamp: new Date().toISOString(), duration_sec: 60 }], 1, 1, 50); return true; })`); await waitFor(`document.querySelectorAll('#history-sessions-list li[data-session-id]').length >= 1`, 'a history row', 8000); }],
+                ['the update notice and its dialog', async () => { await ev(`localStorage.removeItem('coral-update-ready-seen'); T.state.currentSession = null; import(${S} + 'utils.js').then(u => u.showView('welcome-screen')); window.switchNavTab('agents'); true`); /* the notice is for the agent list: no agent open */ await ev(`(() => { const R = window.fetch; window.fetch = (u, o) => { if (new URL(String(u && u.url || u), location.origin).pathname === '/api/system/update') return Promise.resolve(new Response(JSON.stringify(window.__updStatus || { enabled: false }), { status: 200, headers: { 'content-type': 'application/json' } })); return R(u, o); }; return true; })()`); await showUpdateReady(ev, waitFor, UPDATE_STAGED); await waitFor(`!!document.querySelector('.update-ready-review') && document.querySelector('.update-ready-review').getClientRects().length > 0`, 'the Review button', 8000); await ev(`document.querySelector('.update-ready-review').click(); true`); await waitFor(UPDATE_DIALOG_UP, 'the update confirmation', 8000); }],
+                ['the artifact viewer', async () => { await ev(ARTIFACT_STUB({ filename: 'plan.md', content: '# Plan\n\nThe steps.\n', mediaType: 'text/markdown', comments: [] })); await ev(`import(${S} + 'artifact_viewer.js').then(m => m.openArtifactViewer('${HEX}', { filename: 'plan.md' })).then(() => true)`); await waitFor(`!document.getElementById('artifact-viewer').hidden && /Plan/.test(document.querySelector('#artifact-viewer .artifact-viewer-body').textContent)`, 'the artifact', 15000); }],
+                ['a team board', async () => { await ev(`fetch('/api/board/census-fixed-team/subscribe', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subscriber_id: 'Boss', job_title: 'Orchestrator', session_name: 'boss-session' }) }).then(r => r.status)`); await ev(`window.switchNavTab('board'); true`); await waitFor(`!!document.querySelector('#mb-projects-ul [data-project]')`, 'a board in the list', 10000); await ev(`document.querySelector('#mb-projects-ul [data-project]').click(); true`); await waitFor(`!!document.getElementById('mb-messages')`, 'the board', 8000); }],
             ];
             for (const [name, js] of scenes) {
-                await ev(js).catch(() => {}); await sleep(600); // sleep-ok: the screen draws; no single completion event across these scenes
-                const r = await ev(SCAN); fixedSeen = Math.max(fixedSeen, r.fixed);
+                if (typeof js === 'function') await js().catch(e => { broken.push(`${name}: ${String(e.message).slice(0, 100)}`); }); else await ev(js).catch(() => {}); await sleep(600); // sleep-ok: the screen draws; no single completion event across these scenes
+                visited.add(name); const r = await ev(SCAN); fixedSeen = Math.max(fixedSeen, r.fixed);
                 for (const x of r.out) found.set(`${x.anc} [${x.reason}] holds the fixed ${x.fixed}`, { ...x, scene: name });
             }
+            check(`${tag}: the scenes with their own openers (History, the artifact viewer, a team board, the update notice and dialog) all opened`, broken.length === 0 && ['History', 'the artifact viewer', 'a team board', 'the update notice and its dialog'].every(n => visited.has(n)), JSON.stringify(broken));
             check(`${tag}: the census saw position:fixed elements on the screens (${fixedSeen}), so it is not passing on an empty page`, fixedSeen >= 8, String(fixedSeen));
             const stray = [...found.values()].filter(x => !INTENDED.some(([a, f]) => x.ancEl === a && ('.' + x.fixedClass) === f));
             check(`${tag}: no filter, transform, perspective, will-change, contain or container-type box holds a fixed descendant that is not listed as intended`, stray.length === 0, JSON.stringify(stray.slice(0, 5).map(x => `${x.scene}: ${x.anc} [${x.reason}] holds ${x.fixed}`)));
             if (mobile) {
-                // the listed pair: the open sheet is inside the screen with the keyboard down (844) and up (464)
+                // the listed pair, for real: the model menu OPENED by a tap on the chip, with its items, at 390 x 844 and with the keyboard up (390 x 464), and with the kept-worktree bar on screen too: the sheet is a real
+                // sheet (more than 40 px tall, not the empty box this used to measure) and lies inside the window
+                await ev(`(() => { const R = window.fetch; window.fetch = (u, o) => { const url = new URL(String(u && u.url || u), location.origin); if (url.pathname === '/api/agents/models') return Promise.resolve(new Response(JSON.stringify({ agent_type: url.searchParams.get('type') || 'claude', models: [{ value: 'claude-opus-5-5', display_name: 'Opus 5.5', efforts: ['low', 'medium', 'high'] }, { value: 'claude-sonnet-5-5', display_name: 'Sonnet 5.5', efforts: ['low', 'medium'] }], thinking: ['low', 'medium', 'high'] }), { status: 200, headers: { 'content-type': 'application/json' } })); return R(u, o); }; return true; })()`);
+                await ev(`window.selectLiveSession('solo', 'claude', 'solo-id', 'local'); true`); await sleep(500); // sleep-ok: the agent view draws
+                await ev(`(() => { const a = window.__m.agents['solo-id']; T.ws.handleCoralMessage({ type: 'coral_diff', changed: [{ ...window.__m.entry(a), model: 'claude-opus-5-5', thinking_actual: 'high' }] }); return true; })()`);
+                await ev(`import(${S} + 'worktree_notice.js').then(m => { m.showWorktreeNotice({ state: 'kept', path: '/tmp/wt/census', branch: 'coral-team/census', reason: 'it has uncommitted changes' }, 'team'); return true; })`);
+                await waitFor(`!!document.getElementById('model-chip-bar') && !document.getElementById('model-chip-bar').hidden && document.getElementById('model-chip').getClientRects().length > 0`, 'the model chip', 10000);
                 for (const hh of [844, 464]) {
                     await Emulation.setDeviceMetricsOverride({ width: w, height: hh, deviceScaleFactor: 1, mobile });
-                    await ev(`window.selectLiveSession('solo', 'claude', 'solo-id', 'local'); true`); await sleep(500); // sleep-ok: layout settles after a resize
-                    await ev(`(() => { const m = document.getElementById('model-chip-menu'); if (m) { m.hidden = false; } return true; })()`);
-                    const r = await ev(`(() => { const m = document.getElementById('model-chip-menu'); if (!m) return null; const b = m.getBoundingClientRect(); return { top: b.top, bottom: b.bottom, left: b.left, right: b.right, vh: innerHeight, vw: innerWidth, h: b.height }; })()`);
-                    check(`${tag}, ${hh} high: the model sheet (the listed pair) is inside the screen`, r && r.left >= 0 && r.right <= r.vw + 0.5 && r.top >= -0.5 && r.bottom <= r.vh + 0.5, JSON.stringify(r));
-                    await ev(`(() => { const m = document.getElementById('model-chip-menu'); if (m) m.hidden = true; return true; })()`);
+                    await sleep(500); // sleep-ok: layout settles after a resize
+                    if (hh === 464) { // the keyboard up: the model chip is not drawn at all (mobile.css, #4969), so there is no sheet to lie anywhere; the census says so rather than measuring an empty box
+                        const gone = await ev(`getComputedStyle(document.getElementById('model-chip-bar')).display === 'none' || document.getElementById('model-chip').getClientRects().length === 0`);
+                        check(`${tag}, 464 high: with the keyboard up the model chip is not drawn, so the sheet cannot be opened (nothing to lie off the window)`, gone);
+                        continue;
+                    }
+                    await ev(`document.getElementById('model-chip').click(); true`);
+                    await waitFor(`!document.getElementById('model-chip-menu').hidden && document.querySelectorAll('#model-chip-menu .model-chip-item').length >= 2`, `the model menu's items at ${hh} high`, 8000);
+                    const r = await ev(`(() => { const m = document.getElementById('model-chip-menu'); const b = m.getBoundingClientRect(); return { top: b.top, bottom: b.bottom, left: b.left, right: b.right, vh: innerHeight, vw: innerWidth, h: b.height, items: m.querySelectorAll('.model-chip-item').length, dock: !!document.querySelector('#worktree-dock:not([hidden])') }; })()`);
+                    check(`${tag}, ${hh} high, with the kept-worktree bar showing: the opened model sheet (the listed pair, at the pane's foot) is a real sheet (more than 40 px, ${r.items} items) and inside the window`, r.dock && r.h > 40 && r.bottom <= r.vh + 0.5 && r.top >= -0.5 && r.left >= -0.5 && r.right <= r.vw + 0.5, JSON.stringify(r));
+                    await ev(`document.getElementById('model-chip').click(); true`);
                 }
             }
         }
