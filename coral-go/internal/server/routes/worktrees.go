@@ -66,12 +66,28 @@ func (h *WorktreesHandler) entries(ctx context.Context, probe bool) []worktreeEn
 	if runs, err := h.sched.ListRunsWithWorktree(ctx); err == nil {
 		for _, r := range runs {
 			job, _ := h.sched.GetScheduledJob(ctx, r.JobID)
-			if job == nil || r.WorktreePath == nil || job.RepoPath == "" || !coralnames.IsJobRunWorktree(root, job.RepoPath, r.ID, *r.WorktreePath) {
+			if r.WorktreePath == nil {
+				continue
+			}
+			path, repo, name := *r.WorktreePath, "", "a deleted job"
+			if job != nil {
+				name = job.Name
+			}
+			switch {
+			case job != nil && job.RepoPath != "" && coralnames.IsJobRunWorktree(root, job.RepoPath, r.ID, path):
+				repo = job.RepoPath
+			case coralnames.IsJobRunFolder(root, r.ID, path):
+				// The job's repository changed since (or the job is gone): the folder is still the run's own, and its git file says which repository it belongs to ("" when that repository is gone: it is listed, and a remove says
+				// git cannot find it). Its name must be that repository's (#7026).
+				repo = gitutil.RepoOfWorktree(ctx, path)
+				if repo != "" && !coralnames.IsJobRunWorktree(root, repo, r.ID, path) {
+					continue
+				}
+			default:
 				continue // a run that made no worktree records the job's repository itself: not Coral's to list or remove
 			}
-			name := job.Name
-			out = append(out, worktreeEntry{ID: "run-" + strconv.FormatInt(r.ID, 10), Kind: "job", Name: name, Path: *r.WorktreePath,
-				RepoPath: job.RepoPath, Branch: coralnames.JobRunBranch(r.ID), InUse: r.Status == "pending" || r.Status == "running"})
+			out = append(out, worktreeEntry{ID: "run-" + strconv.FormatInt(r.ID, 10), Kind: "job", Name: name, Path: path,
+				RepoPath: repo, Branch: coralnames.JobRunBranch(r.ID), InUse: r.Status == "pending" || r.Status == "running"})
 		}
 	}
 	kept := out[:0]
