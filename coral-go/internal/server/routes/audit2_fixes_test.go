@@ -65,7 +65,7 @@ func TestHubDisplaysTheShortFormOfTheHome(t *testing.T) {
 	}
 	t.Setenv("USERPROFILE", home)
 	t.Setenv("HOME", home)
-	assert.Equal(t, `~\proj`, hubDisplayPath(home+`\proj`), "the long form")
-	assert.Equal(t, `~\proj`, hubDisplayPath(short+`\proj`), "the short form: %s", short)
+	assert.Equal(t, "~/proj", hubDisplayPath(home+`\proj`), "the long form (one separator, #7070)")
+	assert.Equal(t, "~/proj", hubDisplayPath(short+`\proj`), "the short form: %s", short)
 	assert.Equal(t, `failed in ~\Temp\x`, hubDisplayText(`failed in `+short+`\Temp\x`))
 }
