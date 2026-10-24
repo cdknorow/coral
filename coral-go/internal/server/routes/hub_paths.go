@@ -151,7 +151,11 @@ func hubDisplayPath(p string) string {
 			return "~"
 		}
 		if len(p) > len(home) && strings.HasPrefix(kp, kh) && (p[len(home)] == '/' || p[len(home)] == '\\') {
-			return "~" + p[len(home):]
+			rest := p[len(home):]
+			if hubSlashes { // the Hub's "~/folder" form has one separator: pkg/tunnel's homeRef refuses a backslash, so a "~\folder" shown to the page could never be asked for again (#7070)
+				rest = strings.ReplaceAll(rest, `\`, "/")
+			}
+			return "~" + rest
 		}
 	}
 	return p

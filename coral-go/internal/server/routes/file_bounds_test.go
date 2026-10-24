@@ -489,6 +489,7 @@ func TestSensitivePathAgentCredentials(t *testing.T) {
 	link := filepath.Join(t.TempDir(), "home-link")
 	linktest.Symlink(t, home, link)
 	t.Setenv("HOME", link)
+	t.Setenv("USERPROFILE", link) // Windows reads its home from USERPROFILE, not HOME (#7070)
 	assert.True(t, sensitivePath(filepath.Join(realPath(home), ".codex", "config.toml")), "the resolved home")
 	assert.True(t, sensitivePath(filepath.Join(link, ".codex", "config.toml")), "the home as given")
 }

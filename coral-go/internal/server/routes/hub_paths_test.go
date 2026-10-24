@@ -305,7 +305,8 @@ func TestHubHomeMatchFoldsCaseAndSeparators(t *testing.T) {
 	assert.Equal(t, "two: ~/a and ~/b", hubDisplayText("two: "+upper+"/a and "+home+"/b"))
 
 	hubFold, hubSlashes = true, true // Windows
-	assert.Equal(t, `~\proj`, hubDisplayPath(strings.ToUpper(backslashed)+`\proj`), "another case and the other separator")
+	assert.Equal(t, "~/proj", hubDisplayPath(strings.ToUpper(backslashed)+`\proj`), "another case and the other separator, shown with the Hub's one separator (#7070)")
+	assert.Equal(t, "~/a/b", hubDisplayPath(backslashed+`\a\b`), "every separator of the rest, not only the first")
 	assert.Equal(t, "~/proj", hubDisplayPath(upper+"/proj"))
 	assert.Equal(t, `cd ~\proj && make`, hubDisplayText(`cd `+backslashed+`\proj && make`))
 
