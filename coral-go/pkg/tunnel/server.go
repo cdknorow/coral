@@ -145,6 +145,7 @@ type AuthFunc func(ctx context.Context, token string) (identity any, err error)
 // Session is the hub's end of a tunnel.
 type Session struct {
 	ys        *yamux.Session
+	ws        *websocket.Conn // the tunnel's WebSocket, for CloseNow
 	cfg       SessionConfig
 	cancel    context.CancelFunc
 	identity  any
@@ -264,7 +265,7 @@ func Accept(ctx context.Context, c *websocket.Conn, auth AuthFunc, cfg SessionCo
 		_ = nc.Close()
 		return nil, err
 	}
-	s := &Session{ys: ys, cfg: cfg, cancel: cancel, identity: identity, version: v, coralVer: hello.CoralVersion, peerCaps: wellFormedCapabilities(hello.Capabilities),
+	s := &Session{ys: ys, ws: c, cfg: cfg, cancel: cancel, identity: identity, version: v, coralVer: hello.CoralVersion, peerCaps: wellFormedCapabilities(hello.Capabilities),
 		hooks: hooks, artifactHook: artifactHook, relaySlot: make(chan struct{}, cfg.MaxRelayStreams)}
 	s.localMode.Store(int32(parseLocalMode(hello.LocalMode)))
 	s.bootID, s.startedAt = parsePeerBoot(hello.BootID, hello.StartedAt) // informational (#5855)
@@ -367,6 +368,17 @@ func (s *Session) Close() error {
 		s.cancel()
 	})
 	return err
+}
+
+// CloseNow ends the session at once: the WebSocket is closed without the close handshake (Close waits up to five seconds for a peer that is gone or never answers), then the session is shut down as
+// Close does, so every stream ends and Done fires. It is safe to call concurrently with Close, from several goroutines and after Close: a Close stuck on an unanswering peer is released by it, and a second
+// call is a no-op that returns nil. No goroutine is left waiting on the peer.
+func (s *Session) CloseNow() error {
+	if s.ws != nil {
+		_ = s.ws.CloseNow() // already closed is not an error here
+	}
+	s.cancel()
+	return s.Close()
 }
 
 // HubStream is a stream opened by the hub. Read and Write move raw stream
