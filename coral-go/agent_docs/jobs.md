@@ -48,6 +48,7 @@ Queues a new agent task. Returns immediately — all work (worktree creation, ag
 | `flags` | string | `""` | Extra CLI flags passed to the agent. |
 | `display_name` | string | `null` | Label shown in the UI. Defaults to `Task #<run_id>`. |
 | ~~`webhook_url`~~ | | | Not supported: Coral doesn't send webhooks, and a request with one is refused with 400. |
+| ~~`max_auto_accepts`~~ | | | Not supported: auto-accept has no count (it is the agent's permission flag), and a request with the field is refused with 400. |
 | `auto_accept` | bool | `false` | Adds the agent's permission flag so the run does not stop at permission prompts: `--permission-mode auto` for Claude, `--full-auto` for Codex, `--dangerously-skip-permissions` for Antigravity; a permission flag in `flags` is kept as it is. |
 
 ### Example
