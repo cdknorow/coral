@@ -1,0 +1,5 @@
+# CodeQL's configuration for .github/workflows/codeql.yml (#7034): the tests under tests/ are left out of the scan. The repository used GitHub's default setup, which cannot
+# ignore paths; this advanced setup scans the same languages with the same default query suite and drops tests/ (500 alerts there were test code, not shipped code).
+name: coral CodeQL configuration
+paths-ignore:
+  - tests/**
