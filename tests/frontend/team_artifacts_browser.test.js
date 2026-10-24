@@ -6,6 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const CDP = require('chrome-remote-interface');
 const BASE = require('./test_base').BASE;
+const { bind } = require('./helpers/wait');
 const SHOTS = process.env.CORAL_SCREENSHOT_DIR;
 
 (async () => {
@@ -23,6 +24,8 @@ const SHOTS = process.env.CORAL_SCREENSHOT_DIR;
         return result.result.value;
     };
     const settle = () => ev('new Promise(resolve => setTimeout(resolve, 100))');
+    const { waitFor } = bind(ev);
+    const previewShows = re => waitFor(`/${re}/.test(document.getElementById('preview-body').textContent)`, `the preview to show ${re}`, { timeout: 15000 });
     const click = selector => ev(`document.querySelector(${JSON.stringify(selector)}).click()`);
     const text = () => ev(`document.getElementById('agentic-panel-team-artifacts-view')?.textContent || ''`);
     const shot = async name => {
@@ -111,6 +114,7 @@ const SHOTS = process.env.CORAL_SCREENSHOT_DIR;
         await ev(`document.getElementById('agentic-state').style.width='680px'`);
         await shot('team-artifacts-list');
         await click('.team-artifact-preview'); await settle();
+        await previewShows('preserves Files'); // the preview fills when its fetch answers: under load that is later than a fixed 100 ms
         assert.match(await ev(`document.getElementById('preview-body').textContent`), /preserves Files/);
         assert.equal(await ev(`document.querySelector('.preview-toolbar-path').textContent`), 'Design review.md');
         await shot('team-artifacts-preview');
@@ -118,6 +122,7 @@ const SHOTS = process.env.CORAL_SCREENSHOT_DIR;
         assert.equal(await ev(`document.getElementById('agentic-tab-team-artifacts').classList.contains('active')`), true);
         assert.equal((await ev(`window.__calls.filter(u=>u.includes('/artifacts?'))`)).length, 1, 'back reuses list');
         await click('.team-artifact-row:nth-child(3) .team-artifact-preview'); await settle();
+        await previewShows('preserves Files'); // the preview fills when its fetch answers: under load that is later than a fixed 100 ms
         assert.match(await ev(`document.getElementById('preview-body').textContent`), /preserves Files/);
         await ev('window.closeAllPreviewTabs()'); await settle();
         // Opening a preview adds a tab to the preview pane; closing the last tab hides the pane.
