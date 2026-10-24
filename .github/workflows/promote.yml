@@ -82,9 +82,18 @@ jobs:
           prerelease="$(jq -r .prerelease <<<"$rel")"
           # A promotion never points at a release that could still change: the repository's immutable releases make the published assets and the tag final.
           [ "$(jq -r .immutable <<<"$rel")" = true ] || { echo "the release is not immutable"; exit 1; }
-          # The commit the tag points at, from the repository (an annotated tag is peeled to its commit), never from an input.
-          sha="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${PROMOTE_TAG}" --jq .sha)"
-          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "the tag's commit could not be read"; exit 1; }
+          # A release marked revoked (approve-release.sh's "Revoked: <UTC> by <actor>" line in its body) is never promoted again (Security's #337).
+          body="$(jq -r '.body // ""' <<<"$rel")"
+          if grep -q '^Revoked: ' <<<"$body"; then echo "the release is marked revoked"; exit 1; fi
+          # The commit the tag points at, from the tag's own ref, never from an input: git/ref is an exact match (commits/<name> would also take a branch of that
+          # name), and an annotated tag is peeled to its commit (Security's #337).
+          obj="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${PROMOTE_TAG}" --jq '.object.type + " " + .object.sha')"
+          for _ in 1 2 3 4; do
+            read -r type sha <<<"$obj"
+            [ "$type" = tag ] && [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || break
+            obj="$(gh api "repos/${GITHUB_REPOSITORY}/git/tags/${sha}" --jq '.object.type + " " + .object.sha')"
+          done
+          [ "$type" = commit ] && [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "the tag's commit could not be read"; exit 1; }
           gh release download "${PROMOTE_TAG}" --repo "${GITHUB_REPOSITORY}" --pattern SHA256SUMS.txt --pattern SHA256SUMS.txt.sigstore.json --dir sums
           # Only what release.yml signed at this tag, from this commit, by a tag push, is promoted: the exact identity, not a pattern.
           cosign verify-blob sums/SHA256SUMS.txt --bundle sums/SHA256SUMS.txt.sigstore.json \

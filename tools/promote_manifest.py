@@ -62,6 +62,16 @@ def parse_revoked(text):
     return sorted(out)
 
 
+def parse_tag_and_revoked(env):
+    """The promoted version and the versions it revokes. A promotion that revokes its own version is refused: every client would refuse the manifest, and the
+    channel would stay stuck until the next promotion (Security's #337)."""
+    version = parse_tag(env.get("PROMOTE_TAG", ""))
+    revoked = parse_revoked(env.get("PROMOTE_REVOKE", ""))
+    if version in revoked:
+        raise InputError("the promoted version is in the versions to revoke")
+    return version, revoked
+
+
 def utc(ts):
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(ts))
 
@@ -69,9 +79,8 @@ def utc(ts):
 def build(env, now=None):
     """The manifest as a dict, from the environment mapping. Raises InputError for any input or fact that is not acceptable."""
     now = int(time.time() if now is None else now)
-    version = parse_tag(env.get("PROMOTE_TAG", ""))
+    version, revoked = parse_tag_and_revoked(env)
     days = parse_lifetime(env.get("PROMOTE_LIFETIME_DAYS", ""))
-    revoked = parse_revoked(env.get("PROMOTE_REVOKE", ""))
     repo = env.get("GITHUB_REPOSITORY", "")
     if repo != REPO:
         raise InputError("this workflow runs in %r, not in the pinned repository" % repo[:80])
@@ -105,9 +114,8 @@ def main(argv, env):
         return 2
     try:
         if argv[1] == "check":
-            parse_tag(env.get("PROMOTE_TAG", ""))
+            parse_tag_and_revoked(env)
             parse_lifetime(env.get("PROMOTE_LIFETIME_DAYS", ""))
-            parse_revoked(env.get("PROMOTE_REVOKE", ""))
             print("inputs ok")
             return 0
         manifest = build(env)
