@@ -60,7 +60,7 @@ func (h *WorktreesHandler) entries(ctx context.Context, probe bool) []worktreeEn
 			}
 			json.Unmarshal([]byte(t.ConfigJSON), &cfg)
 			out = append(out, worktreeEntry{ID: "team-" + strconv.FormatInt(t.ID, 10), Kind: "team", Name: t.Name, Path: t.WorkingDir,
-				RepoPath: cfg.WorkingDir, Branch: coralnames.TeamBranch(filepath.Base(t.WorkingDir)), InUse: liveErr != nil || liveSessionIn(live, t) || teamLaunching(t, time.Now())}) // a live list that cannot be read fails closed: in use
+				RepoPath: cfg.WorkingDir, Branch: coralnames.TeamBranch(filepath.Base(t.WorkingDir)), InUse: liveErr != nil || liveSessionIn(live, t) || teamLaunching(t, time.Now()) || teamResurrecting(t.ID)}) // a live list that cannot be read fails closed: in use
 		}
 	}
 	if runs, err := h.sched.ListRunsWithWorktree(ctx); err == nil {
@@ -86,6 +86,34 @@ func (h *WorktreesHandler) entries(ctx context.Context, probe bool) []worktreeEn
 		probeWorktrees(ctx, kept)
 	}
 	return kept
+}
+
+var (
+	resurrectMu       sync.Mutex
+	resurrectingTeams = map[int64]int{} // team id -> resurrects under way
+	// afterResurrectWorktreeHook runs in a resurrect right after its worktree is recreated (a var for the tests).
+	afterResurrectWorktreeHook func()
+)
+
+// beginTeamResurrect marks a team's resurrect as under way and returns what ends it. The team record stays "stopped" until its members are launched, and creation time says nothing about a relaunch long after, so the
+// resurrect says so itself: the worktree it recreates is in use until it has returned (#6959).
+func beginTeamResurrect(id int64) func() {
+	resurrectMu.Lock()
+	resurrectingTeams[id]++
+	resurrectMu.Unlock()
+	return func() {
+		resurrectMu.Lock()
+		defer resurrectMu.Unlock()
+		if resurrectingTeams[id]--; resurrectingTeams[id] <= 0 {
+			delete(resurrectingTeams, id)
+		}
+	}
+}
+
+func teamResurrecting(id int64) bool {
+	resurrectMu.Lock()
+	defer resurrectMu.Unlock()
+	return resurrectingTeams[id] > 0
 }
 
 // teamLaunching reports whether a team that is not stopped is young enough for its launch to be under way: the launch holds the team for lifecycleTimeout plus lifecyclePerSession for each member, and in that time

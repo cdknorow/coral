@@ -1328,6 +1328,10 @@ func (h *SessionsHandler) ResurrectTeam(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// The team record stays "stopped" until its members are launched, so the kept-worktrees list is told the resurrect is under way: a clean worktree it has just recreated must not be removed before the first
+	// member registers (#6959).
+	defer beginTeamResurrect(team.ID)()
+
 	// Recreate worktree if team had one
 	workingDir := team.WorkingDir
 	resurrectRepo := "" // the repository of the team's worktree, for its members' rows
@@ -1363,6 +1367,9 @@ func (h *SessionsHandler) ResurrectTeam(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 		log.Printf("[resurrect] recreated worktree at %s (branch %s)", logsafe.Dir(team.WorkingDir), branch)
+		if afterResurrectWorktreeHook != nil {
+			afterResurrectWorktreeHook()
+		}
 	}
 
 	// Relaunch each member

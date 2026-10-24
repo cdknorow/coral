@@ -343,3 +343,47 @@ func TestWorktreeListFailsClosedWhenTheLiveSessionsCannotBeRead(t *testing.T) {
 	require.Len(t, entries, 1)
 	assert.True(t, entries[0].InUse, "a live list that cannot be read counts as in use")
 }
+
+// Security's #6949 LOW (#6959): a resurrect relaunches a stopped team long after its creation and recreates its worktree before any member is registered; the team record stays "stopped" meanwhile. The worktree it has just
+// recreated is clean, so git's no-force rule would let Remove take it. While the resurrect is under way the entry is in use and Remove refuses it.
+func TestWorktreeRecreatedByAResurrectIsInUseUntilItReturns(t *testing.T) {
+	url, cfg := teamServer(t)
+	git, id, wt := launchWorktreeTeam(t, url, cfg, "resurrectinuse")
+	require.NoError(t, os.WriteFile(filepath.Join(wt, "work.txt"), []byte("work"), 0o644))
+	git("-C", wt, "add", "work.txt")
+	git("-C", wt, "commit", "-q", "-m", "work")
+	stopTeam(t, url, id) // clean: its worktree is removed, the branch with its commit stays
+	require.NoDirExists(t, wt)
+
+	var during struct {
+		listed, inUse bool
+		removeState   string
+	}
+	afterResurrectWorktreeHook = func() {
+		list := listWorktrees(t, url)
+		if len(list) == 1 {
+			during.listed, during.inUse = true, list[0]["in_use"].(bool)
+			_, out := removeWorktree(t, url, list[0]["id"].(string))
+			during.removeState, _ = out["state"].(string)
+		}
+	}
+	t.Cleanup(func() { afterResurrectWorktreeHook = nil })
+	status, body := apiPost(t, url+"/api/teams/detail/"+id+"/resurrect")
+	require.Equal(t, http.StatusOK, status, body)
+
+	assert.True(t, during.listed, "the recreated worktree is listed")
+	assert.True(t, during.inUse, "in use while the resurrect is under way, though its team record says stopped")
+	assert.Equal(t, "kept", during.removeState, "Remove refuses it")
+	assert.DirExists(t, wt)
+	assert.False(t, teamResurrecting(1), "the mark ends when the resurrect returns")
+}
+
+func TestBeginTeamResurrectCountsOverlappingResurrects(t *testing.T) {
+	end1 := beginTeamResurrect(42)
+	end2 := beginTeamResurrect(42)
+	assert.True(t, teamResurrecting(42))
+	end1()
+	assert.True(t, teamResurrecting(42), "one is still under way")
+	end2()
+	assert.False(t, teamResurrecting(42))
+}
