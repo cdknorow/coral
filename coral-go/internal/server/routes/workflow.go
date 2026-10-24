@@ -618,9 +618,11 @@ func (h *WorkflowHandler) GetStepFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// A symlink inside a step directory must not lead out of it: compare the resolved paths.
-	realStep, realFile := realPath(stepDir), realPath(absPath)
-	if !within(realStep, realFile) {
+	// A symlink inside a step directory must not lead out of it: compare the resolved paths. The step folder, resolved, must itself lie inside the resolved runs folder: a step or run folder that is a link
+	// to somewhere else would otherwise make everything there "inside" it (#7155).
+	runsRoot := filepath.Join(h.cfg.CoralDir(), "workflows", "runs")
+	realRuns, realStep, realFile := realPath(runsRoot), realPath(stepDir), realPath(absPath)
+	if !within(realRuns, realStep) || !within(realStep, realFile) {
 		errNotFound(w, "file not found")
 		return
 	}
