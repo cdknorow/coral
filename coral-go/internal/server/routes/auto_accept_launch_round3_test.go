@@ -21,6 +21,9 @@ func TestShellRiskRound3Bypasses(t *testing.T) {
 		// D: launchers
 		`unshare -r rm -rf /etc`, `unshare --map-root-user rm -rf /etc`, `unshare -S 0 -G 0 rm -rf /etc`, `chroot / rm -rf /etc`, `chroot --userspec=0:0 / rm -rf /etc`, `chroot --userspec 0:0 / rm -rf /etc`, `chroot --groups 0 / rm -rf /etc`, `strace rm -rf /etc`, `strace -f -o /tmp/t rm -rf /etc`, `strace -e trace=file rm -rf /etc`, `ltrace rm -rf /etc`, `valgrind rm -rf /etc`, `valgrind --leak-check=full rm -rf /etc`,
 		`script -qc 'rm -rf /etc' /dev/null`, `script -c 'rm -rf /etc' /dev/null`, `script --command 'rm -rf /etc' /dev/null`, `nsenter -t 1 -m rm -rf /etc`, `systemd-run --wait rm -rf /etc`, `systemd-run -p Nice=5 rm -rf /etc`, `runuser -u nobody rm -rf /etc`, `runuser -l nobody -c 'rm -rf /etc'`, `setpriv --reuid 1 rm -rf /etc`,
+		// the exotic launchers always ask, whatever follows (design call, #7106 round 4), Codex Test's five cases among them
+		`unshare -r go test ./...`, `chroot . ls`, `strace -f ls`, `strace -o out.txt ls`, `ltrace ls`, `valgrind --leak-check=full ./a.out`, `script -qc 'ls' /dev/null`, `nsenter --help`, `systemd-run --help`, `runuser -u nobody ls`, `pkexec ls`, `firejail ls`,
+		`strace --output out.txt rm -rf x`, `unshare --map-user x rm -rf x`, `unshare --wd /etc rm -rf x`, `systemd-run --working-directory=/etc rm -rf x`, `chroot / rm -rf x`,
 	} {
 		assert.NotEmpty(t, shellRisk(c, dir), "must wait: %s", c)
 	}
@@ -32,7 +35,6 @@ func TestShellRiskRound3LeavesOrdinaryCommandsAlone(t *testing.T) {
 		`eval -- echo hi`, `eval echo hi`, `timeout 5 -- go test ./...`,
 		`$HOME/bin/tool x`, `${HOME}/bin/tool x`, `"$CLAUDE_PROJECT_DIR"/hooks/x`, `$(git rev-parse --show-toplevel)/scripts/x.sh`, `echo $HOME`, `echo "rm${IFS}-rf"`, `ls "$@"`, `git commit -m "fix $X"`,
 		`tar xf x.tar --one-top-level=out`, `tar xf x.tar --one-top-level`, `cpio -id < x`, `cpio -id -D out < x`, `cpio -iD out < x`, `cpio -pdm out < list`, `cpio -o -O out.cpio < list`, `cpio -o > out.cpio < list`,
-		`unshare -r go test ./...`, `chroot . ls`, `strace -f ls`, `strace -o out.txt ls`, `ltrace ls`, `valgrind --leak-check=full ./a.out`, `script -qc 'ls' /dev/null`, `nsenter --help`, `systemd-run --help`, `runuser -u nobody ls`,
 	} {
 		assert.Empty(t, shellRisk(c, dir), "must pass: %s", c)
 	}

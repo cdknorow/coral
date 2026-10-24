@@ -66,73 +66,15 @@ func launchedRisk(cmd string, args []string, seg, workDir, cwd string, inner fun
 		if len(args) > 0 && (strings.HasPrefix(args[0], "<(") || args[0] == "/dev/stdin" || args[0] == "-" || strings.HasPrefix(args[0], "/dev/fd/") || strings.HasPrefix(args[0], "/proc/self/fd/")) {
 			return whyInputCommand
 		}
-	case "unshare", "chroot", "strace", "ltrace", "valgrind", "nsenter", "script", "systemd-run", "pkexec", "setpriv", "firejail", "runuser":
-		if words := runnerCommand(cmd, args); len(words) > 0 {
-			return run(words...)
-		}
+	case "unshare", "chroot", "nsenter", "strace", "ltrace", "valgrind", "systemd-run", "pkexec", "setpriv", "firejail", "runuser", "script":
+		// Running a command through these is rare in an agent's work, and each changes the folder, root, user or namespace the command runs in, in its own options: not modelled, always asked.
+		return "it runs a command through " + cmd + ", which changes where or as whom it runs"
 	case "setsid", "busybox", "chrt", "taskset", "flock", "unbuffer":
 		if words := launcherCommand(cmd, args); len(words) > 0 {
 			return run(words...)
 		}
 	}
 	return ""
-}
-
-// runnerCommand is the command a program that runs another one under some setting runs, with the options of each skipped by their arity: unshare [options] command, chroot [options] newroot command,
-// strace and ltrace [options] command, valgrind [options] command, nsenter [options] command, systemd-run [options] command, script -c 'command' [file], pkexec, setpriv and firejail [options] command.
-func runnerCommand(cmd string, args []string) []string {
-	takes := map[string]map[string]bool{
-		"unshare":     {"-S": true, "-G": true, "--setuid": true, "--setgid": true, "--wd": true, "--root": true, "--mount-proc": false, "--propagation": true, "--map-users": true, "--map-groups": true, "--kill-child": false},
-		"chroot":      {"--userspec": true, "--groups": true},
-		"strace":      {"-o": true, "-e": true, "-p": true, "-s": true, "-u": true, "-E": true, "-a": true, "-O": true, "-S": true, "-P": true, "-I": true, "-b": true, "-X": true, "-U": true, "-z": false, "-D": false, "-w": false, "-x": false, "-y": false},
-		"ltrace":      {"-o": true, "-e": true, "-p": true, "-s": true, "-u": true, "-a": true, "-l": true, "-n": true, "-F": true},
-		"valgrind":    {},
-		"nsenter":     {"-t": true, "--target": true, "-S": true, "-G": true, "-w": true, "--wd": true, "-r": true, "--root": true},
-		"systemd-run": {"-p": true, "--property": true, "-u": true, "--unit": true, "--uid": true, "--gid": true, "-E": true, "--setenv": true, "--slice": true, "-M": true, "--machine": true, "-H": true, "--host": true, "-d": false},
-		"pkexec":      {"--user": true},
-		"setpriv":     {"--reuid": true, "--regid": true, "--ruid": true, "--rgid": true, "--euid": true, "--egid": true, "--groups": true, "--inh-caps": true, "--bounding-set": true, "--ambient-caps": true, "--securebits": true, "--pdeathsig": true, "--selinux-label": true, "--apparmor-profile": true},
-		"firejail":    {},
-		"runuser":     {"-u": true, "-g": true, "-G": true, "-l": false, "-c": false},
-	}[cmd]
-	if cmd == "script" { // script [options] [file]: -c text is the command (attached as -qc or alone), the typescript file is written but not judged here
-		for i, a := range args {
-			if strings.HasPrefix(a, "-") && !strings.HasPrefix(a, "--") && strings.Contains(a, "c") && i+1 < len(args) {
-				return args[i+1:]
-			}
-			if a == "--command" && i+1 < len(args) {
-				return args[i+1:]
-			}
-			if strings.HasPrefix(a, "--command=") {
-				return append([]string{strings.TrimPrefix(a, "--command=")}, args[i+1:]...)
-			}
-		}
-		return nil
-	}
-	if cmd == "runuser" { // runuser -u user command, or runuser -l user -c 'command'
-		for i, a := range args {
-			if (a == "-c" || a == "--command") && i+1 < len(args) {
-				return args[i+1:]
-			}
-		}
-	}
-	skipPositional := 0
-	if cmd == "chroot" {
-		skipPositional = 1 // the new root
-	}
-	for i := 0; i < len(args); i++ {
-		a := args[i]
-		switch {
-		case a == "--":
-		case takes[a]:
-			i++
-		case strings.HasPrefix(a, "-") && a != "-":
-		case skipPositional > 0:
-			skipPositional--
-		default:
-			return args[i:]
-		}
-	}
-	return nil
 }
 
 // launcherCommand is the command a small launcher runs: setsid [-cfw] cmd, busybox applet args, chrt [opts] priority cmd, taskset [opts] mask cmd, flock [opts] file cmd, unbuffer cmd.
