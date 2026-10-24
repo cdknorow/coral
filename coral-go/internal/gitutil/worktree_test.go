@@ -177,3 +177,42 @@ func TestResolveBaseRemoteOnly(t *testing.T) {
 	_, err = ResolveBase(ctx, repo, "nothere")
 	assert.Error(t, err)
 }
+
+// #7056: RemoveWorktree runs git, and prunes, only in a repository that lists the folder as one of its worktrees, whoever worked out which repository that is. A folder whose git file names a repository
+// that does not list it (planted, or left behind) is kept as it is, and that repository is not touched: its own stale registrations stay (a prune there would delete them).
+func TestRemoveWorktreeNeverTouchesARepositoryThatDoesNotListTheFolder(t *testing.T) {
+	ctx := context.Background()
+	repo := baseRepo(t, "master", true)
+	holder := t.TempDir()
+	stale := filepath.Join(holder, "stale")
+	gitIn(t, repo, "worktree", "add", "-b", "other", "--", stale, "master")
+	require.NoError(t, os.RemoveAll(stale)) // its registration is now one a prune would remove
+
+	planted := filepath.Join(holder, "planted")
+	require.NoError(t, os.MkdirAll(planted, 0o755))
+	gitdir := filepath.Join(repo, ".git", "worktrees", "stale")
+	require.DirExists(t, gitdir)
+	require.NoError(t, os.WriteFile(filepath.Join(planted, ".git"), []byte("gitdir: "+gitdir+"\n"), 0o644))
+	resolved, _ := filepath.EvalSymlinks(repo)
+	got, _ := filepath.EvalSymlinks(RepoOfWorktree(ctx, planted))
+	require.Equal(t, resolved, got, "the folder's git file does name the repository")
+	require.False(t, IsRegisteredWorktree(ctx, repo, planted))
+
+	for _, given := range []string{"", repo, holder} { // no repository given (a list read that timed out), the named one, and one that is none
+		out, err := RemoveWorktree(ctx, given, planted, "other")
+		require.NoError(t, err, given)
+		assert.Equal(t, "kept", out.State, given)
+		assert.Equal(t, "its repository does not list it as a worktree", out.Reason, given)
+		assert.DirExists(t, planted, given)
+		assert.Contains(t, gitIn(t, repo, "worktree", "list", "--porcelain"), "stale", given+": the repository was not pruned")
+		assert.Contains(t, gitIn(t, repo, "branch", "--list", "other"), "other", given+": its branches were not touched")
+	}
+
+	// A folder the repository does list is removed as before, with no repository given.
+	listed := filepath.Join(holder, "listed")
+	gitIn(t, repo, "worktree", "add", "-b", "mine", "--", listed, "master")
+	out, err := RemoveWorktree(ctx, "", listed, "mine")
+	require.NoError(t, err)
+	assert.Equal(t, "removed", out.State)
+	assert.NoDirExists(t, listed)
+}
