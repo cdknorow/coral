@@ -47,6 +47,9 @@ type worktreeEntry struct {
 
 // entries are the worktrees on disk that Coral made, newest first: a team's (its record says it has one) and a job run's (its run recorded one), each still in a repository's worktree list.
 func (h *WorktreesHandler) entries(ctx context.Context, probe bool) []worktreeEntry {
+	// One budget for everything git is asked in building the list (a run folder's repository, then the probes): a git that never answers cannot hold it past worktreeListBudget (#6754, QA's #7031).
+	ctx, cancelBudget := context.WithTimeout(ctx, worktreeListBudget)
+	defer cancelBudget()
 	out := []worktreeEntry{}
 	root := coralnames.WorktreesRoot(h.cfg.CoralDir())
 	live, liveErr := h.sess.GetAllLiveSessions(ctx) // a team's worktree is in use while a live session is in it, whichever way its agents were stopped (#6942)
@@ -79,7 +82,9 @@ func (h *WorktreesHandler) entries(ctx context.Context, probe bool) []worktreeEn
 			case coralnames.IsJobRunFolder(root, r.ID, path):
 				// The job's repository changed since (or the job is gone): the folder is still the run's own, and its git file says which repository it belongs to ("" when that repository is gone: it is listed, and a remove says
 				// git cannot find it). Its name must be that repository's (#7026).
-				repo = gitutil.RepoOfWorktree(ctx, path)
+				rctx, cancelRead := context.WithTimeout(ctx, worktreeRepoReadTimeout)
+				repo = gitutil.RepoOfWorktree(rctx, path) // "" when git did not answer in time too: listed unchecked, like a gone repository, and a remove cannot go on without the repository
+				cancelRead()
 				if repo != "" && !coralnames.IsJobRunWorktree(root, repo, r.ID, path) {
 					continue
 				}
@@ -178,6 +183,8 @@ var (
 	worktreeProbeWorkers = 4
 	worktreeListBudget   = 8 * time.Second
 	worktreeProbe        = probeWorktree
+	// worktreeRepoReadTimeout bounds each read of a run folder's own repository (inside the list's budget).
+	worktreeRepoReadTimeout = 5 * time.Second
 )
 
 // probeWorktrees fills each entry's dirty and unmerged flags and sets Checked, with a small worker pool inside the list's overall time limit.
