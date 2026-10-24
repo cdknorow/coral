@@ -111,13 +111,15 @@ GET /api/tasks/runs/{run_id}
 | `status` | `pending`, `running`, `completed`, `killed`, `failed` |
 | `exit_reason` | One of the values below, the text of a failed launch's own error, or `null` while the run is going |
 | `error_msg` | A plain sentence for a run that failed, or `null` |
-| `error_code` | A fixed word for some failures (`start_command_failed`, `agent_never_started`, `agent_exited_before_start`, `worktree_failed`, ...), or `null` |
+| `error_code` | A fixed word for some failures (`start_command_failed`, `agent_never_started`, `agent_exited_before_start`, `worktree_failed`, `agent_turn_failed`, ...), or `null` |
 
 `exit_reason` values, with the `status` each comes with:
 
 | `exit_reason` | `status` | Meaning |
 |---|---|---|
 | `agent_done` | `completed` | The agent finished its work (its last event was a stop or a session end), or ended while Coral could not tell. |
+| `turn_complete` | `completed` | A scheduled Claude or Codex prompt run: the agent ended its turn on the job's prompt (a stored stop after the prompt, settled for a few seconds); its agent is ended by Coral. |
+| `turn_failed` | `failed` | The same, and the turn ended in an error (a StopFailure); `error_code` is `agent_turn_failed`. |
 | `timeout` | `killed` | The run passed `max_duration_s`; its agent was killed. |
 | `user_cancelled` | `killed` | `POST /api/tasks/runs/{run_id}/kill`. |
 | `timeout_reap` | `killed` | A run found at startup past twice its maximum duration. |
@@ -212,6 +214,7 @@ POST /api/tasks/run
        |         prompt sent to agent after 2s init delay
        |         watchdog starts polling tmux every 30s
        |
+       ├── agent (Claude, Codex) ends its turn on the job's prompt → completed (exit_reason: turn_complete), or failed (exit_reason: turn_failed) when the turn ended in an error; the agent is ended
        ├── agent exits normally → completed (exit_reason: agent_done)
        ├── timeout reached → killed (exit_reason: timeout)
        └── POST /kill called → killed (exit_reason: user_cancelled)

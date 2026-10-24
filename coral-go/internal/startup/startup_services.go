@@ -201,6 +201,7 @@ func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Conf
 		got, err := taskStore.SessionsWithAnyEvent(ctx, []string{sessionID})
 		return err != nil || got[sessionID] // a read that fails never judges a run
 	})
+	scheduler.SetSessionTurn(taskStore.SessionTurn) // a scheduled prompt run finishes on its agent's accepted turn end (#7090)
 	scheduler.SetRuntime(agentRT)
 	scheduler.SetNextFireTimeFn(background.NextFireTime)
 	scheduler.SetWorktreeRoot(coralnames.WorktreesRoot(cfg.CoralDir()))
