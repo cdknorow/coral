@@ -14,6 +14,7 @@ import (
 	"github.com/subgentic/coral/internal/background"
 	"github.com/subgentic/coral/internal/config"
 	"github.com/subgentic/coral/internal/gitutil"
+	"github.com/subgentic/coral/internal/safego"
 	"github.com/subgentic/coral/internal/store"
 )
 
@@ -102,6 +103,7 @@ func probeWorktrees(ctx context.Context, entries []worktreeEntry) {
 	for w := 0; w < worktreeProbeWorkers; w++ {
 		wg.Add(1)
 		go func() {
+			defer safego.Recover("server/routes/worktrees:probeWorktrees")
 			defer wg.Done()
 			for i := range next {
 				entries[i] = worktreeProbe(ctx, entries[i])

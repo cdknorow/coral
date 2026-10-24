@@ -132,8 +132,8 @@ func TestGitSnapshotTextIsCleanedBeforeItIsStored(t *testing.T) {
 	sid := "sess-clean"
 	snap := &GitSnapshot{
 		AgentName: "clean-repo", AgentType: "claude", WorkingDirectory: "/tmp/repo", SessionID: &sid, CommitHash: "def456",
-		Branch:        "feature/‮pwned\x1b[31m",
-		CommitSubject: "fix \x1b[2Jthe build ‮gpj.exe​ and ⁦more⁩",
+		Branch:        "feature/\u202epwned\x1b[31m",
+		CommitSubject: "fix \x1b[2Jthe build \u202egpj.exe\u200b and \u2066more\u2069",
 	}
 	require.NoError(t, s.UpsertGitSnapshot(ctx, snap))
 	got, err := s.GetLatestGitStateBySession(ctx, sid)
@@ -142,7 +142,7 @@ func TestGitSnapshotTextIsCleanedBeforeItIsStored(t *testing.T) {
 	assert.Equal(t, "feature/pwned", got.Branch)
 	assert.Equal(t, "fix the build gpj.exe and more", got.CommitSubject)
 	assert.NotContains(t, got.CommitSubject, "\x1b")
-	assert.NotContains(t, got.CommitSubject, "‮")
+	assert.NotContains(t, got.CommitSubject, "\u202e")
 }
 
 // Security's #6836 SHOULD: a row stored before the write path cleaned its text (written here by plain SQL) is handed out clean by every getter, so no route shows it raw.
@@ -152,7 +152,7 @@ func TestOldGitSnapshotRowsAreCleanedByEveryGetter(t *testing.T) {
 	ctx := context.Background()
 	_, err := db.ExecContext(ctx, `INSERT INTO git_snapshots (agent_name, agent_type, working_directory, branch, commit_hash, commit_subject, commit_timestamp, session_id, recorded_at)
 		VALUES ('old-repo', 'claude', '/tmp/old', ?, 'abc', ?, '2026-10-01T10:00:00Z', 'sess-old', '2026-10-01T10:00:00Z')`,
-		"old/‮branch\x1b[31m", "old \x1b[2Jsubject ‮gpj")
+		"old/\u202ebranch\x1b[31m", "old \x1b[2Jsubject \u202egpj")
 	require.NoError(t, err)
 	sid := "sess-old"
 	check := func(what string, branch, subject string) {
