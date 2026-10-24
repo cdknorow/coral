@@ -158,7 +158,7 @@ func TestARunWhoseAgentEndedWhileCoralWasDownClaimsSuccessOnlyWithProof(t *testi
 		{"its last event is a stop that was a failed turn", "stop", "ended_while_coral_was_down", true, true},
 		{"its last event is the session's end", "session_end", "agent_done", true, false},
 		{"its last event is a tool call", "tool_use", "ended_while_coral_was_down", true, false},
-		{"it reported nothing", "", "ended_while_coral_was_down", true, false},
+		{"it reported nothing", "", "agent_never_started", true, false},
 		{"the last event is not known here", "", "agent_done", false, false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -169,7 +169,15 @@ func TestARunWhoseAgentEndedWhileCoralWasDownClaimsSuccessOnlyWithProof(t *testi
 			id := e.leftRun(t, time.Minute, "sid-proof")
 			e.s.reapStaleRuns(ctx)
 			r := e.runOf(t, id)
-			assert.Equal(t, "completed", r.Status)
+			if c.want == "agent_never_started" {
+				assert.Equal(t, "failed", r.Status, "no event at all: it never started, it did not complete")
+				require.NotNil(t, r.ErrorCode)
+				assert.Equal(t, "agent_never_started", *r.ErrorCode)
+				require.NotNil(t, r.ErrorMsg)
+				assert.Equal(t, agentNeverStartedMsg, *r.ErrorMsg)
+			} else {
+				assert.Equal(t, "completed", r.Status)
+			}
 			require.NotNil(t, r.ExitReason)
 			assert.Equal(t, c.want, *r.ExitReason)
 		})
