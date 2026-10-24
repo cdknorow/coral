@@ -1,0 +1,46 @@
+name: Windows short-form folder (trial)
+
+# #7069: the new 8.3 short-form test, the 16 routes tests that failed on a runner because its TEMP is C:\Users\RUNNER~1\..., run WITHOUT the long-form TEMP workaround, and safefs.
+on:
+  workflow_dispatch:
+  push:
+    branches: ["trial/win-7069-*"]
+
+permissions:
+  contents: read
+
+env:
+  CORAL_TELEMETRY_DISABLED: "1"
+
+jobs:
+  short:
+    name: short form (windows-latest)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+        working-directory: coral-go
+    env:
+      CGO_ENABLED: "0"
+    steps:
+      - name: Check out LF line endings
+        shell: bash
+        working-directory: ${{ runner.temp }}
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: coral-go/go.mod
+          cache: false
+      - name: Sync agent docs
+        run: bash ../tools/sync-agent-docs.sh
+      - name: the tests, with the runner's own (8.3) TEMP
+        run: |
+          set +e +o pipefail
+          echo "TEMP: $TEMP"
+          go test -count=1 -tags fts5 -run '^(TestPathInsideAWorkingFolderInItsShortForm|TestUnreadablePathTildeOnlyWhereAShellExpandsIt|TestShellWritesIntoGitHookPlacesAreHeld|TestPowerShellAndCmdWritesIntoGitHookPlacesAreHeld|TestShellRisk|TestFileRisk|TestShellRiskSeesThroughWrappers|TestShellWriteRisk|TestShellRiskV23|TestShellRiskEnvSplitString|TestScreenActionReadsAWrappedToolLine|TestLongInRepoPathWrappedMidWordIsAnswered|TestShellRisk3207|TestPathsInsideTheWorkingFolderAreStillSafeOnWindows|TestBackslashPathsAreJudgedAsPathsOnWindows|TestInputRedirectionsAreNotWriteTargets|TestShellRiskReadsWindowsCommandsOnWindows|TestWindowsDiscardRedirectionsAreQuiet)$' -v ./internal/server/routes 2>&1 | grep -E "^(--- |ok|FAIL)|Error:|Messages|long .* short|SKIP" | cut -c1-240 | head -60
+          go test -count=1 -tags fts5 ./internal/safefs 2>&1 | tail -3
+          go test -count=1 -tags fts5 -run 'TestTeamLaunchWithAWorktreeInARepositoryNotOnMain|TestTeamWorktreeForABoardNameGitRefusesInABranch|Worktree|JobRun' ./internal/server/routes 2>&1 | tail -3
