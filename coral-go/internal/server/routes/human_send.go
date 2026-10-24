@@ -97,21 +97,19 @@ type humanSendGate struct {
 	custom    *humanSendTimings             // a test's own timings (set); nil: the defaults
 }
 
-// t is the timings this gate works to.
-func (g *humanSendGate) customOrDefault() humanSendTimings { // under g.mu
+// customOrDefault is the timings this gate works to: the ones a test set, else the defaults. The caller holds g.mu.
+func (g *humanSendGate) customOrDefault() humanSendTimings {
 	if g.custom != nil {
 		return *g.custom
 	}
 	return defaultHumanSendTimings
 }
 
+// t is the timings this gate works to, read under its lock.
 func (g *humanSendGate) t() humanSendTimings {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	if g.custom != nil {
-		return *g.custom
-	}
-	return defaultHumanSendTimings
+	return g.customOrDefault()
 }
 
 // set changes the gate's timings from the defaults by f (tests).
