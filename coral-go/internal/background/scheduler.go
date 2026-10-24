@@ -17,6 +17,7 @@ import (
 	"github.com/subgentic/coral/internal/agentsignin"
 	at "github.com/subgentic/coral/internal/agenttypes"
 	"github.com/subgentic/coral/internal/gitutil"
+	"github.com/subgentic/coral/internal/ptymanager"
 	"github.com/subgentic/coral/internal/safego"
 	"github.com/subgentic/coral/internal/store"
 )
@@ -698,6 +699,10 @@ func (s *JobScheduler) launchAndWatch(runID int64, job store.ScheduledJob, rc ru
 	}
 
 	status, exitReason := runOutcome(launchErr, watchCtx.Err())
+	if status == "failed" && errors.Is(launchErr, ptymanager.ErrStartCommand) { // one plain sentence and a fixed code, not "spawn agent failed: ..." (#6978)
+		exitReason = ptymanager.ErrStartCommand.Error()
+		s.store.UpdateScheduledRun(ctx, runID, map[string]interface{}{"error_msg": exitReason, "error_code": startCommandFailedCode})
+	}
 	if status == "completed" && s.exitedBeforeStarting(ctx, runID, job, time.Now().UTC().Format(store.ISOFormat), startedAt) {
 		status, exitReason = "failed", agentExitedEarlyMsg
 	}
@@ -716,6 +721,9 @@ func (s *JobScheduler) launchAndWatch(runID int64, job store.ScheduledJob, rc ru
 func (s *JobScheduler) SetEventCheck(fn func(ctx context.Context, sessionID string) bool) {
 	s.hasEvents = fn
 }
+
+// startCommandFailedCode is the run's fixed error_code when Coral could not hand the agent its start command (#6978).
+const startCommandFailedCode = "start_command_failed"
 
 // agentExitedEarlyWindow is how short a run must be, from its start to the agent's exit, to be judged by whether the agent ever reported anything.
 var agentExitedEarlyWindow = 15 * time.Second

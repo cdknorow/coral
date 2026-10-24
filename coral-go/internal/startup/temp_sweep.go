@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/subgentic/coral/internal/agent"
+	"github.com/subgentic/coral/internal/cmdhandoff"
 	"github.com/subgentic/coral/internal/diskguard"
 	"github.com/subgentic/coral/internal/safego"
 	"github.com/subgentic/coral/internal/store"
@@ -33,6 +34,7 @@ func setupLaunchTempDir(db *store.DB, dataDir string) <-chan struct{} {
 	if err := agent.SetTempDir(filepath.Join(dataDir, "tmp")); err != nil {
 		log.Printf("[startup] %v; launch temp files stay in %s", err, os.TempDir())
 	}
+	cmdhandoff.SetFallbackDir(agent.LaunchTempDir) // a start command's script goes here when the system temp folder is not usable (#6978)
 	dirs := []string{agent.LaunchTempDir()}
 	if sys := os.TempDir(); sys != dirs[0] {
 		dirs = append(dirs, sys)

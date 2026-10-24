@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/subgentic/coral/internal/agent"
+	"github.com/subgentic/coral/internal/ptymanager"
 	"github.com/subgentic/coral/internal/store"
 )
 
@@ -364,4 +365,17 @@ func TestRunWhoseAgentExitedBeforeItStartedIsFailed(t *testing.T) {
 			assert.Contains(t, *r.ErrorMsg, "exited before it started")
 		})
 	}
+}
+
+// A start command Coral could not hand the agent fails the run at once with one plain sentence and a fixed code, not the launch's wrapped words (#6978, Codex Test's #6953).
+func TestRunWhoseStartCommandCouldNotBeHandedOverFailsWithAPlainReasonAndCode(t *testing.T) {
+	e := newExitEnv(t, "exit-handoff")
+	e.launch(t, func(context.Context) error { return fmt.Errorf("spawn agent failed: %w", ptymanager.ErrStartCommand) })
+	e.s.launchAndWatch(e.runID, store.ScheduledJob{AgentType: "claude"}, runConfig{})
+	r := e.run(t)
+	assert.Equal(t, "failed", r.Status)
+	require.NotNil(t, r.ExitReason)
+	assert.Equal(t, ptymanager.ErrStartCommand.Error(), *r.ExitReason)
+	require.NotNil(t, r.ErrorCode)
+	assert.Equal(t, "start_command_failed", *r.ErrorCode)
 }

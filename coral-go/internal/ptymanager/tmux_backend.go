@@ -64,6 +64,10 @@ func NewTmuxBackend(client *tmux.Client, logDir string) *TmuxBackend {
 // ErrTmuxBackend marks a failure of the tmux backend itself (its messages begin "tmux"), so a launch can tell a missing or broken tmux from a failure of the pure pty backend (#6046).
 var ErrTmuxBackend = errors.New("tmux")
 
+// ErrStartCommand is the launch's error when the agent's start command could not be handed to its new terminal (its script could not be written: the temp folder is gone or full). It is one plain sentence, the cause is in the log,
+// and the session is not left behind at an idle shell (#6978).
+var ErrStartCommand = errors.New("Coral could not hand the agent its start command (its temporary folder is not usable), so the agent was not started")
+
 func (b *TmuxBackend) Spawn(name, agentType, workDir, sessionID, command string, cols, rows uint16) error {
 	DropHeld(name, "spawned") // nothing held for the old process is typed into a new one (#3431)
 	ctx := context.Background()
@@ -94,7 +98,9 @@ func (b *TmuxBackend) Spawn(name, agentType, workDir, sessionID, command string,
 	// Launch the agent command
 	if command != "" {
 		if err := b.client.SendKeysToTarget(ctx, terminalinput.Internal, tmuxName+".0", command); err != nil {
-			log.Printf("[launch] %s: the start command could not be typed into its terminal: %v", name, err) // the terminal stays at its shell (#5171)
+			log.Printf("[launch] %s: the start command could not be typed into its terminal: %v", name, err)
+			_ = b.client.KillSessionOnly(ctx, tmuxName, agentType, sessionID) // not left at an idle shell, "running" until its deadline (#6978; before, #5171, the terminal stayed at its shell)
+			return ErrStartCommand
 		}
 	}
 
