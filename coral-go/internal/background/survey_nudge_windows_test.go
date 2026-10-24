@@ -103,7 +103,7 @@ func startFakeSurveyClaude(t *testing.T, mode string) (rt *PTYRuntime, name, sid
 	sid = "11111111-2222-3333-4444-555555555555"
 	name = "claude-" + sid
 	// the start command runs in PowerShell: call operator, quoted paths, no pipe character
-	cmd := fmt.Sprintf("& \"%s\" -test.run=TestFakeSurveyClaudeHelper -fake-claude=%s", exe, mode)
+	cmd := fmt.Sprintf("& '%s' '-test.run=TestFakeSurveyClaudeHelper' '-fake-claude=%s'", exe, mode) // single-quoted: PowerShell splits an unquoted -test.run=X at the dot
 	require.NoError(t, rt.SpawnAgent(context.Background(), name, dir, "", cmd), "the fake Claude starts on a ConPTY")
 	t.Cleanup(func() { rt.KillAgent(context.Background(), name) })
 	// wait until the fake has drawn the survey (a nudge typed before it is drawn lands on it as the first key)
