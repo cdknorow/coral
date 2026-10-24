@@ -25,7 +25,8 @@ import { reportSendError, showComposerError, clearComposerError, awaitSocketAcce
 import { rememberSend, noteHeld } from './held_sends.js'; // a message held behind the agent's question shows as queued under the box (#6611)
 import { pollEvery } from './overload.js';
 import { syncSendStarting } from './agent_starting.js';
-import { worktreeConfirmWords, worktreeAnswerWords } from './worktree_words.js';
+import { worktreeConfirmWords } from './worktree_words.js';
+import { showWorktreeNotice } from './worktree_notice.js';
 import { MODES, modeFromFooterText, pressesFor } from './mode_cycle.js';
 
 // Lazy imports to avoid circular dependency (xterm_renderer imports controls)
@@ -537,8 +538,7 @@ export async function killSession() {
                 } else {
                     showToast(`Killed and saved changes.diff: ${state.currentSession.name}`);
                 }
-                const wt = worktreeAnswerWords(result.worktree, 'agent'); // what became of its worktree, if it had one (#6707)
-                if (wt) showToast(wt.text, wt.error);
+                showWorktreeNotice(result.worktree, 'agent'); // what became of its worktree, if it had one (#6707); a kept one stays on screen with its path (#6818)
                 // The row goes at once; the agent's chat stays in History.
                 stopCaptureRefresh();
                 state.currentSession = null;

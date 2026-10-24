@@ -11,7 +11,8 @@ import { updateSettingList, upsertByName, parseList } from './settings_lists.js'
 import { _passesFilters } from './list_filter_match.js';
 import { killCount } from './agent_actions.js';
 import { showPromptModal } from './prompt_modals.js';
-import { worktreeConfirmWords, worktreeAnswerWords } from './worktree_words.js';
+import { worktreeConfirmWords } from './worktree_words.js';
+import { showWorktreeNotice } from './worktree_notice.js';
 
 // The agents a folder or workflow group shows, and only those (#3053): team
 // members are listed (and killed) under their team, archived agents in the
@@ -85,8 +86,7 @@ export async function killBoard(boardName) {
                     console.error(`Failed to kill ${s.name}:`, e);
                 }
             }
-            const said = worktreeAnswerWords(worktree);
-            if (said) showToast(said.text, said.error); // an error is an alert; the rest a status
+            showWorktreeNotice(worktree); // an error is an alert, the rest a status; a kept one stays on screen with its path (#6818)
             const killedIds = new Set(boardSessions.map(s => s.session_id));
             state.liveSessions = state.liveSessions.filter(s => !killedIds.has(s.session_id));
             redrawLiveList();

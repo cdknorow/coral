@@ -14,6 +14,9 @@ import { routeHref } from './markdown.js';
  *   and runs onClick. A toast with an action has no timer and does not fade: it
  *   stays until it is used or dismissed (WCAG 2.2.1: a keyboard-only person is
  *   far from it, and nothing runs out under them). A plain toast keeps its timer.
+ * opts.expanded: a phone shows the whole message from the start, not its first two lines (a path must be read, not tapped open).
+ * opts.action.keepOpen: the button runs onClick but leaves the toast on screen (a Copy button: the
+ *   person copies and goes on reading); the toast is still dismissed with its ×.
  *
  * Returns the toast element. Text is set with textContent only.
  */
@@ -49,8 +52,8 @@ export function showToast(message, isError = false, duration, opts = {}) {
         button.className = "toast-action";
         button.textContent = action.label;
         button.addEventListener("click", () => {
-            dismiss();
-            try { action.onClick(); } catch (e) { console.error("toast action failed:", e); }
+            if (!action.keepOpen) dismiss();
+            try { action.onClick(button); } catch (e) { console.error("toast action failed:", e); }
         });
         toast.appendChild(button);
         toast.classList.add("has-action");
@@ -70,6 +73,7 @@ export function showToast(message, isError = false, duration, opts = {}) {
     // On a phone a long toast shows two lines (css); a tap opens the rest. The full text is in the element either way, so a screen reader reads it all.
     toast.addEventListener("click", (e) => { if (!e.target.closest("button")) { toast.classList.toggle("expanded"); clearTimeout(timer); timer = 0; } }); // a toast that is being read is not timed out (#6727)
 
+    if (opts.expanded) toast.classList.add("expanded");
     toastHost().appendChild(toast);
     if (Number.isFinite(duration)) timer = setTimeout(dismiss, duration);
     return toast;

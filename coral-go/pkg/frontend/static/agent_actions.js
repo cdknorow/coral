@@ -1,6 +1,7 @@
 /* What the sidebar's menus do to one agent: kill, info, attach, restart, sleep and archive (moved out of render.js, #4996; no behaviour change). */
 import { state } from './state.js';
-import { worktreeConfirmWords, worktreeAnswerWords } from './worktree_words.js';
+import { worktreeConfirmWords } from './worktree_words.js';
+import { showWorktreeNotice } from './worktree_notice.js';
 import { serverFetch, serverForSession, sessionServer } from './server_base.js';
 import { showToast, showView } from './utils.js';
 import { redrawLiveList } from './list_hooks.js';
@@ -37,8 +38,7 @@ export function killSessionDirect(name, agentType, sessionId) {
         } else {
             showToast(`Killed and saved changes.diff: ${name}`);
         }
-        const wt = worktreeAnswerWords(result.worktree, 'agent'); // what became of its worktree, if it had one (#6707)
-        if (wt) showToast(wt.text, wt.error);
+        showWorktreeNotice(result.worktree, 'agent'); // what became of its worktree, if it had one (#6707); a kept one stays on screen with its path (#6818)
         // The row goes at once: the agent's chat stays in History. A killed agent is not listed again.
         state.liveSessions = state.liveSessions.filter(s => !(s.session_id === sessionId && sessionServer(s) === server));
         if (state.currentSession && state.currentSession.session_id === sessionId) {
