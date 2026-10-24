@@ -29,6 +29,8 @@ const BASE = require('./test_base').BASE;
     const select = id => ev(`(async () => { const st = await import(${S} + 'state.js'); const cs = require_row(st, ${JSON.stringify(id)}); return true; function require_row(st, sid) { const r = st.state.liveSessions.find(s => s.session_id === sid); st.state.currentSession = { type: 'live', ...r }; st.state.captureInterval = setInterval(() => {}, 100000); return r; } })()`);
     const ids = () => ev(`import(${S} + 'state.js').then(st => st.state.liveSessions.map(s => s.session_id + '@' + (s.server || 'local')).sort())`);
     const yes = async () => { await waitFor(`getComputedStyle(document.getElementById('confirm-modal')).display !== 'none'`, 'the confirmation', 8000); const msg = await ev(`document.getElementById('confirm-modal-message').textContent`); await ev(`document.getElementById('confirm-modal-yes').click(); true`); await sleep(500); return msg; }; // sleep-ok: the confirmation and the redraw settle
+    // a kept worktree is a compact bar (#6943): "Worktree kept" and its Details; the why, the path and the branch are behind Details, which this opens
+    const keptBar = async path => { await ev(`(() => { const d = document.querySelector('#worktree-dock .worktree-dock-details'); if (d && d.getAttribute('aria-expanded') !== 'true') d.click(); return true; })()`); await sleep(250); /* sleep-ok: the details open */ const t = await ev(`document.getElementById('worktree-dock').innerText`); return /kept/i.test(t) && t.includes(path); };
     try {
         // 1. the agent view's Kill Session
         await open([row(1), row(2)]);
@@ -41,7 +43,7 @@ const BASE = require('./test_base').BASE;
         check('1. its row is gone at once, the other stays', JSON.stringify(await ids()) === JSON.stringify(['sid-2@local']), JSON.stringify(await ids()));
         check('1. the welcome screen shows and no agent is open', (await ev(`getComputedStyle(document.getElementById('welcome-screen')).display !== 'none'`)) && (await ev(`import(${S} + 'state.js').then(st => st.state.currentSession === null)`)));
         check('1. the capture refresh stopped', await ev(`import(${S} + 'state.js').then(st => st.state.captureInterval === null)`));
-        check('1. a kept worktree is said with its path', /worktree was kept/.test(await ev(`document.body.innerText`)) && /\/tmp\/wt\/agent-1/.test(await ev(`document.body.innerText`)));
+        check('1. a kept worktree is said in the bar, with its path behind Details', await keptBar('/tmp/wt/agent-1'));
 
         // 2. a session id on two servers: only the killed server's row goes (the agent view dropped both)
         await open([row(7), row(7, { server: 'remote-1', name: 'agent-7' }), row(8)]);
@@ -61,7 +63,7 @@ const BASE = require('./test_base').BASE;
         const tp = await ev(`window.__posts`);
         check('4. one request, to the team route, no per-agent kill', tp.length === 1 && /\/live\/team\/crew\/kill$/.test(tp[0].url), JSON.stringify(tp));
         check('4. both members go, the other agent stays', JSON.stringify(await ids()) === JSON.stringify(['sid-9@local']), JSON.stringify(await ids()));
-        check('4. the kept worktree is said with its path', /worktree was kept/.test(await ev(`document.body.innerText`)) && /\/tmp\/wt\/crew/.test(await ev(`document.body.innerText`)));
+        check('4. the kept worktree is said in the bar, with its path behind Details', await keptBar('/tmp/wt/crew'));
         await open([row(5, { board_project: 'crew' }), row(6, { board_project: 'crew' })]);
         await ev(`window.__teamStatus = 500; window.__teamAnswer = { error: 'could not stop the team' }; import(${S} + 'team_actions.js').then(m => m.killBoard('crew')); true`); await yes();
         check('4. a refused stop is said, not silent', /could not stop the team/i.test(await ev(`document.body.innerText`)));
