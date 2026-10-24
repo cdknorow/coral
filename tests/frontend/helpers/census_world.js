@@ -62,8 +62,6 @@ const DATA_WORLD = `(() => {
             if (path === '/api/token-usage/by-team') return json(${JSON.stringify(TOKEN_TEAMS)});
             if (path === '/api/token-usage/by-branch') return json(${JSON.stringify(TOKEN_BRANCHES)});
             if (path === '/api/call-metrics/summary') return json(${JSON.stringify(CALL_METRICS)});
-            // A send to the census's stand-in agent is answered at once. The real server holds it until the CLI's input box is up (the stand-in has none) and refuses it after a long wait, "The agent isn't ready for messages yet", which showed a composer error in the middle of whichever scene was running by then: the 160 gate's red in keyboard_census_desktop (#6524).
-            if (m === 'POST' && /^\\/api\\/sessions\\/live\\/[^/]+\\/send$/.test(path)) return json({ status: 'sent' });
             if (path === '/api/system/update') return json(window.__updStatus || { enabled: false });
             if (path === '/api/sessions/history/search' && /[?&]q=zzz/.test(u)) return json({ status: 'complete', results: [] });
             if (path === '/api/sessions/history/search') return json({ status: 'complete', results: [{ session_id: 'census-chat', type: 'agent', hits: [{ role: 'user', excerpt: 'Please check the release notes', locator: { session_id: 'census-chat', message_index: 0 } }, { role: 'assistant', excerpt: 'The release notes are ready', locator: { session_id: 'census-chat', message_index: 1 } }] }, { session_id: 'census-chat-2', type: 'agent', hits: [{ role: 'user', excerpt: 'Fix the build before the release', locator: { session_id: 'census-chat-2', message_index: 0 } }] }] });
@@ -72,6 +70,8 @@ const DATA_WORLD = `(() => {
             if (path === '/api/sessions/history/census-chat/git') return json({ commits: [] });
             if (/^\\/api\\/sessions\\/history\\/census-chat\\/(tags|events|tasks|agent-notes|files)$/.test(path) || path === '/api/tags') return json([]);
         }
+        // A send to the census's stand-in agent is answered at once (it was inside the GET branch above, where a POST never reached it). The real server holds it until the CLI's input box is up (the stand-in has none) and refuses it after ten seconds, "The agent isn't ready for messages yet", which put a composer error in the middle of whichever scene was on screen then.
+        if (m === 'POST' && /^\\/api\\/sessions\\/live\\/[^/]+\\/send$/.test(path)) return json({ status: 'sent' });
         return inner(url, opts);
     };
 })();`;
