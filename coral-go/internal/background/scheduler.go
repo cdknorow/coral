@@ -237,22 +237,24 @@ func (s *JobScheduler) Run(ctx context.Context) error {
 	})
 }
 
+// adoptedRunPoll is how often a run adopted at startup is checked for its agent having ended (a variable for the tests).
+var adoptedRunPoll = 30 * time.Second
+
+// reapStaleRuns settles the runs a previous Coral left in pending or running (#6898). A run is advanced and watched only by in-process goroutines, so a restart leaves each of them behind, and the next
+// slots of its job are skipped as "already running" until something finishes it. At startup, for each such run:
+//   - one older than twice its job's longest allowed run is killed as before (timeout_reap, and its agent with it);
+//   - one that never launched an agent (no session) is failed: Coral restarted before its agent existed;
+//   - one whose agent has ended while Coral was down is completed (agent_done);
+//   - one whose agent is still alive is adopted: watched again until the agent ends (completed) or the run's time is up (killed, timeout), as an in-process run is.
+//
+// What an adopted run does not redo is the work only its first goroutine held: removing its worktree, the auto-accept registration, an agent-exit judgement.
 func (s *JobScheduler) reapStaleRuns(ctx context.Context) {
-	// Mark runs stuck in pending/running past their max_duration as killed
 	activeRuns, err := s.store.ListActiveRuns(ctx)
 	if err != nil {
 		return
 	}
 	now := time.Now().UTC()
 	for _, run := range activeRuns {
-		if run.StartedAt == nil {
-			continue
-		}
-		started, err := parseTimestamp(*run.StartedAt)
-		if err != nil {
-			continue
-		}
-		// Look up max_duration from the job
 		job, err := s.store.GetScheduledJob(ctx, run.JobID)
 		if err != nil || job == nil {
 			continue
@@ -261,17 +263,77 @@ func (s *JobScheduler) reapStaleRuns(ctx context.Context) {
 		if maxDur == 0 {
 			maxDur = time.Hour
 		}
-		elapsed := now.Sub(started)
-		if elapsed > maxDur*2 { // generous 2x buffer
-			s.logger.Warn("reaping stale run", "run_id", run.ID, "elapsed", elapsed)
-			finished := now.Format(store.ISOFormat)
-			s.store.UpdateScheduledRun(ctx, run.ID, map[string]interface{}{
-				"status":      "killed",
-				"exit_reason": "timeout_reap",
-				"finished_at": finished,
-			})
+		hasSession := run.SessionID != nil && *run.SessionID != ""
+		var started time.Time
+		hasStart := false
+		if run.StartedAt != nil {
+			if t, perr := parseTimestamp(*run.StartedAt); perr == nil {
+				started, hasStart = t, true
+			}
+		}
+		finish := func(status, reason, msg string) {
+			fields := map[string]interface{}{"status": status, "exit_reason": reason, "finished_at": now.Format(store.ISOFormat)}
+			if msg != "" {
+				fields["error_msg"] = msg
+			}
+			s.store.UpdateScheduledRun(ctx, run.ID, fields)
+		}
+		switch {
+		case hasStart && now.Sub(started) > maxDur*2: // generous 2x buffer
+			s.logger.Warn("reaping stale run", "run_id", run.ID, "elapsed", now.Sub(started))
+			s.killRunSession(ctx, &run, job.AgentType)
+			finish("killed", "timeout_reap", "")
+		case !hasSession:
+			s.logger.Warn("a run left over from before Coral restarted never launched its agent", "run_id", run.ID)
+			finish("failed", "interrupted_by_restart", "Coral restarted before this run launched its agent")
+		case !hasStart:
+			continue
+		case !s.agentAlive(ctx, run, job.AgentType):
+			s.logger.Info("a run's agent ended while Coral was down", "run_id", run.ID)
+			finish("completed", "agent_done", "")
+		default:
+			s.adoptRun(ctx, run, *job, started.Add(maxDur))
 		}
 	}
+}
+
+// agentAlive reports whether the run's agent session still exists; with no runtime to ask it is taken as alive (the run is then watched, not finished on a guess).
+func (s *JobScheduler) agentAlive(ctx context.Context, run store.ScheduledRun, agentType string) bool {
+	if s.runtime == nil || run.SessionID == nil {
+		return true
+	}
+	if agentType == "" {
+		agentType = at.Claude
+	}
+	return s.runtime.IsAlive(ctx, agentType+"-"+*run.SessionID)
+}
+
+// adoptRun watches a run whose agent outlived the previous Coral, as launchAndWatch's launch function does for a run it started: until the agent ends (completed) or deadline passes (killed, timeout). A shutdown
+// leaves the run as it is for the next start to settle again.
+func (s *JobScheduler) adoptRun(ctx context.Context, run store.ScheduledRun, job store.ScheduledJob, deadline time.Time) {
+	s.logger.Info("adopting a run whose agent outlived the previous Coral", "run_id", run.ID, "until", deadline.Format(time.RFC3339))
+	s.watching.Add(1)
+	go func() {
+		defer safego.Recover("background/scheduler:adoptRun")
+		defer s.watching.Done()
+		ticker := time.NewTicker(adoptedRunPoll)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if !s.agentAlive(ctx, run, job.AgentType) {
+					s.finishRun(ctx, run.ID, job, "completed", "agent_done", false)
+					return
+				}
+				if time.Now().After(deadline) {
+					s.finishRun(ctx, run.ID, job, "killed", "timeout", false) // finishRun ends its agent
+					return
+				}
+			}
+		}
+	}()
 }
 
 func (s *JobScheduler) tick(ctx context.Context) error {
